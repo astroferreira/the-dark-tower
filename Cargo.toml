@@ -1,0 +1,18 @@
+[package]
+name = "planet_generator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+image = "0.25"
+clap = { version = "4.5", features = ["derive"] }
+noise = "0.9"
+rand = "0.8"
+rand_chacha = "0.3"
+minifb = "0.27"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
