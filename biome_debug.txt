@@ -1,0 +1,144 @@
+=== EXTENDED BIOME DEBUG MAP (128x64) seed=12345 ===
+Fantasy Intensity: 50%
+
+LEGEND (Base Biomes):
+  ~ = Ocean/Water      # = Ice           T = Tundra
+  B = Boreal Forest    g = Grassland     f = Temperate Forest
+  F = Temp Rainforest  . = Desert        s = Savanna
+  t = Tropical Forest  R = Rainforest    A = Alpine  ^ = Snowy
+
+LEGEND (Fantasy Biomes):
+  D = Dead Forest      C = Crystal Forest    L = Biolum Forest
+  M = Mushroom Forest  P = Petrified Forest
+  a = Acid Lake        l = Lava Lake         i = Frozen Lake
+  b = Biolum Water
+  V = Volcanic Waste   S = Salt Flats        H = Ashlands
+  X = Crystal Waste
+  W = Swamp            m = Marsh             o = Bog
+  G = Mangrove
+
+BIOME MAP:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~####~~####~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##############~######~~~~~~~~~~~~~###########~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~###########################~~~~~~~################~~~~~~~~~~~~~~~
+~~~~~~~~~~~~########~########~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##################~##################################~~~~~~~~~~~~~
+~~~~~~~~###########################~~~~~~~~~~~~~~~~~~~~~~~~TT########TTT######TTTT#################################T~~~~~~~~~~~~
+~~~~~~~TT#TTT###TTTTTTT#Too#######TTTT~~~~~~~~~~~~~~~~~~~~TTTooooTTTTTTTTTTTTTTTTTTTT###TTooooooo##########TTTTT###T~~~~~~~~~~~~
+~~~~~~~~TTTTTTTTTTTTTTToTooooTTTTTTTTT~~~~~~~~~~~~~~~~~~TTTTTToTTTTTTTTTTTTTTTTTTTTTTTTTTToooooooTTTTTTTTTTTTTTTTTTT~~~~~~~~~~~~
+~~~~~~~~TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT~~~~~~~~~~~~~~~~~TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT^TTTTTooooooTTTTTTTTTTTTTTTTTT~~~~~~~~~~~~~
+~~~~~~~~~TTTTTTTTTTTTTTTTTTTTTTBTTTT~~~~~~~~~~~~~~~~~~~TTTTTTTTTTTTTTTTTTTTTTTTTTTT^^^TTTTTTTTTTTTTTTTTT^^TTTTTTTT~~~~~~~~~~~~~~
+~~~~~~~~BBBBBTTTTTTTTTTTTTBBBB~~~~~~~~~~~~~~~~~~~~~~~~~BTTTBTTTTTTTTTTTTTTTTTTTTAAAA^^TTTTTTTTTTTTTTTTTTTTTTTTTTTB~~~~~~~~~~~~~~
+~~~~~~~BBBBBTTTTTTTTTTTBBBBB~BB~~~~~~~~~~~~~~~~~~~~~~~~BBBBBTTTTTTTTTTTTTTTTTTAAAAAAAAATTTTTTTTTTTTTTTTTTBBBBBTTBB~~~~~~~~~~~~~~
+~~~~~~~BBBBTTTTTTTTTTTTTTBBBBBB~~~~~~~~~~~~~~~~~~~~~~~~BBBBTTTTTTTTTTTTTTTTTTAAAATTTAAATTTTTTTTTTTTTTTTTTBBBBBBBB~~~~~~~~~~~~~~~
+~~~~~~BBTTTTTTTTTTTTTTTTTTTTBTB~~~~~ww~~~~~~~~~~~~~~~~~BTTTTTTTTTTTTTTTTTTTrAAATTTTTAAAATTTTTTTTTTTATTTTTTTTTTTBB~~~~~~~~~~~~~~~
+~~~~~~fTTTTTTTTTTTTTTTTTTTTTTTT~~~~~~~~~~~~~~~~~~~~~~~~~ffTTTTTTTTTTTTTTTTAAAATTTTTTAAAATTTTTTTTTTATTTTTTffffTTTf~~~~~~~~~~~~~~~
+~~~~~~gTTgggggTTTTTTTTTTTTTTTf~~~~~~~~~~~~~~~~~~~~~~~~~~~~gggTTTTTTTTTTTTAAATTTTTTTTTAATTTTTTTTTTTTTTTTggg~~~ggg~~~~~~~~~~~~~~~~
+~~~~~~~gggggggggTTTTTTTggTgggg~~~~~~~~~~~~~~~~~~~~~~~~~~~~ggggggggggggTTAAATTTggggggTAATgggggggTTTTTggggggg~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~ggggggggggggggggggggggg~~~~~~~~~~~~~~~~~~~~~~~~~~~kcggggggggggggggAAgggggggggTAATggggggggggggggggggg~~~~~~~~~~~~~~~~~~~~~
+~~~~~~ggggggggggggggggggggggg~~~~~~~~~~~~~~~~~~~~~~~~~wwwwkegggggggggggggggggggggggggAAggggggggggggggggggg~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~gggggggggggggggggggggg~~~~~~~~~~~~~~~~~~~~~~~~wwwwww[gggggggggggggggggggggggggggggggggggggggggggg~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~sss~ssggggggggggggggggs~~~~~~~~~~~~~~~~~~~~~~~wwwwww~~ssgggggggggggggggggggggggggg...ggggggggggss~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~tsstssgggggggggggggggft~~~~~~~~~~~~~~~~~~~~~~~~~www~~~~tsss.....ggggggggggggggggggg..gggggggggssst~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~tttttsggggggggg...sggfft~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ttssss...ggggggggggggsssgggggggggggggsssttt~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~tttttttss.ggg.......ssfftt~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~tttttsss.ssstttstffttttttffggggggggssstttt~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~RRtttttssss........ssttttRRR~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~RRtttttstttttttttttttttttfffggggsssttttRR~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~RRRttttssssssss..ssssstttRRRR~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~RRRttttttRRRRRRRRRRRRRRRttttssssttttRRR~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~RRRRtttsssssssss.ssssstttRRRR~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~RRRRtttRRR~RRRRRRRRRRRRRRRtttssstttRRRR~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~RRRRRtttsssssssssssssstttRRRR~~~~~~~~~~~~~~~~~~~~~~~~~~~~~RRRRRtttRRRRRRRR~~~~~~~RRRRRttttttttRRRR~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~RRRRRttttt..sssssssttttttRRRRRR~~~~~~~~~~~~~~~~~~~~~~~~~~~RRRRRtttRRRRRR~~~~~~~~~~~RRRRRtttttRRRRR~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~RRRRRRtttttttttttttttttttRRRRRR~~~~~~~~~~~~~~~~~~~~~~~~~~~RRRRRRRRRRRR~~~~~~~~~~~~RRRRRRtttRRRRR~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~RRRRRttttttss.s....tttttttRRRRRR~~~~~~~~~~~~~~~~~~~~~~~~~~RRRLfMRRRRRR~~~~~~~~~~~~RRRRRttttRRRRR~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~RRRRttttss.ss..ss.sssttttttRRRRRRRR~~~~~~~~~~~~~~~~~~~~~~~RRRRMMRRRRR~~~~~~~~~~~~~RRRRtttttRRRRR~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~YffMtttssssss.sssssstttttttttRRRRRRR~~~~~~~~~~~~~~~~~~~~~RRRRtRRRR~~~~~~~~~~~~~~RRRRtttsstttRRRR~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~[fYMtttsssssssssssssttttttttttttRRRRR~~~~~~~~~~~~~~~~~~~~~RRRRttRRR~~~~~~~~~~~~~~RRRttttssttttRRR~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~wRtttttsss......ssstttttttttttttttttR~~~~~~~~~~~~~~~~~~~~~~RRttRtR~~~~~~~~~~~~~~~RRtttttssstttttR~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~ttttss..........ssstttttttttssftsttttttt~~~~~~~~~~~~~~~~~~tttttt~~~~~~~~~~~~~~~~ttttttss..sstttt~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~tttss...........ssstttttttssssggssssttttt~~~~~~~~~~~~~~~~~~ttt~~~~~~~~~~~~~~~~~~~ttttsss...gggffttww~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~tgggggggggg.....sssssggggssssgggggIsssggst~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~tttsssggggggggPt+www~~~~~~~~~~~~~~~~
+~~~~~~~~~~sggggggggggggggggsssssgggsssgggggggggggggs~~~~~~~~~~~~~~~~~~~~~www~~~~~~~~~~~~~~~~~~~sgggggggggeeUewwww~~~~~~~~~~~~~~~
+~~~~~~~~~~~gggggggggggggggggg~~~~~~~~~gggggggggggggg~~~~~~~~~~~~~~~~~~~wwwww~~~~~~~~~~~~~~~~~~gggggggggggeeUUww~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~gggggggggggggggggg~~~~~~~~~~ggggggggggggg~~~~~~~~~~~~~~~~~~~~ww~~~~~~~~~~~~~~~~~~~~ggggggggggggggg~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~gggggggggggggggggg~~~~~~~~~~ggggggggggggg~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~gggAgggggggggg~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~ggTTTTTTgggggTTggg~~~~~~~~~~~gggggggggggg~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ggggggggggggg~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~gTTTTTTTgggTTTTgg~~~~~~~~~~~ggTTTTTTTTgg~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ggggggggggg~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~TTTTTTTTTTTTTTT~~~~~~~~~~~~TTTTTTTTTTTf~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTTTf~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~BBBTTTTTTTTTTBB~~~~~~~~~~~~BTTTTTTTTTTB~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~BBBBB~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~BBAABBBBBBBBBBB~~~~~~~~~~~~~BBBTTTBBBBBB~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~BBB~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~BTTTTTTBBBBBBB~~~~~~~~~~~~BBBBBBBBBBBBBB~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~BTBBBBBBBBBBBB~~~~~~~~~~~~BBBBoBBBBBBBBB~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~TTToooBB~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~--~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~-----~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~---~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+=== BIOME STATISTICS ===
+
+Base Biomes:
+  Ocean                     2849 ( 34.8%)
+  DeepOcean                 2177 ( 26.6%)
+  Tundra                     761 (  9.3%)
+  TemperateGrassland         670 (  8.2%)
+  TropicalForest             351 (  4.3%)
+  TropicalRainforest         279 (  3.4%)
+  Ice                        253 (  3.1%)
+  Savanna                    216 (  2.6%)
+  CoastalWater               185 (  2.3%)
+  BorealForest               153 (  1.9%)
+  Desert                      85 (  1.0%)
+  AlpineTundra                56 (  0.7%)
+  Sargasso                    43 (  0.5%)
+  TemperateForest             26 (  0.3%)
+  InkSea                      14 (  0.2%)
+  SnowyPeaks                   8 (  0.1%)
+  BoneFields                   6 (  0.1%)
+  FungalBloom                  4 (  0.0%)
+  StarfallCrater               3 (  0.0%)
+  KelpTowers                   2 (  0.0%)
+  AncientGrove                 2 (  0.0%)
+  SunkenCity                   2 (  0.0%)
+  CoralPlateau                 1 (  0.0%)
+  Oasis                        1 (  0.0%)
+  HotSprings                   1 (  0.0%)
+  PhosphorShallows             1 (  0.0%)
+
+Fantasy Biomes:
+  Bog                         36 (  0.4%)
+  MushroomForest               5 (  0.1%)
+  PetrifiedForest              1 (  0.0%)
+  BioluminescentForest         1 (  0.0%)
+  TOTAL FANTASY               43 (  0.5%)
+
+=== MOISTURE STATISTICS (land only) ===
+  Min:    0.020
+  Q1:     0.147
+  Median: 0.403
+  Mean:   0.394
+  Q3:     0.620
+  Max:    1.000
+
+=== TEMPERATURE STATISTICS (land only) ===
+  Min:    -20.6°C
+  Median: 12.7°C
+  Mean:   10.7°C
+  Max:    29.8°C
+
+=== SAMPLE CELLS ===
+  ( 32, 16): h= -208.6m, t=   8.8°C, m=1.000, s=  -0.1 => Ocean
+  ( 64, 32): h= -387.4m, t=  30.0°C, m=1.000, s=  -0.1 => Ocean
+  ( 96, 48): h= -385.9m, t=   8.8°C, m=1.000, s=   0.1 => Ocean
+  ( 64,  8): h=  399.5m, t= -11.6°C, m=0.636, s=   0.1 => Ice
+  ( 64, 56): h=-1731.3m, t=  -9.0°C, m=1.000, s=   0.1 => Ocean
+  ( 20, 30): h=  550.6m, t=  25.5°C, m=0.310, s=   0.0 => Savanna
+  (100, 40): h=  770.9m, t=  17.5°C, m=0.041, s=   0.0 => Temperate Grassland

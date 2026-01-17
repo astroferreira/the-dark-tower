@@ -78,7 +78,50 @@ impl Plate {
         }
     }
 
-    /// Generate a random plate with the given ID.
+    /// Create a plate with a specific type (continental or oceanic).
+    pub fn new_with_type(id: PlateId, rng: &mut ChaCha8Rng, is_continental: bool) -> Self {
+        let plate_type = if is_continental {
+            PlateType::Continental
+        } else {
+            PlateType::Oceanic
+        };
+
+        // Base elevation based on plate type
+        let base_elevation = match plate_type {
+            PlateType::Oceanic => rng.gen_range(-0.4..-0.1),
+            PlateType::Continental => rng.gen_range(0.05..0.2),
+        };
+
+        // Random velocity direction and magnitude
+        // Lower magnitude = less stress at boundaries = rarer mountains/rifts
+        let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+        let magnitude = rng.gen_range(0.1..0.6);
+        let velocity = Vec2::new(angle.cos() * magnitude, angle.sin() * magnitude);
+
+        // Generate a color for visualization
+        let color = match plate_type {
+            PlateType::Oceanic => [
+                rng.gen_range(30..80),
+                rng.gen_range(60..120),
+                rng.gen_range(150..220),
+            ],
+            PlateType::Continental => [
+                rng.gen_range(100..180),
+                rng.gen_range(140..200),
+                rng.gen_range(80..140),
+            ],
+        };
+
+        Self {
+            id,
+            plate_type,
+            velocity,
+            base_elevation,
+            color,
+        }
+    }
+
+    /// Generate a random plate with the given ID (original behavior).
     pub fn random(id: PlateId, rng: &mut ChaCha8Rng) -> Self {
         // ~60% oceanic, ~40% continental
         let plate_type = if rng.gen::<f32>() < 0.6 {

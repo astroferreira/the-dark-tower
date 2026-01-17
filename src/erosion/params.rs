@@ -1,0 +1,230 @@
+//! Erosion simulation parameters and configuration
+
+/// Global erosion simulation parameters
+#[derive(Clone, Debug, PartialEq)]
+pub struct ErosionParams {
+    // =========================================================================
+    // Hydraulic Erosion Parameters
+    // =========================================================================
+
+    /// Number of water droplets to simulate (default: 50000)
+    pub hydraulic_iterations: usize,
+
+    /// Momentum conservation factor (0.0-1.0)
+    /// Higher values = droplets maintain direction longer, creating straighter paths
+    pub droplet_inertia: f32,
+
+    /// Sediment carrying capacity multiplier
+    /// Higher values = droplets can carry more sediment before depositing
+    pub droplet_capacity_factor: f32,
+
+    /// Rate at which droplets erode terrain (0.0-1.0)
+    /// Modulated by rock hardness
+    pub droplet_erosion_rate: f32,
+
+    /// Rate at which droplets deposit sediment (0.0-1.0)
+    pub droplet_deposit_rate: f32,
+
+    /// Water evaporation rate per step (0.0-1.0)
+    /// Higher values = shorter droplet lifetimes
+    pub droplet_evaporation: f32,
+
+    /// Minimum water volume before droplet dies
+    pub droplet_min_volume: f32,
+
+    /// Maximum path length (steps) per droplet
+    pub droplet_max_steps: usize,
+
+    /// Radius for blurring erosion effects (in cells)
+    pub droplet_erosion_radius: usize,
+
+    /// Initial water volume for each droplet
+    pub droplet_initial_water: f32,
+
+    /// Initial velocity for droplets
+    pub droplet_initial_velocity: f32,
+
+    /// Gravity factor affecting droplet acceleration
+    pub droplet_gravity: f32,
+
+    // =========================================================================
+    // Glacial Erosion Parameters (SIA Model)
+    // =========================================================================
+
+    /// Number of simulation timesteps for glacial erosion
+    pub glacial_timesteps: usize,
+
+    /// Time delta per step (in years)
+    pub glacial_dt: f32,
+
+    /// Glen's flow law coefficient A (ice deformation rate)
+    /// Typical value: 2.4e-24 Pa^-3 s^-1 (but we use scaled values)
+    pub ice_deform_coefficient: f32,
+
+    /// Basal sliding coefficient (m/yr per Pa)
+    pub ice_sliding_coefficient: f32,
+
+    /// Bedrock erosion coefficient K (erodibility)
+    pub erosion_coefficient: f32,
+
+    /// Mass balance gradient (accumulation/ablation rate per meter above/below ELA)
+    pub mass_balance_gradient: f32,
+
+    /// Equilibrium Line Altitude (ELA) - elevation where accumulation = ablation
+    /// This is derived from temperature, but can be overridden
+    pub snowline_elevation: Option<f32>,
+
+    /// Temperature threshold for ice formation (Celsius)
+    pub glaciation_temperature: f32,
+
+    /// Glen's flow law exponent (typically n=3)
+    pub glen_exponent: f32,
+
+    /// Ice density (kg/m^3)
+    pub ice_density: f32,
+
+    /// Gravitational acceleration (m/s^2)
+    pub gravity: f32,
+
+    /// Erosion law exponent (1 = linear, 2 = quadratic)
+    pub erosion_exponent: f32,
+
+    // =========================================================================
+    // River Erosion Parameters (Trace-Based with Sediment Transport)
+    // =========================================================================
+
+    /// Enable flow-based river erosion (creates main drainage channels)
+    pub enable_rivers: bool,
+
+    /// Minimum flow accumulation for a cell to be a river source
+    pub river_source_min_accumulation: f32,
+
+    /// Minimum elevation above sea level for river sources
+    pub river_source_min_elevation: f32,
+
+    /// Sediment capacity multiplier (capacity = factor * flow * slope)
+    pub river_capacity_factor: f32,
+
+    /// Rate at which rivers erode when under capacity
+    pub river_erosion_rate: f32,
+
+    /// Rate at which rivers deposit when over capacity
+    pub river_deposition_rate: f32,
+
+    /// Maximum erosion per cell (prevents extreme valleys)
+    pub river_max_erosion: f32,
+
+    /// Maximum deposition per cell
+    pub river_max_deposition: f32,
+
+    /// Width of river channel (for cross-section erosion)
+    pub river_channel_width: usize,
+
+    // =========================================================================
+    // General Settings
+    // =========================================================================
+
+    /// Enable particle-based hydraulic erosion (adds detail)
+    pub enable_hydraulic: bool,
+
+    /// Enable glacial erosion
+    pub enable_glacial: bool,
+
+    /// Enable geomorphometry analysis (realism scoring)
+    pub enable_analysis: bool,
+
+    /// Use GPU acceleration for hydraulic erosion (if available)
+    pub use_gpu: bool,
+}
+
+impl Default for ErosionParams {
+    fn default() -> Self {
+        Self {
+            // Hydraulic erosion defaults - tuned for smoother, less noisy terrain with natural meandering
+            hydraulic_iterations: 500_000,  // More droplets for comprehensive network formation
+            droplet_inertia: 0.3,           // Increased inertia (was 0.15) to help droplets coast over pits
+            droplet_capacity_factor: 10.0,  // High capacity = more erosion along path
+            droplet_erosion_rate: 0.05,     // Reduced erosion (was 0.1) to prevent deep cratering
+            droplet_deposit_rate: 0.1,      // Increased deposition (was 0.05) to fill pits/potholes
+            droplet_evaporation: 0.002,     // Low evaporation = long rivers reaching the ocean
+            droplet_min_volume: 0.01,
+            droplet_max_steps: 2000,        // Allow droplets to traverse the entire map
+            droplet_erosion_radius: 2,      // Intermediate radius (was 1/3)
+            droplet_initial_water: 1.0,
+            droplet_initial_velocity: 1.0,
+            droplet_gravity: 8.0,
+
+            // Glacial erosion defaults (scaled for our heightmap units)
+            glacial_timesteps: 500,
+            glacial_dt: 100.0,  // 100 years per step
+            ice_deform_coefficient: 1e-7,  // Scaled Glen's A
+            ice_sliding_coefficient: 5e-4,  // Basal sliding factor
+            erosion_coefficient: 1e-4,  // Bedrock erodibility
+            mass_balance_gradient: 0.005,  // m/yr per m elevation
+            snowline_elevation: None,  // Derived from temperature
+            glaciation_temperature: -3.0,  // Ice forms below this temp (enables coastal glaciation for fjords)
+            glen_exponent: 3.0,
+            ice_density: 917.0,  // kg/m^3
+            gravity: 9.81,  // m/s^2
+            erosion_exponent: 1.0,  // Linear erosion law
+
+            // River erosion defaults - panel 6 settings (dense rivers, strong erosion)
+            enable_rivers: true,
+            river_source_min_accumulation: 10.0,   // Low threshold = dense river network
+            river_source_min_elevation: 100.0,     // Start higher up for longer rivers
+            river_capacity_factor: 20.0,           // High capacity = more erosion
+            river_erosion_rate: 1.0,               // Maximum erosion rate
+            river_deposition_rate: 0.5,            // Disable deposition
+            river_max_erosion: 150.0,              // Deep channels
+            river_max_deposition: 0.0,             // No deposition
+            river_channel_width: 2,                // Wide channels for visibility
+
+            // General
+            enable_hydraulic: true,       // Enabled (was false)
+            enable_glacial: true,         // Enabled for fjords and glacial valleys
+            enable_analysis: false,       // Disabled by default (use --analyze to enable)
+            use_gpu: true,                // Use GPU if available
+        }
+    }
+}
+
+impl ErosionParams {
+    /// Create a fast configuration for testing (fewer iterations)
+    pub fn fast() -> Self {
+        Self {
+            hydraulic_iterations: 10_000,
+            glacial_timesteps: 100,
+            ..Default::default()
+        }
+    }
+
+    /// Create a high-quality configuration (more iterations)
+    pub fn high_quality() -> Self {
+        Self {
+            hydraulic_iterations: 200_000,
+            glacial_timesteps: 1000,
+            ..Default::default()
+        }
+    }
+
+    /// Only hydraulic erosion
+    pub fn hydraulic_only() -> Self {
+        Self {
+            enable_glacial: false,
+            ..Default::default()
+        }
+    }
+
+    /// Only glacial erosion
+    pub fn glacial_only() -> Self {
+        Self {
+            enable_hydraulic: false,
+            ..Default::default()
+        }
+    }
+
+    /// Compute ice density * gravity (commonly used in SIA)
+    pub fn rho_g(&self) -> f32 {
+        self.ice_density * self.gravity
+    }
+}

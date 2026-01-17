@@ -26,6 +26,33 @@ cargo build --release
 -s, --seed <SEED>             Random seed (random if not specified)
 -o, --output <OUTPUT>         Output file prefix [default: output]
     --stress-spread <N>       Stress spreading iterations [default: 10]
+-v, --view                    Open interactive viewer
+
+# Erosion Options
+    --erosion                 Enable erosion simulation
+    --erosion-iterations <N>  Number of hydraulic droplets [default: 50000]
+    --hydraulic <BOOL>        Enable hydraulic erosion [default: true]
+    --glacial <BOOL>          Enable glacial erosion [default: true]
+    --glacial-timesteps <N>   Glacial simulation steps [default: 500]
+```
+
+### Erosion Examples
+
+```bash
+# Run with both hydraulic and glacial erosion (512x256 default)
+cargo run --release -- --erosion --seed 42 --output eroded
+
+# For larger maps, increase iterations proportionally:
+# 512x256 (default): 200k iterations
+# 1024x512: 500k-1M iterations
+# 2048x1024: 2M+ iterations
+cargo run --release -- -W 1024 -H 512 --erosion --erosion-iterations 500000
+
+# Hydraulic erosion only (faster)
+cargo run --release -- --erosion --glacial false
+
+# Glacial erosion only
+cargo run --release -- --erosion --hydraulic false
 ```
 
 ## Output Files
@@ -49,7 +76,19 @@ cargo build --release
 
 - **`heightmap.rs`**: Combines plate base elevation + stress into final heightmap
 
+- **`climate.rs`**: Temperature and moisture maps, biome classification
+
+- **`erosion/`**: Erosion simulation system
+  - `mod.rs`: Main orchestration and shared types
+  - `params.rs`: Erosion configuration parameters
+  - `utils.rs`: Gradient calculation, bilinear interpolation utilities
+  - `materials.rs`: Rock types with hardness values (Basalt, Granite, etc.)
+  - `hydraulic.rs`: Particle-based water droplet erosion
+  - `glacial.rs`: Shallow Ice Approximation (SIA) glacial erosion
+
 - **`export.rs`**: PNG image export using `image` crate
+
+- **`viewer.rs`**: Interactive OpenGL viewer
 
 ### Generation Pipeline
 
@@ -61,8 +100,36 @@ Seed → Place 6-15 random seed points
      → Calculate stress at boundaries (relative velocity dot boundary normal)
      → Spread stress into plate interiors
      → Heightmap = base_elevation + stress * scale
+     → Generate climate (temperature, moisture)
+     → [Optional] Run erosion simulation:
+       → Generate material map (rock types by region)
+       → Hydraulic: Simulate water droplets carving valleys
+       → Glacial: Simulate ice sheets using SIA model
+     → Generate biomes from climate + elevation
      → Export PNG images
 ```
+
+### Erosion System
+
+**Hydraulic Erosion** - Particle-based water droplet simulation:
+- Droplets spawn randomly, follow terrain gradient
+- Pick up sediment on steep slopes (modulated by rock hardness)
+- Deposit sediment when flow slows
+- Creates V-shaped river valleys, alluvial fans
+
+**Glacial Erosion** - Shallow Ice Approximation (SIA):
+- Ice accumulates above snowline (cold temperatures)
+- Ice flows downhill following SIA flux equation
+- Erodes bedrock based on basal sliding velocity
+- Creates U-shaped valleys, cirques, fjords
+
+**Rock Hardness** - Different erosion rates:
+- Basalt (0.95): Very hard, volcanic rock
+- Granite (0.85): Hard continental basement
+- Sandstone (0.5): Medium, sedimentary
+- Limestone (0.4): Medium-soft, karst-forming
+- Shale (0.25): Soft sedimentary
+- Sediment (0.1): Unconsolidated deposits
 
 ### Stress Calculation
 

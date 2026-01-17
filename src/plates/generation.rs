@@ -136,14 +136,28 @@ pub fn generate_plates(
 
     let interior_biases: Vec<f32> = match size_mode {
         PlateSizeMode::Supercontinent => {
-            // One dominant plate (very low bias), rest are small (high bias)
+            // One large plate (~35-45% area) plus a few medium plates for balance
             let dominant_idx = rng.gen_range(0..num_interior_plates);
+            // Pick 2-3 secondary plates
+            let num_secondary = rng.gen_range(2..=3.min(num_interior_plates - 1));
+            let mut secondary_indices: Vec<usize> = (0..num_interior_plates)
+                .filter(|&i| i != dominant_idx)
+                .collect();
+            for i in 0..num_secondary.min(secondary_indices.len()) {
+                let j = rng.gen_range(i..secondary_indices.len());
+                secondary_indices.swap(i, j);
+            }
+            let secondary_set: std::collections::HashSet<usize> =
+                secondary_indices.iter().take(num_secondary).copied().collect();
+
             (0..num_interior_plates)
                 .map(|i| {
                     if i == dominant_idx {
-                        rng.gen_range(0.3..0.5)  // Very fast expansion
+                        rng.gen_range(0.5..0.7)  // Large but not overwhelming
+                    } else if secondary_set.contains(&i) {
+                        rng.gen_range(0.9..1.2)  // Medium plates for balance
                     } else {
-                        rng.gen_range(1.5..2.5)  // Slow expansion
+                        rng.gen_range(1.4..1.8)  // Smaller plates
                     }
                 })
                 .collect()
@@ -171,12 +185,12 @@ pub fn generate_plates(
                 .collect()
         }
         PlateSizeMode::Chaotic => {
-            // Highly varied - use exponential distribution for natural variety
+            // Varied sizes - use distribution for natural variety, but capped
             (0..num_interior_plates)
                 .map(|_| {
-                    // Exponential-like distribution: many small, few large
+                    // Distribution: many medium-small, few large
                     let r: f32 = rng.gen();
-                    0.4 + r * r * 2.0  // Range ~0.4 to ~2.4, skewed toward higher values
+                    0.6 + r * r * 1.4  // Range ~0.6 to ~2.0, more moderate variance
                 })
                 .collect()
         }
@@ -259,7 +273,7 @@ pub fn generate_plates(
         let plate_noise = &plate_noises[plate_idx];
         let bias = plate_bias[plate_idx];
 
-        for (nx, ny) in plate_map.neighbors(cell.x, cell.y) {
+        for (nx, ny) in plate_map.neighbors_8(cell.x, cell.y) {
             if plate_map.get(nx, ny).is_none() {
                 plate_map.set(nx, ny, cell.plate_id);
 
@@ -294,14 +308,62 @@ pub fn generate_plates(
         }
     }
 
+    // Count actual plate areas after flood-fill
+    let mut plate_areas: Vec<usize> = vec![0; total_plates];
+    for (_, _, &id) in plate_map.iter() {
+        if !id.is_none() {
+            plate_areas[id.0 as usize] += 1;
+        }
+    }
+
+    // Target land percentage (~35% like Earth + margin for erosion/sea level)
+    let total_cells = width * height;
+    let target_land_fraction = 0.35;
+    let target_land_cells = (total_cells as f64 * target_land_fraction) as usize;
+
+    // Sort interior plates by actual area (largest first)
+    let mut interior_areas: Vec<(usize, usize)> = (0..num_interior_plates)
+        .map(|i| {
+            let global_idx = num_border_plates + i;
+            (global_idx, plate_areas[global_idx])
+        })
+        .collect();
+    interior_areas.sort_by(|a, b| b.1.cmp(&a.1));
+
+    // Select plates to be continental, trying to match target land coverage
+    let mut continental_set: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    let mut current_land = 0usize;
+
+    for (plate_idx, area) in &interior_areas {
+        // Calculate how far from target we'd be with vs without this plate
+        let distance_without = (target_land_cells as i64 - current_land as i64).abs();
+        let distance_with = (target_land_cells as i64 - (current_land + area) as i64).abs();
+
+        // Add if it gets us closer to target
+        if distance_with <= distance_without {
+            continental_set.insert(*plate_idx);
+            current_land += area;
+        }
+    }
+
+    // Ensure at least one continental plate for landmass
+    if continental_set.is_empty() && !interior_areas.is_empty() {
+        continental_set.insert(interior_areas[0].0);
+    }
+
     // Create plate objects
     // First 4 are border plates (oceanic)
     let mut plates: Vec<Plate> = (0..num_border_plates)
         .map(|i| Plate::oceanic_border(PlateId(i as u8)))
         .collect();
-    // Rest are random interior plates
+
+    // Create interior plates with types based on area-targeting
     plates.extend((0..num_interior_plates)
-        .map(|i| Plate::random(PlateId((num_border_plates + i) as u8), rng)));
+        .map(|i| {
+            let global_idx = num_border_plates + i;
+            let is_continental = continental_set.contains(&global_idx);
+            Plate::new_with_type(PlateId(global_idx as u8), rng, is_continental)
+        }));
 
     (plate_map, plates)
 }
