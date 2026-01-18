@@ -15,8 +15,6 @@ mod plates;
 mod scale;
 mod simulation;
 mod tilemap;
-mod tileset;
-mod viewer;
 mod water_bodies;
 mod world;
 
@@ -48,7 +46,7 @@ struct Args {
     #[arg(short = 'p', long)]
     plates: Option<usize>,
 
-    /// Open interactive viewer (press R to regenerate, Esc to exit)
+    /// Quick launch interactive explorer (faster, less detail)
     #[arg(short = 'v', long)]
     view: bool,
 
@@ -96,7 +94,7 @@ struct Args {
     #[arg(long)]
     ascii_png: Option<String>,
 
-    /// Launch terminal explorer mode
+    /// Launch terminal explorer with full world generation (erosion, water bodies, etc.)
     #[arg(long)]
     explore: bool,
 
@@ -200,9 +198,13 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    // If --view flag is set, launch interactive viewer
+    // If --view flag is set, launch interactive explorer
     if args.view {
-        viewer::run_viewer(args.width, args.height, args.seed);
+        // Generate world quickly for explorer
+        let world_data = world::generate_world(args.width, args.height, args.seed.unwrap_or_else(|| rand::random()));
+        if let Err(e) = explorer::run_explorer(world_data) {
+            eprintln!("Explorer error: {}", e);
+        }
         return;
     }
 

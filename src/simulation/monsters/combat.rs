@@ -1,4 +1,6 @@
 //! Monster combat system - monster vs tribe and monster vs monster
+//!
+//! Supports both simple aggregate combat and detailed body-part combat.
 
 use rand::Rng;
 use std::collections::HashMap;
@@ -6,6 +8,11 @@ use std::collections::HashMap;
 use crate::simulation::types::{TileCoord, TribeId, TribeEventType, SimTick};
 use crate::simulation::monsters::types::{Monster, MonsterId, MonsterState, AttackTarget};
 use crate::simulation::tribe::Tribe;
+use crate::simulation::characters::CharacterManager;
+use crate::simulation::combat::{
+    CombatLogStore, CombatLogEntry, EncounterOutcome, resolve_attack,
+    CombatResult as DetailedCombatResult,
+};
 use crate::world::WorldData;
 
 /// Result of a combat encounter
@@ -309,4 +316,305 @@ pub enum CombatEvent {
         attacker_killed: bool,
         defender_killed: bool,
     },
+}
+
+/// Check if a monster is significant enough to warrant detailed combat
+pub fn is_significant_monster(monster: &Monster) -> bool {
+    let stats = monster.species.stats();
+    // Dragons, Hydras, Sandworms, and other powerful monsters
+    stats.health >= 150.0 || stats.strength >= 30.0
+}
+
+/// Calculate reputation change for a combat outcome
+/// Returns the reputation delta (negative = reputation decrease)
+pub fn calculate_reputation_change(
+    monster_killed: bool,
+    monster_damage: f32,
+    monster: &Monster,
+) -> i8 {
+    if monster_killed {
+        // Use disposition-based significance
+        if monster.species.is_significant() {
+            -25 // Significant kill (Dragons, etc.)
+        } else {
+            -15 // Regular kill
+        }
+    } else if monster_damage > 0.0 {
+        -5 // Attacked but didn't kill
+    } else {
+        0 // No combat occurred
+    }
+}
+
+/// Run detailed combat between a monster and tribe warriors
+/// Returns (monster_damage, casualties, monster_killed, log_entries)
+pub fn run_detailed_monster_vs_tribe_combat<R: Rng>(
+    monster: &Monster,
+    tribe: &Tribe,
+    char_manager: &mut CharacterManager,
+    combat_log: &mut CombatLogStore,
+    location: Option<TileCoord>,
+    current_tick: u64,
+    rng: &mut R,
+) -> (f32, u32, bool, Vec<CombatLogEntry>) {
+    let mut entries = Vec::new();
+
+    // Start encounter
+    let encounter_id = combat_log.start_encounter(current_tick, location);
+
+    // Spawn the monster as a character
+    let monster_char_id = char_manager.create_monster_character(monster);
+
+    // Determine number of warriors to spawn (based on tribe size and monster strength)
+    let warrior_count = ((monster.strength / 10.0).ceil() as u32)
+        .clamp(2, tribe.population.warriors().min(10));
+
+    // Spawn tribe warriors
+    let warrior_ids = char_manager.spawn_tribe_warriors(tribe, warrior_count, rng);
+
+    // Run combat rounds (max 10 rounds)
+    let max_rounds = 10;
+    let mut round = 0;
+    let mut monster_total_damage = 0.0;
+    let mut warriors_killed = 0u32;
+    let mut monster_killed = false;
+
+    while round < max_rounds {
+        round += 1;
+
+        // Check if combat should end
+        let monster_char = match char_manager.get(&monster_char_id) {
+            Some(c) if c.is_alive => c,
+            _ => {
+                monster_killed = true;
+                break;
+            }
+        };
+
+        let living_warriors: Vec<_> = warrior_ids
+            .iter()
+            .filter_map(|id| char_manager.get(id))
+            .filter(|c| c.is_alive)
+            .collect();
+
+        if living_warriors.is_empty() {
+            break;
+        }
+
+        // Monster attacks a random warrior
+        let target_idx = rng.gen_range(0..living_warriors.len());
+        let target_id = warrior_ids
+            .iter()
+            .filter(|id| char_manager.get(id).map(|c| c.is_alive).unwrap_or(false))
+            .nth(target_idx)
+            .copied();
+
+        if let Some(target_id) = target_id {
+            // Get mutable references for combat
+            let monster_ptr = char_manager.get_mut(&monster_char_id).unwrap() as *mut _;
+            let target_ptr = char_manager.get_mut(&target_id).unwrap() as *mut _;
+
+            // Safety: These are different characters
+            unsafe {
+                let entry = resolve_attack(&mut *monster_ptr, &mut *target_ptr, current_tick, rng);
+
+                if matches!(entry.result, DetailedCombatResult::Kill { .. }) {
+                    warriors_killed += 1;
+                }
+
+                combat_log.add_entry_to_encounter(encounter_id, entry.clone());
+                entries.push(entry);
+            }
+        }
+
+        // Check if monster was killed by counter-attacks
+        if !char_manager.get(&monster_char_id).map(|c| c.is_alive).unwrap_or(false) {
+            monster_killed = true;
+            break;
+        }
+
+        // Living warriors attack the monster
+        for &warrior_id in &warrior_ids {
+            if !char_manager.get(&warrior_id).map(|c| c.is_alive && c.can_attack()).unwrap_or(false) {
+                continue;
+            }
+
+            if !char_manager.get(&monster_char_id).map(|c| c.is_alive).unwrap_or(false) {
+                monster_killed = true;
+                break;
+            }
+
+            let warrior_ptr = char_manager.get_mut(&warrior_id).unwrap() as *mut _;
+            let monster_ptr = char_manager.get_mut(&monster_char_id).unwrap() as *mut _;
+
+            unsafe {
+                let entry = resolve_attack(&mut *warrior_ptr, &mut *monster_ptr, current_tick, rng);
+
+                if let Some(damage) = entry.damage {
+                    monster_total_damage += damage;
+                }
+
+                if matches!(entry.result, DetailedCombatResult::Kill { .. }) {
+                    monster_killed = true;
+                }
+
+                combat_log.add_entry_to_encounter(encounter_id, entry.clone());
+                entries.push(entry);
+            }
+        }
+
+        if monster_killed {
+            break;
+        }
+    }
+
+    // Determine outcome
+    let outcome = if monster_killed {
+        EncounterOutcome::Victory {
+            winner: format!("{}", tribe.name),
+        }
+    } else if warriors_killed == warrior_count {
+        EncounterOutcome::Victory {
+            winner: monster.species.name().to_string(),
+        }
+    } else {
+        // Monster flees or combat ends inconclusively
+        EncounterOutcome::Fled {
+            fleeing_party: monster.species.name().to_string(),
+        }
+    };
+
+    combat_log.end_encounter(encounter_id, current_tick, outcome);
+
+    // Clean up characters
+    char_manager.despawn(monster_char_id);
+    char_manager.despawn_all(&warrior_ids);
+
+    (monster_total_damage, warriors_killed, monster_killed, entries)
+}
+
+/// Run detailed monster vs monster combat
+pub fn run_detailed_monster_vs_monster_combat<R: Rng>(
+    attacker: &Monster,
+    defender: &Monster,
+    char_manager: &mut CharacterManager,
+    combat_log: &mut CombatLogStore,
+    location: Option<TileCoord>,
+    current_tick: u64,
+    rng: &mut R,
+) -> (f32, f32, bool, bool, Vec<CombatLogEntry>) {
+    let mut entries = Vec::new();
+
+    // Start encounter
+    let encounter_id = combat_log.start_encounter(current_tick, location);
+
+    // Create characters for both monsters
+    let attacker_char_id = char_manager.create_monster_character(attacker);
+    let defender_char_id = char_manager.create_monster_character(defender);
+
+    // Run combat rounds
+    let max_rounds = 10;
+    let mut round = 0;
+    let mut attacker_damage = 0.0;
+    let mut defender_damage = 0.0;
+    let mut attacker_killed = false;
+    let mut defender_killed = false;
+
+    while round < max_rounds {
+        round += 1;
+
+        // Check if combat should end
+        let attacker_alive = char_manager.get(&attacker_char_id).map(|c| c.is_alive).unwrap_or(false);
+        let defender_alive = char_manager.get(&defender_char_id).map(|c| c.is_alive).unwrap_or(false);
+
+        if !attacker_alive {
+            attacker_killed = true;
+        }
+        if !defender_alive {
+            defender_killed = true;
+        }
+
+        if !attacker_alive || !defender_alive {
+            break;
+        }
+
+        // Attacker strikes
+        if char_manager.get(&attacker_char_id).map(|c| c.can_attack()).unwrap_or(false) {
+            let attacker_ptr = char_manager.get_mut(&attacker_char_id).unwrap() as *mut _;
+            let defender_ptr = char_manager.get_mut(&defender_char_id).unwrap() as *mut _;
+
+            unsafe {
+                let entry = resolve_attack(&mut *attacker_ptr, &mut *defender_ptr, current_tick, rng);
+
+                if let Some(damage) = entry.damage {
+                    defender_damage += damage;
+                }
+
+                if matches!(entry.result, DetailedCombatResult::Kill { .. }) {
+                    defender_killed = true;
+                }
+
+                combat_log.add_entry_to_encounter(encounter_id, entry.clone());
+                entries.push(entry);
+            }
+        }
+
+        // Check if defender died
+        if !char_manager.get(&defender_char_id).map(|c| c.is_alive).unwrap_or(false) {
+            defender_killed = true;
+            break;
+        }
+
+        // Defender strikes back
+        if char_manager.get(&defender_char_id).map(|c| c.can_attack()).unwrap_or(false) {
+            let defender_ptr = char_manager.get_mut(&defender_char_id).unwrap() as *mut _;
+            let attacker_ptr = char_manager.get_mut(&attacker_char_id).unwrap() as *mut _;
+
+            unsafe {
+                let entry = resolve_attack(&mut *defender_ptr, &mut *attacker_ptr, current_tick, rng);
+
+                if let Some(damage) = entry.damage {
+                    attacker_damage += damage;
+                }
+
+                if matches!(entry.result, DetailedCombatResult::Kill { .. }) {
+                    attacker_killed = true;
+                }
+
+                combat_log.add_entry_to_encounter(encounter_id, entry.clone());
+                entries.push(entry);
+            }
+        }
+
+        // Check if attacker died
+        if !char_manager.get(&attacker_char_id).map(|c| c.is_alive).unwrap_or(false) {
+            attacker_killed = true;
+            break;
+        }
+    }
+
+    // Determine outcome
+    let outcome = if attacker_killed && defender_killed {
+        EncounterOutcome::Mutual
+    } else if attacker_killed {
+        EncounterOutcome::Victory {
+            winner: defender.species.name().to_string(),
+        }
+    } else if defender_killed {
+        EncounterOutcome::Victory {
+            winner: attacker.species.name().to_string(),
+        }
+    } else {
+        EncounterOutcome::Fled {
+            fleeing_party: "both".to_string(),
+        }
+    };
+
+    combat_log.end_encounter(encounter_id, current_tick, outcome);
+
+    // Clean up characters
+    char_manager.despawn(attacker_char_id);
+    char_manager.despawn(defender_char_id);
+
+    (attacker_damage, defender_damage, attacker_killed, defender_killed, entries)
 }

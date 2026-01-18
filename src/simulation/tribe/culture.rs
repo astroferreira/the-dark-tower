@@ -274,6 +274,21 @@ impl TribeCulture {
         let trade_chance = self.trade_affinity * 0.7 + relation_bonus * 0.3;
         rng.gen::<f32>() < trade_chance
     }
+
+    /// Check if this culture is warlike (high aggression)
+    pub fn is_warlike(&self) -> bool {
+        self.aggression > 0.5
+    }
+
+    /// Check if this culture is peaceful (low aggression)
+    pub fn is_peaceful(&self) -> bool {
+        self.aggression < 0.3
+    }
+
+    /// Check if this culture is trade-oriented
+    pub fn is_mercantile(&self) -> bool {
+        self.trade_affinity > 0.6
+    }
 }
 
 /// Generate a tribe name based on culture and biome

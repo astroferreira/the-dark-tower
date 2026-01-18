@@ -2,7 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::simulation::types::{TileCoord, TribeId};
+use crate::simulation::types::{TileCoord, TribeId, GlobalLocalCoord};
+use crate::simulation::interaction::SpeciesDisposition;
 use crate::biomes::ExtendedBiome;
 
 /// Unique identifier for a monster
@@ -15,6 +16,8 @@ pub struct Monster {
     pub id: MonsterId,
     pub species: MonsterSpecies,
     pub location: TileCoord,
+    /// Position in global local coordinates (for local map rendering)
+    pub local_position: GlobalLocalCoord,
     pub health: f32,
     pub max_health: f32,
     pub strength: f32,
@@ -37,6 +40,7 @@ impl Monster {
             id,
             species,
             location,
+            local_position: GlobalLocalCoord::from_world_tile(location),
             health: stats.health,
             max_health: stats.health,
             strength: stats.strength,
@@ -396,6 +400,44 @@ impl MonsterSpecies {
             MonsterSpecies::Basilisk => "Basilisk",
             MonsterSpecies::Phoenix => "Phoenix",
         }
+    }
+
+    /// Get the disposition category for this species
+    /// Determines baseline reputation and max reputation with tribes
+    pub fn disposition(&self) -> SpeciesDisposition {
+        match self {
+            // Always hostile - powerful apex predators
+            MonsterSpecies::Dragon
+            | MonsterSpecies::Hydra
+            | MonsterSpecies::Sandworm
+            | MonsterSpecies::Basilisk => SpeciesDisposition::AlwaysHostile,
+
+            // Territorial - defend territory but can coexist
+            MonsterSpecies::Troll
+            | MonsterSpecies::Bear
+            | MonsterSpecies::Yeti
+            | MonsterSpecies::Griffin => SpeciesDisposition::Territorial,
+
+            // Neutral - pack animals, can become allies or enemies
+            MonsterSpecies::Wolf
+            | MonsterSpecies::IceWolf
+            | MonsterSpecies::Scorpion
+            | MonsterSpecies::GiantSpider => SpeciesDisposition::Neutral,
+
+            // Mythical - rare, potentially beneficial
+            MonsterSpecies::Phoenix => SpeciesDisposition::Mythical,
+
+            // Undead - always hostile, minimal negotiation
+            MonsterSpecies::BogWight => SpeciesDisposition::Undead,
+        }
+    }
+
+    /// Check if this is a significant monster (for reputation purposes)
+    pub fn is_significant(&self) -> bool {
+        matches!(
+            self.disposition(),
+            SpeciesDisposition::AlwaysHostile | SpeciesDisposition::Mythical
+        )
     }
 }
 

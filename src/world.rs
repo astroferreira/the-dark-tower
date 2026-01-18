@@ -113,6 +113,34 @@ impl WorldData {
     pub fn map_size_km(&self) -> (f32, f32) {
         self.scale.map_size_km(self.width, self.height)
     }
+
+    /// Check if a tile is coastal (land adjacent to water)
+    pub fn is_coastal(&self, x: usize, y: usize) -> bool {
+        // Must be land first
+        let elevation = *self.heightmap.get(x, y);
+        if elevation < 0.0 {
+            return false;
+        }
+
+        // Check adjacent tiles for water
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+
+                let nx = (x as i32 + dx).rem_euclid(self.width as i32) as usize;
+                let ny = (y as i32 + dy).clamp(0, self.height as i32 - 1) as usize;
+
+                let neighbor_elev = *self.heightmap.get(nx, ny);
+                if neighbor_elev < 0.0 {
+                    return true; // Has adjacent water
+                }
+            }
+        }
+
+        false
+    }
 }
 
 /// Information about a single tile

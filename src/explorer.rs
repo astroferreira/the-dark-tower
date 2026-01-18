@@ -23,10 +23,11 @@ use rand_chacha::ChaCha8Rng;
 
 use crate::ascii::{biome_char, AsciiMode, height_color, temperature_color, moisture_color, stress_color};
 use crate::biomes::ExtendedBiome;
-use crate::local::{generate_local_map_default, LocalMap};
+use crate::local::{generate_local_map_default, LocalMap, LocalMapCache};
 use crate::plates::PlateType;
 use crate::world::{WorldData, generate_world};
 use crate::simulation::{SimulationState, SimulationParams, TileCoord, TribeId};
+use crate::simulation::types::{GlobalLocalCoord, LOCAL_MAP_SIZE};
 
 /// Viewport for rendering a portion of the map
 struct Viewport {
@@ -88,21 +89,50 @@ impl SimSpeed {
     }
 }
 
+/// View mode for the explorer
+#[derive(Clone, Copy, PartialEq)]
+enum ViewMode {
+    /// Local map primary view (default)
+    Local,
+    /// World map overview
+    World,
+}
+
 /// Terminal explorer state
 pub struct Explorer {
     world: WorldData,
+
+    // World-level cursor (for world view mode)
     cursor_x: usize,
     cursor_y: usize,
     viewport: Viewport,
-    view_mode: AsciiMode,
-    running: bool,
-    show_help: bool,
-    // Local map state
+
+    // Local-primary view state
+    view_mode_type: ViewMode,
+    /// Camera position in global local coordinates
+    camera: GlobalLocalCoord,
+    /// Cursor position in global local coordinates
+    cursor: GlobalLocalCoord,
+    /// Local map cache
+    local_cache: LocalMapCache,
+    /// Show minimap overlay
+    show_minimap: bool,
+    /// Minimap size (world tiles)
+    minimap_width: usize,
+    minimap_height: usize,
+
+    // Legacy local map state (for backward compatibility)
     local_mode: bool,
     current_local_map: Option<LocalMap>,
     local_cursor_x: usize,
     local_cursor_y: usize,
     local_viewport: Viewport,
+
+    // Rendering options
+    view_mode: AsciiMode,
+    running: bool,
+    show_help: bool,
+
     // Simulation state
     sim_mode: bool,
     sim_state: Option<SimulationState>,
@@ -112,6 +142,8 @@ pub struct Explorer {
     sim_last_tick: Instant,
     sim_show_territories: bool,
     selected_tribe: Option<TribeId>,
+    // Combat log display
+    show_combat_log: bool,
 }
 
 impl Explorer {
@@ -119,6 +151,16 @@ impl Explorer {
         let cursor_x = world.width / 2;
         let cursor_y = world.height / 2;
         let seed = world.seed;
+        let world_width = world.width;
+        let world_height = world.height;
+
+        // Initialize camera at center of the world in local coordinates
+        let center_tile = TileCoord::new(cursor_x, cursor_y);
+        let camera = GlobalLocalCoord::from_world_tile(center_tile);
+        let cursor = camera;
+
+        // Create local map cache
+        let local_cache = LocalMapCache::new(world_width, world_height);
 
         Self {
             world,
@@ -130,9 +172,17 @@ impl Explorer {
                 width: 80,
                 height: 20,
             },
-            view_mode: AsciiMode::Biome,
-            running: true,
-            show_help: false,
+
+            // Local-primary view state
+            view_mode_type: ViewMode::Local,
+            camera,
+            cursor,
+            local_cache,
+            show_minimap: true,
+            minimap_width: 40,
+            minimap_height: 20,
+
+            // Legacy local map state
             local_mode: false,
             current_local_map: None,
             local_cursor_x: 32,
@@ -143,6 +193,11 @@ impl Explorer {
                 width: 80,
                 height: 20,
             },
+
+            view_mode: AsciiMode::Biome,
+            running: true,
+            show_help: false,
+
             // Simulation fields
             sim_mode: false,
             sim_state: None,
@@ -152,6 +207,8 @@ impl Explorer {
             sim_last_tick: Instant::now(),
             sim_show_territories: true,
             selected_tribe: None,
+            // Combat log display
+            show_combat_log: true, // Show by default in simulation mode
         }
     }
 
@@ -167,6 +224,12 @@ impl Explorer {
         self.cursor_x = width / 2;
         self.cursor_y = height / 2;
         self.center_viewport();
+
+        // Reset local-primary view
+        let center_tile = TileCoord::new(self.cursor_x, self.cursor_y);
+        self.camera = GlobalLocalCoord::from_world_tile(center_tile);
+        self.cursor = self.camera;
+        self.local_cache = LocalMapCache::new(width, height);
 
         // Reset simulation if active
         if self.sim_mode {
@@ -344,29 +407,195 @@ impl Explorer {
     }
 
     fn handle_key_input(&mut self, key: KeyEvent) {
-        // Handle Escape specially - exit local mode first, then quit
+        // Handle Escape specially
         if key.code == KeyCode::Esc {
-            if self.local_mode {
-                self.local_mode = false;
-                self.current_local_map = None;
-                return;
-            } else {
-                self.running = false;
-                return;
+            match self.view_mode_type {
+                ViewMode::Local => {
+                    self.running = false;
+                }
+                ViewMode::World => {
+                    if self.local_mode {
+                        self.local_mode = false;
+                        self.current_local_map = None;
+                    } else {
+                        self.running = false;
+                    }
+                }
             }
-        }
-
-        // Handle Enter to toggle local mode
-        if key.code == KeyCode::Enter {
-            self.toggle_local_mode();
             return;
         }
 
+        // Handle view mode switching
+        match key.code {
+            KeyCode::Char('w') | KeyCode::Char('W') if key.modifiers.contains(crossterm::event::KeyModifiers::NONE) && self.view_mode_type == ViewMode::Local => {
+                // Don't switch if just pressing w for movement - only switch on W
+                if key.code == KeyCode::Char('W') {
+                    self.view_mode_type = ViewMode::World;
+                    // Sync world cursor to local cursor position
+                    let tile = self.cursor.world_tile();
+                    self.cursor_x = tile.x;
+                    self.cursor_y = tile.y;
+                    self.center_viewport();
+                    return;
+                }
+            }
+            KeyCode::Char('l') | KeyCode::Char('L') if self.view_mode_type == ViewMode::World && !self.local_mode => {
+                self.view_mode_type = ViewMode::Local;
+                // Sync local cursor to world cursor position
+                let tile = TileCoord::new(self.cursor_x, self.cursor_y);
+                self.cursor = GlobalLocalCoord::from_world_tile(tile);
+                self.camera = self.cursor;
+                return;
+            }
+            _ => {}
+        }
+
         // Handle mode-specific input
-        if self.local_mode {
-            self.handle_local_key_input(key);
-        } else {
-            self.handle_world_key_input(key);
+        match self.view_mode_type {
+            ViewMode::Local => self.handle_local_primary_key_input(key),
+            ViewMode::World => {
+                if self.local_mode {
+                    self.handle_local_key_input(key);
+                } else {
+                    self.handle_world_key_input(key);
+                }
+            }
+        }
+    }
+
+    /// Handle keyboard input for local-primary view
+    fn handle_local_primary_key_input(&mut self, key: KeyEvent) {
+        let total_local_width = self.world.width as u32 * LOCAL_MAP_SIZE;
+        let total_local_height = self.world.height as u32 * LOCAL_MAP_SIZE;
+
+        match key.code {
+            KeyCode::Char('q') => self.running = false,
+
+            // View controls
+            KeyCode::Char('m') | KeyCode::Char('M') => {
+                self.show_minimap = !self.show_minimap;
+            }
+            KeyCode::Char('W') => {
+                // Switch to world view
+                self.view_mode_type = ViewMode::World;
+                let tile = self.cursor.world_tile();
+                self.cursor_x = tile.x;
+                self.cursor_y = tile.y;
+                self.center_viewport();
+            }
+
+            // Simulation controls
+            KeyCode::Char('S') => self.toggle_simulation(),
+            KeyCode::Char(' ') if self.sim_mode => {
+                if self.sim_speed == SimSpeed::Paused {
+                    self.simulation_tick();
+                } else {
+                    self.sim_speed = SimSpeed::Paused;
+                }
+            }
+            KeyCode::Char('+') | KeyCode::Char('=') if self.sim_mode => {
+                self.sim_speed = self.sim_speed.next();
+            }
+            KeyCode::Char('-') | KeyCode::Char('_') if self.sim_mode => {
+                self.sim_speed = self.sim_speed.prev();
+            }
+            KeyCode::Char('t') | KeyCode::Char('T') if self.sim_mode => {
+                self.sim_show_territories = !self.sim_show_territories;
+            }
+            KeyCode::Char('L') if self.sim_mode => {
+                self.show_combat_log = !self.show_combat_log;
+            }
+
+            // Navigation - move cursor in local space
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.cursor.y > 0 {
+                    self.cursor.y -= 1;
+                    self.camera = self.cursor;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if self.cursor.y < total_local_height - 1 {
+                    self.cursor.y += 1;
+                    self.camera = self.cursor;
+                }
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                // Wrap horizontally
+                self.cursor.x = if self.cursor.x == 0 {
+                    total_local_width - 1
+                } else {
+                    self.cursor.x - 1
+                };
+                self.camera = self.cursor;
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                // Wrap horizontally
+                self.cursor.x = (self.cursor.x + 1) % total_local_width;
+                self.camera = self.cursor;
+            }
+            // WASD support (but not 'w' alone as it might conflict with World view)
+            KeyCode::Char('w') => {
+                if self.cursor.y > 0 {
+                    self.cursor.y -= 1;
+                    self.camera = self.cursor;
+                }
+            }
+            KeyCode::Char('s') if !self.sim_mode => {
+                if self.cursor.y < total_local_height - 1 {
+                    self.cursor.y += 1;
+                    self.camera = self.cursor;
+                }
+            }
+            KeyCode::Char('a') => {
+                self.cursor.x = if self.cursor.x == 0 {
+                    total_local_width - 1
+                } else {
+                    self.cursor.x - 1
+                };
+                self.camera = self.cursor;
+            }
+            KeyCode::Char('d') => {
+                self.cursor.x = (self.cursor.x + 1) % total_local_width;
+                self.camera = self.cursor;
+            }
+
+            // Fast movement
+            KeyCode::PageUp => {
+                self.cursor.y = self.cursor.y.saturating_sub(10);
+                self.camera = self.cursor;
+            }
+            KeyCode::PageDown => {
+                self.cursor.y = (self.cursor.y + 10).min(total_local_height - 1);
+                self.camera = self.cursor;
+            }
+            KeyCode::Home => {
+                self.cursor.x = ((self.cursor.x as i32 - 10).rem_euclid(total_local_width as i32)) as u32;
+                self.camera = self.cursor;
+            }
+            KeyCode::End => {
+                self.cursor.x = (self.cursor.x + 10) % total_local_width;
+                self.camera = self.cursor;
+            }
+
+            // Other controls
+            KeyCode::Char('c') | KeyCode::Char('C') => {
+                self.camera = self.cursor;
+            }
+            KeyCode::Char('?') | KeyCode::F(1) => {
+                self.show_help = !self.show_help;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') => {
+                self.regenerate_random();
+            }
+            KeyCode::Char('0') => {
+                // Jump to center of world
+                let center_x = total_local_width / 2;
+                let center_y = total_local_height / 2;
+                self.cursor = GlobalLocalCoord::new(center_x, center_y);
+                self.camera = self.cursor;
+            }
+
+            _ => {}
         }
     }
 
@@ -394,6 +623,9 @@ impl Explorer {
             }
             KeyCode::Char('t') if self.sim_mode => {
                 self.sim_show_territories = !self.sim_show_territories;
+            }
+            KeyCode::Char('L') if self.sim_mode => {
+                self.show_combat_log = !self.show_combat_log;
             }
 
             KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('k') => {
@@ -454,6 +686,13 @@ impl Explorer {
                 self.cursor_x = self.world.width / 2;
                 self.cursor_y = self.world.height / 2;
                 self.center_viewport();
+            }
+            // Switch to local primary view (only 'L' to avoid conflict with movement)
+            KeyCode::Char('o') => {
+                self.view_mode_type = ViewMode::Local;
+                let tile = TileCoord::new(self.cursor_x, self.cursor_y);
+                self.cursor = GlobalLocalCoord::from_world_tile(tile);
+                self.camera = self.cursor;
             }
             _ => {}
         }
@@ -716,24 +955,505 @@ impl Explorer {
         }
     }
 
-    fn render(&self, frame: &mut Frame) {
-        if self.local_mode {
-            self.render_local(frame);
-        } else {
-            self.render_world(frame);
+    fn render(&mut self, frame: &mut Frame) {
+        match self.view_mode_type {
+            ViewMode::Local => self.render_local_primary(frame),
+            ViewMode::World => {
+                if self.local_mode {
+                    self.render_local(frame);
+                } else {
+                    self.render_world(frame);
+                }
+            }
         }
     }
 
-    fn render_world(&self, frame: &mut Frame) {
+    /// Render the local-map primary view with seamless tile transitions
+    fn render_local_primary(&mut self, frame: &mut Frame) {
         let size = frame.area();
 
+        // Update cache based on camera position
+        self.local_cache.update_camera(&self.world, self.camera);
+
         // Layout: header, simulation bar (if active), map, info panel, controls
-        let constraints = if self.sim_mode {
+        let constraints = if self.sim_mode && self.show_combat_log {
+            vec![
+                Constraint::Length(1),  // Header
+                Constraint::Length(1),  // Simulation status bar
+                Constraint::Min(10),    // Map
+                Constraint::Length(6),  // Combat log panel
+                Constraint::Length(5),  // Info panel
+                Constraint::Length(1),  // Controls
+            ]
+        } else if self.sim_mode {
             vec![
                 Constraint::Length(1),  // Header
                 Constraint::Length(1),  // Simulation status bar
                 Constraint::Min(10),    // Map
                 Constraint::Length(5),  // Info panel
+                Constraint::Length(1),  // Controls
+            ]
+        } else {
+            vec![
+                Constraint::Length(1),  // Header
+                Constraint::Min(10),    // Map
+                Constraint::Length(5),  // Info panel
+                Constraint::Length(1),  // Controls
+            ]
+        };
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(size);
+
+        // Header
+        let (world_tile, local_offset) = self.cursor.to_hierarchical();
+        let biome = self.world.biomes.get(world_tile.x, world_tile.y);
+        let header_text = if self.sim_mode {
+            format!(
+                "LOCAL VIEW - {} - Tile ({},{}) Local ({},{})  [M] Minimap  [W] World View  [?] Help",
+                biome.display_name(),
+                world_tile.x, world_tile.y,
+                local_offset.x, local_offset.y,
+            )
+        } else {
+            format!(
+                "LOCAL VIEW - {} - Tile ({},{}) Local ({},{}) - Seed: {}  [M] Minimap  [W] World View  [?] Help",
+                biome.display_name(),
+                world_tile.x, world_tile.y,
+                local_offset.x, local_offset.y,
+                self.world.seed,
+            )
+        };
+        let header = Paragraph::new(header_text)
+            .style(Style::default().fg(Color::Green));
+        frame.render_widget(header, chunks[0]);
+
+        // Chunk indices depend on whether simulation bar and combat log are shown
+        let (map_chunk, combat_log_chunk, info_chunk, controls_chunk) = if self.sim_mode && self.show_combat_log {
+            // Render simulation status bar
+            if let Some(ref sim) = self.sim_state {
+                let year = sim.current_tick.year();
+                let season = format!("{:?}", sim.current_tick.season());
+                let living_tribes = sim.tribes.values().filter(|t| t.is_alive).count();
+                let total_pop: u32 = sim.tribes.values().filter(|t| t.is_alive).map(|t| t.population.total()).sum();
+                let monster_count = sim.monsters.living_count();
+
+                let sim_bar = Paragraph::new(format!(
+                    "Year {} {} | Tribes: {} | Pop: {} | Monsters: {} | Speed: {} | [Space] Step [+/-] Speed",
+                    year, season, living_tribes, total_pop, monster_count, self.sim_speed.name(),
+                ))
+                .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray));
+                frame.render_widget(sim_bar, chunks[1]);
+            }
+            (2, Some(3), 4, 5)
+        } else if self.sim_mode {
+            if let Some(ref sim) = self.sim_state {
+                let year = sim.current_tick.year();
+                let season = format!("{:?}", sim.current_tick.season());
+                let living_tribes = sim.tribes.values().filter(|t| t.is_alive).count();
+                let total_pop: u32 = sim.tribes.values().filter(|t| t.is_alive).map(|t| t.population.total()).sum();
+                let monster_count = sim.monsters.living_count();
+
+                let sim_bar = Paragraph::new(format!(
+                    "Year {} {} | Tribes: {} | Pop: {} | Monsters: {} | Speed: {} | [Space] Step [+/-] Speed",
+                    year, season, living_tribes, total_pop, monster_count, self.sim_speed.name(),
+                ))
+                .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray));
+                frame.render_widget(sim_bar, chunks[1]);
+            }
+            (2, None, 3, 4)
+        } else {
+            (1, None, 2, 3)
+        };
+
+        // Render combat log if enabled
+        if let Some(combat_chunk) = combat_log_chunk {
+            self.render_combat_log(frame, chunks[combat_chunk]);
+        }
+
+        // Map area with border
+        let map_block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Local Map ");
+        let map_inner = map_block.inner(chunks[map_chunk]);
+        frame.render_widget(map_block, chunks[map_chunk]);
+
+        // Render local map tiles (spans multiple world tiles seamlessly)
+        let map_width = map_inner.width as usize;
+        let map_height = map_inner.height as usize;
+        let half_w = map_width / 2;
+        let half_h = map_height / 2;
+
+        // Calculate total world size in local coordinates
+        let total_local_width = self.world.width as u32 * LOCAL_MAP_SIZE;
+        let total_local_height = self.world.height as u32 * LOCAL_MAP_SIZE;
+
+        for vy in 0..map_height {
+            for vx in 0..map_width {
+                // Calculate global local coordinate for this screen position
+                let offset_x = vx as i32 - half_w as i32;
+                let offset_y = vy as i32 - half_h as i32;
+
+                let global_x = ((self.camera.x as i32 + offset_x).rem_euclid(total_local_width as i32)) as u32;
+                let global_y = (self.camera.y as i32 + offset_y).clamp(0, total_local_height as i32 - 1) as u32;
+
+                let coord = GlobalLocalCoord::new(global_x, global_y);
+                let is_cursor = global_x == self.cursor.x && global_y == self.cursor.y;
+
+                // Get the tile from the cache
+                let tile = self.local_cache.get_tile(&self.world, coord);
+
+                let (ch, fg, bg) = if let Some(tile) = tile {
+                    // Get elevation brightness
+                    let brightness = tile.elevation_brightness();
+
+                    // Background = terrain color with elevation shading
+                    let (tr, tg, tb) = tile.terrain.color();
+                    let bg = Color::Rgb(
+                        ((tr as f32 * brightness * 0.6).min(255.0)) as u8,
+                        ((tg as f32 * brightness * 0.6).min(255.0)) as u8,
+                        ((tb as f32 * brightness * 0.6).min(255.0)) as u8,
+                    );
+
+                    // Foreground = feature color if present, else brightened terrain
+                    let (ch, fg) = if let Some((fr, fg_g, fb)) = tile.feature_color() {
+                        let fg = Color::Rgb(
+                            ((fr as f32 * brightness * 1.2).min(255.0)) as u8,
+                            ((fg_g as f32 * brightness * 1.2).min(255.0)) as u8,
+                            ((fb as f32 * brightness * 1.2).min(255.0)) as u8,
+                        );
+                        (tile.ascii_char(), fg)
+                    } else {
+                        let fg = Color::Rgb(
+                            ((tr as f32 * brightness * 1.4).min(255.0)) as u8,
+                            ((tg as f32 * brightness * 1.4).min(255.0)) as u8,
+                            ((tb as f32 * brightness * 1.4).min(255.0)) as u8,
+                        );
+                        // Add subtle elevation hint
+                        let ch = if tile.elevation_offset > 0.3 {
+                            '\''
+                        } else if tile.elevation_offset < -0.3 {
+                            '_'
+                        } else {
+                            tile.terrain.ascii_char()
+                        };
+                        (ch, fg)
+                    };
+
+                    (ch, fg, bg)
+                } else {
+                    // Out of bounds - show as empty
+                    (' ', Color::Black, Color::Black)
+                };
+
+                // Apply cursor highlighting
+                let (final_ch, final_fg, final_bg) = if is_cursor {
+                    (ch, Color::Black, Color::Yellow)
+                } else {
+                    (ch, fg, bg)
+                };
+
+                let x = map_inner.x + vx as u16;
+                let y = map_inner.y + vy as u16;
+
+                if x < map_inner.x + map_inner.width && y < map_inner.y + map_inner.height {
+                    frame.buffer_mut().set_string(
+                        x, y,
+                        final_ch.to_string(),
+                        Style::default().fg(final_fg).bg(final_bg),
+                    );
+                }
+            }
+        }
+
+        // Render entities (monsters, colonists) on the local map
+        self.render_local_entities(frame, map_inner, half_w, half_h, total_local_width, total_local_height);
+
+        // Render minimap overlay if enabled
+        if self.show_minimap {
+            self.render_minimap(frame, map_inner);
+        }
+
+        // Info panel
+        let (cursor_world_tile, cursor_local_offset) = self.cursor.to_hierarchical();
+        let cursor_biome = self.world.biomes.get(cursor_world_tile.x, cursor_world_tile.y);
+        let tile_info = self.world.get_tile_info(cursor_world_tile.x, cursor_world_tile.y);
+
+        let info_text = vec![
+            Line::from(vec![
+                Span::raw("Position: "),
+                Span::styled(format!("Global ({}, {})", self.cursor.x, self.cursor.y), Style::default().fg(Color::White)),
+                Span::raw("  World Tile: "),
+                Span::styled(format!("({}, {})", cursor_world_tile.x, cursor_world_tile.y), Style::default().fg(Color::Cyan)),
+                Span::raw("  Local: "),
+                Span::styled(format!("({}, {})", cursor_local_offset.x, cursor_local_offset.y), Style::default().fg(Color::Yellow)),
+            ]),
+            Line::from(vec![
+                Span::raw("Biome: "),
+                Span::styled(cursor_biome.display_name().to_string(), Style::default().fg(Color::Green)),
+                Span::raw("  Elev: "),
+                Span::styled(tile_info.elevation_str(), Style::default().fg(Color::Yellow)),
+                Span::raw("  Temp: "),
+                Span::styled(tile_info.temperature_str(), Style::default().fg(Color::Red)),
+            ]),
+            Line::from(vec![
+                Span::raw("Cache: "),
+                Span::styled(format!("{} tiles", self.local_cache.stats().cached_count), Style::default().fg(Color::Magenta)),
+            ]),
+        ];
+
+        let info_panel = Paragraph::new(info_text)
+            .block(Block::default().borders(Borders::ALL).title(" Local Info "));
+        frame.render_widget(info_panel, chunks[info_chunk]);
+
+        // Controls
+        let controls_text = if self.sim_mode {
+            "[←↑↓→] Move  [M] Minimap  [W] World View  [Space] Step  [+/-] Speed  [S] Stop Sim  [?] Help  [Q] Quit"
+        } else {
+            "[←↑↓→/WASD] Move  [M] Minimap  [W] World View  [S] Start Sim  [N] New  [?] Help  [Q] Quit"
+        };
+        let controls = Paragraph::new(controls_text)
+            .style(Style::default().fg(Color::DarkGray));
+        frame.render_widget(controls, chunks[controls_chunk]);
+
+        // Help overlay
+        if self.show_help {
+            self.render_local_primary_help(frame);
+        }
+    }
+
+    /// Render entities (monsters, colonists) on the local map
+    fn render_local_entities(&self, frame: &mut Frame, map_area: Rect, half_w: usize, half_h: usize, total_local_width: u32, total_local_height: u32) {
+        if !self.sim_mode {
+            return;
+        }
+
+        let sim = match &self.sim_state {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Render monsters
+        for monster in sim.monsters.monsters.values() {
+            if monster.is_dead() {
+                continue;
+            }
+
+            // Check if monster is within viewport
+            let offset_x = monster.local_position.x as i32 - self.camera.x as i32;
+            let offset_y = monster.local_position.y as i32 - self.camera.y as i32;
+
+            // Handle horizontal wrapping
+            let half_total = (total_local_width / 2) as i32;
+            let offset_x = if offset_x > half_total {
+                offset_x - total_local_width as i32
+            } else if offset_x < -half_total {
+                offset_x + total_local_width as i32
+            } else {
+                offset_x
+            };
+
+            let screen_x = half_w as i32 + offset_x;
+            let screen_y = half_h as i32 + offset_y;
+
+            if screen_x >= 0 && screen_x < map_area.width as i32 && screen_y >= 0 && screen_y < map_area.height as i32 {
+                let ch = monster.species.map_char();
+                let (r, g, b) = monster.species.color();
+                let fg = Color::Rgb(r, g, b);
+                let bg = Color::Rgb(100, 30, 30); // Red tint background
+
+                let x = map_area.x + screen_x as u16;
+                let y = map_area.y + screen_y as u16;
+
+                frame.buffer_mut().set_string(
+                    x, y,
+                    ch.to_string(),
+                    Style::default().fg(fg).bg(bg),
+                );
+            }
+        }
+
+        // Render colonists
+        for tribe in sim.tribes.values() {
+            if !tribe.is_alive {
+                continue;
+            }
+
+            for colonist in tribe.notable_colonists.colonists.values() {
+                if !colonist.is_alive {
+                    continue;
+                }
+
+                let offset_x = colonist.local_position.x as i32 - self.camera.x as i32;
+                let offset_y = colonist.local_position.y as i32 - self.camera.y as i32;
+
+                // Handle horizontal wrapping
+                let half_total = (total_local_width / 2) as i32;
+                let offset_x = if offset_x > half_total {
+                    offset_x - total_local_width as i32
+                } else if offset_x < -half_total {
+                    offset_x + total_local_width as i32
+                } else {
+                    offset_x
+                };
+
+                let screen_x = half_w as i32 + offset_x;
+                let screen_y = half_h as i32 + offset_y;
+
+                if screen_x >= 0 && screen_x < map_area.width as i32 && screen_y >= 0 && screen_y < map_area.height as i32 {
+                    let ch = colonist.map_char();
+                    let (r, g, b) = colonist.color();
+                    let fg = Color::Rgb(r, g, b);
+                    let (tr, tg, tb) = Self::tribe_color(tribe.id);
+                    let bg = Color::Rgb(tr / 2, tg / 2, tb / 2);
+
+                    let x = map_area.x + screen_x as u16;
+                    let y = map_area.y + screen_y as u16;
+
+                    frame.buffer_mut().set_string(
+                        x, y,
+                        ch.to_string(),
+                        Style::default().fg(fg).bg(bg),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Render the minimap overlay
+    fn render_minimap(&self, frame: &mut Frame, map_area: Rect) {
+        let minimap_w = self.minimap_width.min(map_area.width as usize - 4) as u16;
+        let minimap_h = self.minimap_height.min(map_area.height as usize - 2) as u16;
+
+        // Position in bottom-right corner of map area
+        let minimap_x = map_area.x + map_area.width - minimap_w - 2;
+        let minimap_y = map_area.y + map_area.height - minimap_h - 1;
+
+        let minimap_area = Rect::new(minimap_x, minimap_y, minimap_w, minimap_h);
+
+        // Draw border
+        let minimap_block = Block::default()
+            .borders(Borders::ALL)
+            .title(" World ")
+            .border_style(Style::default().fg(Color::DarkGray));
+        let minimap_inner = minimap_block.inner(minimap_area);
+        frame.render_widget(minimap_block, minimap_area);
+
+        // Calculate what portion of the world to show
+        let camera_tile = self.camera.world_tile();
+        let half_minimap_w = minimap_inner.width as usize / 2;
+        let half_minimap_h = minimap_inner.height as usize / 2;
+
+        for vy in 0..minimap_inner.height as usize {
+            for vx in 0..minimap_inner.width as usize {
+                let world_x = ((camera_tile.x as i32 + vx as i32 - half_minimap_w as i32)
+                    .rem_euclid(self.world.width as i32)) as usize;
+                let world_y = (camera_tile.y as i32 + vy as i32 - half_minimap_h as i32)
+                    .clamp(0, self.world.height as i32 - 1) as usize;
+
+                let biome = self.world.biomes.get(world_x, world_y);
+                let (r, g, b) = biome.color();
+
+                // Determine if this is the current camera tile
+                let is_camera_tile = world_x == camera_tile.x && world_y == camera_tile.y;
+
+                let (fg, bg, ch) = if is_camera_tile {
+                    (Color::Black, Color::Yellow, '@')
+                } else {
+                    // Show territory colors if in sim mode
+                    let coord = TileCoord::new(world_x, world_y);
+                    if self.sim_mode && self.sim_show_territories {
+                        if let Some(tribe_id) = self.tribe_at_coord(world_x, world_y) {
+                            let (tr, tg, tb) = Self::tribe_color(tribe_id);
+                            (Color::Rgb(tr, tg, tb), Color::Rgb(r / 3, g / 3, b / 3), '.')
+                        } else {
+                            (Color::Rgb(r / 2, g / 2, b / 2), Color::Rgb(r / 4, g / 4, b / 4), '.')
+                        }
+                    } else {
+                        (Color::Rgb(r / 2, g / 2, b / 2), Color::Rgb(r / 4, g / 4, b / 4), '.')
+                    }
+                };
+
+                let x = minimap_inner.x + vx as u16;
+                let y = minimap_inner.y + vy as u16;
+
+                frame.buffer_mut().set_string(
+                    x, y,
+                    ch.to_string(),
+                    Style::default().fg(fg).bg(bg),
+                );
+            }
+        }
+    }
+
+    /// Render help for local primary view
+    fn render_local_primary_help(&self, frame: &mut Frame) {
+        let area = frame.area();
+
+        let popup_width = 54;
+        let popup_height = 22;
+        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+
+        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+        frame.render_widget(Clear, popup_area);
+
+        let help_text = vec![
+            Line::from("Local Map Help").style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Green)),
+            Line::from(""),
+            Line::from("Navigation:").style(Style::default().add_modifier(Modifier::BOLD)),
+            Line::from("  Arrow keys / WASD / HJKL - Move cursor"),
+            Line::from("  PgUp/PgDn - Fast vertical movement"),
+            Line::from("  Home/End  - Fast horizontal movement"),
+            Line::from("  C - Center camera on cursor"),
+            Line::from("  Movement seamlessly crosses tile boundaries"),
+            Line::from(""),
+            Line::from("View:").style(Style::default().add_modifier(Modifier::BOLD)),
+            Line::from("  M - Toggle minimap overlay"),
+            Line::from("  W - Switch to world map view"),
+            Line::from(""),
+            Line::from("Simulation:").style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan)),
+            Line::from("  Shift+S - Start/stop simulation"),
+            Line::from("  Space   - Step (paused) / Pause (running)"),
+            Line::from("  +/-     - Change simulation speed"),
+            Line::from("  T       - Toggle territory overlay"),
+            Line::from(""),
+            Line::from("  ? - Toggle this help    Q/Esc - Quit"),
+        ];
+
+        let help_popup = Paragraph::new(help_text)
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .title(" Local Map Help ")
+                .border_style(Style::default().fg(Color::Green))
+                .style(Style::default().bg(Color::DarkGray)))
+            .style(Style::default().fg(Color::White).bg(Color::DarkGray));
+
+        frame.render_widget(help_popup, popup_area);
+    }
+
+    fn render_world(&self, frame: &mut Frame) {
+        let size = frame.area();
+
+        // Layout: header, simulation bar (if active), map, combat log (if active), info panel, controls
+        let constraints = if self.sim_mode && self.show_combat_log {
+            vec![
+                Constraint::Length(1),  // Header
+                Constraint::Length(1),  // Simulation status bar
+                Constraint::Min(10),    // Map
+                Constraint::Length(6),  // Combat log panel
+                Constraint::Length(6),  // Info panel (expanded for reputation)
+                Constraint::Length(1),  // Controls
+            ]
+        } else if self.sim_mode {
+            vec![
+                Constraint::Length(1),  // Header
+                Constraint::Length(1),  // Simulation status bar
+                Constraint::Min(10),    // Map
+                Constraint::Length(6),  // Info panel (expanded for reputation)
                 Constraint::Length(1),  // Controls
             ]
         } else {
@@ -770,8 +1490,26 @@ impl Explorer {
             .style(Style::default().fg(if self.sim_mode { Color::Green } else { Color::Cyan }));
         frame.render_widget(header, chunks[0]);
 
-        // Chunk indices depend on whether simulation bar is shown
-        let (map_chunk, info_chunk, controls_chunk) = if self.sim_mode {
+        // Chunk indices depend on whether simulation bar and combat log are shown
+        let (map_chunk, combat_log_chunk, info_chunk, controls_chunk) = if self.sim_mode && self.show_combat_log {
+            // Render simulation status bar
+            if let Some(ref sim) = self.sim_state {
+                let year = sim.current_tick.year();
+                let season = format!("{:?}", sim.current_tick.season());
+                let living_tribes = sim.tribes.values().filter(|t| t.is_alive).count();
+                let total_pop: u32 = sim.tribes.values().filter(|t| t.is_alive).map(|t| t.population.total()).sum();
+                let monster_count = sim.monsters.living_count();
+                let combat_count = sim.combat_log.encounter_count();
+
+                let sim_bar = Paragraph::new(format!(
+                    "Year {} {} | Tribes: {} | Pop: {} | Monsters: {} | Combats: {} | Speed: {} | [+/-] Speed",
+                    year, season, living_tribes, total_pop, monster_count, combat_count, self.sim_speed.name(),
+                ))
+                .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray));
+                frame.render_widget(sim_bar, chunks[1]);
+            }
+            (2, Some(3), 4, 5)
+        } else if self.sim_mode {
             // Render simulation status bar
             if let Some(ref sim) = self.sim_state {
                 let year = sim.current_tick.year();
@@ -787,10 +1525,15 @@ impl Explorer {
                 .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray));
                 frame.render_widget(sim_bar, chunks[1]);
             }
-            (2, 3, 4)
+            (2, None, 3, 4)
         } else {
-            (1, 2, 3)
+            (1, None, 2, 3)
         };
+
+        // Render combat log panel if enabled
+        if let Some(combat_chunk) = combat_log_chunk {
+            self.render_combat_log(frame, chunks[combat_chunk]);
+        }
 
         // Map area with border
         let map_title = if self.sim_mode && self.sim_show_territories {
@@ -870,6 +1613,28 @@ impl Explorer {
                             ch = structure.structure_type.map_char();
                             let (r, g, b) = structure.structure_type.color();
                             fg = Color::Rgb(r, g, b);
+                        }
+                    }
+                }
+
+                // Layer 3.5: Colonist overlay
+                if self.sim_mode {
+                    if let Some(ref sim) = self.sim_state {
+                        if let Some((colonist, tribe_id)) = sim.get_colonist_at(&coord) {
+                            ch = colonist.map_char();
+                            let (r, g, b) = colonist.color();
+                            fg = Color::Rgb(r, g, b);
+                            // Blend background with tribe color for visibility
+                            let (tr, tg, tb) = Self::tribe_color(tribe_id);
+                            let (br, bg_r, bb) = match bg {
+                                Color::Rgb(r, g, b) => (r, g, b),
+                                _ => (0, 0, 0),
+                            };
+                            bg = Color::Rgb(
+                                ((br as f32 * 0.6 + tr as f32 * 0.4) as u8).min(255),
+                                ((bg_r as f32 * 0.6 + tg as f32 * 0.4) as u8).min(255),
+                                ((bb as f32 * 0.6 + tb as f32 * 0.4) as u8).min(255),
+                            );
                         }
                     }
                 }
@@ -981,27 +1746,124 @@ impl Explorer {
             if let Some(info) = monster_info {
                 info
             } else {
+                // Check for colonist at cursor
+                let colonist_info = self.sim_state.as_ref().and_then(|sim| {
+                    sim.get_colonist_at(&cursor_coord).map(|(colonist, tribe_id)| {
+                        let (cr, cg, cb) = colonist.color();
+                        let colonist_color = Color::Rgb(cr, cg, cb);
+                        let health_pct = (colonist.health * 100.0) as u32;
+                        let health_color = if health_pct > 60 {
+                            Color::Green
+                        } else if health_pct > 30 {
+                            Color::Yellow
+                        } else {
+                            Color::Red
+                        };
+                        let state_str = match colonist.activity_state {
+                            crate::simulation::colonists::ColonistActivityState::Idle => "Idle",
+                            crate::simulation::colonists::ColonistActivityState::Traveling => "Traveling",
+                            crate::simulation::colonists::ColonistActivityState::Working => "Working",
+                            crate::simulation::colonists::ColonistActivityState::Returning => "Returning",
+                            crate::simulation::colonists::ColonistActivityState::Fleeing => "Fleeing",
+                            crate::simulation::colonists::ColonistActivityState::Socializing => "Socializing",
+                            crate::simulation::colonists::ColonistActivityState::Patrolling => "Patrolling",
+                            crate::simulation::colonists::ColonistActivityState::Scouting => "Scouting",
+                        };
+                        let (tr, tg, tb) = Self::tribe_color(tribe_id);
+                        let tribe_color = Color::Rgb(tr, tg, tb);
+                        let job_str = colonist.current_job.map_or("None".to_string(), |j| format!("{:?}", j));
+                        let role_str = format!("{:?}", colonist.role);
+
+                        vec![
+                            Line::from(vec![
+                                Span::raw("Colonist: "),
+                                Span::styled(&colonist.name, Style::default().fg(colonist_color).add_modifier(Modifier::BOLD)),
+                                Span::raw(format!(" ({}) ", colonist.map_char())),
+                                Span::styled(role_str, Style::default().fg(Color::Yellow)),
+                            ]),
+                            Line::from(vec![
+                                Span::raw("Age: "),
+                                Span::styled(format!("{}", colonist.age), Style::default().fg(Color::White)),
+                                Span::raw("  Health: "),
+                                Span::styled(format!("{:.0}%", health_pct), Style::default().fg(health_color)),
+                                Span::raw("  Job: "),
+                                Span::styled(job_str, Style::default().fg(Color::Cyan)),
+                            ]),
+                            Line::from(vec![
+                                Span::raw("State: "),
+                                Span::styled(state_str, Style::default().fg(Color::Magenta)),
+                                Span::raw("  Mood: "),
+                                Span::styled(format!("{:.0}", colonist.mood.current_mood), Style::default().fg(Color::Yellow)),
+                                Span::raw("  Tribe: "),
+                                Span::styled(format!("{}", tribe_id.0), Style::default().fg(tribe_color)),
+                            ]),
+                        ]
+                    })
+                });
+
+                if let Some(info) = colonist_info {
+                    info
+                } else {
                 // Check for tribe info
                 let tribe_info = self.selected_tribe.and_then(|tribe_id| {
                     self.sim_state.as_ref().and_then(|sim| {
                         sim.tribes.get(&tribe_id).map(|tribe| {
                             let (tr, tg, tb) = Self::tribe_color(tribe_id);
                             let tribe_color = Color::Rgb(tr, tg, tb);
+
+                            // Notable colonists summary
+                            let notable_count = tribe.notable_colonists.count();
+
+                            // Job summary - count workers assigned
+                            let active_jobs = tribe.jobs.jobs.values()
+                                .map(|j| j.total_workers())
+                                .sum::<u32>();
+
+                            // Get species reputations for this tribe
+                            let reputations = sim.reputation.get_tribe_reputations(tribe_id);
+                            let mut rep_spans: Vec<Span> = vec![Span::raw("Species: ")];
+                            let mut rep_count = 0;
+                            for (species, rep) in reputations.iter().take(4) {
+                                if rep_count > 0 {
+                                    rep_spans.push(Span::raw("  "));
+                                }
+                                let rep_color = if rep.is_vengeful() {
+                                    Color::Red
+                                } else if rep.is_hostile() {
+                                    Color::LightRed
+                                } else if rep.is_fearful() {
+                                    Color::Green
+                                } else if rep.is_tolerant() {
+                                    Color::Yellow
+                                } else {
+                                    Color::DarkGray
+                                };
+                                rep_spans.push(Span::styled(
+                                    format!("{}: {} ({})", species.name(), rep.status_label(), rep.current),
+                                    Style::default().fg(rep_color)
+                                ));
+                                rep_count += 1;
+                            }
+                            if reputations.is_empty() {
+                                rep_spans.push(Span::styled("None tracked", Style::default().fg(Color::DarkGray)));
+                            }
+
                             vec![
                                 Line::from(vec![
                                     Span::raw("Tribe: "),
-                                    Span::styled(&tribe.name, Style::default().fg(tribe_color).add_modifier(Modifier::BOLD)),
-                                    Span::raw(format!(" (ID: {})", tribe_id.0)),
-                                    Span::raw("  Culture: "),
-                                    Span::styled(tribe.culture.lens.culture_name(), Style::default().fg(Color::Magenta)),
+                                    Span::styled(tribe.name.clone(), Style::default().fg(tribe_color).add_modifier(Modifier::BOLD)),
+                                    Span::raw("  Society: "),
+                                    Span::styled(format!("{:?}", tribe.society_state.society_type), Style::default().fg(Color::Cyan)),
+                                    Span::raw("  Leader: "),
+                                    Span::styled(tribe.society_state.leader_name.clone(), Style::default().fg(Color::Yellow)),
                                 ]),
                                 Line::from(vec![
                                     Span::raw("Pop: "),
                                     Span::styled(format!("{}", tribe.population.total()), Style::default().fg(Color::White)),
-                                    Span::raw("  Warriors: "),
-                                    Span::styled(format!("{}", tribe.population.warriors()), Style::default().fg(Color::Red)),
-                                    Span::raw("  Territory: "),
-                                    Span::styled(format!("{} tiles", tribe.territory.len()), Style::default().fg(Color::Green)),
+                                    Span::raw("  Notable: "),
+                                    Span::styled(format!("{}", notable_count), Style::default().fg(Color::Magenta)),
+                                    Span::raw("  Jobs: "),
+                                    Span::styled(format!("{}", active_jobs), Style::default().fg(Color::Green)),
                                     Span::raw("  Age: "),
                                     Span::styled(format!("{:?}", tribe.tech_state.current_age()), Style::default().fg(Color::Yellow)),
                                 ]),
@@ -1012,14 +1874,17 @@ impl Explorer {
                                     Span::styled(format!("{:.0}%", tribe.needs.food.satisfaction * 100.0), Style::default().fg(Color::Green)),
                                     Span::raw("  Strength: "),
                                     Span::styled(format!("{:.1}", tribe.military_strength()), Style::default().fg(Color::Red)),
+                                    Span::raw("  Culture: "),
+                                    Span::styled(tribe.culture.lens.culture_name(), Style::default().fg(Color::Magenta)),
                                 ]),
+                                Line::from(rep_spans),
                             ]
                         })
                     })
                 });
 
                 tribe_info.unwrap_or_else(|| {
-                    // No tribe or monster at cursor - show biome info
+                    // No tribe, monster, or colonist at cursor - show biome info
                     vec![
                         Line::from(vec![
                             Span::raw("Cursor: "),
@@ -1028,13 +1893,14 @@ impl Explorer {
                             Span::styled(format!("{}", tile.biome.display_name()), biome_style),
                         ]),
                         Line::from(vec![
-                            Span::raw("No tribe or monster at this location"),
+                            Span::raw("No tribe, monster, or colonist at this location"),
                         ]),
                         Line::from(vec![
-                            Span::raw("Move cursor over territory or monsters to view info"),
+                            Span::raw("Move cursor over territory to view info"),
                         ]),
                     ]
                 })
+                }
             }
         } else {
             // Normal mode: show tile info
@@ -1068,6 +1934,8 @@ impl Explorer {
             if let Some(ref sim) = self.sim_state {
                 if sim.get_monster_at(&cursor_coord).is_some() {
                     " Monster Info "
+                } else if sim.get_colonist_at(&cursor_coord).is_some() {
+                    " Colonist Info "
                 } else if self.selected_tribe.is_some() {
                     " Tribe Info "
                 } else {
@@ -1085,7 +1953,11 @@ impl Explorer {
 
         // Controls - different for simulation mode
         let controls_text = if self.sim_mode {
-            "[←↑↓→] Move  [Space] Step/Pause  [+/-] Speed  [T] Territories  [S] Stop Sim  [?] Help"
+            if self.show_combat_log {
+                "[←↑↓→] Move  [Space] Step/Pause  [+/-] Speed  [T] Territories  [Shift+L] Hide Log  [S] Stop  [?] Help"
+            } else {
+                "[←↑↓→] Move  [Space] Step/Pause  [+/-] Speed  [T] Territories  [Shift+L] Show Log  [S] Stop  [?] Help"
+            }
         } else {
             "[←↑↓→/WASD] Move  [Enter] Local Map  [S] Start Sim  [V] View  [N] New  [?] Help  [Q] Quit"
         };
@@ -1097,6 +1969,71 @@ impl Explorer {
         if self.show_help {
             self.render_help(frame);
         }
+    }
+
+    /// Render the combat log panel
+    fn render_combat_log(&self, frame: &mut Frame, area: Rect) {
+        let sim = match &self.sim_state {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Get recent combat entries
+        let recent_entries = sim.combat_log.recent_entries(4);
+        let stats = sim.combat_log.stats();
+
+        // Build combat log lines
+        let mut lines: Vec<Line> = Vec::new();
+
+        if recent_entries.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("No combat events yet. ", Style::default().fg(Color::DarkGray)),
+                Span::raw("Combat logs will appear here when tribes or monsters fight."),
+            ]));
+        } else {
+            for entry in recent_entries.iter().rev() {
+                let result_color = match &entry.result {
+                    crate::simulation::combat::CombatResult::Kill { .. } => Color::Red,
+                    crate::simulation::combat::CombatResult::Wound => Color::Yellow,
+                    crate::simulation::combat::CombatResult::Hit => Color::Green,
+                    crate::simulation::combat::CombatResult::Miss => Color::DarkGray,
+                    _ => Color::White,
+                };
+
+                // Shorten narrative if too long
+                let narrative = if entry.narrative.len() > 80 {
+                    format!("{}...", &entry.narrative[..77])
+                } else {
+                    entry.narrative.clone()
+                };
+
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("[T{}] ", entry.tick),
+                        Style::default().fg(Color::Cyan),
+                    ),
+                    Span::styled(narrative, Style::default().fg(result_color)),
+                ]));
+            }
+        }
+
+        // Add stats line
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!(
+                    "Stats: {} encounters, {} attacks, {} kills, {} wounds",
+                    stats.total_encounters, stats.total_attacks, stats.total_kills, stats.total_wounds
+                ),
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+            ),
+        ]));
+
+        let combat_log = Paragraph::new(lines)
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .title(" Combat Log ")
+                .border_style(Style::default().fg(Color::Red)));
+        frame.render_widget(combat_log, area);
     }
 
     fn render_local(&self, frame: &mut Frame) {
@@ -1386,24 +2323,21 @@ impl Explorer {
             Line::from("  +/=       - Increase simulation speed"),
             Line::from("  -/_       - Decrease simulation speed"),
             Line::from("  T         - Toggle territory overlay"),
+            Line::from("  Shift+L   - Toggle combat log panel"),
             Line::from("  Shift+S   - Stop simulation and return to explore"),
             Line::from(""),
             Line::from("Navigation:").style(Style::default().add_modifier(Modifier::BOLD)),
             Line::from("  Arrow keys / WASD / HJKL - Move cursor"),
             Line::from("  PgUp/PgDn - Fast vertical movement"),
-            Line::from("  Home/End  - Fast horizontal movement"),
             Line::from("  C - Center viewport on cursor"),
             Line::from(""),
-            Line::from("Speed Settings:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  Paused    - Manual stepping only"),
-            Line::from("  Slow      - 1 tick every 2 seconds"),
-            Line::from("  Normal    - 1 tick every 500ms"),
-            Line::from("  Fast      - 1 tick every 100ms"),
-            Line::from("  Very Fast - 1 tick every 20ms"),
+            Line::from("Colony System:").style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan)),
+            Line::from("  Each tribe has a society type (Monarchy,"),
+            Line::from("  Theocracy, Democracy, etc.) affecting bonuses."),
+            Line::from("  Notable colonists have skills and jobs."),
             Line::from(""),
-            Line::from("Tribes grow, expand territory, trade, and"),
-            Line::from("wage wars. Move cursor over territory to"),
-            Line::from("see tribe details in the info panel."),
+            Line::from("Move cursor over territory to see tribe details"),
+            Line::from("including society, leader, colonists, and jobs."),
             Line::from(""),
             Line::from("  ? - Toggle this help    Q/Esc - Quit"),
         ];

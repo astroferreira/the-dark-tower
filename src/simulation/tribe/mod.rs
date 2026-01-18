@@ -1,4 +1,11 @@
 //! Tribe module - core civilization unit
+//!
+//! Tribes are the primary civilization units. Each tribe now includes:
+//! - Society type (government form)
+//! - Notable colonists (individually tracked)
+//! - Population pool (aggregate tracking)
+//! - Job assignments
+//! - Workplaces
 
 pub mod population;
 pub mod needs;
@@ -7,9 +14,13 @@ pub mod culture;
 use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
-use crate::simulation::types::{TribeId, TileCoord, TribeEvent, TribeEventType, SimTick};
+use crate::simulation::types::{TribeId, TileCoord, TribeEvent, TribeEventType, SimTick, GlobalLocalCoord};
 use crate::simulation::resources::Stockpile;
 use crate::simulation::technology::TechnologyState;
+use crate::simulation::society::{SocietyType, SocietyState};
+use crate::simulation::colonists::{NotableColonists, PopulationPool};
+use crate::simulation::jobs::JobManager;
+use crate::simulation::workplaces::WorkplaceManager;
 
 pub use population::Population;
 pub use needs::TribeNeeds;
@@ -58,6 +69,27 @@ pub struct Tribe {
     pub needs: TribeNeeds,
     pub events: Vec<TribeEvent>,
     pub is_alive: bool,
+
+    // Local map positions
+    /// City center in global local coordinates
+    pub city_center: GlobalLocalCoord,
+    /// Radius of the city in local tiles (for colonist placement)
+    pub city_radius: usize,
+
+    // Colony simulation fields
+    /// Government/society type and state
+    pub society_state: SocietyState,
+    /// Individually tracked notable colonists (~5% of population)
+    #[serde(skip)]
+    pub notable_colonists: NotableColonists,
+    /// Aggregate population tracking (~95% of population)
+    pub population_pool: PopulationPool,
+    /// Job assignments and demand
+    #[serde(skip)]
+    pub jobs: JobManager,
+    /// Workplaces in this tribe's territory
+    #[serde(skip)]
+    pub workplaces: WorkplaceManager,
 }
 
 impl Tribe {
@@ -81,6 +113,17 @@ impl Tribe {
             30.0,  // Some starting stone
         );
 
+        // Initialize society with default tribal council
+        let society_state = SocietyState::new(
+            SocietyType::TribalCouncil,
+            format!("Chief of {}", name),
+        );
+
+        // Initialize population pool (95% of population)
+        let population_pool = PopulationPool::new(
+            (initial_population as f32 * 0.95) as u32
+        );
+
         Tribe {
             id,
             name,
@@ -94,7 +137,53 @@ impl Tribe {
             needs: TribeNeeds::default(),
             events: Vec::new(),
             is_alive: true,
+            city_center: GlobalLocalCoord::from_world_tile(capital),
+            city_radius: 15,
+            society_state,
+            notable_colonists: NotableColonists::new(),
+            population_pool,
+            jobs: JobManager::new(),
+            workplaces: WorkplaceManager::new(),
         }
+    }
+
+    /// Create a new tribe with a specific society type
+    pub fn new_with_society<R: rand::Rng>(
+        id: TribeId,
+        name: String,
+        capital: TileCoord,
+        initial_population: u32,
+        culture: TribeCulture,
+        society_type: SocietyType,
+        current_tick: u64,
+        rng: &mut R,
+    ) -> Self {
+        let mut tribe = Self::new(id, name.clone(), capital, initial_population, culture);
+
+        // Set society type
+        tribe.society_state = SocietyState::new(society_type, format!("Leader of {}", name));
+
+        // Initialize notable colonists (~5% of population, min 3)
+        let notable_count = crate::simulation::colonists::target_notable_count(initial_population);
+        for _ in 0..notable_count {
+            use crate::simulation::colonists::{Gender, ColonistRole};
+
+            let gender = Gender::random(rng);
+            let age = 20 + rng.gen_range(0..30);
+            let colonist_id = tribe.notable_colonists.create_colonist(age, gender, current_tick, capital, rng);
+
+            // First notable becomes leader
+            if tribe.notable_colonists.count() == 1 {
+                if let Some(colonist) = tribe.notable_colonists.get_mut(colonist_id) {
+                    colonist.role = ColonistRole::Leader;
+                    tribe.society_state.leader_id = Some(colonist.id.0);
+                    tribe.society_state.leader_name = colonist.name.clone();
+                    tribe.society_state.leader_age = colonist.age;
+                }
+            }
+        }
+
+        tribe
     }
 
     /// Record an event in tribe history
@@ -183,12 +272,39 @@ impl Tribe {
     /// Get a summary string for the tribe
     pub fn summary(&self) -> String {
         format!(
-            "{} ({}): Pop {} | Territory {} | Age {:?}",
+            "{} ({}): Pop {} | Territory {} | Age {:?} | {}",
             self.name,
             self.id,
             self.population.total(),
             self.territory.len(),
-            self.tech_state.current_age()
+            self.tech_state.current_age(),
+            self.society_state.society_type.name()
         )
+    }
+
+    /// Get colony-specific summary
+    pub fn colony_summary(&self) -> String {
+        format!(
+            "{}: {} ({}) | Pop: {} (Notable: {}, Pool: {}) | Workers: {} | Jobs: {}",
+            self.name,
+            self.society_state.society_type.name(),
+            self.society_state.leader_name,
+            self.population.total(),
+            self.notable_colonists.count(),
+            self.population_pool.total(),
+            self.population_pool.workers(),
+            self.jobs.total_demand()
+        )
+    }
+
+    /// Get total population including pool and notables
+    pub fn total_colony_population(&self) -> u32 {
+        self.population_pool.total() + self.notable_colonists.count() as u32
+    }
+
+    /// Get workers available for assignment
+    pub fn available_workers(&self) -> u32 {
+        self.population_pool.available_workers() +
+        self.notable_colonists.workers().filter(|c| c.current_job.is_none()).count() as u32
     }
 }

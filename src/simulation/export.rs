@@ -293,6 +293,56 @@ fn event_description(event: &crate::simulation::types::TribeEventType) -> String
     }
 }
 
+/// Export combat logs to JSON file
+pub fn export_combat_logs(state: &SimulationState, path: &str) -> std::io::Result<()> {
+    use crate::simulation::combat::CombatLogStats;
+
+    #[derive(Serialize)]
+    struct CombatLogExport {
+        stats: CombatLogStats,
+        encounters: Vec<crate::simulation::combat::CombatEncounterLog>,
+    }
+
+    let export = CombatLogExport {
+        stats: state.combat_log.stats(),
+        encounters: state.combat_log.all_encounters().to_vec(),
+    };
+
+    let json = serde_json::to_string_pretty(&export)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    let mut file = File::create(path)?;
+    file.write_all(json.as_bytes())?;
+
+    Ok(())
+}
+
+/// Generate a narrative combat report
+pub fn generate_combat_narrative(state: &SimulationState) -> String {
+    let mut narrative = String::new();
+
+    narrative.push_str("=== Combat Chronicle ===\n\n");
+
+    let stats = state.combat_log.stats();
+    narrative.push_str(&format!(
+        "Total Encounters: {}\n",
+        stats.total_encounters
+    ));
+    narrative.push_str(&format!(
+        "Total Attacks: {} | Kills: {} | Wounds: {}\n\n",
+        stats.total_attacks, stats.total_kills, stats.total_wounds
+    ));
+
+    // Show recent encounters
+    let recent = state.combat_log.recent_encounters(10);
+    for encounter in recent {
+        narrative.push_str(&encounter.full_narrative());
+        narrative.push_str("\n---\n\n");
+    }
+
+    narrative
+}
+
 /// Generate a summary text report of the simulation
 pub fn generate_summary(state: &SimulationState) -> String {
     let mut summary = String::new();

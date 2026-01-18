@@ -3,6 +3,158 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Size of each local map tile in local coordinates
+pub const LOCAL_MAP_SIZE: u32 = 64;
+
+/// Global coordinate in local map space
+///
+/// This represents a position in the unified global space where:
+/// - x = world_x * LOCAL_MAP_SIZE + local_x
+/// - y = world_y * LOCAL_MAP_SIZE + local_y
+///
+/// This allows seamless movement across world tile boundaries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct GlobalLocalCoord {
+    pub x: u32,
+    pub y: u32,
+}
+
+/// Offset within a local map (0..LOCAL_MAP_SIZE)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LocalOffset {
+    pub x: usize,
+    pub y: usize,
+}
+
+impl GlobalLocalCoord {
+    /// Create a new global local coordinate
+    pub fn new(x: u32, y: u32) -> Self {
+        GlobalLocalCoord { x, y }
+    }
+
+    /// Convert to hierarchical coordinates (world tile + local offset)
+    pub fn to_hierarchical(&self) -> (TileCoord, LocalOffset) {
+        let world_x = (self.x / LOCAL_MAP_SIZE) as usize;
+        let world_y = (self.y / LOCAL_MAP_SIZE) as usize;
+        let local_x = (self.x % LOCAL_MAP_SIZE) as usize;
+        let local_y = (self.y % LOCAL_MAP_SIZE) as usize;
+
+        (
+            TileCoord::new(world_x, world_y),
+            LocalOffset { x: local_x, y: local_y },
+        )
+    }
+
+    /// Create from hierarchical coordinates
+    pub fn from_hierarchical(tile: TileCoord, offset: LocalOffset) -> Self {
+        GlobalLocalCoord {
+            x: tile.x as u32 * LOCAL_MAP_SIZE + offset.x as u32,
+            y: tile.y as u32 * LOCAL_MAP_SIZE + offset.y as u32,
+        }
+    }
+
+    /// Create a coordinate at the center of a world tile
+    pub fn from_world_tile(tile: TileCoord) -> Self {
+        GlobalLocalCoord {
+            x: tile.x as u32 * LOCAL_MAP_SIZE + LOCAL_MAP_SIZE / 2,
+            y: tile.y as u32 * LOCAL_MAP_SIZE + LOCAL_MAP_SIZE / 2,
+        }
+    }
+
+    /// Get the world tile this coordinate is in
+    pub fn world_tile(&self) -> TileCoord {
+        TileCoord::new(
+            (self.x / LOCAL_MAP_SIZE) as usize,
+            (self.y / LOCAL_MAP_SIZE) as usize,
+        )
+    }
+
+    /// Get the local offset within the world tile
+    pub fn local_offset(&self) -> LocalOffset {
+        LocalOffset {
+            x: (self.x % LOCAL_MAP_SIZE) as usize,
+            y: (self.y % LOCAL_MAP_SIZE) as usize,
+        }
+    }
+
+    /// Manhattan distance to another coordinate with horizontal wrapping
+    pub fn distance_wrapped(&self, other: &GlobalLocalCoord, world_width: usize) -> u32 {
+        let total_width = world_width as u32 * LOCAL_MAP_SIZE;
+
+        let dx1 = (self.x as i32 - other.x as i32).unsigned_abs();
+        let dx2 = total_width - dx1;
+        let dx = dx1.min(dx2);
+
+        let dy = (self.y as i32 - other.y as i32).unsigned_abs();
+        dx + dy
+    }
+
+    /// Simple Manhattan distance without wrapping
+    pub fn distance(&self, other: &GlobalLocalCoord) -> u32 {
+        let dx = (self.x as i32 - other.x as i32).unsigned_abs();
+        let dy = (self.y as i32 - other.y as i32).unsigned_abs();
+        dx + dy
+    }
+
+    /// Offset by a delta, returning None if out of bounds
+    pub fn offset(&self, dx: i32, dy: i32, max_x: u32, max_y: u32) -> Option<Self> {
+        let new_x = self.x as i32 + dx;
+        let new_y = self.y as i32 + dy;
+
+        if new_x >= 0 && new_y >= 0 && (new_x as u32) < max_x && (new_y as u32) < max_y {
+            Some(GlobalLocalCoord {
+                x: new_x as u32,
+                y: new_y as u32,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Offset with horizontal wrapping (for cylindrical world)
+    pub fn offset_wrapped(&self, dx: i32, dy: i32, world_width: usize, world_height: usize) -> Self {
+        let total_width = world_width as u32 * LOCAL_MAP_SIZE;
+        let total_height = world_height as u32 * LOCAL_MAP_SIZE;
+
+        let new_x = ((self.x as i32 + dx).rem_euclid(total_width as i32)) as u32;
+        let new_y = (self.y as i32 + dy).clamp(0, total_height as i32 - 1) as u32;
+
+        GlobalLocalCoord { x: new_x, y: new_y }
+    }
+
+    /// Get a random offset within a radius
+    pub fn offset_random<R: rand::Rng>(&self, radius: usize, rng: &mut R) -> Self {
+        let dx = rng.gen_range(-(radius as i32)..=(radius as i32));
+        let dy = rng.gen_range(-(radius as i32)..=(radius as i32));
+
+        GlobalLocalCoord {
+            x: (self.x as i32 + dx).max(0) as u32,
+            y: (self.y as i32 + dy).max(0) as u32,
+        }
+    }
+}
+
+impl fmt::Display for GlobalLocalCoord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (tile, offset) = self.to_hierarchical();
+        write!(f, "({}, {}) [World: {}, Local: ({}, {})]", self.x, self.y, tile, offset.x, offset.y)
+    }
+}
+
+impl LocalOffset {
+    pub fn new(x: usize, y: usize) -> Self {
+        LocalOffset { x, y }
+    }
+
+    /// Center of a local map
+    pub fn center() -> Self {
+        LocalOffset {
+            x: LOCAL_MAP_SIZE as usize / 2,
+            y: LOCAL_MAP_SIZE as usize / 2,
+        }
+    }
+}
+
 /// Unique identifier for a tribe
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TribeId(pub u32);

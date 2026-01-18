@@ -18,6 +18,7 @@
 //! ```
 
 mod biome_features;
+pub mod cache;
 mod export;
 mod generation;
 mod terrain;
@@ -31,6 +32,7 @@ pub use export::{
     export_elevation_heatmap, export_blend_zone_map, export_local_map_shaded,
     export_local_map_layered,
 };
+pub use cache::{LocalMapCache, CacheStats};
 pub use generation::{generate_local_map, generate_local_map_default};
 pub use terrain::{LocalFeature, LocalTerrainType};
 pub use types::{LocalMap, LocalTile, NeighborInfo, DEFAULT_LOCAL_MAP_SIZE};

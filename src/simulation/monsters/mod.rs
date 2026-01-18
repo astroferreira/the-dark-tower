@@ -11,11 +11,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::simulation::types::{TileCoord, TribeId, SimTick};
 use crate::simulation::tribe::Tribe;
+use crate::simulation::interaction::ReputationState;
 use crate::world::WorldData;
 
 pub use types::{Monster, MonsterId, MonsterSpecies, MonsterState, AttackTarget};
 pub use spawning::MonsterSpawnParams;
-pub use combat::CombatEvent;
+pub use combat::{
+    CombatEvent, is_significant_monster, calculate_reputation_change,
+    run_detailed_monster_vs_tribe_combat, run_detailed_monster_vs_monster_combat,
+};
 
 /// Manager for all monsters in the simulation
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -68,6 +72,7 @@ impl MonsterManager {
         &mut self,
         tribes: &HashMap<TribeId, Tribe>,
         territory_map: &HashMap<TileCoord, TribeId>,
+        reputation: &ReputationState,
         world: &WorldData,
         current_tick: u64,
         rng: &mut R,
@@ -76,6 +81,7 @@ impl MonsterManager {
             &mut self.monsters,
             tribes,
             territory_map,
+            reputation,
             world,
             current_tick,
             rng,

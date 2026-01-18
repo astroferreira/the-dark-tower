@@ -1,9 +1,10 @@
 /target
 
-# Generated images
-*.png
+# Output directory for all generated files
+/output
 
-# Generated simulation/lore files
+# Generated files in root (in case someone runs without -o)
+*.png
 *_simulation.json
 lore_*.json
 lore_*.txt

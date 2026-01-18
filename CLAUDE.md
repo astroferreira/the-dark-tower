@@ -1,147 +1,275 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-## Build & Run Commands
+> **IMPORTANT: Any new feature MUST be documented in this file.**
+
+---
+
+## Quick Start
 
 ```bash
-# Build the project
-cargo build
-
-# Run with default settings (512x256, random seed)
-cargo run
-
-# Run with specific options
-cargo run -- --width 1024 --height 512 --seed 42 --output myplanet
-
-# Build release version (optimized)
+# Build
 cargo build --release
+
+# Launch interactive explorer (recommended)
+cargo run --release -- -v
+
+# Generate world with full pipeline
+cargo run --release -- --seed 42 -o output/world
+
+# Explorer with full world generation
+cargo run --release -- --seed 42 --explore
 ```
 
-## CLI Options
+---
+
+## CLI Reference
 
 ```
--W, --width <WIDTH>           Width of tilemap in pixels [default: 512]
--H, --height <HEIGHT>         Height of tilemap in pixels [default: 256]
--s, --seed <SEED>             Random seed (random if not specified)
--o, --output <OUTPUT>         Output file prefix [default: output]
-    --stress-spread <N>       Stress spreading iterations [default: 10]
--v, --view                    Open interactive viewer
+planet_generator [OPTIONS]
 
-# Erosion Options
-    --erosion                 Enable erosion simulation
-    --erosion-iterations <N>  Number of hydraulic droplets [default: 50000]
-    --hydraulic <BOOL>        Enable hydraulic erosion [default: true]
-    --glacial <BOOL>          Enable glacial erosion [default: true]
-    --glacial-timesteps <N>   Glacial simulation steps [default: 500]
+BASIC:
+  -W, --width <N>              Map width [default: 512]
+  -H, --height <N>             Map height [default: 256]
+  -s, --seed <N>               Random seed
+  -o, --output <PREFIX>        Output file prefix [default: output]
+  -p, --plates <N>             Number of plates (random 6-15 if omitted)
+
+INTERACTIVE:
+  -v, --view                   Quick launch explorer
+  --explore                    Full world generation + explorer
+
+EROSION:
+  --no-erosion                 Skip erosion simulation
+  --erosion-iterations <N>     Hydraulic droplets [default: 200000]
+  --no-rivers                  Disable river erosion
+  --no-hydraulic               Disable hydraulic erosion
+  --no-glacial                 Disable glacial erosion
+  --glacial-timesteps <N>      Glacial steps [default: 500]
+  --analyze                    Enable terrain analysis
+  --histogram                  Print height histogram
+
+SIMULATION:
+  --simulate                   Run headless simulation
+  --sim-ticks <N>              Ticks to run [default: 100]
+  --sim-tribes <N>             Initial tribes [default: 10]
+  --sim-population <N>         Pop per tribe [default: 100]
+  --sim-seed <N>               Simulation seed
+
+LORE:
+  --lore                       Enable lore generation
+  --lore-wanderers <N>         Storytellers [default: 5]
+  --lore-steps <N>             Steps per wanderer [default: 5000]
+  --lore-output <PREFIX>       Lore output prefix [default: lore]
+  --lore-seed <N>              Lore seed
+
+LLM (requires --lore):
+  --llm                        Use LLM for stories
+  --llm-url <URL>              LLM server URL
+  --llm-model <NAME>           Model name
+  --llm-max-tokens <N>         Max tokens [default: 1024]
+  --llm-temperature <F>        Temperature [default: 0.8]
+
+IMAGES (requires --lore):
+  --images                     Generate story images
+  --image-url <URL>            Image server URL
+  --max-images <N>             Max images [default: 10]
+
+LOCAL MAP:
+  --local-map <X,Y>            Generate local map at tile
+  --local-size <N>             Local map size [default: 64]
+
+EXPORT:
+  --ascii-export <PATH>        Export ASCII world file
+  --ascii-png <PATH>           Export ASCII as PNG
+  --verbose                    Verbose ASCII export
 ```
 
-### Erosion Examples
+---
+
+## Output Directory
+
+All outputs go to `output/` (git-ignored):
 
 ```bash
-# Run with both hydraulic and glacial erosion (512x256 default)
-cargo run --release -- --erosion --seed 42 --output eroded
-
-# For larger maps, increase iterations proportionally:
-# 512x256 (default): 200k iterations
-# 1024x512: 500k-1M iterations
-# 2048x1024: 2M+ iterations
-cargo run --release -- -W 1024 -H 512 --erosion --erosion-iterations 500000
-
-# Hydraulic erosion only (faster)
-cargo run --release -- --erosion --glacial false
-
-# Glacial erosion only
-cargo run --release -- --erosion --hydraulic false
+cargo run --release -- --seed 42 -o output/myworld
 ```
 
-## Output Files
+---
 
-- `{output}_plates.png` - Colored plate map (blue=oceanic, green=continental)
-- `{output}_heightmap.png` - Grayscale elevation map
-- `{output}_stress.png` - Stress visualization (red=convergent, blue=divergent)
+## Explorer Controls
 
-## Architecture Overview
+### Navigation
+- `Arrow keys / WASD / HJKL` - Move cursor
+- `PgUp/PgDn` - Fast vertical
+- `Home/End` - Fast horizontal
+- `C` - Center on cursor
+- `V` - Cycle view mode
 
-2D tilemap-based procedural planet generator using flood-fill tectonic plates and velocity-based stress for heightmaps.
+### Simulation
+- `Shift+S` - Start/stop simulation
+- `Space` - Step (paused) / Pause (running)
+- `+/-` - Change speed
+- `T` - Toggle territories
+- `Shift+L` - Toggle combat log
 
-### Module Structure
+### Other
+- `Enter` - View local map
+- `N` - New world
+- `?` - Help
+- `Q/Esc` - Quit
 
-- **`tilemap.rs`**: Generic 2D grid with horizontal wrapping (equirectangular projection)
+---
 
-- **`plates/`**: Tectonic plate system
-  - `types.rs`: `Plate`, `PlateId`, `PlateType` (Ocean/Continental), `Vec2` velocity
-  - `generation.rs`: BFS flood-fill from random seeds (6-15 plates)
-  - `stress.rs`: Velocity-based border stress calculation and spreading
-
-- **`heightmap.rs`**: Combines plate base elevation + stress into final heightmap
-
-- **`climate.rs`**: Temperature and moisture maps, biome classification
-
-- **`erosion/`**: Erosion simulation system
-  - `mod.rs`: Main orchestration and shared types
-  - `params.rs`: Erosion configuration parameters
-  - `utils.rs`: Gradient calculation, bilinear interpolation utilities
-  - `materials.rs`: Rock types with hardness values (Basalt, Granite, etc.)
-  - `hydraulic.rs`: Particle-based water droplet erosion
-  - `glacial.rs`: Shallow Ice Approximation (SIA) glacial erosion
-
-- **`export.rs`**: PNG image export using `image` crate
-
-- **`viewer.rs`**: Interactive OpenGL viewer
-
-### Generation Pipeline
+## Module Structure
 
 ```
-Seed → Place 6-15 random seed points
-     → BFS flood-fill until plates meet
-     → Assign ocean/continental types (~60%/40%)
-     → Generate random velocity vectors per plate
-     → Calculate stress at boundaries (relative velocity dot boundary normal)
-     → Spread stress into plate interiors
-     → Heightmap = base_elevation + stress * scale
-     → Generate climate (temperature, moisture)
-     → [Optional] Run erosion simulation:
-       → Generate material map (rock types by region)
-       → Hydraulic: Simulate water droplets carving valleys
-       → Glacial: Simulate ice sheets using SIA model
-     → Generate biomes from climate + elevation
-     → Export PNG images
+src/
+├── main.rs              # CLI entry point
+├── explorer.rs          # Terminal UI (ratatui)
+├── world.rs             # WorldData structure
+├── tilemap.rs           # 2D grid with wrapping
+├── heightmap.rs         # Terrain generation
+├── climate.rs           # Temperature/moisture
+├── biomes.rs            # 50+ biome types
+├── water_bodies.rs      # Lakes/rivers/ocean
+├── scale.rs             # Physical scale (km/tile)
+├── ascii.rs             # ASCII export
+├── export.rs            # PNG export
+│
+├── plates/              # Tectonic plates
+│   ├── types.rs         # Plate, PlateType, velocity
+│   ├── generation.rs    # BFS flood-fill
+│   └── stress.rs        # Boundary stress
+│
+├── erosion/             # Terrain erosion
+│   ├── hydraulic.rs     # Water droplet erosion
+│   ├── glacial.rs       # Ice sheet erosion (SIA)
+│   ├── rivers.rs        # Flow accumulation
+│   ├── materials.rs     # Rock hardness
+│   ├── gpu.rs           # GPU acceleration
+│   └── geomorphometry.rs # Terrain analysis
+│
+├── local/               # Local map generation
+│   ├── generation.rs    # Procedural detail
+│   ├── terrain.rs       # Terrain types
+│   ├── biome_features.rs # Feature placement
+│   └── export.rs        # Local map export
+│
+├── lore/                # Story generation
+│   ├── wanderer.rs      # Storyteller simulation
+│   ├── landmarks.rs     # Landmark discovery
+│   ├── encounters.rs    # Event generation
+│   ├── mythology.rs     # Myth generation
+│   ├── llm.rs           # LLM client
+│   └── image_gen.rs     # Image generation
+│
+└── simulation/          # Civilization sim
+    ├── simulation.rs    # Main tick loop
+    ├── types.rs         # TribeId, TileCoord, etc.
+    ├── params.rs        # Configuration
+    │
+    ├── tribe/           # Tribe system
+    │   ├── mod.rs       # Tribe struct
+    │   ├── population.rs # Demographics
+    │   ├── needs.rs     # Need satisfaction
+    │   └── culture.rs   # Cultural traits
+    │
+    ├── technology/      # Tech progression
+    │   ├── ages.rs      # Stone→Iron→Industrial
+    │   └── unlocks.rs   # Tech bonuses
+    │
+    ├── resources/       # Resource system
+    │   ├── stockpile.rs # Storage
+    │   └── extraction.rs # Gathering
+    │
+    ├── territory/       # Land control
+    │   └── expansion.rs # Territory growth
+    │
+    ├── interaction/     # Inter-tribe
+    │   ├── diplomacy.rs # Relations
+    │   ├── trade.rs     # Trade routes
+    │   ├── conflict.rs  # Warfare
+    │   └── migration.rs # Population movement
+    │
+    ├── monsters/        # Monster system
+    │   ├── types.rs     # 14 species
+    │   ├── spawning.rs  # Biome spawning
+    │   ├── behavior.rs  # AI behavior
+    │   └── combat.rs    # Combat resolution
+    │
+    ├── body/            # Body part system
+    │   ├── parts.rs     # BodyPart, tissues
+    │   ├── templates.rs # Humanoid, Dragon, etc.
+    │   └── wounds.rs    # Wound types
+    │
+    ├── characters/      # Character system
+    │   ├── types.rs     # Character, Attributes
+    │   └── equipment.rs # Weapons, Armor
+    │
+    ├── combat/          # Combat system
+    │   ├── resolution.rs # Attack resolution
+    │   ├── damage.rs    # Damage calculation
+    │   └── log.rs       # Combat logging
+    │
+    ├── roads.rs         # Road network
+    ├── structures.rs    # Buildings
+    └── export.rs        # JSON export
 ```
 
-### Erosion System
+---
 
-**Hydraulic Erosion** - Particle-based water droplet simulation:
-- Droplets spawn randomly, follow terrain gradient
-- Pick up sediment on steep slopes (modulated by rock hardness)
-- Deposit sediment when flow slows
-- Creates V-shaped river valleys, alluvial fans
+## Key Systems
 
-**Glacial Erosion** - Shallow Ice Approximation (SIA):
-- Ice accumulates above snowline (cold temperatures)
-- Ice flows downhill following SIA flux equation
-- Erodes bedrock based on basal sliding velocity
-- Creates U-shaped valleys, cirques, fjords
+### World Generation
+1. Generate tectonic plates (BFS flood-fill)
+2. Calculate plate stress at boundaries
+3. Generate heightmap from stress
+4. Apply erosion (hydraulic, glacial, rivers)
+5. Generate climate (temp, moisture)
+6. Assign biomes (50+ types)
+7. Detect water bodies
 
-**Rock Hardness** - Different erosion rates:
-- Basalt (0.95): Very hard, volcanic rock
-- Granite (0.85): Hard continental basement
-- Sandstone (0.5): Medium, sedimentary
-- Limestone (0.4): Medium-soft, karst-forming
-- Shale (0.25): Soft sedimentary
-- Sediment (0.1): Unconsolidated deposits
+### Simulation (4 ticks = 1 year)
+- Population growth/mortality
+- Resource extraction
+- Territory expansion
+- Technology progression
+- Diplomacy and trade
+- Warfare and raids
+- Monster spawning and combat
 
-### Stress Calculation
+### Combat (Dwarf Fortress-style)
+- Body parts: Head, Torso, Limbs, etc.
+- Tissues: Flesh, Bone, Scale, Chitin
+- Wounds: Cut, Fracture, Severed, etc.
+- Detailed combat narratives
 
-At each boundary cell:
-1. Find adjacent cells with different plate IDs
-2. Calculate boundary normal (direction to neighbor plate)
-3. Get relative velocity between plates
-4. Stress = -dot(relative_velocity, boundary_normal)
-   - Positive (converging) = mountains
-   - Negative (diverging) = rifts/trenches
+### Monster Species (14)
+Wolf, Bear, IceWolf, GiantSpider, Troll, Griffin, Dragon, Hydra, BogWight, Yeti, Sandworm, Scorpion, Basilisk, Phoenix
 
+### Tech Ages
+Stone → Copper (200 pop) → Bronze (500) → Iron (1000) → Steel (2000) → Industrial (5000)
 
-## EVALUATION
+---
 
-Always check the output files to ensure the generated planet is valid and if the request of the user is met. If not, try to fix it.
+## Evaluation
+
+When testing changes:
+1. `cargo build` - Check compilation
+2. `cargo run --release -- -v` - Test explorer
+3. Start simulation with `Shift+S`
+4. Check combat log with `Shift+L`
+5. Verify territory expansion
+6. Test monster spawning
+
+---
+
+## Adding Features
+
+When adding new features:
+1. **Document CLI options** if adding new flags
+2. **Update module structure** if adding new files
+3. **Add to Key Systems** if significant
+4. **Test in explorer** - it's the main interface

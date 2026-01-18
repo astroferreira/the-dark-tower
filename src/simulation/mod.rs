@@ -16,6 +16,10 @@
 //! - `environment`: Resource depletion tracking
 //! - `simulation`: Main simulation state and tick loop
 //! - `export`: JSON export and reporting
+//! - `society`: Government types and succession systems
+//! - `colonists`: Individual and aggregate population tracking
+//! - `jobs`: Work assignments and resource production
+//! - `workplaces`: Locations where jobs are performed
 //!
 //! # Usage
 //!
@@ -39,6 +43,13 @@ pub mod export;
 pub mod structures;
 pub mod roads;
 pub mod monsters;
+pub mod body;
+pub mod characters;
+pub mod combat;
+pub mod society;
+pub mod colonists;
+pub mod jobs;
+pub mod workplaces;
 
 // Re-export main types for convenience
 pub use types::{TribeId, SimTick, Season, RelationLevel, ResourceType, TileCoord, TreatyType, Treaty};
@@ -47,7 +58,25 @@ pub use tribe::{Tribe, TribeCulture, TribeNeeds, Population, Settlement};
 pub use resources::Stockpile;
 pub use technology::{Age, TechnologyState, BuildingType};
 pub use simulation::{SimulationState, SimulationStats, run_simulation};
-pub use export::{export_simulation, generate_summary};
+pub use export::{export_simulation, generate_summary, export_combat_logs, generate_combat_narrative};
 pub use structures::{Structure, StructureId, StructureType, StructureManager};
 pub use roads::{RoadSegment, RoadType, RoadNetwork};
 pub use monsters::{Monster, MonsterId, MonsterSpecies, MonsterState, MonsterManager};
+pub use body::{Body, BodyPart, BodyPartId, BodyPlan, DamageType, Wound, WoundType, CombatEffect};
+pub use characters::{Character, CharacterId, CharacterManager, Weapon, Armor};
+pub use combat::{CombatLogStore, CombatLogEntry, CombatEncounterLog, resolve_attack};
+
+// Colony simulation types
+pub use society::{SocietyType, SocietyState, SocietyConfig, SuccessionMethod, SpecialBonus};
+pub use colonists::{
+    Colonist, ColonistId, ColonistRole, LifeStage, Gender, Attributes,
+    SkillType, SkillSet, Skill, skill_productivity,
+    MoodState, MoodModifier, MoodModifierType,
+    PopulationPool, PopulationCohort,
+    NotableColonists, process_notable_lifecycle, target_notable_count,
+};
+pub use jobs::{
+    JobId, JobType, JobCategory, Job, JobDemand, JobDefinition,
+    JobManager, assign_all_jobs, process_jobs, JobProcessingResult,
+};
+pub use workplaces::{Workplace, WorkplaceId, WorkplaceType, WorkplaceManager};

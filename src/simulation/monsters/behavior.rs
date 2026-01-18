@@ -3,9 +3,10 @@
 use rand::Rng;
 use std::collections::HashMap;
 
-use crate::simulation::types::{TileCoord, TribeId};
+use crate::simulation::types::{TileCoord, TribeId, GlobalLocalCoord};
 use crate::simulation::monsters::types::{Monster, MonsterId, MonsterState, AttackTarget};
 use crate::simulation::tribe::Tribe;
+use crate::simulation::interaction::ReputationState;
 use crate::world::WorldData;
 
 /// Process behavior for all monsters
@@ -13,6 +14,7 @@ pub fn process_monster_behavior<R: Rng>(
     monsters: &mut HashMap<MonsterId, Monster>,
     tribes: &HashMap<TribeId, Tribe>,
     territory_map: &HashMap<TileCoord, TribeId>,
+    reputation: &ReputationState,
     world: &WorldData,
     current_tick: u64,
     rng: &mut R,
@@ -37,6 +39,7 @@ pub fn process_monster_behavior<R: Rng>(
                 monster,
                 tribes,
                 territory_map,
+                reputation,
                 world,
                 current_tick,
                 rng,
@@ -52,11 +55,12 @@ fn process_monster_state<R: Rng>(
     monster: &mut Monster,
     tribes: &HashMap<TribeId, Tribe>,
     territory_map: &HashMap<TileCoord, TribeId>,
+    reputation: &ReputationState,
     world: &WorldData,
     _current_tick: u64,
     rng: &mut R,
 ) -> MonsterState {
-    let aggression = monster.species.stats().aggression;
+    let base_aggression = monster.species.stats().aggression;
 
     match monster.state {
         MonsterState::Dead => MonsterState::Dead,
@@ -73,9 +77,9 @@ fn process_monster_state<R: Rng>(
             }
 
             // Random chance to start hunting (based on aggression)
-            if rng.gen::<f32>() < aggression * 0.5 {
-                // Look for nearby targets
-                if let Some(target) = find_nearby_target(monster, tribes, territory_map, world) {
+            if rng.gen::<f32>() < base_aggression * 0.5 {
+                // Look for nearby targets, considering reputation
+                if let Some(_target) = find_nearby_target(monster, tribes, territory_map, reputation, world, rng) {
                     return MonsterState::Hunting;
                 }
             }
@@ -93,8 +97,8 @@ fn process_monster_state<R: Rng>(
             }
 
             // Random chance to find prey while roaming
-            if rng.gen::<f32>() < aggression * 0.3 {
-                if let Some(target) = find_nearby_target(monster, tribes, territory_map, world) {
+            if rng.gen::<f32>() < base_aggression * 0.3 {
+                if let Some(_target) = find_nearby_target(monster, tribes, territory_map, reputation, world, rng) {
                     return MonsterState::Hunting;
                 }
             }
@@ -114,7 +118,7 @@ fn process_monster_state<R: Rng>(
             }
 
             // Look for target
-            if let Some(target) = find_nearby_target(monster, tribes, territory_map, world) {
+            if let Some(target) = find_nearby_target(monster, tribes, territory_map, reputation, world, rng) {
                 // Move toward target
                 move_toward_target(monster, target, tribes, world, rng);
 
@@ -171,14 +175,17 @@ fn process_monster_state<R: Rng>(
     }
 }
 
-/// Find a nearby target for the monster
-fn find_nearby_target(
+/// Find a nearby target for the monster, considering reputation
+fn find_nearby_target<R: Rng>(
     monster: &Monster,
     tribes: &HashMap<TribeId, Tribe>,
     territory_map: &HashMap<TileCoord, TribeId>,
+    reputation: &ReputationState,
     world: &WorldData,
+    rng: &mut R,
 ) -> Option<AttackTarget> {
     let detection_range = monster.territory_radius * 2;
+    let base_aggression = monster.species.stats().aggression;
 
     // Check for nearby tribe settlements
     for (tribe_id, tribe) in tribes.iter() {
@@ -186,10 +193,24 @@ fn find_nearby_target(
             continue;
         }
 
+        // Check if species should skip this tribe due to high reputation (fear)
+        if reputation.should_skip_tribe(*tribe_id, monster.species) {
+            continue;
+        }
+
         // Check if any tribe territory is in range
         for &coord in &tribe.territory {
             if monster.distance_to(&coord, world.width) <= detection_range {
-                return Some(AttackTarget::Tribe(*tribe_id));
+                // Get reputation-modified aggression
+                let rep_modifier = reputation.aggression_modifier(*tribe_id, monster.species);
+                let effective_aggression = (base_aggression + rep_modifier).clamp(0.0, 1.0);
+
+                // Roll against effective aggression to decide if we attack
+                if rng.gen::<f32>() < effective_aggression {
+                    return Some(AttackTarget::Tribe(*tribe_id));
+                }
+                // If we failed the roll, don't check this tribe again this tick
+                break;
             }
         }
     }
@@ -209,7 +230,12 @@ fn move_randomly<R: Rng>(monster: &mut Monster, world: &WorldData, rng: &mut R) 
     // Check if new position is valid (not water, within territory)
     let elevation = *world.heightmap.get(new_x, new_y);
     if elevation >= 0.0 && monster.in_territory(&new_coord, world.width) {
+        let old_location = monster.location;
         monster.location = new_coord;
+        // Sync local_position when world tile changes
+        if old_location != new_coord {
+            monster.local_position = GlobalLocalCoord::from_world_tile(new_coord);
+        }
     }
 }
 
@@ -229,6 +255,7 @@ fn move_toward_target<R: Rng>(
     // Simple pathfinding - move in the direction of target
     let dx = (target_coord.x as i32 - monster.location.x as i32).signum();
     let dy = (target_coord.y as i32 - monster.location.y as i32).signum();
+    let old_location = monster.location;
 
     // Try horizontal movement first
     if dx != 0 {
@@ -237,6 +264,9 @@ fn move_toward_target<R: Rng>(
         let elevation = *world.heightmap.get(new_x, monster.location.y);
         if elevation >= 0.0 {
             monster.location = new_coord;
+            if old_location != new_coord {
+                monster.local_position = GlobalLocalCoord::from_world_tile(new_coord);
+            }
             return;
         }
     }
@@ -248,6 +278,9 @@ fn move_toward_target<R: Rng>(
         let elevation = *world.heightmap.get(monster.location.x, new_y);
         if elevation >= 0.0 {
             monster.location = new_coord;
+            if old_location != new_coord {
+                monster.local_position = GlobalLocalCoord::from_world_tile(new_coord);
+            }
         }
     }
 }
@@ -288,9 +321,15 @@ fn flee_from_danger<R: Rng>(
 
         let elevation = *world.heightmap.get(new_x, new_y);
         if elevation >= 0.0 {
-            monster.location = TileCoord::new(new_x, new_y);
+            let old_location = monster.location;
+            let new_coord = TileCoord::new(new_x, new_y);
+            monster.location = new_coord;
             // Expand territory center when fleeing
             monster.territory_center = monster.location;
+            // Sync local_position
+            if old_location != new_coord {
+                monster.local_position = GlobalLocalCoord::from_world_tile(new_coord);
+            }
         }
     } else {
         // No threats, just move randomly
