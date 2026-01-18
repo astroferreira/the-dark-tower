@@ -1,1 +1,10 @@
 /target
+
+# Generated images
+*.png
+
+# Generated simulation/lore files
+*_simulation.json
+lore_*.json
+lore_*.txt
+lore_*.md

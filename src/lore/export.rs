@@ -68,7 +68,7 @@ pub struct InterpretationSummary {
 }
 
 /// LLM prompt template
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct LlmPrompt {
     pub prompt_type: String,
     pub system_context: String,
@@ -78,7 +78,7 @@ pub struct LlmPrompt {
 }
 
 /// Collection of LLM prompts
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct LlmPrompts {
     pub creation_myth_prompts: Vec<LlmPrompt>,
     pub legend_prompts: Vec<LlmPrompt>,
@@ -235,7 +235,7 @@ pub fn export_json(
 }
 
 /// Generate LLM prompts for story generation
-fn generate_llm_prompts(result: &LoreResult, world: &WorldData) -> LlmPrompts {
+pub fn generate_llm_prompts(result: &LoreResult, world: &WorldData) -> LlmPrompts {
     let system_base = format!(
         r#"You are a mythologist and storyteller creating origin stories for a procedurally generated fantasy world.
 

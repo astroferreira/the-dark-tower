@@ -23,7 +23,9 @@
 
 pub mod encounters;
 pub mod export;
+pub mod image_gen;
 pub mod landmarks;
+pub mod llm;
 pub mod mythology;
 pub mod params;
 pub mod types;
@@ -36,6 +38,10 @@ pub use types::{
     GeographicFeature, Landmark, LandmarkId, NarrativeTheme, StorySeed, StorySeedId,
     StorySeedType, SuggestedElements, Wanderer, WorldLocation,
 };
+
+// LLM and image generation exports
+pub use llm::{LlmClient, LlmConfig, LlmError, RichStories, generate_rich_stories, generate_creation_poem, export_creation_poem};
+pub use image_gen::{ImageGenClient, ImageGenConfig, ImageGenError, StoryImageGenerator};
 
 use rand_chacha::ChaCha8Rng;
 

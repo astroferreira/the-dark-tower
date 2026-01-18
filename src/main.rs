@@ -9,9 +9,11 @@ mod erosion;
 mod explorer;
 mod export;
 mod heightmap;
+mod local;
 mod lore;
 mod plates;
 mod scale;
+mod simulation;
 mod tilemap;
 mod tileset;
 mod viewer;
@@ -106,6 +108,10 @@ struct Args {
     #[arg(long, default_value = "5")]
     lore_wanderers: usize,
 
+    /// Maximum steps per wanderer (lower = less wandering, faster generation)
+    #[arg(long, default_value = "5000")]
+    lore_steps: usize,
+
     /// Output prefix for lore files
     #[arg(long, default_value = "lore")]
     lore_output: String,
@@ -117,6 +123,78 @@ struct Args {
     /// Separate seed for lore generation (uses world seed if not specified)
     #[arg(long)]
     lore_seed: Option<u64>,
+
+    /// Use LLM server to generate rich stories (requires --lore)
+    #[arg(long)]
+    llm: bool,
+
+    /// LLM server URL (OpenAI-compatible API)
+    #[arg(long, default_value = "http://192.168.8.59:8000")]
+    llm_url: String,
+
+    /// Model name for LLM (optional, server default if not specified)
+    #[arg(long)]
+    llm_model: Option<String>,
+
+    /// Maximum tokens for LLM generation
+    #[arg(long, default_value = "1024")]
+    llm_max_tokens: u32,
+
+    /// Temperature for LLM generation (0.0-1.0)
+    #[arg(long, default_value = "0.8")]
+    llm_temperature: f32,
+
+    /// Number of parallel LLM requests (vLLM handles these efficiently)
+    #[arg(long, default_value = "8")]
+    llm_parallel: usize,
+
+    /// Generate images for stories (requires --lore)
+    #[arg(long)]
+    images: bool,
+
+    /// Image generation server URL
+    #[arg(long, default_value = "http://192.168.8.59:8001")]
+    image_url: String,
+
+    /// Maximum number of images to generate
+    #[arg(long, default_value = "10")]
+    max_images: usize,
+
+    /// Image width for generation
+    #[arg(long, default_value = "1024")]
+    image_width: u32,
+
+    /// Image height for generation
+    #[arg(long, default_value = "1024")]
+    image_height: u32,
+
+    /// Generate local map for specific tile (format: x,y)
+    #[arg(long, value_name = "X,Y")]
+    local_map: Option<String>,
+
+    /// Size of local map in tiles (default: 64)
+    #[arg(long, default_value = "64")]
+    local_size: usize,
+
+    /// Run civilization simulation
+    #[arg(long)]
+    simulate: bool,
+
+    /// Number of simulation ticks (4 ticks = 1 year)
+    #[arg(long, default_value = "100")]
+    sim_ticks: u64,
+
+    /// Number of tribes to spawn
+    #[arg(long, default_value = "10")]
+    sim_tribes: usize,
+
+    /// Initial population per tribe
+    #[arg(long, default_value = "100")]
+    sim_population: u32,
+
+    /// Separate seed for simulation (uses world seed if not specified)
+    #[arg(long)]
+    sim_seed: Option<u64>,
 }
 
 fn main() {
@@ -318,7 +396,9 @@ fn main() {
 
         let mut lore_params = lore::LoreParams::default();
         lore_params.num_wanderers = args.lore_wanderers;
-        lore_params.include_llm_prompts = args.lore_llm_prompts;
+        lore_params.max_steps_per_wanderer = args.lore_steps;
+        // Enable LLM prompts if using LLM or explicitly requested
+        lore_params.include_llm_prompts = args.lore_llm_prompts || args.llm;
 
         // Create WorldData for lore generation
         let map_scale = scale::MapScale::default();
@@ -353,11 +433,107 @@ fn main() {
             eprintln!("Failed to export lore JSON: {}", e);
         }
 
-        // Export narrative text
+        // Export procedural narrative text
         let narrative_path = format!("{}_narrative.txt", args.lore_output);
-        println!("Exporting narrative to {}...", narrative_path);
+        println!("Exporting procedural narrative to {}...", narrative_path);
         if let Err(e) = lore::export_narrative(&lore_result, &narrative_path) {
             eprintln!("Failed to export narrative: {}", e);
+        }
+
+        // Generate creation poem using LLM if requested
+        if args.llm {
+            println!("\nGenerating creation poem using LLM at {}...", args.llm_url);
+
+            let llm_config = lore::LlmConfig {
+                base_url: args.llm_url.clone(),
+                model: args.llm_model.clone(),
+                max_tokens: args.llm_max_tokens,
+                temperature: args.llm_temperature,
+                timeout_secs: 120,
+                parallel_requests: args.llm_parallel,
+            };
+
+            // Check LLM server availability
+            let llm_client = lore::LlmClient::new(llm_config.clone());
+            if llm_client.health_check() {
+                // Generate a single unified creation poem
+                match lore::generate_creation_poem(&lore_result, &llm_config) {
+                    Ok(poem) => {
+                        // Print the poem to console
+                        println!("\n═══════════════════════════════════════");
+                        println!("         THE CREATION OF THE WORLD");
+                        println!("═══════════════════════════════════════\n");
+                        println!("{}", poem);
+                        println!("\n═══════════════════════════════════════\n");
+
+                        // Save to file
+                        let poem_path = format!("{}_creation.txt", args.lore_output);
+                        if let Err(e) = lore::export_creation_poem(&poem, &poem_path) {
+                            eprintln!("Failed to save poem: {}", e);
+                        } else {
+                            println!("Saved creation poem to {}", poem_path);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to generate creation poem: {}", e);
+                    }
+                }
+            } else {
+                eprintln!("LLM server at {} is not available.", args.llm_url);
+            }
+        }
+
+        // Generate images if requested
+        if args.images {
+            println!("\nGenerating images using server at {}...", args.image_url);
+
+            let image_config = lore::ImageGenConfig {
+                base_url: args.image_url.clone(),
+                timeout_secs: 300,
+                width: args.image_width,
+                height: args.image_height,
+                output_dir: ".".to_string(),
+            };
+
+            let image_gen = lore::StoryImageGenerator::new(image_config);
+
+            if image_gen.is_available() {
+                // Generate landmark images
+                println!("Generating landmark images...");
+                let landmark_images = image_gen.generate_landmark_images(
+                    &lore_result.landmarks,
+                    args.max_images,
+                    Some(&|current, total, msg| {
+                        println!("  [{}/{}] {}", current + 1, total, msg);
+                    }),
+                );
+
+                if !landmark_images.is_empty() {
+                    println!("Generated {} landmark images:", landmark_images.len());
+                    for (name, path) in &landmark_images {
+                        println!("  - {}: {}", name, path);
+                    }
+                }
+
+                // Generate story seed images
+                println!("Generating story images...");
+                let story_images = image_gen.generate_story_images(
+                    &lore_result.story_seeds,
+                    args.max_images,
+                    Some(&|current, total, msg| {
+                        println!("  [{}/{}] {}", current + 1, total, msg);
+                    }),
+                );
+
+                if !story_images.is_empty() {
+                    println!("Generated {} story images:", story_images.len());
+                    for (name, path) in &story_images {
+                        println!("  - {}: {}", name, path);
+                    }
+                }
+            } else {
+                eprintln!("Image generation server at {} is not available. Skipping image generation.", args.image_url);
+            }
         }
 
         println!("Lore export complete!");
@@ -390,6 +566,121 @@ fn main() {
         ascii::export_ascii_png(&extended_biomes, png_path)
             .expect("Failed to export ASCII PNG");
         println!("ASCII PNG export complete!");
+    }
+
+    // Run civilization simulation if requested
+    if args.simulate {
+        println!("\nRunning civilization simulation...");
+
+        let sim_seed = args.sim_seed.unwrap_or(seed);
+        let mut sim_rng = ChaCha8Rng::seed_from_u64(sim_seed);
+
+        // Configure simulation parameters
+        let mut sim_params = simulation::SimulationParams::default();
+        sim_params.initial_tribe_count = args.sim_tribes;
+        sim_params.initial_tribe_population = args.sim_population;
+
+        // Create WorldData for simulation
+        let map_scale = scale::MapScale::default();
+        let world_data = world::WorldData::new(
+            seed,
+            map_scale,
+            heightmap.clone(),
+            temperature.clone(),
+            moisture.clone(),
+            extended_biomes.clone(),
+            stress_map.clone(),
+            plate_map.clone(),
+            plates.clone(),
+            Some(hardness_map.clone()),
+            water_body_map.clone(),
+            water_bodies_list.clone(),
+        );
+
+        // Run simulation
+        let sim_state = simulation::run_simulation(&world_data, &sim_params, args.sim_ticks, &mut sim_rng);
+
+        // Print summary
+        println!("\n{}", simulation::generate_summary(&sim_state));
+
+        // Export simulation results
+        let sim_json_path = format!("{}_simulation.json", args.output);
+        println!("Exporting simulation results to {}...", sim_json_path);
+        if let Err(e) = simulation::export_simulation(&sim_state, &sim_json_path) {
+            eprintln!("Failed to export simulation: {}", e);
+        } else {
+            println!("Simulation export complete!");
+        }
+    }
+
+    // Local map generation if requested
+    if let Some(coords) = &args.local_map {
+        // Parse "x,y" format
+        let parts: Vec<&str> = coords.split(',').collect();
+        if parts.len() != 2 {
+            eprintln!("Invalid local-map format. Use: --local-map x,y (e.g., --local-map 256,128)");
+            return;
+        }
+
+        let lx: usize = match parts[0].trim().parse() {
+            Ok(v) => v,
+            Err(_) => {
+                eprintln!("Invalid x coordinate: {}", parts[0]);
+                return;
+            }
+        };
+        let ly: usize = match parts[1].trim().parse() {
+            Ok(v) => v,
+            Err(_) => {
+                eprintln!("Invalid y coordinate: {}", parts[1]);
+                return;
+            }
+        };
+
+        if lx >= args.width || ly >= args.height {
+            eprintln!("Coordinates ({}, {}) are outside map bounds ({}x{})",
+                lx, ly, args.width, args.height);
+            return;
+        }
+
+        println!("Generating local map for tile ({}, {})...", lx, ly);
+
+        // Create WorldData for local map generation
+        let map_scale = scale::MapScale::default();
+        let world_data = world::WorldData::new(
+            seed,
+            map_scale,
+            heightmap.clone(),
+            temperature.clone(),
+            moisture.clone(),
+            extended_biomes.clone(),
+            stress_map.clone(),
+            plate_map.clone(),
+            plates.clone(),
+            Some(hardness_map.clone()),
+            water_body_map.clone(),
+            water_bodies_list.clone(),
+        );
+
+        let local_map = local::generate_local_map(&world_data, lx, ly, args.local_size);
+        let biome = world_data.biomes.get(lx, ly);
+
+        println!("Generated {}x{} local map for {} biome",
+            local_map.width, local_map.height, biome.display_name());
+
+        // Export local map
+        let local_path = format!("{}_local_{}_{}.png", args.output, lx, ly);
+        local::export_local_map(&local_map, &local_path)
+            .expect("Failed to export local map");
+        println!("Exported local map to {}", local_path);
+
+        // Export scaled version for better visibility
+        let local_scaled_path = format!("{}_local_{}_{}_scaled.png", args.output, lx, ly);
+        local::export_local_map_scaled(&local_map, &local_scaled_path, 8)
+            .expect("Failed to export scaled local map");
+        println!("Exported scaled local map to {}", local_scaled_path);
+
+        return;
     }
 
     // Launch explorer if requested

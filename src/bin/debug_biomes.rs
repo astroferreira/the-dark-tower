@@ -211,6 +211,27 @@ fn main() {
                 ExtendedBiome::SirenShallows => ('S', "SirenShallows"),
                 ExtendedBiome::FrozenAbyss => ('F', "FrozenAbyss"),
                 ExtendedBiome::ThermalVents => ('T', "ThermalVents"),
+
+                // Additional biomes
+                ExtendedBiome::Foothills => ('h', "Foothills"),
+                ExtendedBiome::Lagoon => ('L', "Lagoon"),
+
+                // Karst biomes
+                ExtendedBiome::KarstPlains => ('K', "KarstPlains"),
+                ExtendedBiome::TowerKarst => ('K', "TowerKarst"),
+                ExtendedBiome::Sinkhole => ('K', "Sinkhole"),
+                ExtendedBiome::Cenote => ('c', "Cenote"),
+                ExtendedBiome::CaveEntrance => ('>', "CaveEntrance"),
+                ExtendedBiome::CockpitKarst => ('<', "CockpitKarst"),
+
+                // Volcanic biomes
+                ExtendedBiome::Caldera => ('O', "Caldera"),
+                ExtendedBiome::ShieldVolcano => ('V', "ShieldVolcano"),
+                ExtendedBiome::VolcanicCone => ('^', "VolcanicCone"),
+                ExtendedBiome::LavaField => ('~', "LavaField"),
+                ExtendedBiome::FumaroleField => ('*', "FumaroleField"),
+                ExtendedBiome::VolcanicBeach => ('.', "VolcanicBeach"),
+                ExtendedBiome::HotSpot => ('!', "HotSpot"),
             };
 
             *biome_counts.entry(name).or_insert(0) += 1;

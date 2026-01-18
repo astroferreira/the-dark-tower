@@ -1,0 +1,301 @@
+//! Local terrain and feature types for detailed local maps.
+//!
+//! Defines the terrain types (ground tiles) and features (objects placed on terrain)
+//! that make up local maps.
+
+/// Terrain types for local map cells (~25 types)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum LocalTerrainType {
+    // Ground types
+    #[default]
+    Grass,
+    TallGrass,
+    Dirt,
+    Sand,
+    Gravel,
+    Stone,
+    Snow,
+    Ice,
+    Mud,
+
+    // Water types
+    ShallowWater,
+    DeepWater,
+    Stream,
+    Marsh,
+
+    // Special ground
+    ForestFloor,
+    JungleFloor,
+    VolcanicRock,
+    CrystalGround,
+    Ash,
+    Salt,
+    Lava,
+    AcidPool,
+    FrozenGround,
+    Coral,
+    Bone,
+    Obsidian,
+}
+
+impl LocalTerrainType {
+    /// Check if terrain is walkable by default
+    pub fn is_walkable(&self) -> bool {
+        match self {
+            LocalTerrainType::DeepWater => false,
+            LocalTerrainType::Lava => false,
+            LocalTerrainType::AcidPool => false,
+            _ => true,
+        }
+    }
+
+    /// Get base movement cost (1.0 = normal, higher = slower)
+    pub fn movement_cost(&self) -> f32 {
+        match self {
+            LocalTerrainType::Grass => 1.0,
+            LocalTerrainType::TallGrass => 1.3,
+            LocalTerrainType::Dirt => 1.0,
+            LocalTerrainType::Sand => 1.4,
+            LocalTerrainType::Gravel => 1.2,
+            LocalTerrainType::Stone => 1.0,
+            LocalTerrainType::Snow => 1.5,
+            LocalTerrainType::Ice => 1.2,
+            LocalTerrainType::Mud => 2.0,
+            LocalTerrainType::ShallowWater => 2.0,
+            LocalTerrainType::DeepWater => f32::INFINITY,
+            LocalTerrainType::Stream => 1.8,
+            LocalTerrainType::Marsh => 2.5,
+            LocalTerrainType::ForestFloor => 1.2,
+            LocalTerrainType::JungleFloor => 1.5,
+            LocalTerrainType::VolcanicRock => 1.3,
+            LocalTerrainType::CrystalGround => 1.2,
+            LocalTerrainType::Ash => 1.4,
+            LocalTerrainType::Salt => 1.1,
+            LocalTerrainType::Lava => f32::INFINITY,
+            LocalTerrainType::AcidPool => f32::INFINITY,
+            LocalTerrainType::FrozenGround => 1.3,
+            LocalTerrainType::Coral => 1.5,
+            LocalTerrainType::Bone => 1.2,
+            LocalTerrainType::Obsidian => 1.1,
+        }
+    }
+
+    /// Get RGB color for rendering
+    pub fn color(&self) -> (u8, u8, u8) {
+        match self {
+            LocalTerrainType::Grass => (90, 140, 60),
+            LocalTerrainType::TallGrass => (70, 120, 50),
+            LocalTerrainType::Dirt => (130, 100, 70),
+            LocalTerrainType::Sand => (210, 190, 140),
+            LocalTerrainType::Gravel => (140, 135, 125),
+            LocalTerrainType::Stone => (120, 115, 110),
+            LocalTerrainType::Snow => (245, 250, 255),
+            LocalTerrainType::Ice => (180, 210, 230),
+            LocalTerrainType::Mud => (80, 65, 45),
+            LocalTerrainType::ShallowWater => (80, 130, 180),
+            LocalTerrainType::DeepWater => (40, 80, 140),
+            LocalTerrainType::Stream => (70, 120, 170),
+            LocalTerrainType::Marsh => (70, 100, 60),
+            LocalTerrainType::ForestFloor => (60, 80, 40),
+            LocalTerrainType::JungleFloor => (40, 70, 35),
+            LocalTerrainType::VolcanicRock => (50, 40, 40),
+            LocalTerrainType::CrystalGround => (180, 200, 220),
+            LocalTerrainType::Ash => (80, 80, 85),
+            LocalTerrainType::Salt => (240, 235, 225),
+            LocalTerrainType::Lava => (255, 100, 20),
+            LocalTerrainType::AcidPool => (150, 180, 50),
+            LocalTerrainType::FrozenGround => (200, 210, 220),
+            LocalTerrainType::Coral => (255, 180, 160),
+            LocalTerrainType::Bone => (230, 225, 210),
+            LocalTerrainType::Obsidian => (30, 25, 35),
+        }
+    }
+
+    /// Get ASCII character for terminal display
+    pub fn ascii_char(&self) -> char {
+        match self {
+            LocalTerrainType::Grass => '.',
+            LocalTerrainType::TallGrass => ',',
+            LocalTerrainType::Dirt => '·',
+            LocalTerrainType::Sand => '∴',
+            LocalTerrainType::Gravel => '░',
+            LocalTerrainType::Stone => '▓',
+            LocalTerrainType::Snow => '❄',
+            LocalTerrainType::Ice => '═',
+            LocalTerrainType::Mud => '~',
+            LocalTerrainType::ShallowWater => '≈',
+            LocalTerrainType::DeepWater => '▒',
+            LocalTerrainType::Stream => '~',
+            LocalTerrainType::Marsh => '%',
+            LocalTerrainType::ForestFloor => '.',
+            LocalTerrainType::JungleFloor => '.',
+            LocalTerrainType::VolcanicRock => '▒',
+            LocalTerrainType::CrystalGround => '✧',
+            LocalTerrainType::Ash => '░',
+            LocalTerrainType::Salt => '░',
+            LocalTerrainType::Lava => '▓',
+            LocalTerrainType::AcidPool => '▒',
+            LocalTerrainType::FrozenGround => '░',
+            LocalTerrainType::Coral => '❀',
+            LocalTerrainType::Bone => '░',
+            LocalTerrainType::Obsidian => '▓',
+        }
+    }
+}
+
+/// Feature types that can be placed on terrain (~30 types)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LocalFeature {
+    // Trees
+    DeciduousTree,
+    ConiferTree,
+    PalmTree,
+    DeadTree,
+    JungleTree,
+    WillowTree,
+    BambooClump,
+
+    // Vegetation
+    Bush,
+    FlowerPatch,
+    Fern,
+    Cactus,
+    TallReeds,
+    MushroomPatch,
+    VineTangle,
+    GlowingMoss,
+    CrystalFlower,
+
+    // Rocks
+    Boulder,
+    RockPile,
+    CrystalCluster,
+    Stalagmite,
+    IceFormation,
+
+    // Water features
+    Pond,
+    Spring,
+    Geyser,
+
+    // Structures
+    StoneRuin,
+    Shrine,
+    CaveOpening,
+    AncientMonolith,
+    BoneRemains,
+    Campfire,
+}
+
+impl LocalFeature {
+    /// Check if feature blocks movement
+    pub fn blocks_movement(&self) -> bool {
+        match self {
+            LocalFeature::DeciduousTree => true,
+            LocalFeature::ConiferTree => true,
+            LocalFeature::PalmTree => true,
+            LocalFeature::DeadTree => true,
+            LocalFeature::JungleTree => true,
+            LocalFeature::WillowTree => true,
+            LocalFeature::BambooClump => true,
+            LocalFeature::Boulder => true,
+            LocalFeature::RockPile => true,
+            LocalFeature::CrystalCluster => true,
+            LocalFeature::Stalagmite => true,
+            LocalFeature::IceFormation => true,
+            LocalFeature::Pond => false, // Can walk through shallow pond
+            LocalFeature::StoneRuin => false, // Passable ruins
+            LocalFeature::AncientMonolith => true,
+            LocalFeature::CaveOpening => false,
+            _ => false,
+        }
+    }
+
+    /// Get additional movement cost from feature
+    pub fn movement_cost_modifier(&self) -> f32 {
+        match self {
+            LocalFeature::Bush => 0.5,
+            LocalFeature::FlowerPatch => 0.0,
+            LocalFeature::Fern => 0.2,
+            LocalFeature::TallReeds => 0.5,
+            LocalFeature::MushroomPatch => 0.2,
+            LocalFeature::VineTangle => 0.8,
+            LocalFeature::Pond => 1.0,
+            LocalFeature::StoneRuin => 0.3,
+            _ => 0.0,
+        }
+    }
+
+    /// Get RGB color for rendering
+    pub fn color(&self) -> (u8, u8, u8) {
+        match self {
+            LocalFeature::DeciduousTree => (35, 90, 35),
+            LocalFeature::ConiferTree => (25, 70, 40),
+            LocalFeature::PalmTree => (45, 110, 45),
+            LocalFeature::DeadTree => (80, 70, 60),
+            LocalFeature::JungleTree => (20, 80, 30),
+            LocalFeature::WillowTree => (50, 100, 50),
+            LocalFeature::BambooClump => (100, 140, 60),
+            LocalFeature::Bush => (50, 100, 40),
+            LocalFeature::FlowerPatch => (200, 120, 160),
+            LocalFeature::Fern => (60, 120, 50),
+            LocalFeature::Cactus => (80, 130, 70),
+            LocalFeature::TallReeds => (90, 120, 70),
+            LocalFeature::MushroomPatch => (160, 100, 140),
+            LocalFeature::VineTangle => (40, 90, 35),
+            LocalFeature::GlowingMoss => (80, 200, 150),
+            LocalFeature::CrystalFlower => (180, 200, 255),
+            LocalFeature::Boulder => (100, 95, 90),
+            LocalFeature::RockPile => (110, 105, 100),
+            LocalFeature::CrystalCluster => (160, 180, 220),
+            LocalFeature::Stalagmite => (90, 85, 80),
+            LocalFeature::IceFormation => (200, 220, 240),
+            LocalFeature::Pond => (60, 100, 150),
+            LocalFeature::Spring => (100, 150, 200),
+            LocalFeature::Geyser => (180, 190, 200),
+            LocalFeature::StoneRuin => (130, 125, 115),
+            LocalFeature::Shrine => (180, 170, 150),
+            LocalFeature::CaveOpening => (30, 25, 20),
+            LocalFeature::AncientMonolith => (70, 65, 75),
+            LocalFeature::BoneRemains => (220, 215, 200),
+            LocalFeature::Campfire => (200, 100, 50),
+        }
+    }
+
+    /// Get ASCII character for terminal display
+    pub fn ascii_char(&self) -> char {
+        match self {
+            LocalFeature::DeciduousTree => '♣',
+            LocalFeature::ConiferTree => '▲',
+            LocalFeature::PalmTree => '♠',
+            LocalFeature::DeadTree => '†',
+            LocalFeature::JungleTree => '♣',
+            LocalFeature::WillowTree => '♣',
+            LocalFeature::BambooClump => '|',
+            LocalFeature::Bush => '*',
+            LocalFeature::FlowerPatch => '❀',
+            LocalFeature::Fern => '∿',
+            LocalFeature::Cactus => '¥',
+            LocalFeature::TallReeds => '|',
+            LocalFeature::MushroomPatch => '♠',
+            LocalFeature::VineTangle => '~',
+            LocalFeature::GlowingMoss => '○',
+            LocalFeature::CrystalFlower => '✦',
+            LocalFeature::Boulder => '●',
+            LocalFeature::RockPile => '○',
+            LocalFeature::CrystalCluster => '◆',
+            LocalFeature::Stalagmite => '▲',
+            LocalFeature::IceFormation => '◇',
+            LocalFeature::Pond => '○',
+            LocalFeature::Spring => '◎',
+            LocalFeature::Geyser => '◉',
+            LocalFeature::StoneRuin => '□',
+            LocalFeature::Shrine => '⌂',
+            LocalFeature::CaveOpening => '◯',
+            LocalFeature::AncientMonolith => '▮',
+            LocalFeature::BoneRemains => '☠',
+            LocalFeature::Campfire => '♨',
+        }
+    }
+}
