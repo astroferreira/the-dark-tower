@@ -265,6 +265,8 @@ impl Explorer {
     /// Process a single simulation tick
     fn simulation_tick(&mut self) {
         if let Some(ref mut sim) = self.sim_state {
+            // Set focus point to current camera position for focused simulation
+            sim.set_focus(self.camera);
             sim.tick(&self.world, &self.sim_params, &mut self.sim_rng);
             self.sim_last_tick = Instant::now();
         }

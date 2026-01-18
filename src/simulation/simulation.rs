@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::world::WorldData;
 use crate::simulation::types::{
     TribeId, TileCoord, SimTick, RelationLevel, TribeEvent, TribeEventType, Treaty,
+    GlobalLocalCoord, LOCAL_MAP_SIZE,
 };
 use crate::simulation::params::SimulationParams;
 use crate::simulation::tribe::{Tribe, TribeCulture, Settlement};
@@ -26,6 +27,13 @@ use crate::simulation::roads::{RoadNetwork, RoadType};
 use crate::simulation::monsters::{MonsterManager, MonsterId, Monster};
 use crate::simulation::characters::CharacterManager;
 use crate::simulation::combat::CombatLogStore;
+
+/// Radius in local tiles for full simulation detail
+pub const FOCUS_RADIUS_FULL: u32 = 100;
+/// Radius in local tiles for medium simulation detail
+pub const FOCUS_RADIUS_MEDIUM: u32 = 300;
+/// How often to update sparse entities (every N ticks)
+pub const SPARSE_UPDATE_INTERVAL: u64 = 4;
 
 /// Main simulation state
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -58,6 +66,12 @@ pub struct SimulationState {
     /// Combat log store
     #[serde(skip)]
     pub combat_log: CombatLogStore,
+    /// Focus point for detailed simulation (camera position)
+    #[serde(skip)]
+    pub focus_point: Option<GlobalLocalCoord>,
+    /// World dimensions for distance calculations
+    #[serde(skip)]
+    pub world_width: usize,
 }
 
 /// Statistics tracked during simulation
@@ -95,7 +109,45 @@ impl SimulationState {
             monsters: MonsterManager::new(),
             character_manager: CharacterManager::new(),
             combat_log: CombatLogStore::new(),
+            focus_point: None,
+            world_width: 512, // Will be set properly in initialize
         }
+    }
+
+    /// Set the focus point for detailed simulation (usually camera position)
+    pub fn set_focus(&mut self, focus: GlobalLocalCoord) {
+        self.focus_point = Some(focus);
+    }
+
+    /// Check if a position is within full simulation range
+    pub fn is_in_focus(&self, pos: &GlobalLocalCoord) -> bool {
+        match self.focus_point {
+            Some(focus) => {
+                pos.distance_wrapped(&focus, self.world_width) <= FOCUS_RADIUS_FULL
+            }
+            None => true, // If no focus, everything is in focus
+        }
+    }
+
+    /// Check if a position is within medium simulation range
+    pub fn is_in_medium_range(&self, pos: &GlobalLocalCoord) -> bool {
+        match self.focus_point {
+            Some(focus) => {
+                pos.distance_wrapped(&focus, self.world_width) <= FOCUS_RADIUS_MEDIUM
+            }
+            None => true,
+        }
+    }
+
+    /// Check if a world tile is within focus range
+    pub fn is_tile_in_focus(&self, tile: &TileCoord) -> bool {
+        let pos = GlobalLocalCoord::from_world_tile(*tile);
+        self.is_in_medium_range(&pos)
+    }
+
+    /// Check if this tick should update sparse entities
+    pub fn should_update_sparse(&self) -> bool {
+        self.current_tick.0 % SPARSE_UPDATE_INTERVAL == 0
     }
 
     /// Initialize the simulation with tribes placed on the world
@@ -105,6 +157,9 @@ impl SimulationState {
         params: &SimulationParams,
         rng: &mut R,
     ) {
+        // Set world dimensions for focus calculations
+        self.world_width = world.width;
+
         // Find suitable spawn locations
         let spawn_locations = self.find_spawn_locations(world, params, rng);
 
@@ -482,11 +537,28 @@ impl SimulationState {
     }
 
     /// Process colonist movement for all tribes
+    /// Focused tribes get detailed simulation, distant tribes get sparse updates
     fn process_colonist_movement<R: Rng>(&mut self, world: &WorldData, rng: &mut R) {
         let current_tick = self.current_tick.0;
+        let focus_point = self.focus_point;
+        let world_width = self.world_width;
+        let should_update_sparse = self.should_update_sparse();
 
         for tribe in self.tribes.values_mut() {
             if !tribe.is_alive {
+                continue;
+            }
+
+            // Check if this tribe is in focus
+            let tribe_in_focus = match focus_point {
+                Some(focus) => {
+                    tribe.city_center.distance_wrapped(&focus, world_width) <= FOCUS_RADIUS_MEDIUM
+                }
+                None => true,
+            };
+
+            // Skip distant tribes on non-sparse ticks
+            if !tribe_in_focus && !should_update_sparse {
                 continue;
             }
 
@@ -496,6 +568,7 @@ impl SimulationState {
                 tribe.capital,
                 world,
                 current_tick,
+                tribe_in_focus,
                 rng,
             );
 
@@ -926,12 +999,15 @@ impl SimulationState {
         }
 
         // Process monster behavior (movement, state changes), considering reputation
+        // Pass focus information for sparse simulation
         self.monsters.process_behavior(
             &self.tribes,
             &self.territory_map,
             &self.reputation,
             world,
             current_tick,
+            self.focus_point,
+            self.world_width,
             rng,
         );
 

@@ -19,12 +19,14 @@ const WORK_DURATION_TICKS: u64 = 8;
 const START_WORK_CHANCE: f32 = 0.15;
 
 /// Process movement for all colonists in a tribe
+/// If `in_focus` is false, only processes state transitions (no local wandering)
 pub fn process_colonist_movement<R: Rng>(
     colonists: &mut HashMap<ColonistId, Colonist>,
     territory: &HashSet<TileCoord>,
     capital: TileCoord,
     world: &WorldData,
     current_tick: u64,
+    in_focus: bool,
     rng: &mut R,
 ) {
     let colonist_ids: Vec<ColonistId> = colonists.keys().copied().collect();
@@ -58,7 +60,13 @@ pub fn process_colonist_movement<R: Rng>(
                 }
             }
             ColonistActivityState::Working => {
-                process_working_state(colonists.get_mut(&id).unwrap(), current_tick, rng);
+                // Only do detailed local wandering if in focus
+                if in_focus {
+                    process_working_state(colonists.get_mut(&id).unwrap(), current_tick, rng);
+                } else {
+                    // Sparse: just check if work is done
+                    process_working_state_sparse(colonists.get_mut(&id).unwrap(), current_tick);
+                }
             }
             ColonistActivityState::Returning => {
                 if can_move {
@@ -81,9 +89,31 @@ pub fn process_colonist_movement<R: Rng>(
                 }
             }
             ColonistActivityState::Socializing => {
-                process_socializing_state(colonists.get_mut(&id).unwrap(), current_tick, rng);
+                if in_focus {
+                    process_socializing_state(colonists.get_mut(&id).unwrap(), current_tick, rng);
+                } else {
+                    process_socializing_state_sparse(colonists.get_mut(&id).unwrap(), current_tick);
+                }
             }
         }
+    }
+}
+
+/// Sparse version of working state - no local wandering
+fn process_working_state_sparse(colonist: &mut Colonist, current_tick: u64) {
+    let work_time = current_tick - colonist.last_move_tick;
+    if work_time >= WORK_DURATION_TICKS {
+        colonist.activity_state = ColonistActivityState::Returning;
+        colonist.destination = None;
+        colonist.last_move_tick = current_tick;
+    }
+}
+
+/// Sparse version of socializing state - no local wandering
+fn process_socializing_state_sparse(colonist: &mut Colonist, current_tick: u64) {
+    let social_time = current_tick - colonist.last_move_tick;
+    if social_time >= 4 {
+        colonist.activity_state = ColonistActivityState::Idle;
     }
 }
 

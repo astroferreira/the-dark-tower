@@ -10,6 +10,8 @@ use crate::simulation::interaction::ReputationState;
 use crate::world::WorldData;
 
 /// Process behavior for all monsters
+/// focus_point: Optional camera position for detailed vs sparse simulation
+/// world_width: World width for distance calculations
 pub fn process_monster_behavior<R: Rng>(
     monsters: &mut HashMap<MonsterId, Monster>,
     tribes: &HashMap<TribeId, Tribe>,
@@ -17,8 +19,14 @@ pub fn process_monster_behavior<R: Rng>(
     reputation: &ReputationState,
     world: &WorldData,
     current_tick: u64,
+    focus_point: Option<GlobalLocalCoord>,
+    world_width: usize,
     rng: &mut R,
 ) {
+    use crate::simulation::simulation::{FOCUS_RADIUS_MEDIUM, SPARSE_UPDATE_INTERVAL};
+
+    let should_update_sparse = current_tick % SPARSE_UPDATE_INTERVAL == 0;
+
     // Collect monster IDs to process (avoid borrow issues)
     let monster_ids: Vec<MonsterId> = monsters.keys().copied().collect();
 
@@ -29,12 +37,25 @@ pub fn process_monster_behavior<R: Rng>(
                 continue;
             }
 
+            // Check if monster is in focus
+            let in_focus = match focus_point {
+                Some(focus) => {
+                    monster.local_position.distance_wrapped(&focus, world_width) <= FOCUS_RADIUS_MEDIUM
+                }
+                None => true,
+            };
+
+            // Skip distant monsters on non-sparse ticks
+            if !in_focus && !should_update_sparse {
+                continue;
+            }
+
             // Heal slowly when idle
             if monster.state == MonsterState::Idle && monster.health < monster.max_health {
                 monster.heal(1.0);
             }
 
-            // Process state machine
+            // Process state machine (detailed movement only if in focus)
             let new_state = process_monster_state(
                 monster,
                 tribes,
@@ -42,6 +63,7 @@ pub fn process_monster_behavior<R: Rng>(
                 reputation,
                 world,
                 current_tick,
+                in_focus,
                 rng,
             );
             monster.state = new_state;
@@ -58,6 +80,7 @@ fn process_monster_state<R: Rng>(
     reputation: &ReputationState,
     world: &WorldData,
     _current_tick: u64,
+    in_focus: bool,
     rng: &mut R,
 ) -> MonsterState {
     let base_aggression = monster.species.stats().aggression;
@@ -88,8 +111,10 @@ fn process_monster_state<R: Rng>(
         }
 
         MonsterState::Roaming => {
-            // Move within territory
-            move_randomly(monster, world, rng);
+            // Only do detailed movement if in focus
+            if in_focus {
+                move_randomly(monster, world, rng);
+            }
 
             // Check if should flee
             if monster.should_flee() {
@@ -119,8 +144,10 @@ fn process_monster_state<R: Rng>(
 
             // Look for target
             if let Some(target) = find_nearby_target(monster, tribes, territory_map, reputation, world, rng) {
-                // Move toward target
-                move_toward_target(monster, target, tribes, world, rng);
+                // Only do detailed movement if in focus
+                if in_focus {
+                    move_toward_target(monster, target, tribes, world, rng);
+                }
 
                 // Check if in attack range (adjacent)
                 let target_coord = get_target_coord(target, tribes);
@@ -157,8 +184,10 @@ fn process_monster_state<R: Rng>(
         }
 
         MonsterState::Fleeing => {
-            // Move away from threats
-            flee_from_danger(monster, tribes, territory_map, world, rng);
+            // Only do detailed movement if in focus
+            if in_focus {
+                flee_from_danger(monster, tribes, territory_map, world, rng);
+            }
 
             // Check if recovered enough to stop fleeing
             if monster.health > monster.max_health * 0.5 {

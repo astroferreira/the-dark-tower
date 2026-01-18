@@ -68,6 +68,8 @@ impl MonsterManager {
     }
 
     /// Process behavior for all monsters
+    /// focus_point: Optional camera position for detailed vs sparse simulation
+    /// world_width: World width for distance calculations
     pub fn process_behavior<R: Rng>(
         &mut self,
         tribes: &HashMap<TribeId, Tribe>,
@@ -75,6 +77,8 @@ impl MonsterManager {
         reputation: &ReputationState,
         world: &WorldData,
         current_tick: u64,
+        focus_point: Option<crate::simulation::types::GlobalLocalCoord>,
+        world_width: usize,
         rng: &mut R,
     ) {
         behavior::process_monster_behavior(
@@ -84,6 +88,8 @@ impl MonsterManager {
             reputation,
             world,
             current_tick,
+            focus_point,
+            world_width,
             rng,
         );
 
