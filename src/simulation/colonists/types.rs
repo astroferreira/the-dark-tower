@@ -299,6 +299,14 @@ impl Colonist {
     ) -> Self {
         let life_stage = LifeStage::from_age(age);
 
+        // Spread colonists within a radius of the tile center
+        let base_pos = GlobalLocalCoord::from_world_tile(location);
+        let scatter_radius = 15i32;
+        let local_position = GlobalLocalCoord::new(
+            (base_pos.x as i32 + rng.gen_range(-scatter_radius..=scatter_radius)).max(0) as u32,
+            (base_pos.y as i32 + rng.gen_range(-scatter_radius..=scatter_radius)).max(0) as u32,
+        );
+
         Colonist {
             id,
             name,
@@ -318,7 +326,7 @@ impl Colonist {
             children: Vec::new(),
             spouse: None,
             location,
-            local_position: GlobalLocalCoord::from_world_tile(location),
+            local_position,
             activity_state: ColonistActivityState::Idle,
             destination: None,
             local_destination: None,
@@ -339,6 +347,14 @@ impl Colonist {
         let gender = Gender::random(rng);
         let attributes = Attributes::inherit(&parent_a.attributes, &parent_b.attributes, rng);
 
+        // Place child near parents
+        let base_pos = GlobalLocalCoord::from_world_tile(location);
+        let scatter_radius = 5i32;
+        let local_position = GlobalLocalCoord::new(
+            (base_pos.x as i32 + rng.gen_range(-scatter_radius..=scatter_radius)).max(0) as u32,
+            (base_pos.y as i32 + rng.gen_range(-scatter_radius..=scatter_radius)).max(0) as u32,
+        );
+
         Colonist {
             id,
             name,
@@ -358,7 +374,7 @@ impl Colonist {
             children: Vec::new(),
             spouse: None,
             location,
-            local_position: GlobalLocalCoord::from_world_tile(location),
+            local_position,
             activity_state: ColonistActivityState::Idle,
             destination: None,
             local_destination: None,
@@ -482,13 +498,40 @@ impl Colonist {
 
     /// Get the RGB color for map display
     pub fn color(&self) -> (u8, u8, u8) {
-        match self.role {
-            ColonistRole::Leader => (255, 215, 0),      // Gold
-            ColonistRole::Champion => (220, 20, 60),    // Crimson
-            ColonistRole::Priest => (148, 0, 211),      // Purple
-            ColonistRole::CouncilMember => (100, 149, 237), // Cornflower blue
-            ColonistRole::Specialist => (255, 165, 0),  // Orange
-            ColonistRole::Citizen => (200, 200, 200),   // Light gray
+        // First check activity state for visual feedback
+        match self.activity_state {
+            ColonistActivityState::Working => (100, 255, 100),  // Bright green when working
+            ColonistActivityState::Traveling => (255, 255, 100), // Yellow when traveling
+            ColonistActivityState::Fleeing => (255, 100, 100),   // Red when fleeing
+            ColonistActivityState::Patrolling => (100, 200, 255), // Light blue when patrolling
+            ColonistActivityState::Scouting => (200, 150, 255),  // Purple when scouting
+            ColonistActivityState::Returning => (255, 200, 100), // Orange when returning
+            ColonistActivityState::Socializing => (255, 200, 200), // Pink when socializing
+            ColonistActivityState::Idle => {
+                // Default to role-based color when idle
+                match self.role {
+                    ColonistRole::Leader => (255, 215, 0),      // Gold
+                    ColonistRole::Champion => (220, 20, 60),    // Crimson
+                    ColonistRole::Priest => (148, 0, 211),      // Purple
+                    ColonistRole::CouncilMember => (100, 149, 237), // Cornflower blue
+                    ColonistRole::Specialist => (255, 165, 0),  // Orange
+                    ColonistRole::Citizen => (200, 200, 200),   // Light gray
+                }
+            }
+        }
+    }
+
+    /// Get a description of the current activity
+    pub fn activity_description(&self) -> &'static str {
+        match self.activity_state {
+            ColonistActivityState::Idle => "Idle",
+            ColonistActivityState::Working => "Working",
+            ColonistActivityState::Traveling => "Traveling",
+            ColonistActivityState::Returning => "Returning home",
+            ColonistActivityState::Patrolling => "Patrolling",
+            ColonistActivityState::Scouting => "Scouting",
+            ColonistActivityState::Fleeing => "Fleeing!",
+            ColonistActivityState::Socializing => "Socializing",
         }
     }
 }

@@ -36,11 +36,20 @@ impl Monster {
         current_tick: u64,
     ) -> Self {
         let stats = species.stats();
+        // Scatter monster within the tile using a deterministic hash
+        let base_pos = GlobalLocalCoord::from_world_tile(location);
+        let scatter_x = ((id.0 as i32 * 17) % 40) - 20;
+        let scatter_y = ((id.0 as i32 * 31) % 40) - 20;
+        let local_position = GlobalLocalCoord::new(
+            (base_pos.x as i32 + scatter_x).max(0) as u32,
+            (base_pos.y as i32 + scatter_y).max(0) as u32,
+        );
+
         Monster {
             id,
             species,
             location,
-            local_position: GlobalLocalCoord::from_world_tile(location),
+            local_position,
             health: stats.health,
             max_health: stats.health,
             strength: stats.strength,

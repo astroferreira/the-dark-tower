@@ -24,4 +24,4 @@ pub use lifecycle::{
     NotableColonists, process_notable_lifecycle, process_notable_births,
     promote_to_notable, target_notable_count, LifecycleResult,
 };
-pub use movement::{process_colonist_movement, trigger_flee};
+pub use movement::{process_colonist_movement, trigger_flee, wander_locally};

@@ -58,7 +58,7 @@ pub fn process_colonist_movement<R: Rng>(
                 }
             }
             ColonistActivityState::Working => {
-                process_working_state(colonists.get_mut(&id).unwrap(), current_tick);
+                process_working_state(colonists.get_mut(&id).unwrap(), current_tick, rng);
             }
             ColonistActivityState::Returning => {
                 if can_move {
@@ -81,7 +81,7 @@ pub fn process_colonist_movement<R: Rng>(
                 }
             }
             ColonistActivityState::Socializing => {
-                process_socializing_state(colonists.get_mut(&id).unwrap(), current_tick);
+                process_socializing_state(colonists.get_mut(&id).unwrap(), current_tick, rng);
             }
         }
     }
@@ -158,12 +158,15 @@ fn process_traveling_state<R: Rng>(
 }
 
 /// Handle working state - work for a while then return
-fn process_working_state(colonist: &mut Colonist, current_tick: u64) {
+fn process_working_state<R: Rng>(colonist: &mut Colonist, current_tick: u64, rng: &mut R) {
     let work_time = current_tick - colonist.last_move_tick;
     if work_time >= WORK_DURATION_TICKS {
         colonist.activity_state = ColonistActivityState::Returning;
         colonist.destination = None;
         colonist.last_move_tick = current_tick;
+    } else {
+        // Wander locally while working (simulates doing work)
+        wander_locally(colonist, rng);
     }
 }
 
@@ -256,10 +259,13 @@ fn process_fleeing_state<R: Rng>(
 }
 
 /// Handle socializing state - brief interaction then back to idle
-fn process_socializing_state(colonist: &mut Colonist, current_tick: u64) {
+fn process_socializing_state<R: Rng>(colonist: &mut Colonist, current_tick: u64, rng: &mut R) {
     let social_time = current_tick - colonist.last_move_tick;
     if social_time >= 4 {
         colonist.activity_state = ColonistActivityState::Idle;
+    } else {
+        // Wander locally while socializing
+        wander_locally(colonist, rng);
     }
 }
 
@@ -297,13 +303,48 @@ fn move_toward(colonist: &mut Colonist, target: TileCoord, world: &WorldData, cu
         let old_location = colonist.location;
         colonist.location = new_coord;
 
-        // Sync local_position when world tile changes
-        if old_location != new_coord {
-            colonist.local_position = GlobalLocalCoord::from_world_tile(new_coord);
-        }
+        // Update local_position - move within local space
+        // Scale world movement to local movement (each world tile = 64 local tiles)
+        use crate::simulation::types::LOCAL_MAP_SIZE;
+        let local_dx = dx * LOCAL_MAP_SIZE as i32;
+        let local_dy = dy * LOCAL_MAP_SIZE as i32;
+        let total_local_width = width * LOCAL_MAP_SIZE as i32;
+        let total_local_height = height * LOCAL_MAP_SIZE as i32;
+
+        colonist.local_position = GlobalLocalCoord::new(
+            ((colonist.local_position.x as i32 + local_dx).rem_euclid(total_local_width)) as u32,
+            (colonist.local_position.y as i32 + local_dy).clamp(0, total_local_height - 1) as u32,
+        );
     }
 
     colonist.last_move_tick = current_tick;
+}
+
+/// Make colonist wander within their local tile (for idle/working animation)
+pub fn wander_locally<R: Rng>(colonist: &mut Colonist, rng: &mut R) {
+    use crate::simulation::types::LOCAL_MAP_SIZE;
+
+    // Small random movement within 2 local tiles
+    let dx = rng.gen_range(-2i32..=2);
+    let dy = rng.gen_range(-2i32..=2);
+
+    // Get the center of the current world tile
+    let tile_center = GlobalLocalCoord::from_world_tile(colonist.location);
+
+    // Constrain to stay within the world tile (±30 tiles from center)
+    let max_offset = 30i32;
+    let new_x = colonist.local_position.x as i32 + dx;
+    let new_y = colonist.local_position.y as i32 + dy;
+
+    let offset_from_center_x = new_x - tile_center.x as i32;
+    let offset_from_center_y = new_y - tile_center.y as i32;
+
+    if offset_from_center_x.abs() <= max_offset && offset_from_center_y.abs() <= max_offset {
+        colonist.local_position = GlobalLocalCoord::new(
+            new_x.max(0) as u32,
+            new_y.max(0) as u32,
+        );
+    }
 }
 
 /// Find a work location based on colonist's job

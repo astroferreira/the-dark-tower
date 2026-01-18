@@ -256,6 +256,9 @@ impl Explorer {
             self.sim_mode = true;
             self.sim_speed = SimSpeed::Paused;
             self.sim_last_tick = Instant::now();
+
+            // Auto-jump to first tribe so user can see colonists immediately
+            self.jump_to_tribe();
         }
     }
 
@@ -291,6 +294,45 @@ impl Explorer {
     fn update_selected_tribe(&mut self) {
         if self.sim_mode {
             self.selected_tribe = self.tribe_at_coord(self.cursor_x, self.cursor_y);
+        }
+    }
+
+    /// Jump to the nearest tribe (cycles through tribes on repeated presses)
+    fn jump_to_tribe(&mut self) {
+        if let Some(ref sim) = self.sim_state {
+            // Get list of living tribes
+            let mut tribes: Vec<_> = sim.tribes.values()
+                .filter(|t| t.is_alive)
+                .collect();
+
+            if tribes.is_empty() {
+                return;
+            }
+
+            // Sort by distance from current position for consistent ordering
+            let current_tile = self.cursor.world_tile();
+            tribes.sort_by_key(|t| t.capital.distance_wrapped(&current_tile, self.world.width));
+
+            // Find next tribe (skip the one we're already at)
+            let target_tribe = if tribes.len() > 1 {
+                // If we're at the nearest tribe, go to the next one
+                let nearest = tribes[0];
+                if nearest.capital.distance_wrapped(&current_tile, self.world.width) < 3 {
+                    tribes[1]
+                } else {
+                    nearest
+                }
+            } else {
+                tribes[0]
+            };
+
+            // Jump to tribe's city center
+            self.cursor = target_tribe.city_center;
+            self.camera = self.cursor;
+
+            // Also update world-level cursor for consistency
+            self.cursor_x = target_tribe.capital.x;
+            self.cursor_y = target_tribe.capital.y;
         }
     }
 
@@ -593,6 +635,10 @@ impl Explorer {
                 let center_y = total_local_height / 2;
                 self.cursor = GlobalLocalCoord::new(center_x, center_y);
                 self.camera = self.cursor;
+            }
+            // Jump to tribe location
+            KeyCode::Char('g') | KeyCode::Char('G') if self.sim_mode => {
+                self.jump_to_tribe();
             }
 
             _ => {}
@@ -1181,7 +1227,45 @@ impl Explorer {
         let cursor_biome = self.world.biomes.get(cursor_world_tile.x, cursor_world_tile.y);
         let tile_info = self.world.get_tile_info(cursor_world_tile.x, cursor_world_tile.y);
 
-        let info_text = vec![
+        // Count nearby entities if simulation is active
+        let (nearby_colonists, nearby_monsters, owner_tribe) = if let Some(ref sim) = self.sim_state {
+            let view_radius = (map_width.max(map_height) / 2) as u32;
+            let mut colonist_count = 0;
+            let mut monster_count = 0;
+
+            // Count colonists in view
+            for tribe in sim.tribes.values() {
+                for colonist in tribe.notable_colonists.colonists.values() {
+                    if colonist.is_alive {
+                        let dist = colonist.local_position.distance(&self.camera);
+                        if dist < view_radius {
+                            colonist_count += 1;
+                        }
+                    }
+                }
+            }
+
+            // Count monsters in view
+            for monster in sim.monsters.monsters.values() {
+                if !monster.is_dead() {
+                    let dist = monster.local_position.distance(&self.camera);
+                    if dist < view_radius {
+                        monster_count += 1;
+                    }
+                }
+            }
+
+            // Check who owns this tile
+            let owner = sim.territory_map.get(&cursor_world_tile).and_then(|tid| {
+                sim.tribes.get(tid).map(|t| t.name.clone())
+            });
+
+            (colonist_count, monster_count, owner)
+        } else {
+            (0, 0, None)
+        };
+
+        let mut info_lines = vec![
             Line::from(vec![
                 Span::raw("Position: "),
                 Span::styled(format!("Global ({}, {})", self.cursor.x, self.cursor.y), Style::default().fg(Color::White)),
@@ -1198,11 +1282,27 @@ impl Explorer {
                 Span::raw("  Temp: "),
                 Span::styled(tile_info.temperature_str(), Style::default().fg(Color::Red)),
             ]),
-            Line::from(vec![
+        ];
+
+        if self.sim_mode {
+            let owner_str = owner_tribe.unwrap_or_else(|| "Unclaimed".to_string());
+            info_lines.push(Line::from(vec![
+                Span::raw("Territory: "),
+                Span::styled(owner_str, Style::default().fg(Color::Cyan)),
+                Span::raw("  Visible: "),
+                Span::styled(format!("{} colonists", nearby_colonists), Style::default().fg(Color::Green)),
+                Span::raw(", "),
+                Span::styled(format!("{} monsters", nearby_monsters), Style::default().fg(Color::Red)),
+                Span::raw("  [G] Go to tribe"),
+            ]));
+        } else {
+            info_lines.push(Line::from(vec![
                 Span::raw("Cache: "),
                 Span::styled(format!("{} tiles", self.local_cache.stats().cached_count), Style::default().fg(Color::Magenta)),
-            ]),
-        ];
+            ]));
+        }
+
+        let info_text = info_lines;
 
         let info_panel = Paragraph::new(info_text)
             .block(Block::default().borders(Borders::ALL).title(" Local Info "));
