@@ -12,6 +12,8 @@ pub mod mood;
 pub mod pool;
 pub mod lifecycle;
 pub mod movement;
+pub mod routines;
+pub mod relationships;
 
 pub use types::{
     Colonist, ColonistId, ColonistRole, ColonistActivityState, LifeStage, Gender,
@@ -25,3 +27,10 @@ pub use lifecycle::{
     promote_to_notable, target_notable_count, LifecycleResult,
 };
 pub use movement::{process_colonist_movement, trigger_flee, wander_locally};
+pub use routines::{
+    TimeOfDay, DetailedActivity, RoutineState, determine_activity, process_colonist_routines,
+};
+pub use relationships::{
+    RelationshipType, Relationship, RelationshipMemory, MemoryEvent,
+    RelationshipManager, generate_social_interaction, can_be_romantic, try_romance,
+};

@@ -186,6 +186,36 @@ pub enum LocalFeature {
     AncientMonolith,
     BoneRemains,
     Campfire,
+
+    // Animal-related features
+    AnimalDen,
+    BirdNest,
+    Beehive,
+    AnimalTrail,
+    WateringHole,
+    BurrowEntrance,
+
+    // Civilization features
+    Signpost,
+    WellStructure,
+    FenceSection,
+    Scarecrow,
+    HayBale,
+    Firepit,
+    StorageShed,
+    WatchTower,
+    Bridge,
+    Dock,
+
+    // Natural details
+    FallenLog,
+    MossyRock,
+    Termitemound,
+    AntHill,
+    Wildflowers,
+    BerryBush,
+    HerbPatch,
+    Driftwood,
 }
 
 impl LocalFeature {
@@ -208,6 +238,30 @@ impl LocalFeature {
             LocalFeature::StoneRuin => false, // Passable ruins
             LocalFeature::AncientMonolith => true,
             LocalFeature::CaveOpening => false,
+            LocalFeature::AnimalDen => false,
+            LocalFeature::BirdNest => false,
+            LocalFeature::Beehive => false,
+            LocalFeature::AnimalTrail => false,
+            LocalFeature::WateringHole => false,
+            LocalFeature::BurrowEntrance => false,
+            LocalFeature::Signpost => false,
+            LocalFeature::WellStructure => true,
+            LocalFeature::FenceSection => true,
+            LocalFeature::Scarecrow => false,
+            LocalFeature::HayBale => false,
+            LocalFeature::Firepit => false,
+            LocalFeature::StorageShed => true,
+            LocalFeature::WatchTower => true,
+            LocalFeature::Bridge => false,
+            LocalFeature::Dock => false,
+            LocalFeature::FallenLog => false,
+            LocalFeature::MossyRock => false,
+            LocalFeature::Termitemound => false,
+            LocalFeature::AntHill => false,
+            LocalFeature::Wildflowers => false,
+            LocalFeature::BerryBush => false,
+            LocalFeature::HerbPatch => false,
+            LocalFeature::Driftwood => false,
             _ => false,
         }
     }
@@ -223,6 +277,15 @@ impl LocalFeature {
             LocalFeature::VineTangle => 0.8,
             LocalFeature::Pond => 1.0,
             LocalFeature::StoneRuin => 0.3,
+            LocalFeature::AnimalTrail => -0.2, // Easier to walk on
+            LocalFeature::WateringHole => 0.5,
+            LocalFeature::FallenLog => 0.4,
+            LocalFeature::HayBale => 0.3,
+            LocalFeature::Bridge => -0.5, // Easier to cross
+            LocalFeature::BerryBush => 0.3,
+            LocalFeature::HerbPatch => 0.1,
+            LocalFeature::Wildflowers => 0.0,
+            LocalFeature::Driftwood => 0.3,
             _ => 0.0,
         }
     }
@@ -260,6 +323,33 @@ impl LocalFeature {
             LocalFeature::AncientMonolith => (70, 65, 75),
             LocalFeature::BoneRemains => (220, 215, 200),
             LocalFeature::Campfire => (200, 100, 50),
+            // Animal features
+            LocalFeature::AnimalDen => (100, 80, 60),
+            LocalFeature::BirdNest => (140, 120, 90),
+            LocalFeature::Beehive => (200, 180, 100),
+            LocalFeature::AnimalTrail => (140, 120, 80),
+            LocalFeature::WateringHole => (70, 110, 140),
+            LocalFeature::BurrowEntrance => (90, 70, 50),
+            // Civilization features
+            LocalFeature::Signpost => (120, 90, 60),
+            LocalFeature::WellStructure => (100, 100, 105),
+            LocalFeature::FenceSection => (130, 100, 70),
+            LocalFeature::Scarecrow => (150, 120, 80),
+            LocalFeature::HayBale => (200, 180, 100),
+            LocalFeature::Firepit => (80, 70, 60),
+            LocalFeature::StorageShed => (110, 90, 70),
+            LocalFeature::WatchTower => (100, 90, 80),
+            LocalFeature::Bridge => (120, 100, 80),
+            LocalFeature::Dock => (110, 90, 70),
+            // Natural details
+            LocalFeature::FallenLog => (80, 60, 45),
+            LocalFeature::MossyRock => (80, 100, 70),
+            LocalFeature::Termitemound => (130, 110, 80),
+            LocalFeature::AntHill => (110, 90, 60),
+            LocalFeature::Wildflowers => (200, 150, 180),
+            LocalFeature::BerryBush => (70, 100, 50),
+            LocalFeature::HerbPatch => (80, 130, 70),
+            LocalFeature::Driftwood => (140, 120, 100),
         }
     }
 
@@ -296,6 +386,33 @@ impl LocalFeature {
             LocalFeature::AncientMonolith => '▮',
             LocalFeature::BoneRemains => '☠',
             LocalFeature::Campfire => '♨',
+            // Animal features
+            LocalFeature::AnimalDen => '◎',
+            LocalFeature::BirdNest => '○',
+            LocalFeature::Beehive => '◇',
+            LocalFeature::AnimalTrail => '·',
+            LocalFeature::WateringHole => '○',
+            LocalFeature::BurrowEntrance => '•',
+            // Civilization features
+            LocalFeature::Signpost => '†',
+            LocalFeature::WellStructure => '◎',
+            LocalFeature::FenceSection => '═',
+            LocalFeature::Scarecrow => '†',
+            LocalFeature::HayBale => '○',
+            LocalFeature::Firepit => '◉',
+            LocalFeature::StorageShed => '□',
+            LocalFeature::WatchTower => '▲',
+            LocalFeature::Bridge => '═',
+            LocalFeature::Dock => '▬',
+            // Natural details
+            LocalFeature::FallenLog => '=',
+            LocalFeature::MossyRock => '●',
+            LocalFeature::Termitemound => '▲',
+            LocalFeature::AntHill => '▴',
+            LocalFeature::Wildflowers => '❀',
+            LocalFeature::BerryBush => '✿',
+            LocalFeature::HerbPatch => '♣',
+            LocalFeature::Driftwood => '~',
         }
     }
 }

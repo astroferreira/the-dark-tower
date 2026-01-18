@@ -43,6 +43,7 @@ pub mod export;
 pub mod structures;
 pub mod roads;
 pub mod monsters;
+pub mod fauna;
 pub mod body;
 pub mod characters;
 pub mod combat;
@@ -62,6 +63,7 @@ pub use export::{export_simulation, generate_summary, export_combat_logs, genera
 pub use structures::{Structure, StructureId, StructureType, StructureManager};
 pub use roads::{RoadSegment, RoadType, RoadNetwork};
 pub use monsters::{Monster, MonsterId, MonsterSpecies, MonsterState, MonsterManager};
+pub use fauna::{Fauna, FaunaId, FaunaSpecies, FaunaState, FaunaActivity, FaunaManager};
 pub use body::{Body, BodyPart, BodyPartId, BodyPlan, DamageType, Wound, WoundType, CombatEffect};
 pub use characters::{Character, CharacterId, CharacterManager, Weapon, Armor};
 pub use combat::{CombatLogStore, CombatLogEntry, CombatEncounterLog, resolve_attack};

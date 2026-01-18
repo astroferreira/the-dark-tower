@@ -23,6 +23,7 @@ mod export;
 mod generation;
 mod terrain;
 mod types;
+pub mod entities;
 
 // Re-export main types
 pub use biome_features::{get_biome_features, BiomeFeatureConfig};
@@ -36,3 +37,6 @@ pub use cache::{LocalMapCache, CacheStats};
 pub use generation::{generate_local_map, generate_local_map_default};
 pub use terrain::{LocalFeature, LocalTerrainType};
 pub use types::{LocalMap, LocalTile, NeighborInfo, DEFAULT_LOCAL_MAP_SIZE};
+pub use entities::{
+    LocalEntity, LocalMapEntities, LocalPosition, gather_local_entities, entity_summary,
+};

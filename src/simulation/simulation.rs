@@ -25,6 +25,7 @@ use crate::simulation::territory::process_expansion_tick;
 use crate::simulation::structures::{StructureManager, StructureType};
 use crate::simulation::roads::{RoadNetwork, RoadType};
 use crate::simulation::monsters::{MonsterManager, MonsterId, Monster};
+use crate::simulation::fauna::{FaunaManager, FaunaId, Fauna};
 use crate::simulation::characters::CharacterManager;
 use crate::simulation::combat::CombatLogStore;
 
@@ -60,6 +61,8 @@ pub struct SimulationState {
     pub road_network: RoadNetwork,
     /// Monster manager
     pub monsters: MonsterManager,
+    /// Fauna manager
+    pub fauna: FaunaManager,
     /// Character manager for detailed combat
     #[serde(skip)]
     pub character_manager: CharacterManager,
@@ -90,6 +93,9 @@ pub struct SimulationStats {
     pub total_monsters_killed: u32,
     pub total_monster_attacks: u32,
     pub current_monster_count: u32,
+    pub total_fauna_spawned: u32,
+    pub total_fauna_hunted: u32,
+    pub current_fauna_count: u32,
 }
 
 impl SimulationState {
@@ -107,6 +113,7 @@ impl SimulationState {
             structures: StructureManager::new(),
             road_network: RoadNetwork::new(),
             monsters: MonsterManager::new(),
+            fauna: FaunaManager::new(),
             character_manager: CharacterManager::new(),
             combat_log: CombatLogStore::new(),
             focus_point: None,
@@ -371,6 +378,9 @@ impl SimulationState {
         // 11. Monster Processing
         self.process_monsters(world, params, rng);
 
+        // 11.5. Fauna Processing
+        self.process_fauna(world, params, rng);
+
         // 12. Structure and Road Updates
         self.process_structures_and_roads(world, params, rng);
 
@@ -386,6 +396,7 @@ impl SimulationState {
         // 16. Cleanup
         self.cleanup_extinct_tribes();
         self.monsters.cleanup_dead();
+        self.fauna.cleanup_dead();
 
         // Advance tick
         self.current_tick = self.current_tick.next();
@@ -930,6 +941,7 @@ impl SimulationState {
 
         self.stats.current_population = current_pop;
         self.stats.peak_population = self.stats.peak_population.max(current_pop);
+        self.stats.current_fauna_count = self.fauna.living_count() as u32;
     }
 
     /// Get living tribes
@@ -1021,6 +1033,33 @@ impl SimulationState {
 
         // Update current monster count
         self.stats.current_monster_count = self.monsters.living_count() as u32;
+    }
+
+    /// Process fauna spawning and behavior
+    fn process_fauna<R: Rng>(&mut self, world: &WorldData, _params: &SimulationParams, rng: &mut R) {
+        let current_tick = self.current_tick.0;
+
+        // Spawn fauna periodically
+        if current_tick % self.fauna.spawn_params.spawn_interval == 0 {
+            if let Some(_fauna_id) = self.fauna.try_spawn(world, &self.territory_map, current_tick, rng) {
+                self.stats.total_fauna_spawned += 1;
+            }
+        }
+
+        // Process fauna behavior (movement, grazing, fleeing, breeding)
+        self.fauna.process_behavior(
+            &self.tribes,
+            &self.territory_map,
+            &self.monsters.monsters,
+            world,
+            current_tick,
+            self.focus_point,
+            self.world_width,
+            rng,
+        );
+
+        // Update current fauna count
+        self.stats.current_fauna_count = self.fauna.living_count() as u32;
     }
 
     /// Process monster combat with detailed combat for significant monsters
@@ -1529,6 +1568,20 @@ impl SimulationState {
             }
         }
         None
+    }
+
+    /// Get fauna at a coordinate
+    pub fn get_fauna_at(&self, coord: &TileCoord) -> Vec<&Fauna> {
+        self.fauna.get_at(coord)
+    }
+
+    /// Hunt fauna at a location
+    pub fn hunt_fauna_at<R: Rng>(&mut self, coord: &TileCoord, hunting_skill: f32, rng: &mut R) -> (f32, f32) {
+        let (food, materials) = self.fauna.hunt_at(coord, hunting_skill, rng);
+        if food > 0.0 {
+            self.stats.total_fauna_hunted += 1;
+        }
+        (food, materials)
     }
 }
 
