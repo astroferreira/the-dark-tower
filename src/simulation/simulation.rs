@@ -28,6 +28,8 @@ use crate::simulation::monsters::{MonsterManager, MonsterId, Monster};
 use crate::simulation::fauna::{FaunaManager, FaunaId, Fauna};
 use crate::simulation::characters::CharacterManager;
 use crate::simulation::combat::CombatLogStore;
+use crate::simulation::activity_log::ActivityLog;
+use crate::local::LocalMapStateManager;
 
 /// Radius in local tiles for full simulation detail
 pub const FOCUS_RADIUS_FULL: u32 = 100;
@@ -75,6 +77,11 @@ pub struct SimulationState {
     /// World dimensions for distance calculations
     #[serde(skip)]
     pub world_width: usize,
+    /// Activity log for local events
+    #[serde(skip)]
+    pub activity_log: ActivityLog,
+    /// Local map state manager for terrain modifications
+    pub local_map_state: LocalMapStateManager,
 }
 
 /// Statistics tracked during simulation
@@ -118,6 +125,8 @@ impl SimulationState {
             combat_log: CombatLogStore::new(),
             focus_point: None,
             world_width: 512, // Will be set properly in initialize
+            activity_log: ActivityLog::new(),
+            local_map_state: LocalMapStateManager::new(),
         }
     }
 
@@ -403,14 +412,94 @@ impl SimulationState {
         self.update_stats();
     }
 
+    /// Fast update for local movement only - called more frequently than main tick
+    /// This provides smooth animation without changing game state (no aging, no deaths, no production)
+    pub fn update_local_movement<R: Rng>(&mut self, rng: &mut R) {
+        use crate::simulation::colonists::process_fast_local_movement;
+
+        // Update colonist local positions for all tribes in focus
+        for tribe in self.tribes.values_mut() {
+            if !tribe.is_alive {
+                continue;
+            }
+
+            // Only update tribes near focus point for performance
+            let in_focus = match self.focus_point {
+                Some(focus) => {
+                    tribe.city_center.distance(&focus) <= FOCUS_RADIUS_FULL
+                }
+                None => true,
+            };
+
+            if in_focus {
+                process_fast_local_movement(&mut tribe.notable_colonists.colonists, rng);
+            }
+        }
+
+        // Also update monster local positions
+        for monster in self.monsters.monsters.values_mut() {
+            if monster.is_dead() {
+                continue;
+            }
+
+            // Small random movement for monsters
+            let dx = rng.gen_range(-2i32..=2);
+            let dy = rng.gen_range(-2i32..=2);
+            monster.local_position = GlobalLocalCoord::new(
+                (monster.local_position.x as i32 + dx).max(0) as u32,
+                (monster.local_position.y as i32 + dy).max(0) as u32,
+            );
+        }
+
+        // Update fauna local positions
+        for fauna in self.fauna.fauna.values_mut() {
+            if fauna.is_dead() {
+                continue;
+            }
+
+            // Movement based on state
+            let (dx, dy) = match fauna.state {
+                crate::simulation::fauna::FaunaState::Fleeing => {
+                    (rng.gen_range(-4i32..=4), rng.gen_range(-4i32..=4))
+                }
+                crate::simulation::fauna::FaunaState::Grazing => {
+                    if rng.gen::<f32>() < 0.5 {
+                        (rng.gen_range(-2i32..=2), rng.gen_range(-2i32..=2))
+                    } else {
+                        (0, 0)
+                    }
+                }
+                _ => {
+                    if rng.gen::<f32>() < 0.3 {
+                        (rng.gen_range(-1i32..=1), rng.gen_range(-1i32..=1))
+                    } else {
+                        (0, 0)
+                    }
+                }
+            };
+
+            fauna.local_position = GlobalLocalCoord::new(
+                (fauna.local_position.x as i32 + dx).max(0) as u32,
+                (fauna.local_position.y as i32 + dy).max(0) as u32,
+            );
+        }
+    }
+
     /// Process colony lifecycle for all tribes (notable colonist aging, births, deaths)
     fn process_colony_lifecycle<R: Rng>(&mut self, params: &SimulationParams, rng: &mut R) {
         let current_tick = self.current_tick.0;
+
+        // Collect events to log after the loop
+        let mut death_events: Vec<(TileCoord, String, String)> = Vec::new();
+        let mut birth_events: Vec<(TileCoord, String)> = Vec::new();
 
         for tribe in self.tribes.values_mut() {
             if !tribe.is_alive {
                 continue;
             }
+
+            let tribe_name = tribe.name.clone();
+            let capital = tribe.capital;
 
             // Process notable colonist lifecycle
             let health_satisfaction = tribe.needs.health.satisfaction;
@@ -420,6 +509,11 @@ impl SimulationState {
                 health_satisfaction,
                 rng,
             );
+
+            // Collect death events for logging
+            for (_, colonist_name) in &lifecycle_result.deaths {
+                death_events.push((capital, colonist_name.clone(), tribe_name.clone()));
+            }
 
             // Process pool population dynamics
             let food_satisfaction = tribe.needs.food.satisfaction;
@@ -432,13 +526,18 @@ impl SimulationState {
             );
 
             // Process notable births
-            let _births = process_notable_births(
+            let births = process_notable_births(
                 &mut tribe.notable_colonists,
                 current_tick,
                 food_satisfaction,
                 params.base_growth_rate,
                 rng,
             );
+
+            // Collect birth events for logging (only log every 5th birth to reduce spam)
+            if !births.is_empty() && current_tick % 8 == 0 {
+                birth_events.push((capital, tribe_name));
+            }
 
             // Ensure we have enough notables (promote from pool if needed)
             let target_notables = target_notable_count(tribe.population.total());
@@ -457,6 +556,31 @@ impl SimulationState {
                     );
                 }
             }
+        }
+
+        // Log death and birth events
+        for (location, colonist_name, tribe_name) in death_events {
+            use crate::simulation::activity_log::ActivityCategory;
+            self.activity_log.log(crate::simulation::activity_log::ActivityEntry {
+                tick: current_tick,
+                location,
+                category: ActivityCategory::Social,
+                message: format!("{} of {} has passed away", colonist_name, tribe_name),
+                entity: None,
+                importance: 5,
+            });
+        }
+
+        for (location, tribe_name) in birth_events {
+            use crate::simulation::activity_log::ActivityCategory;
+            self.activity_log.log(crate::simulation::activity_log::ActivityEntry {
+                tick: current_tick,
+                location,
+                category: ActivityCategory::Social,
+                message: format!("New births celebrated in {}", tribe_name),
+                entity: None,
+                importance: 3,
+            });
         }
     }
 
@@ -506,7 +630,7 @@ impl SimulationState {
                 has_forests,
                 has_water,
                 false, // TODO: check if at war
-                tribe.count_buildings("") < 5, // needs buildings if less than 5
+                tribe.settlements.len() < 10 || tribe.count_buildings("") < (tribe.population.total() / 10) as usize, // always allow building activity
                 tribe.society_state.society_type,
             );
 
@@ -522,8 +646,162 @@ impl SimulationState {
 
     /// Process job work and produce resources
     fn process_job_work<R: Rng>(&mut self, world: &WorldData, params: &SimulationParams, rng: &mut R) {
-        let season_modifier = self.current_tick.season().food_modifier();
+        use crate::local::{WorkSiteType, LocalFeature, LocalStructure};
+        use crate::simulation::jobs::JobType;
+        use crate::simulation::colonists::ColonistActivityState;
 
+        let season_modifier = self.current_tick.season().food_modifier();
+        let current_tick = self.current_tick.0;
+
+        // Track terrain modifications
+        enum TerrainAction {
+            Work { work_type: WorkSiteType, feature_to_remove: Option<LocalFeature> },
+            Build { tribe_id: TribeId },
+        }
+        let mut terrain_mods: Vec<(TileCoord, (usize, usize), TerrainAction)> = Vec::new();
+
+        for (tribe_id, tribe) in &self.tribes {
+            if !tribe.is_alive {
+                continue;
+            }
+
+            // Find working colonists and their locations
+            for colonist in tribe.notable_colonists.colonists.values() {
+                if colonist.activity_state != ColonistActivityState::Working {
+                    continue;
+                }
+
+                if let Some(job_type) = colonist.current_job {
+                    // Get local position within the world tile
+                    let local_x = (colonist.local_position.x % 64) as usize;
+                    let local_y = (colonist.local_position.y % 64) as usize;
+
+                    // Determine what work site type and feature to modify
+                    let action = match job_type {
+                        JobType::Woodcutter => Some(TerrainAction::Work {
+                            work_type: WorkSiteType::Logging,
+                            feature_to_remove: Some(LocalFeature::DeciduousTree),
+                        }),
+                        JobType::Miner => Some(TerrainAction::Work {
+                            work_type: WorkSiteType::Mining,
+                            feature_to_remove: None,
+                        }),
+                        JobType::Farmer => Some(TerrainAction::Work {
+                            work_type: WorkSiteType::Farming,
+                            feature_to_remove: None,
+                        }),
+                        JobType::Hunter => Some(TerrainAction::Work {
+                            work_type: WorkSiteType::Hunting,
+                            feature_to_remove: None,
+                        }),
+                        JobType::Fisher => Some(TerrainAction::Work {
+                            work_type: WorkSiteType::Fishing,
+                            feature_to_remove: None,
+                        }),
+                        JobType::Builder => Some(TerrainAction::Build { tribe_id: *tribe_id }),
+                        _ => None,
+                    };
+
+                    if let Some(action) = action {
+                        terrain_mods.push((colonist.location, (local_x, local_y), action));
+                    }
+                }
+            }
+        }
+
+        // Apply terrain modifications
+        for (world_tile, (local_x, local_y), action) in terrain_mods {
+            match action {
+                TerrainAction::Work { work_type, feature_to_remove } => {
+                    let state = self.local_map_state.get_or_create(world_tile);
+                    let depleted = state.work_site(local_x, local_y, work_type, current_tick);
+
+                    if depleted {
+                        match work_type {
+                            WorkSiteType::Logging => {
+                                if let Some(feature) = feature_to_remove {
+                                    if !state.is_feature_removed(local_x, local_y) {
+                                        state.remove_feature(local_x, local_y, feature, current_tick);
+                                        self.activity_log.log_resource(
+                                            current_tick,
+                                            world_tile,
+                                            format!("A tree has been felled at ({}, {})", local_x, local_y),
+                                        );
+                                    }
+                                }
+                            }
+                            WorkSiteType::Mining => {
+                                // Add mine entrance when mining depletes an area
+                                if !state.structures.contains_key(&(local_x, local_y)) {
+                                    state.add_feature(local_x, local_y, LocalFeature::MineEntrance, current_tick);
+                                    self.activity_log.log_resource(
+                                        current_tick,
+                                        world_tile,
+                                        format!("A mine shaft has been dug at ({}, {})", local_x, local_y),
+                                    );
+                                }
+                            }
+                            WorkSiteType::Farming => {
+                                // Add farmland when farming starts
+                                if !state.structures.contains_key(&(local_x, local_y)) {
+                                    state.add_feature(local_x, local_y, LocalFeature::Farmland, current_tick);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                TerrainAction::Build { tribe_id } => {
+                    let state = self.local_map_state.get_or_create(world_tile);
+
+                    // Check if there's already a structure or construction site here
+                    if let Some(structure) = state.structures.get_mut(&(local_x, local_y)) {
+                        // Progress existing construction
+                        if !structure.is_complete() {
+                            structure.construction_progress += 0.1; // 10 work actions to complete
+                            if structure.is_complete() {
+                                structure.completed_tick = Some(current_tick);
+                                let building_name = match structure.feature {
+                                    LocalFeature::Hut => "hut",
+                                    LocalFeature::WoodenHouse => "wooden house",
+                                    LocalFeature::StoneHouse => "stone house",
+                                    LocalFeature::Workshop => "workshop",
+                                    LocalFeature::Blacksmith => "blacksmith",
+                                    LocalFeature::Granary => "granary",
+                                    LocalFeature::Barracks => "barracks",
+                                    LocalFeature::TownHall => "town hall",
+                                    _ => "building",
+                                };
+                                self.activity_log.log_construction(
+                                    current_tick,
+                                    world_tile,
+                                    format!("A {} has been completed at ({}, {})", building_name, local_x, local_y),
+                                );
+                            }
+                        }
+                    } else {
+                        // Start new construction - pick a building type based on RNG
+                        let building_type = match rng.gen_range(0..10) {
+                            0..=4 => LocalFeature::Hut,        // 50% huts
+                            5..=7 => LocalFeature::WoodenHouse, // 30% houses
+                            8 => LocalFeature::Workshop,       // 10% workshop
+                            _ => LocalFeature::Granary,        // 10% granary
+                        };
+
+                        let structure = LocalStructure::new(building_type, Some(tribe_id), current_tick);
+                        state.place_structure(local_x, local_y, structure, current_tick);
+
+                        self.activity_log.log_construction(
+                            current_tick,
+                            world_tile,
+                            format!("Construction started at ({}, {})", local_x, local_y),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Now process jobs normally
         for tribe in self.tribes.values_mut() {
             if !tribe.is_alive {
                 continue;
@@ -544,6 +822,11 @@ impl SimulationState {
 
             // Apply research points
             tribe.tech_state.add_research(result.research_points);
+        }
+
+        // Tick regeneration for local map states periodically
+        if current_tick % 10 == 0 {
+            self.local_map_state.tick_all(current_tick);
         }
     }
 
@@ -1000,13 +1283,53 @@ impl SimulationState {
 
     /// Process monster spawning, behavior, and combat
     fn process_monsters<R: Rng>(&mut self, world: &WorldData, _params: &SimulationParams, rng: &mut R) {
+        use crate::local::LocalFeature;
+
         let current_tick = self.current_tick.0;
 
         // Only spawn monsters every 4 ticks (once per year)
         if current_tick % self.monsters.spawn_params.spawn_interval == 0 {
-            let old_count = self.monsters.living_count();
-            if let Some(_monster_id) = self.monsters.try_spawn(world, &self.territory_map, current_tick, rng) {
+            if let Some(monster_id) = self.monsters.try_spawn(world, &self.territory_map, current_tick, rng) {
                 self.stats.total_monsters_spawned += 1;
+                // Log monster spawn and create lair
+                if let Some(monster) = self.monsters.monsters.get(&monster_id) {
+                    self.activity_log.log_monster_event(
+                        current_tick,
+                        monster.location,
+                        monster_id,
+                        monster.species.name(),
+                        format!("A {} has appeared in the area!", monster.species.name()),
+                        false,
+                    );
+
+                    // Create monster lair at spawn location
+                    let state = self.local_map_state.get_or_create(monster.location);
+                    // Place lair at a random position within the local map
+                    let local_x = rng.gen_range(20..44);
+                    let local_y = rng.gen_range(20..44);
+
+                    // Choose lair type based on monster strength/rarity
+                    // High rarity (>30) = rare, powerful monsters make lairs
+                    // Low rarity = common monsters make nests
+                    let is_powerful = monster.species.rarity() >= 30 || monster.species.stats().strength >= 25.0;
+                    let lair_feature = if is_powerful {
+                        LocalFeature::MonsterLair
+                    } else {
+                        LocalFeature::MonsterNest
+                    };
+
+                    if !state.structures.contains_key(&(local_x, local_y)) {
+                        state.add_feature(local_x, local_y, lair_feature, current_tick);
+                        // Also add bone heap nearby for larger/stronger monsters
+                        if monster.species.stats().strength >= 30.0 {
+                            let bone_x = (local_x + rng.gen_range(1..4)) % 64;
+                            let bone_y = (local_y + rng.gen_range(1..4)) % 64;
+                            if !state.structures.contains_key(&(bone_x, bone_y)) {
+                                state.add_feature(bone_x, bone_y, LocalFeature::BoneHeap, current_tick);
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1041,8 +1364,20 @@ impl SimulationState {
 
         // Spawn fauna periodically
         if current_tick % self.fauna.spawn_params.spawn_interval == 0 {
-            if let Some(_fauna_id) = self.fauna.try_spawn(world, &self.territory_map, current_tick, rng) {
+            if let Some(fauna_id) = self.fauna.try_spawn(world, &self.territory_map, current_tick, rng) {
                 self.stats.total_fauna_spawned += 1;
+                // Log fauna spawn (less important, so we only log occasionally)
+                if self.stats.total_fauna_spawned % 5 == 0 {
+                    if let Some(fauna) = self.fauna.fauna.get(&fauna_id) {
+                        self.activity_log.log_fauna_event(
+                            current_tick,
+                            fauna.location,
+                            fauna_id,
+                            fauna.species.name(),
+                            format!("A herd of {} has settled in the region", fauna.species.name()),
+                        );
+                    }
+                }
             }
         }
 
@@ -1070,6 +1405,8 @@ impl SimulationState {
             calculate_reputation_change,
         };
 
+        let current_tick = self.current_tick.0;
+
         // Collect attacking monsters
         let attacking_monsters: Vec<_> = self.monsters.monsters
             .iter()
@@ -1095,6 +1432,13 @@ impl SimulationState {
                             Some(t) if t.is_alive => t.clone(),
                             _ => continue,
                         };
+
+                        // Log the attack as danger event
+                        self.activity_log.log_danger(
+                            current_tick,
+                            location,
+                            format!("{} is attacking {} settlers!", monster.species.name(), tribe.name),
+                        );
 
                         // Check if in range
                         let in_range = tribe.territory.iter().any(|coord| {
@@ -1568,6 +1912,70 @@ impl SimulationState {
             }
         }
         None
+    }
+
+    /// Get colonist at a local position (for local map view)
+    pub fn get_colonist_at_local(&self, local_pos: &GlobalLocalCoord) -> Option<(&Colonist, TribeId)> {
+        for (tribe_id, tribe) in &self.tribes {
+            for colonist in tribe.notable_colonists.colonists.values() {
+                if colonist.is_alive && colonist.local_position == *local_pos {
+                    return Some((colonist, *tribe_id));
+                }
+            }
+        }
+        None
+    }
+
+    /// Get colonist near a local position (within radius, for local map view)
+    pub fn get_colonist_near_local(&self, local_pos: &GlobalLocalCoord, radius: u32) -> Option<(&Colonist, TribeId)> {
+        for (tribe_id, tribe) in &self.tribes {
+            for colonist in tribe.notable_colonists.colonists.values() {
+                if colonist.is_alive {
+                    let dist = colonist.local_position.distance(local_pos);
+                    if dist <= radius {
+                        return Some((colonist, *tribe_id));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Get monster at a local position (for local map view)
+    pub fn get_monster_at_local(&self, local_pos: &GlobalLocalCoord) -> Option<&Monster> {
+        for monster in self.monsters.monsters.values() {
+            if !monster.is_dead() && monster.local_position == *local_pos {
+                return Some(monster);
+            }
+        }
+        None
+    }
+
+    /// Get monster near a local position (within radius)
+    pub fn get_monster_near_local(&self, local_pos: &GlobalLocalCoord, radius: u32) -> Option<&Monster> {
+        for monster in self.monsters.monsters.values() {
+            if !monster.is_dead() {
+                let dist = monster.local_position.distance(local_pos);
+                if dist <= radius {
+                    return Some(monster);
+                }
+            }
+        }
+        None
+    }
+
+    /// Get fauna at a local position (for local map view)
+    pub fn get_fauna_at_local(&self, local_pos: &GlobalLocalCoord) -> Vec<&Fauna> {
+        self.fauna.fauna.values()
+            .filter(|f| !f.is_dead() && f.local_position == *local_pos)
+            .collect()
+    }
+
+    /// Get fauna near a local position (within radius)
+    pub fn get_fauna_near_local(&self, local_pos: &GlobalLocalCoord, radius: u32) -> Vec<&Fauna> {
+        self.fauna.fauna.values()
+            .filter(|f| !f.is_dead() && f.local_position.distance(local_pos) <= radius)
+            .collect()
     }
 
     /// Get fauna at a coordinate

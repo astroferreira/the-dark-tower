@@ -284,6 +284,8 @@ pub struct Colonist {
     pub local_destination: Option<GlobalLocalCoord>,
     /// Tick when the colonist last moved
     pub last_move_tick: u64,
+    /// Whether this colonist is under player control (skips automatic state changes)
+    pub player_controlled: bool,
 }
 
 impl Colonist {
@@ -331,6 +333,7 @@ impl Colonist {
             destination: None,
             local_destination: None,
             last_move_tick: current_tick,
+            player_controlled: false,
         }
     }
 
@@ -379,6 +382,7 @@ impl Colonist {
             destination: None,
             local_destination: None,
             last_move_tick: current_tick,
+            player_controlled: false,
         }
     }
 

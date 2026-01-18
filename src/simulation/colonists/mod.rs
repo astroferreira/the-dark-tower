@@ -26,7 +26,10 @@ pub use lifecycle::{
     NotableColonists, process_notable_lifecycle, process_notable_births,
     promote_to_notable, target_notable_count, LifecycleResult,
 };
-pub use movement::{process_colonist_movement, trigger_flee, wander_locally};
+pub use movement::{
+    process_colonist_movement, trigger_flee, wander_locally, process_fast_local_movement,
+    find_work_location, find_patrol_location, find_scout_location,
+};
 pub use routines::{
     TimeOfDay, DetailedActivity, RoutineState, determine_activity, process_colonist_routines,
 };

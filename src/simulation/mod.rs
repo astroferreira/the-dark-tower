@@ -51,6 +51,7 @@ pub mod society;
 pub mod colonists;
 pub mod jobs;
 pub mod workplaces;
+pub mod activity_log;
 
 // Re-export main types for convenience
 pub use types::{TribeId, SimTick, Season, RelationLevel, ResourceType, TileCoord, TreatyType, Treaty};
@@ -82,3 +83,4 @@ pub use jobs::{
     JobManager, assign_all_jobs, process_jobs, JobProcessingResult,
 };
 pub use workplaces::{Workplace, WorkplaceId, WorkplaceType, WorkplaceManager};
+pub use activity_log::{ActivityLog, ActivityEntry, ActivityCategory, ActivityEntity, ActivityStats};

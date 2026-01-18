@@ -270,39 +270,40 @@ pub fn process_notable_lifecycle<R: Rng>(
 }
 
 /// Calculate death chance based on age and conditions
+/// Note: Rates reduced significantly for more stable population and longer-lived colonists
 fn calculate_death_chance(colonist: &Colonist, health_satisfaction: f32) -> f32 {
     let age = colonist.age;
     let health = colonist.health;
 
-    // Base death rate by age
+    // Base death rate by age (reduced by ~10x for longer-lived colonists)
     let base_rate = if age < 5 {
-        0.015  // Child mortality
+        0.002  // Child mortality (reduced)
     } else if age < 16 {
-        0.002
+        0.0002  // Very low for children
     } else if age < 40 {
-        0.003
+        0.0003  // Prime of life - very low
     } else if age < 60 {
-        0.008
+        0.001   // Middle age
     } else if age < 70 {
-        0.02
+        0.003   // Getting older
     } else if age < 80 {
-        0.05
+        0.008   // Elderly
     } else if age < 90 {
-        0.12
+        0.02    // Very old
     } else {
-        0.25
+        0.05    // Ancient
     };
 
     // Modify by health and conditions
     let health_mod = if health < 0.3 {
-        3.0  // Badly wounded
+        2.0  // Badly wounded (reduced impact)
     } else if health < 0.7 {
-        1.5  // Wounded
+        1.3  // Wounded
     } else {
         1.0
     };
 
-    let condition_mod = 1.0 + (1.0 - health_satisfaction) * 2.0;
+    let condition_mod = 1.0 + (1.0 - health_satisfaction) * 1.0; // Reduced impact of conditions
 
     base_rate * health_mod * condition_mod
 }

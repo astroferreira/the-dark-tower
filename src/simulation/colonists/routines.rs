@@ -532,6 +532,11 @@ pub fn process_colonist_routines<R: Rng>(
             continue;
         }
 
+        // Skip player-controlled colonists (they manage their own state)
+        if colonist.player_controlled {
+            continue;
+        }
+
         // Determine appropriate activity based on time and role
         let activity = determine_activity(colonist, time, rng);
         colonist.activity_state = activity.to_activity_state();

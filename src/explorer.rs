@@ -144,6 +144,17 @@ pub struct Explorer {
     selected_tribe: Option<TribeId>,
     // Combat log display
     show_combat_log: bool,
+
+    // Follow mode - track a colonist
+    followed_colonist: Option<(crate::simulation::colonists::ColonistId, crate::simulation::TribeId)>,
+
+    // Character control state
+    /// Selected colonist for detailed view/control
+    selected_colonist: Option<(crate::simulation::colonists::ColonistId, crate::simulation::TribeId)>,
+    /// Show action menu for selected colonist
+    show_action_menu: bool,
+    /// Currently highlighted action in menu
+    action_menu_index: usize,
 }
 
 impl Explorer {
@@ -208,7 +219,13 @@ impl Explorer {
             sim_show_territories: true,
             selected_tribe: None,
             // Combat log display
-            show_combat_log: true, // Show by default in simulation mode
+            show_combat_log: false, // Hidden by default, toggle with L
+            // Follow mode
+            followed_colonist: None,
+            // Character control state
+            selected_colonist: None,
+            show_action_menu: false,
+            action_menu_index: 0,
         }
     }
 
@@ -270,6 +287,8 @@ impl Explorer {
             sim.tick(&self.world, &self.sim_params, &mut self.sim_rng);
             self.sim_last_tick = Instant::now();
         }
+        // Update camera to follow colonist if in follow mode
+        self.update_follow_camera();
     }
 
     /// Check if it's time for a simulation tick and process it
@@ -283,6 +302,20 @@ impl Explorer {
                 self.simulation_tick();
             }
         }
+
+        // Only update local movement when NOT paused
+        if self.sim_speed != SimSpeed::Paused {
+            self.update_local_movement();
+        }
+    }
+
+    /// Update local movement for entities - runs frequently for smooth animation
+    fn update_local_movement(&mut self) {
+        if let Some(ref mut sim) = self.sim_state {
+            sim.update_local_movement(&mut self.sim_rng);
+        }
+        // Also update follow camera
+        self.update_follow_camera();
     }
 
     /// Get the tribe at a specific coordinate
@@ -336,6 +369,215 @@ impl Explorer {
             self.cursor_x = target_tribe.capital.x;
             self.cursor_y = target_tribe.capital.y;
         }
+    }
+
+    /// Toggle following a colonist near the cursor
+    fn toggle_follow_colonist(&mut self) {
+        // If already following, stop
+        if self.followed_colonist.is_some() {
+            self.followed_colonist = None;
+            return;
+        }
+
+        // Try to find a colonist near the cursor
+        if let Some(ref sim) = self.sim_state {
+            if let Some((colonist, tribe_id)) = sim.get_colonist_near_local(&self.cursor, 2) {
+                self.followed_colonist = Some((colonist.id, tribe_id));
+            }
+        }
+    }
+
+    /// Update camera to follow the tracked colonist
+    fn update_follow_camera(&mut self) {
+        if let Some((colonist_id, tribe_id)) = self.followed_colonist {
+            if let Some(ref sim) = self.sim_state {
+                // Find the colonist in the tribe
+                if let Some(tribe) = sim.tribes.get(&tribe_id) {
+                    if let Some(colonist) = tribe.notable_colonists.colonists.get(&colonist_id) {
+                        if colonist.is_alive {
+                            // Center camera on colonist
+                            self.cursor = colonist.local_position;
+                            self.camera = colonist.local_position;
+                        } else {
+                            // Colonist died, stop following
+                            self.followed_colonist = None;
+                        }
+                    } else {
+                        // Colonist no longer exists, stop following
+                        self.followed_colonist = None;
+                    }
+                } else {
+                    // Tribe no longer exists, stop following
+                    self.followed_colonist = None;
+                }
+            }
+        }
+    }
+
+    /// Get name of followed colonist (if any)
+    fn get_followed_colonist_name(&self) -> Option<String> {
+        if let Some((colonist_id, tribe_id)) = self.followed_colonist {
+            if let Some(ref sim) = self.sim_state {
+                if let Some(tribe) = sim.tribes.get(&tribe_id) {
+                    if let Some(colonist) = tribe.notable_colonists.colonists.get(&colonist_id) {
+                        return Some(colonist.name.clone());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Cycle to the next colonist near the cursor
+    fn cycle_to_next_colonist(&mut self) {
+        if let Some(ref sim) = self.sim_state {
+            // Gather all colonists within view radius
+            let view_radius = 20u32;
+            let mut nearby: Vec<(crate::simulation::colonists::ColonistId, TribeId, u32)> = Vec::new();
+
+            for tribe in sim.tribes.values() {
+                for colonist in tribe.notable_colonists.colonists.values() {
+                    if colonist.is_alive {
+                        let dist = colonist.local_position.distance(&self.cursor);
+                        if dist < view_radius {
+                            nearby.push((colonist.id, tribe.id, dist));
+                        }
+                    }
+                }
+            }
+
+            if nearby.is_empty() {
+                return;
+            }
+
+            // Sort by distance for consistent ordering
+            nearby.sort_by_key(|(_, _, dist)| *dist);
+
+            // Find current selection index
+            let current_idx = self.selected_colonist.and_then(|(cid, tid)| {
+                nearby.iter().position(|(id, trib, _)| *id == cid && *trib == tid)
+            });
+
+            // Cycle to next
+            let next_idx = match current_idx {
+                Some(idx) => (idx + 1) % nearby.len(),
+                None => 0,
+            };
+
+            let (next_id, next_tribe, _) = nearby[next_idx];
+            self.selected_colonist = Some((next_id, next_tribe));
+
+            // Move cursor to that colonist
+            if let Some(tribe) = sim.tribes.get(&next_tribe) {
+                if let Some(colonist) = tribe.notable_colonists.colonists.get(&next_id) {
+                    self.cursor = colonist.local_position;
+                    self.camera = self.cursor;
+                }
+            }
+        }
+    }
+
+    /// Execute the selected action from the action menu
+    fn execute_colonist_action(&mut self) {
+        if let Some((colonist_id, tribe_id)) = self.selected_colonist {
+            if let Some(ref mut sim) = self.sim_state {
+                // Get tribe info for finding locations
+                let territory = sim.tribes.get(&tribe_id)
+                    .map(|t| t.territory.clone())
+                    .unwrap_or_default();
+                let capital = sim.tribes.get(&tribe_id)
+                    .map(|t| t.capital)
+                    .unwrap_or_else(|| TileCoord::new(0, 0));
+
+                if let Some(tribe) = sim.tribes.get_mut(&tribe_id) {
+                    if let Some(colonist) = tribe.notable_colonists.colonists.get_mut(&colonist_id) {
+                        use crate::simulation::colonists::{
+                            ColonistActivityState, find_work_location, find_patrol_location, find_scout_location
+                        };
+                        use crate::simulation::jobs::types::JobType;
+
+                        match self.action_menu_index {
+                            0 => {
+                                // Work - find work location based on job and travel there
+                                if let Some(dest) = find_work_location(colonist, &territory, &self.world, &mut self.sim_rng) {
+                                    colonist.destination = Some(dest);
+                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
+                                    colonist.activity_state = ColonistActivityState::Traveling;
+                                } else {
+                                    // No work location found, stay idle but still player-controlled
+                                    colonist.activity_state = ColonistActivityState::Idle;
+                                }
+                                colonist.player_controlled = true;
+                            }
+                            1 => {
+                                // Rest - return to capital
+                                colonist.destination = Some(capital);
+                                colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(capital));
+                                colonist.activity_state = ColonistActivityState::Returning;
+                                colonist.player_controlled = true;
+                            }
+                            2 => {
+                                // Socialize - stay in place
+                                colonist.activity_state = ColonistActivityState::Socializing;
+                                colonist.player_controlled = true;
+                            }
+                            3 => {
+                                // Patrol - find patrol location on territory edge
+                                if let Some(dest) = find_patrol_location(&territory, colonist.location, &self.world, &mut self.sim_rng) {
+                                    colonist.destination = Some(dest);
+                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
+                                    colonist.activity_state = ColonistActivityState::Patrolling;
+                                } else {
+                                    colonist.activity_state = ColonistActivityState::Idle;
+                                }
+                                colonist.player_controlled = true;
+                            }
+                            4 => {
+                                // Scout - find location beyond territory
+                                if let Some(dest) = find_scout_location(&territory, colonist.location, &self.world, &mut self.sim_rng) {
+                                    colonist.destination = Some(dest);
+                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
+                                    colonist.activity_state = ColonistActivityState::Scouting;
+                                } else {
+                                    colonist.activity_state = ColonistActivityState::Idle;
+                                }
+                                colonist.player_controlled = true;
+                            }
+                            5 => {
+                                // Guard - assign guard job and start patrolling
+                                colonist.current_job = Some(JobType::Guard);
+                                if let Some(dest) = find_patrol_location(&territory, colonist.location, &self.world, &mut self.sim_rng) {
+                                    colonist.destination = Some(dest);
+                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
+                                    colonist.activity_state = ColonistActivityState::Patrolling;
+                                } else {
+                                    colonist.activity_state = ColonistActivityState::Idle;
+                                }
+                                colonist.player_controlled = true;
+                            }
+                            6 => {
+                                // Build - assign builder job and find work location
+                                colonist.current_job = Some(JobType::Builder);
+                                if let Some(dest) = find_work_location(colonist, &territory, &self.world, &mut self.sim_rng) {
+                                    colonist.destination = Some(dest);
+                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
+                                    colonist.activity_state = ColonistActivityState::Traveling;
+                                } else {
+                                    colonist.activity_state = ColonistActivityState::Working;
+                                }
+                                colonist.player_controlled = true;
+                            }
+                            7 => {
+                                // Follow - enable camera follow mode
+                                self.followed_colonist = Some((colonist_id, tribe_id));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        self.show_action_menu = false;
     }
 
     /// Get a distinct color for a tribe based on its ID
@@ -550,7 +792,17 @@ impl Explorer {
                 self.show_combat_log = !self.show_combat_log;
             }
 
-            // Navigation - move cursor in local space
+            // Action menu navigation (must be checked before movement keys)
+            KeyCode::Up | KeyCode::Char('k') if self.show_action_menu => {
+                if self.action_menu_index > 0 {
+                    self.action_menu_index -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') if self.show_action_menu => {
+                self.action_menu_index = (self.action_menu_index + 1).min(7); // 8 actions total
+            }
+
+            // Navigation - move cursor in local space (only when action menu is closed)
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.cursor.y > 0 {
                     self.cursor.y -= 1;
@@ -578,19 +830,19 @@ impl Explorer {
                 self.camera = self.cursor;
             }
             // WASD support (but not 'w' alone as it might conflict with World view)
-            KeyCode::Char('w') => {
+            KeyCode::Char('w') if !self.show_action_menu => {
                 if self.cursor.y > 0 {
                     self.cursor.y -= 1;
                     self.camera = self.cursor;
                 }
             }
-            KeyCode::Char('s') if !self.sim_mode => {
+            KeyCode::Char('s') if !self.sim_mode && !self.show_action_menu => {
                 if self.cursor.y < total_local_height - 1 {
                     self.cursor.y += 1;
                     self.camera = self.cursor;
                 }
             }
-            KeyCode::Char('a') => {
+            KeyCode::Char('a') if !self.show_action_menu => {
                 self.cursor.x = if self.cursor.x == 0 {
                     total_local_width - 1
                 } else {
@@ -598,7 +850,7 @@ impl Explorer {
                 };
                 self.camera = self.cursor;
             }
-            KeyCode::Char('d') => {
+            KeyCode::Char('d') if !self.show_action_menu => {
                 self.cursor.x = (self.cursor.x + 1) % total_local_width;
                 self.camera = self.cursor;
             }
@@ -641,6 +893,44 @@ impl Explorer {
             // Jump to tribe location
             KeyCode::Char('g') | KeyCode::Char('G') if self.sim_mode => {
                 self.jump_to_tribe();
+            }
+            // Follow mode - lock onto nearby colonist
+            KeyCode::Char('f') | KeyCode::Char('F') if self.sim_mode => {
+                self.toggle_follow_colonist();
+            }
+
+            // Character selection and action menu controls
+            KeyCode::Enter if self.sim_mode => {
+                if self.show_action_menu {
+                    // Execute selected action
+                    self.execute_colonist_action();
+                } else if let Some(ref sim) = self.sim_state {
+                    // Try to select colonist at cursor
+                    if let Some((colonist, tribe_id)) = sim.get_colonist_near_local(&self.cursor, 1) {
+                        if self.selected_colonist.map_or(false, |(cid, tid)| cid == colonist.id && tid == tribe_id) {
+                            // Already selected, open action menu
+                            self.show_action_menu = true;
+                            self.action_menu_index = 0;
+                        } else {
+                            // Select this colonist
+                            self.selected_colonist = Some((colonist.id, tribe_id));
+                        }
+                    }
+                }
+            }
+            KeyCode::Tab if self.sim_mode => {
+                // Cycle to next nearby colonist
+                self.cycle_to_next_colonist();
+            }
+            // Escape: close action menu, deselect, or stop following
+            KeyCode::Esc if self.show_action_menu => {
+                self.show_action_menu = false;
+            }
+            KeyCode::Esc if self.selected_colonist.is_some() => {
+                self.selected_colonist = None;
+            }
+            KeyCode::Esc if self.followed_colonist.is_some() => {
+                self.followed_colonist = None;
             }
 
             _ => {}
@@ -1024,13 +1314,14 @@ impl Explorer {
         self.local_cache.update_camera(&self.world, self.camera);
 
         // Layout: header, simulation bar (if active), map, info panel, controls
+        // When log is hidden, info panel expands to use that space
         let constraints = if self.sim_mode && self.show_combat_log {
             vec![
                 Constraint::Length(1),  // Header
                 Constraint::Length(1),  // Simulation status bar
                 Constraint::Min(10),    // Map
-                Constraint::Length(6),  // Combat log panel
-                Constraint::Length(5),  // Info panel
+                Constraint::Length(10), // Event log panel
+                Constraint::Length(8),  // Info panel (compact when log visible)
                 Constraint::Length(1),  // Controls
             ]
         } else if self.sim_mode {
@@ -1038,7 +1329,7 @@ impl Explorer {
                 Constraint::Length(1),  // Header
                 Constraint::Length(1),  // Simulation status bar
                 Constraint::Min(10),    // Map
-                Constraint::Length(5),  // Info panel
+                Constraint::Length(14), // Expanded info panel (uses log space)
                 Constraint::Length(1),  // Controls
             ]
         } else {
@@ -1153,6 +1444,45 @@ impl Explorer {
                 // Get the tile from the cache
                 let tile = self.local_cache.get_tile(&self.world, coord);
 
+                // Check for terrain modifications from simulation
+                let (world_tile, local_offset) = coord.to_hierarchical();
+                let local_x = local_offset.x as usize;
+                let local_y = local_offset.y as usize;
+
+                // Check for structures first (buildings, lairs)
+                let structure_feature = self.sim_state.as_ref().and_then(|sim| {
+                    sim.local_map_state.get(&world_tile).and_then(|state| {
+                        state.structures.get(&(local_x, local_y)).and_then(|s| {
+                            if s.is_complete() && !s.is_destroyed() {
+                                Some(s.feature)
+                            } else if !s.is_complete() {
+                                // Show construction site for incomplete buildings
+                                Some(crate::local::LocalFeature::ConstructionSite)
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                });
+
+                let feature_modified = self.sim_state.as_ref().and_then(|sim| {
+                    sim.local_map_state.get(&world_tile).and_then(|state| {
+                        // Check if feature was removed
+                        if state.is_feature_removed(local_x, local_y) {
+                            Some(None) // Feature removed - render as no feature
+                        } else {
+                            // Check for added/replaced features
+                            state.feature_mods.get(&(local_x, local_y)).map(|m| {
+                                match m {
+                                    crate::local::FeatureModification::Added(f) => Some(*f),
+                                    crate::local::FeatureModification::Replaced { replacement, .. } => Some(*replacement),
+                                    _ => None,
+                                }
+                            })
+                        }
+                    })
+                });
+
                 let (ch, fg, bg) = if let Some(tile) = tile {
                     // Get elevation brightness
                     let brightness = tile.elevation_brightness();
@@ -1165,22 +1495,35 @@ impl Explorer {
                         ((tb as f32 * brightness * 0.6).min(255.0)) as u8,
                     );
 
+                    // Determine effective feature (structures > modifications > original)
+                    let effective_feature = if let Some(struct_feat) = structure_feature {
+                        Some(struct_feat) // Structures take priority
+                    } else {
+                        match feature_modified {
+                            Some(modified_feature) => modified_feature, // Use modified feature (or None if removed)
+                            None => tile.feature, // Use original feature
+                        }
+                    };
+
                     // Foreground = feature color if present, else brightened terrain
-                    let (ch, fg) = if let Some((fr, fg_g, fb)) = tile.feature_color() {
+                    let (ch, fg) = if let Some(feature) = effective_feature {
+                        let (fr, fg_g, fb) = feature.color();
                         let fg = Color::Rgb(
                             ((fr as f32 * brightness * 1.2).min(255.0)) as u8,
                             ((fg_g as f32 * brightness * 1.2).min(255.0)) as u8,
                             ((fb as f32 * brightness * 1.2).min(255.0)) as u8,
                         );
-                        (tile.ascii_char(), fg)
+                        (feature.ascii_char(), fg)
                     } else {
                         let fg = Color::Rgb(
                             ((tr as f32 * brightness * 1.4).min(255.0)) as u8,
                             ((tg as f32 * brightness * 1.4).min(255.0)) as u8,
                             ((tb as f32 * brightness * 1.4).min(255.0)) as u8,
                         );
-                        // Add subtle elevation hint
-                        let ch = if tile.elevation_offset > 0.3 {
+                        // Add subtle elevation hint or show stump for removed trees
+                        let ch = if feature_modified.is_some() {
+                            '.' // Show a dot where feature was removed (stump/cleared ground)
+                        } else if tile.elevation_offset > 0.3 {
                             '\''
                         } else if tile.elevation_offset < -0.3 {
                             '_'
@@ -1269,11 +1612,7 @@ impl Explorer {
 
         let mut info_lines = vec![
             Line::from(vec![
-                Span::raw("Position: "),
-                Span::styled(format!("Global ({}, {})", self.cursor.x, self.cursor.y), Style::default().fg(Color::White)),
-                Span::raw("  World Tile: "),
-                Span::styled(format!("({}, {})", cursor_world_tile.x, cursor_world_tile.y), Style::default().fg(Color::Cyan)),
-                Span::raw("  Local: "),
+                Span::raw("Local Position: "),
                 Span::styled(format!("({}, {})", cursor_local_offset.x, cursor_local_offset.y), Style::default().fg(Color::Yellow)),
             ]),
             Line::from(vec![
@@ -1297,6 +1636,179 @@ impl Explorer {
                 Span::styled(format!("{} monsters", nearby_monsters), Style::default().fg(Color::Red)),
                 Span::raw("  [G] Go to tribe"),
             ]));
+
+            // Check for entity at cursor (using local position)
+            if let Some(ref sim) = self.sim_state {
+                // Check for monster first
+                if let Some(monster) = sim.get_monster_near_local(&self.cursor, 1) {
+                    let (mr, mg, mb) = monster.species.color();
+                    let monster_color = Color::Rgb(mr, mg, mb);
+                    let health_pct = (monster.health / monster.max_health * 100.0) as u32;
+                    let health_color = if health_pct > 60 { Color::Green } else if health_pct > 30 { Color::Yellow } else { Color::Red };
+                    let (state_str, state_color) = match monster.state {
+                        crate::simulation::monsters::MonsterState::Idle => ("Resting", Color::DarkGray),
+                        crate::simulation::monsters::MonsterState::Roaming => ("Roaming", Color::Cyan),
+                        crate::simulation::monsters::MonsterState::Hunting => ("Hunting!", Color::Yellow),
+                        crate::simulation::monsters::MonsterState::Attacking(_) => ("ATTACKING!", Color::Red),
+                        crate::simulation::monsters::MonsterState::Fleeing => ("Fleeing", Color::LightRed),
+                        crate::simulation::monsters::MonsterState::Dead => ("Dead", Color::DarkGray),
+                    };
+                    info_lines.push(Line::from(vec![
+                        Span::styled(format!(">>> {} ", monster.species.name()), Style::default().fg(monster_color).add_modifier(Modifier::BOLD)),
+                        Span::raw("HP: "),
+                        Span::styled(format!("{}%", health_pct), Style::default().fg(health_color)),
+                        Span::raw("  State: "),
+                        Span::styled(state_str, Style::default().fg(state_color)),
+                        Span::raw("  Kills: "),
+                        Span::styled(format!("{}", monster.kills), Style::default().fg(Color::Magenta)),
+                    ]));
+                }
+                // Check for colonist
+                else if let Some((colonist, tribe_id)) = sim.get_colonist_near_local(&self.cursor, 1) {
+                    let (cr, cg, cb) = colonist.color();
+                    let colonist_color = Color::Rgb(cr, cg, cb);
+                    let health_pct = (colonist.health * 100.0) as u32;
+                    let health_color = if health_pct > 60 { Color::Green } else if health_pct > 30 { Color::Yellow } else { Color::Red };
+
+                    // Role and life stage info
+                    let role_str = format!("{:?}", colonist.role);
+                    let gender_str = if colonist.gender == crate::simulation::colonists::Gender::Male { "Male" } else { "Female" };
+                    let life_stage_str = format!("{:?}", colonist.life_stage);
+
+                    let (tr, tg, tb) = Self::tribe_color(tribe_id);
+                    let tribe_color = Color::Rgb(tr, tg, tb);
+                    let tribe_name = sim.tribes.get(&tribe_id).map(|t| t.name.clone()).unwrap_or_default();
+
+                    // Check if this colonist is selected
+                    let is_selected = self.selected_colonist.map_or(false, |(cid, tid)| cid == colonist.id && tid == tribe_id);
+                    let select_marker = if is_selected { "★ " } else { ">>> " };
+
+                    // Line 1: Name and basic info
+                    info_lines.push(Line::from(vec![
+                        Span::styled(format!("{}{}", select_marker, colonist.name), Style::default().fg(colonist_color).add_modifier(Modifier::BOLD)),
+                    ]));
+
+                    // Line 2: Role, Gender, Life Stage, Age
+                    info_lines.push(Line::from(vec![
+                        Span::styled(role_str, Style::default().fg(Color::Yellow)),
+                        Span::raw(", "),
+                        Span::raw(gender_str),
+                        Span::raw(", "),
+                        Span::styled(life_stage_str, Style::default().fg(Color::White)),
+                        Span::raw(" ("),
+                        Span::styled(format!("{} years", colonist.age), Style::default().fg(Color::DarkGray)),
+                        Span::raw(")"),
+                    ]));
+
+                    // Line 3: Health bar
+                    let health_bar_len = 10;
+                    let filled = (health_pct as usize * health_bar_len / 100).min(health_bar_len);
+                    let empty = health_bar_len - filled;
+                    let health_bar = format!("[{}{}] {}%", "█".repeat(filled), "░".repeat(empty), health_pct);
+                    info_lines.push(Line::from(vec![
+                        Span::raw("Health: "),
+                        Span::styled(health_bar, Style::default().fg(health_color)),
+                    ]));
+
+                    // Line 4: Mood with active modifiers
+                    let mood_desc = colonist.mood.description();
+                    let mood_color = match colonist.mood.current_mood {
+                        x if x >= 0.7 => Color::Green,
+                        x if x >= 0.5 => Color::Yellow,
+                        x if x >= 0.3 => Color::LightRed,
+                        _ => Color::Red,
+                    };
+                    let modifiers = colonist.mood.active_modifier_names();
+                    let modifiers_str = if modifiers.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", modifiers.iter().take(3).cloned().collect::<Vec<_>>().join(", "))
+                    };
+                    info_lines.push(Line::from(vec![
+                        Span::raw("Mood: "),
+                        Span::styled(mood_desc, Style::default().fg(mood_color)),
+                        Span::styled(modifiers_str, Style::default().fg(Color::DarkGray)),
+                    ]));
+
+                    // Line 5: Activity
+                    let activity_str = colonist.activity_description();
+                    let activity_color = match colonist.activity_state {
+                        crate::simulation::colonists::ColonistActivityState::Working => Color::Green,
+                        crate::simulation::colonists::ColonistActivityState::Traveling => Color::Yellow,
+                        crate::simulation::colonists::ColonistActivityState::Fleeing => Color::Red,
+                        crate::simulation::colonists::ColonistActivityState::Socializing => Color::Magenta,
+                        crate::simulation::colonists::ColonistActivityState::Patrolling => Color::Cyan,
+                        crate::simulation::colonists::ColonistActivityState::Scouting => Color::Blue,
+                        _ => Color::DarkGray,
+                    };
+                    info_lines.push(Line::from(vec![
+                        Span::raw("Activity: "),
+                        Span::styled(activity_str, Style::default().fg(activity_color)),
+                    ]));
+
+                    // Line 6: Top skills (up to 3)
+                    let mut skill_entries: Vec<_> = colonist.skills.skills_above_level(1);
+                    skill_entries.sort_by(|a, b| b.1.level.cmp(&a.1.level));
+                    let top_skills: Vec<String> = skill_entries.iter()
+                        .take(3)
+                        .map(|(st, sk)| format!("{} ({})", st.name(), crate::simulation::colonists::skill_level_name(sk.level)))
+                        .collect();
+                    let skills_str = if top_skills.is_empty() {
+                        "None".to_string()
+                    } else {
+                        top_skills.join(", ")
+                    };
+                    info_lines.push(Line::from(vec![
+                        Span::raw("Skills: "),
+                        Span::styled(skills_str, Style::default().fg(Color::Cyan)),
+                    ]));
+
+                    // Line 7: Job and Tribe
+                    let job_str = colonist.current_job.map_or("None".to_string(), |j| format!("{:?}", j));
+                    info_lines.push(Line::from(vec![
+                        Span::raw("Job: "),
+                        Span::styled(job_str, Style::default().fg(Color::LightBlue)),
+                        Span::raw("  Tribe: "),
+                        Span::styled(tribe_name, Style::default().fg(tribe_color)),
+                    ]));
+
+                    // Line 8: Family info
+                    let spouse_str = if colonist.spouse.is_some() { "Married" } else { "Single" };
+                    let children_str = if colonist.children.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", {} children", colonist.children.len())
+                    };
+                    info_lines.push(Line::from(vec![
+                        Span::raw("Family: "),
+                        Span::styled(spouse_str, Style::default().fg(Color::Magenta)),
+                        Span::styled(children_str, Style::default().fg(Color::DarkGray)),
+                    ]));
+
+                    // Line 9: Controls hint
+                    info_lines.push(Line::from(vec![
+                        Span::styled("[Enter] Select  [F] Follow  [Tab] Next", Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+                // Check for fauna
+                else if let Some(fauna) = sim.get_fauna_near_local(&self.cursor, 1).first() {
+                    let (fr, fg, fb) = fauna.species.color();
+                    let fauna_color = Color::Rgb(fr, fg, fb);
+                    let health_pct = (fauna.health / fauna.max_health * 100.0) as u32;
+                    let health_color = if health_pct > 60 { Color::Green } else if health_pct > 30 { Color::Yellow } else { Color::Red };
+                    let state_str = format!("{:?}", fauna.state);
+
+                    info_lines.push(Line::from(vec![
+                        Span::styled(format!(">>> {} ", fauna.species.name()), Style::default().fg(fauna_color).add_modifier(Modifier::BOLD)),
+                        Span::raw("HP: "),
+                        Span::styled(format!("{}%", health_pct), Style::default().fg(health_color)),
+                        Span::raw("  State: "),
+                        Span::styled(state_str, Style::default().fg(Color::Cyan)),
+                        Span::raw("  Age: "),
+                        Span::styled(format!("{}", fauna.age), Style::default().fg(Color::White)),
+                    ]));
+                }
+            }
         } else {
             info_lines.push(Line::from(vec![
                 Span::raw("Cache: "),
@@ -1304,15 +1816,31 @@ impl Explorer {
             ]));
         }
 
+        // Show follow mode status
+        let panel_title = if let Some(name) = self.get_followed_colonist_name() {
+            info_lines.insert(0, Line::from(vec![
+                Span::styled("FOLLOWING: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(name.clone(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw("  [F] Stop  [Esc] Stop"),
+            ]));
+            format!(" Following: {} ", name)
+        } else {
+            " Local Info ".to_string()
+        };
+
         let info_text = info_lines;
 
         let info_panel = Paragraph::new(info_text)
-            .block(Block::default().borders(Borders::ALL).title(" Local Info "));
+            .block(Block::default().borders(Borders::ALL).title(panel_title));
         frame.render_widget(info_panel, chunks[info_chunk]);
 
         // Controls
         let controls_text = if self.sim_mode {
-            "[←↑↓→] Move  [M] Minimap  [W] World View  [Space] Step  [+/-] Speed  [S] Stop Sim  [?] Help  [Q] Quit"
+            if self.followed_colonist.is_some() {
+                "[F/Esc] Stop Follow  [Space] Step  [+/-] Speed  [W] World View  [?] Help  [Q] Quit"
+            } else {
+                "[←↑↓→] Move  [F] Follow  [M] Minimap  [W] World  [Space] Step  [+/-] Speed  [?] Help  [Q] Quit"
+            }
         } else {
             "[←↑↓→/WASD] Move  [M] Minimap  [W] World View  [S] Start Sim  [N] New  [?] Help  [Q] Quit"
         };
@@ -1324,6 +1852,72 @@ impl Explorer {
         if self.show_help {
             self.render_local_primary_help(frame);
         }
+
+        // Action menu overlay
+        if self.show_action_menu {
+            self.render_action_menu(frame);
+        }
+    }
+
+    /// Render the action menu for a selected colonist
+    fn render_action_menu(&self, frame: &mut Frame) {
+        let size = frame.area();
+
+        // Get colonist name for the title
+        let colonist_name = if let Some((colonist_id, tribe_id)) = self.selected_colonist {
+            self.sim_state.as_ref().and_then(|sim| {
+                sim.tribes.get(&tribe_id).and_then(|t| {
+                    t.notable_colonists.colonists.get(&colonist_id).map(|c| c.name.clone())
+                })
+            }).unwrap_or_else(|| "Colonist".to_string())
+        } else {
+            "Colonist".to_string()
+        };
+
+        // Menu dimensions
+        let menu_width = 26u16;
+        let menu_height = 11u16;
+
+        // Center the menu
+        let menu_x = (size.width.saturating_sub(menu_width)) / 2;
+        let menu_y = (size.height.saturating_sub(menu_height)) / 2;
+        let menu_area = Rect::new(menu_x, menu_y, menu_width, menu_height);
+
+        // Clear the area behind the menu
+        frame.render_widget(Clear, menu_area);
+
+        // Menu items
+        let actions = [
+            "Work (current job)",
+            "Rest",
+            "Socialize",
+            "Patrol",
+            "Scout",
+            "Guard",
+            "Build",
+            "Follow (camera)",
+        ];
+
+        let mut lines: Vec<Line> = Vec::new();
+        for (i, action) in actions.iter().enumerate() {
+            let is_selected = i == self.action_menu_index;
+            let prefix = if is_selected { "> " } else { "  " };
+            let style = if is_selected {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            lines.push(Line::from(Span::styled(format!("{}{}", prefix, action), style)));
+        }
+        lines.push(Line::from(Span::styled("[Esc] Cancel", Style::default().fg(Color::DarkGray))));
+
+        let menu = Paragraph::new(lines)
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow))
+                .title(format!(" Actions: {} ", colonist_name)));
+
+        frame.render_widget(menu, menu_area);
     }
 
     /// Render entities (monsters, colonists) on the local map
@@ -1815,19 +2409,32 @@ impl Explorer {
                     } else {
                         Color::Red
                     };
-                    let state_str = match monster.state {
-                        crate::simulation::monsters::MonsterState::Idle => "Idle",
-                        crate::simulation::monsters::MonsterState::Roaming => "Roaming",
-                        crate::simulation::monsters::MonsterState::Hunting => "Hunting",
-                        crate::simulation::monsters::MonsterState::Attacking(_) => "Attacking",
-                        crate::simulation::monsters::MonsterState::Fleeing => "Fleeing",
-                        crate::simulation::monsters::MonsterState::Dead => "Dead",
+                    let (state_str, state_color) = match monster.state {
+                        crate::simulation::monsters::MonsterState::Idle => ("Resting", Color::DarkGray),
+                        crate::simulation::monsters::MonsterState::Roaming => ("Roaming", Color::Cyan),
+                        crate::simulation::monsters::MonsterState::Hunting => ("Hunting!", Color::Yellow),
+                        crate::simulation::monsters::MonsterState::Attacking(_) => ("ATTACKING!", Color::Red),
+                        crate::simulation::monsters::MonsterState::Fleeing => ("Fleeing", Color::LightRed),
+                        crate::simulation::monsters::MonsterState::Dead => ("Dead", Color::DarkGray),
                     };
+
+                    // Threat level based on strength and health
+                    let threat_level = (monster.strength * (monster.health / monster.max_health)) as u32;
+                    let threat_str = if threat_level >= 50 {
+                        ("Extreme", Color::Red)
+                    } else if threat_level >= 30 {
+                        ("High", Color::LightRed)
+                    } else if threat_level >= 15 {
+                        ("Moderate", Color::Yellow)
+                    } else {
+                        ("Low", Color::Green)
+                    };
+
                     vec![
                         Line::from(vec![
-                            Span::raw("Monster: "),
                             Span::styled(monster.species.name(), Style::default().fg(monster_color).add_modifier(Modifier::BOLD)),
-                            Span::raw(format!(" ({})", monster.species.map_char())),
+                            Span::raw(format!(" ({}) - ", monster.species.map_char())),
+                            Span::styled(format!("Threat: {}", threat_str.0), Style::default().fg(threat_str.1)),
                         ]),
                         Line::from(vec![
                             Span::raw("Health: "),
@@ -1837,9 +2444,17 @@ impl Explorer {
                         ]),
                         Line::from(vec![
                             Span::raw("State: "),
-                            Span::styled(state_str, Style::default().fg(Color::Cyan)),
+                            Span::styled(state_str, Style::default().fg(state_color)),
                             Span::raw("  Kills: "),
                             Span::styled(format!("{}", monster.kills), Style::default().fg(Color::Magenta)),
+                            Span::raw("  Territory: "),
+                            Span::styled(format!("{} tiles", monster.territory_radius), Style::default().fg(Color::White)),
+                        ]),
+                        Line::from(vec![
+                            Span::raw("Location: "),
+                            Span::styled(format!("({}, {})", monster.location.x, monster.location.y), Style::default().fg(Color::DarkGray)),
+                            Span::raw("  Lair: "),
+                            Span::styled(format!("({}, {})", monster.territory_center.x, monster.territory_center.y), Style::default().fg(Color::DarkGray)),
                         ]),
                     ]
                 })
@@ -1866,7 +2481,7 @@ impl Explorer {
                             crate::simulation::colonists::ColonistActivityState::Traveling => "Traveling",
                             crate::simulation::colonists::ColonistActivityState::Working => "Working",
                             crate::simulation::colonists::ColonistActivityState::Returning => "Returning",
-                            crate::simulation::colonists::ColonistActivityState::Fleeing => "Fleeing",
+                            crate::simulation::colonists::ColonistActivityState::Fleeing => "Fleeing!",
                             crate::simulation::colonists::ColonistActivityState::Socializing => "Socializing",
                             crate::simulation::colonists::ColonistActivityState::Patrolling => "Patrolling",
                             crate::simulation::colonists::ColonistActivityState::Scouting => "Scouting",
@@ -1875,35 +2490,132 @@ impl Explorer {
                         let tribe_color = Color::Rgb(tr, tg, tb);
                         let job_str = colonist.current_job.map_or("None".to_string(), |j| format!("{:?}", j));
                         let role_str = format!("{:?}", colonist.role);
+                        let gender_str = format!("{:?}", colonist.gender);
+                        let life_stage_str = format!("{:?}", colonist.life_stage);
+
+                        // Get mood status description
+                        let mood_status = if colonist.mood.current_mood >= 80.0 {
+                            ("Happy", Color::Green)
+                        } else if colonist.mood.current_mood >= 60.0 {
+                            ("Content", Color::LightGreen)
+                        } else if colonist.mood.current_mood >= 40.0 {
+                            ("Neutral", Color::Yellow)
+                        } else if colonist.mood.current_mood >= 20.0 {
+                            ("Unhappy", Color::LightRed)
+                        } else {
+                            ("Miserable", Color::Red)
+                        };
+
+                        // Get top skill
+                        let top_skill = colonist.skills.best_skill()
+                            .map(|(skill_type, skill)| format!("{:?} {}", skill_type, skill.level))
+                            .unwrap_or_else(|| "None".to_string());
+
+                        // Family info
+                        let spouse_str = if colonist.spouse.is_some() { "Married" } else { "Single" };
+                        let children_count = colonist.children.len();
+
+                        // Get tribe name
+                        let tribe_name = sim.tribes.get(&tribe_id)
+                            .map(|t| t.name.clone())
+                            .unwrap_or_else(|| format!("Tribe {}", tribe_id.0));
 
                         vec![
                             Line::from(vec![
-                                Span::raw("Colonist: "),
-                                Span::styled(&colonist.name, Style::default().fg(colonist_color).add_modifier(Modifier::BOLD)),
-                                Span::raw(format!(" ({}) ", colonist.map_char())),
+                                Span::styled(colonist.name.clone(), Style::default().fg(colonist_color).add_modifier(Modifier::BOLD)),
+                                Span::raw(" - "),
                                 Span::styled(role_str, Style::default().fg(Color::Yellow)),
+                                Span::raw(format!(" ({} {}, age {})", gender_str, life_stage_str, colonist.age)),
                             ]),
                             Line::from(vec![
-                                Span::raw("Age: "),
-                                Span::styled(format!("{}", colonist.age), Style::default().fg(Color::White)),
-                                Span::raw("  Health: "),
+                                Span::raw("Health: "),
                                 Span::styled(format!("{:.0}%", health_pct), Style::default().fg(health_color)),
-                                Span::raw("  Job: "),
-                                Span::styled(job_str, Style::default().fg(Color::Cyan)),
+                                Span::raw("  Mood: "),
+                                Span::styled(format!("{:.0} ({})", colonist.mood.current_mood, mood_status.0), Style::default().fg(mood_status.1)),
+                                Span::raw("  Skill: "),
+                                Span::styled(top_skill, Style::default().fg(Color::Cyan)),
                             ]),
                             Line::from(vec![
                                 Span::raw("State: "),
                                 Span::styled(state_str, Style::default().fg(Color::Magenta)),
-                                Span::raw("  Mood: "),
-                                Span::styled(format!("{:.0}", colonist.mood.current_mood), Style::default().fg(Color::Yellow)),
-                                Span::raw("  Tribe: "),
-                                Span::styled(format!("{}", tribe_id.0), Style::default().fg(tribe_color)),
+                                Span::raw("  Job: "),
+                                Span::styled(job_str, Style::default().fg(Color::Cyan)),
+                                Span::raw("  Family: "),
+                                Span::styled(format!("{}, {} children", spouse_str, children_count), Style::default().fg(Color::White)),
+                            ]),
+                            Line::from(vec![
+                                Span::raw("Tribe: "),
+                                Span::styled(tribe_name, Style::default().fg(tribe_color)),
+                                Span::raw(" at "),
+                                Span::styled(format!("({}, {})", colonist.location.x, colonist.location.y), Style::default().fg(Color::DarkGray)),
                             ]),
                         ]
                     })
                 });
 
                 if let Some(info) = colonist_info {
+                    info
+                } else {
+                // Check for fauna at cursor
+                let fauna_info = self.sim_state.as_ref().and_then(|sim| {
+                    let fauna_list = sim.get_fauna_at(&cursor_coord);
+                    fauna_list.first().map(|fauna| {
+                        let (fr, fg, fb) = fauna.species.color();
+                        let fauna_color = Color::Rgb(fr, fg, fb);
+                        let health_pct = (fauna.health / fauna.max_health * 100.0) as u32;
+                        let health_color = if health_pct > 60 {
+                            Color::Green
+                        } else if health_pct > 30 {
+                            Color::Yellow
+                        } else {
+                            Color::Red
+                        };
+                        let activity_str = fauna.current_activity.description();
+                        let state_str = format!("{:?}", fauna.state);
+                        let state_color = match fauna.state {
+                            crate::simulation::fauna::FaunaState::Fleeing => Color::LightRed,
+                            crate::simulation::fauna::FaunaState::Hunting => Color::Yellow,
+                            crate::simulation::fauna::FaunaState::Idle => Color::DarkGray,
+                            crate::simulation::fauna::FaunaState::Grazing => Color::Green,
+                            _ => Color::Cyan,
+                        };
+
+                        // Count other fauna at same location
+                        let fauna_count = fauna_list.len();
+                        let more_str = if fauna_count > 1 {
+                            format!(" (+{} more)", fauna_count - 1)
+                        } else {
+                            String::new()
+                        };
+
+                        vec![
+                            Line::from(vec![
+                                Span::styled(fauna.species.name().to_string(), Style::default().fg(fauna_color).add_modifier(Modifier::BOLD)),
+                                Span::raw(format!(" ({}) - ", fauna.species.map_char())),
+                                Span::styled(state_str, Style::default().fg(state_color)),
+                                Span::styled(more_str, Style::default().fg(Color::DarkGray)),
+                            ]),
+                            Line::from(vec![
+                                Span::raw("Health: "),
+                                Span::styled(format!("{:.0}/{:.0} ({:.0}%)", fauna.health, fauna.max_health, health_pct), Style::default().fg(health_color)),
+                                Span::raw("  Age: "),
+                                Span::styled(format!("{:.0} years", fauna.age), Style::default().fg(Color::White)),
+                            ]),
+                            Line::from(vec![
+                                Span::raw("Activity: "),
+                                Span::styled(activity_str.to_string(), Style::default().fg(state_color)),
+                                Span::raw("  Hunger: "),
+                                Span::styled(format!("{:.0}%", fauna.hunger * 100.0), Style::default().fg(Color::Yellow)),
+                            ]),
+                            Line::from(vec![
+                                Span::raw("Location: "),
+                                Span::styled(format!("({}, {})", fauna.location.x, fauna.location.y), Style::default().fg(Color::DarkGray)),
+                            ]),
+                        ]
+                    })
+                });
+
+                if let Some(info) = fauna_info {
                     info
                 } else {
                 // Check for tribe info
@@ -2003,6 +2715,7 @@ impl Explorer {
                     ]
                 })
                 }
+                }
             }
         } else {
             // Normal mode: show tile info
@@ -2038,6 +2751,8 @@ impl Explorer {
                     " Monster Info "
                 } else if sim.get_colonist_at(&cursor_coord).is_some() {
                     " Colonist Info "
+                } else if !sim.get_fauna_at(&cursor_coord).is_empty() {
+                    " Fauna Info "
                 } else if self.selected_tribe.is_some() {
                     " Tribe Info "
                 } else {
@@ -2073,49 +2788,104 @@ impl Explorer {
         }
     }
 
-    /// Render the combat log panel
+    /// Render the combined event log panel (combat + activity)
     fn render_combat_log(&self, frame: &mut Frame, area: Rect) {
         let sim = match &self.sim_state {
             Some(s) => s,
             None => return,
         };
 
-        // Get recent combat entries
-        let recent_entries = sim.combat_log.recent_entries(4);
-        let stats = sim.combat_log.stats();
+        // Calculate how many lines we can show (minus 2 for borders, 1 for stats)
+        let max_entries = (area.height.saturating_sub(3)) as usize;
 
-        // Build combat log lines
+        // Combine combat and activity events into a unified timeline
+        let combat_entries = sim.combat_log.recent_entries(max_entries);
+        let activity_entries = sim.activity_log.recent_entries(max_entries);
+        let combat_stats = sim.combat_log.stats();
+        let activity_stats = &sim.activity_log.stats;
+
+        // Build combined log lines, interleaving by tick
         let mut lines: Vec<Line> = Vec::new();
 
-        if recent_entries.is_empty() {
+        // Create a combined and sorted list of events
+        #[derive(Clone)]
+        enum EventType<'a> {
+            Combat(&'a crate::simulation::combat::CombatLogEntry),
+            Activity(&'a crate::simulation::activity_log::ActivityEntry),
+        }
+
+        let mut all_events: Vec<(u64, EventType)> = Vec::new();
+        for entry in combat_entries {
+            all_events.push((entry.tick, EventType::Combat(entry)));
+        }
+        for entry in activity_entries {
+            all_events.push((entry.tick, EventType::Activity(entry)));
+        }
+
+        // Sort by tick (newest first)
+        all_events.sort_by(|a, b| b.0.cmp(&a.0));
+
+        if all_events.is_empty() {
             lines.push(Line::from(vec![
-                Span::styled("No combat events yet. ", Style::default().fg(Color::DarkGray)),
-                Span::raw("Combat logs will appear here when tribes or monsters fight."),
+                Span::styled("No events yet. ", Style::default().fg(Color::DarkGray)),
+                Span::raw("Events will appear here as the simulation runs."),
             ]));
         } else {
-            for entry in recent_entries.iter().rev() {
-                let result_color = match &entry.result {
-                    crate::simulation::combat::CombatResult::Kill { .. } => Color::Red,
-                    crate::simulation::combat::CombatResult::Wound => Color::Yellow,
-                    crate::simulation::combat::CombatResult::Hit => Color::Green,
-                    crate::simulation::combat::CombatResult::Miss => Color::DarkGray,
-                    _ => Color::White,
-                };
+            // Show up to max_entries events
+            for (_, event) in all_events.into_iter().take(max_entries) {
+                match event {
+                    EventType::Combat(entry) => {
+                        let result_color = match &entry.result {
+                            crate::simulation::combat::CombatResult::Kill { .. } => Color::Red,
+                            crate::simulation::combat::CombatResult::Wound => Color::Yellow,
+                            crate::simulation::combat::CombatResult::Hit => Color::Green,
+                            crate::simulation::combat::CombatResult::Miss => Color::DarkGray,
+                            _ => Color::White,
+                        };
 
-                // Shorten narrative if too long
-                let narrative = if entry.narrative.len() > 80 {
-                    format!("{}...", &entry.narrative[..77])
-                } else {
-                    entry.narrative.clone()
-                };
+                        // Shorten narrative if too long
+                        let max_len = area.width.saturating_sub(12) as usize;
+                        let narrative = if entry.narrative.len() > max_len {
+                            format!("{}...", &entry.narrative[..max_len.saturating_sub(3)])
+                        } else {
+                            entry.narrative.clone()
+                        };
 
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("[T{}] ", entry.tick),
-                        Style::default().fg(Color::Cyan),
-                    ),
-                    Span::styled(narrative, Style::default().fg(result_color)),
-                ]));
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!("[T{}] ", entry.tick),
+                                Style::default().fg(Color::Cyan),
+                            ),
+                            Span::styled("!", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                            Span::raw(" "),
+                            Span::styled(narrative, Style::default().fg(result_color)),
+                        ]));
+                    }
+                    EventType::Activity(entry) => {
+                        let (cat_r, cat_g, cat_b) = entry.category.color();
+                        let cat_color = Color::Rgb(cat_r, cat_g, cat_b);
+
+                        // Shorten message if too long
+                        let max_len = area.width.saturating_sub(16) as usize;
+                        let message = if entry.message.len() > max_len {
+                            format!("{}...", &entry.message[..max_len.saturating_sub(3)])
+                        } else {
+                            entry.message.clone()
+                        };
+
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!("[T{}] ", entry.tick),
+                                Style::default().fg(Color::Cyan),
+                            ),
+                            Span::styled(
+                                format!("[{}] ", entry.category.label()),
+                                Style::default().fg(cat_color),
+                            ),
+                            Span::styled(message, Style::default().fg(Color::White)),
+                        ]));
+                    }
+                }
             }
         }
 
@@ -2123,8 +2893,8 @@ impl Explorer {
         lines.push(Line::from(vec![
             Span::styled(
                 format!(
-                    "Stats: {} encounters, {} attacks, {} kills, {} wounds",
-                    stats.total_encounters, stats.total_attacks, stats.total_kills, stats.total_wounds
+                    "Combat: {} kills, {} wounds | Activity: {} events",
+                    combat_stats.total_kills, combat_stats.total_wounds, activity_stats.total_events
                 ),
                 Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
             ),
@@ -2133,8 +2903,8 @@ impl Explorer {
         let combat_log = Paragraph::new(lines)
             .block(Block::default()
                 .borders(Borders::ALL)
-                .title(" Combat Log ")
-                .border_style(Style::default().fg(Color::Red)));
+                .title(" Event Log ")
+                .border_style(Style::default().fg(Color::Yellow)));
         frame.render_widget(combat_log, area);
     }
 

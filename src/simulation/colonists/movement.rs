@@ -13,10 +13,10 @@ use crate::world::WorldData;
 
 /// Movement speed in ticks between moves
 const MOVEMENT_COOLDOWN: u64 = 1;
-/// How long to work before returning
-const WORK_DURATION_TICKS: u64 = 8;
-/// Chance to start working each tick when idle
-const START_WORK_CHANCE: f32 = 0.15;
+/// How long to work before returning (reduced for faster cycles)
+const WORK_DURATION_TICKS: u64 = 2;
+/// Chance to start working each tick when idle (increased for more activity)
+const START_WORK_CHANCE: f32 = 0.6;
 
 /// Process movement for all colonists in a tribe
 /// If `in_focus` is false, only processes state transitions (no local wandering)
@@ -37,8 +37,8 @@ pub fn process_colonist_movement<R: Rng>(
             continue;
         }
 
-        // Get current state info
-        let (state, can_move, has_job, role, location) = {
+        // Get current state info (including player_controlled flag)
+        let (state, can_move, has_job, role, location, player_controlled) = {
             let c = colonists.get(&id).unwrap();
             (
                 c.activity_state,
@@ -46,41 +46,46 @@ pub fn process_colonist_movement<R: Rng>(
                 c.current_job.is_some(),
                 c.role,
                 c.location,
+                c.player_controlled,
             )
         };
 
         // Process state machine
+        // Player-controlled colonists: movement/actions still process, but auto-state-transitions are skipped
         match state {
             ColonistActivityState::Idle => {
-                process_idle_state(colonists.get_mut(&id).unwrap(), territory, capital, world, current_tick, rng);
+                // Skip idle processing for player-controlled - they already chose their action
+                if !player_controlled {
+                    process_idle_state(colonists.get_mut(&id).unwrap(), territory, capital, world, current_tick, rng);
+                }
             }
             ColonistActivityState::Traveling => {
                 if can_move {
-                    process_traveling_state(colonists.get_mut(&id).unwrap(), world, current_tick, rng);
+                    process_traveling_state(colonists.get_mut(&id).unwrap(), world, current_tick, rng, player_controlled);
                 }
             }
             ColonistActivityState::Working => {
                 // Only do detailed local wandering if in focus
                 if in_focus {
-                    process_working_state(colonists.get_mut(&id).unwrap(), current_tick, rng);
+                    process_working_state(colonists.get_mut(&id).unwrap(), current_tick, rng, player_controlled);
                 } else {
-                    // Sparse: just check if work is done
-                    process_working_state_sparse(colonists.get_mut(&id).unwrap(), current_tick);
+                    // Sparse: just check if work is done (skip auto-return for player-controlled)
+                    process_working_state_sparse(colonists.get_mut(&id).unwrap(), current_tick, player_controlled);
                 }
             }
             ColonistActivityState::Returning => {
                 if can_move {
-                    process_returning_state(colonists.get_mut(&id).unwrap(), capital, world, current_tick, rng);
+                    process_returning_state(colonists.get_mut(&id).unwrap(), capital, world, current_tick, rng, player_controlled);
                 }
             }
             ColonistActivityState::Patrolling => {
                 if can_move {
-                    process_patrolling_state(colonists.get_mut(&id).unwrap(), territory, world, current_tick, rng);
+                    process_patrolling_state(colonists.get_mut(&id).unwrap(), territory, world, current_tick, rng, player_controlled);
                 }
             }
             ColonistActivityState::Scouting => {
                 if can_move {
-                    process_scouting_state(colonists.get_mut(&id).unwrap(), territory, world, current_tick, rng);
+                    process_scouting_state(colonists.get_mut(&id).unwrap(), territory, world, current_tick, rng, player_controlled);
                 }
             }
             ColonistActivityState::Fleeing => {
@@ -90,9 +95,9 @@ pub fn process_colonist_movement<R: Rng>(
             }
             ColonistActivityState::Socializing => {
                 if in_focus {
-                    process_socializing_state(colonists.get_mut(&id).unwrap(), current_tick, rng);
+                    process_socializing_state(colonists.get_mut(&id).unwrap(), current_tick, rng, player_controlled);
                 } else {
-                    process_socializing_state_sparse(colonists.get_mut(&id).unwrap(), current_tick);
+                    process_socializing_state_sparse(colonists.get_mut(&id).unwrap(), current_tick, player_controlled);
                 }
             }
         }
@@ -100,9 +105,10 @@ pub fn process_colonist_movement<R: Rng>(
 }
 
 /// Sparse version of working state - no local wandering
-fn process_working_state_sparse(colonist: &mut Colonist, current_tick: u64) {
+fn process_working_state_sparse(colonist: &mut Colonist, current_tick: u64, player_controlled: bool) {
     let work_time = current_tick - colonist.last_move_tick;
-    if work_time >= WORK_DURATION_TICKS {
+    // Only auto-return if not player-controlled
+    if work_time >= WORK_DURATION_TICKS && !player_controlled {
         colonist.activity_state = ColonistActivityState::Returning;
         colonist.destination = None;
         colonist.last_move_tick = current_tick;
@@ -110,9 +116,10 @@ fn process_working_state_sparse(colonist: &mut Colonist, current_tick: u64) {
 }
 
 /// Sparse version of socializing state - no local wandering
-fn process_socializing_state_sparse(colonist: &mut Colonist, current_tick: u64) {
+fn process_socializing_state_sparse(colonist: &mut Colonist, current_tick: u64, player_controlled: bool) {
     let social_time = current_tick - colonist.last_move_tick;
-    if social_time >= 4 {
+    // Only auto-return to idle if not player-controlled
+    if social_time >= 4 && !player_controlled {
         colonist.activity_state = ColonistActivityState::Idle;
     }
 }
@@ -171,6 +178,7 @@ fn process_traveling_state<R: Rng>(
     world: &WorldData,
     current_tick: u64,
     rng: &mut R,
+    player_controlled: bool,
 ) {
     if let Some(dest) = colonist.destination {
         if colonist.location == dest {
@@ -181,21 +189,23 @@ fn process_traveling_state<R: Rng>(
             // Move toward destination
             move_toward(colonist, dest, world, current_tick);
         }
-    } else {
-        // No destination, go back to idle
+    } else if !player_controlled {
+        // No destination - only go back to idle if not player-controlled
+        // Player-controlled colonists without destination just stay traveling
         colonist.activity_state = ColonistActivityState::Idle;
     }
 }
 
 /// Handle working state - work for a while then return
-fn process_working_state<R: Rng>(colonist: &mut Colonist, current_tick: u64, rng: &mut R) {
+fn process_working_state<R: Rng>(colonist: &mut Colonist, current_tick: u64, rng: &mut R, player_controlled: bool) {
     let work_time = current_tick - colonist.last_move_tick;
-    if work_time >= WORK_DURATION_TICKS {
+    // Only auto-return if not player-controlled
+    if work_time >= WORK_DURATION_TICKS && !player_controlled {
         colonist.activity_state = ColonistActivityState::Returning;
         colonist.destination = None;
         colonist.last_move_tick = current_tick;
     } else {
-        // Wander locally while working (simulates doing work)
+        // Wander locally while working (simulates doing work) - happens for everyone
         wander_locally(colonist, rng);
     }
 }
@@ -207,14 +217,24 @@ fn process_returning_state<R: Rng>(
     world: &WorldData,
     current_tick: u64,
     rng: &mut R,
+    player_controlled: bool,
 ) {
-    let dist = colonist.location.distance_wrapped(&capital, world.width);
+    // Set destination to capital if not set
+    if colonist.destination.is_none() {
+        colonist.destination = Some(capital);
+    }
+
+    let target = colonist.destination.unwrap_or(capital);
+    let dist = colonist.location.distance_wrapped(&target, world.width);
     if dist <= 2 {
-        // Close enough to capital, become idle
-        colonist.activity_state = ColonistActivityState::Idle;
+        // Close enough to destination
+        // Only go idle if not player-controlled (they explicitly chose to rest)
+        if !player_controlled {
+            colonist.activity_state = ColonistActivityState::Idle;
+        }
         colonist.destination = None;
     } else {
-        move_toward(colonist, capital, world, current_tick);
+        move_toward(colonist, target, world, current_tick);
     }
 }
 
@@ -225,11 +245,13 @@ fn process_patrolling_state<R: Rng>(
     world: &WorldData,
     current_tick: u64,
     rng: &mut R,
+    player_controlled: bool,
 ) {
     if let Some(dest) = colonist.destination {
         if colonist.location == dest || colonist.location.distance_wrapped(&dest, world.width) <= 1 {
             // Reached patrol point, pick a new one or return
-            if rng.gen::<f32>() < 0.3 {
+            // For player-controlled: always pick a new patrol point, never auto-return
+            if !player_controlled && rng.gen::<f32>() < 0.3 {
                 colonist.activity_state = ColonistActivityState::Returning;
                 colonist.destination = None;
             } else {
@@ -240,7 +262,11 @@ fn process_patrolling_state<R: Rng>(
             move_toward(colonist, dest, world, current_tick);
         }
     } else {
-        colonist.activity_state = ColonistActivityState::Returning;
+        // No destination - pick one for patrol
+        colonist.destination = find_patrol_location(territory, colonist.location, world, rng);
+        if colonist.destination.is_none() && !player_controlled {
+            colonist.activity_state = ColonistActivityState::Returning;
+        }
     }
 }
 
@@ -251,11 +277,13 @@ fn process_scouting_state<R: Rng>(
     world: &WorldData,
     current_tick: u64,
     rng: &mut R,
+    player_controlled: bool,
 ) {
     if let Some(dest) = colonist.destination {
         if colonist.location == dest || colonist.location.distance_wrapped(&dest, world.width) <= 1 {
             // Reached scout point, return or continue
-            if rng.gen::<f32>() < 0.4 {
+            // For player-controlled: always continue scouting, never auto-return
+            if !player_controlled && rng.gen::<f32>() < 0.4 {
                 colonist.activity_state = ColonistActivityState::Returning;
                 colonist.destination = None;
             } else {
@@ -266,7 +294,11 @@ fn process_scouting_state<R: Rng>(
             move_toward(colonist, dest, world, current_tick);
         }
     } else {
-        colonist.activity_state = ColonistActivityState::Returning;
+        // No destination - pick one for scouting
+        colonist.destination = find_scout_location(territory, colonist.location, world, rng);
+        if colonist.destination.is_none() && !player_controlled {
+            colonist.activity_state = ColonistActivityState::Returning;
+        }
     }
 }
 
@@ -289,12 +321,13 @@ fn process_fleeing_state<R: Rng>(
 }
 
 /// Handle socializing state - brief interaction then back to idle
-fn process_socializing_state<R: Rng>(colonist: &mut Colonist, current_tick: u64, rng: &mut R) {
+fn process_socializing_state<R: Rng>(colonist: &mut Colonist, current_tick: u64, rng: &mut R, player_controlled: bool) {
     let social_time = current_tick - colonist.last_move_tick;
-    if social_time >= 4 {
+    // Only auto-return to idle if not player-controlled
+    if social_time >= 4 && !player_controlled {
         colonist.activity_state = ColonistActivityState::Idle;
     } else {
-        // Wander locally while socializing
+        // Wander locally while socializing - happens for everyone
         wander_locally(colonist, rng);
     }
 }
@@ -354,9 +387,9 @@ fn move_toward(colonist: &mut Colonist, target: TileCoord, world: &WorldData, cu
 pub fn wander_locally<R: Rng>(colonist: &mut Colonist, rng: &mut R) {
     use crate::simulation::types::LOCAL_MAP_SIZE;
 
-    // Small random movement within 2 local tiles
-    let dx = rng.gen_range(-2i32..=2);
-    let dy = rng.gen_range(-2i32..=2);
+    // Random movement - faster and more visible
+    let dx = rng.gen_range(-3i32..=3);
+    let dy = rng.gen_range(-3i32..=3);
 
     // Get the center of the current world tile
     let tile_center = GlobalLocalCoord::from_world_tile(colonist.location);
@@ -377,8 +410,78 @@ pub fn wander_locally<R: Rng>(colonist: &mut Colonist, rng: &mut R) {
     }
 }
 
+/// Fast local movement update - called multiple times per frame for smooth animation
+/// This moves colonists within their current tile without changing game state
+pub fn process_fast_local_movement<R: Rng>(
+    colonists: &mut HashMap<ColonistId, Colonist>,
+    rng: &mut R,
+) {
+    for colonist in colonists.values_mut() {
+        if !colonist.is_alive {
+            continue;
+        }
+
+        // Move all colonists slightly based on their state
+        match colonist.activity_state {
+            ColonistActivityState::Working | ColonistActivityState::Patrolling | ColonistActivityState::Scouting => {
+                // Active movement while working
+                wander_locally(colonist, rng);
+            }
+            ColonistActivityState::Traveling | ColonistActivityState::Returning => {
+                // Move toward destination in local space
+                move_toward_local_destination(colonist, rng);
+            }
+            ColonistActivityState::Idle | ColonistActivityState::Socializing => {
+                // Slight idle wandering
+                if rng.gen::<f32>() < 0.3 {
+                    let dx = rng.gen_range(-1i32..=1);
+                    let dy = rng.gen_range(-1i32..=1);
+                    colonist.local_position = GlobalLocalCoord::new(
+                        (colonist.local_position.x as i32 + dx).max(0) as u32,
+                        (colonist.local_position.y as i32 + dy).max(0) as u32,
+                    );
+                }
+            }
+            ColonistActivityState::Fleeing => {
+                // Fast movement when fleeing
+                let dx = rng.gen_range(-4i32..=4);
+                let dy = rng.gen_range(-4i32..=4);
+                colonist.local_position = GlobalLocalCoord::new(
+                    (colonist.local_position.x as i32 + dx).max(0) as u32,
+                    (colonist.local_position.y as i32 + dy).max(0) as u32,
+                );
+            }
+        }
+    }
+}
+
+/// Move toward destination in local coordinate space
+fn move_toward_local_destination<R: Rng>(colonist: &mut Colonist, rng: &mut R) {
+    use crate::simulation::types::LOCAL_MAP_SIZE;
+
+    if let Some(dest) = colonist.destination {
+        // Convert world destination to local coordinates
+        let dest_local = GlobalLocalCoord::from_world_tile(dest);
+
+        let dx = (dest_local.x as i32 - colonist.local_position.x as i32).signum() * 2;
+        let dy = (dest_local.y as i32 - colonist.local_position.y as i32).signum() * 2;
+
+        // Add some randomness to movement
+        let dx = dx + rng.gen_range(-1i32..=1);
+        let dy = dy + rng.gen_range(-1i32..=1);
+
+        colonist.local_position = GlobalLocalCoord::new(
+            (colonist.local_position.x as i32 + dx).max(0) as u32,
+            (colonist.local_position.y as i32 + dy).max(0) as u32,
+        );
+    } else {
+        // No destination, wander
+        wander_locally(colonist, rng);
+    }
+}
+
 /// Find a work location based on colonist's job
-fn find_work_location<R: Rng>(
+pub fn find_work_location<R: Rng>(
     colonist: &Colonist,
     territory: &HashSet<TileCoord>,
     world: &WorldData,
@@ -434,7 +537,7 @@ fn find_work_location<R: Rng>(
 }
 
 /// Find a patrol location near territory edge
-fn find_patrol_location<R: Rng>(
+pub fn find_patrol_location<R: Rng>(
     territory: &HashSet<TileCoord>,
     from: TileCoord,
     world: &WorldData,
@@ -470,7 +573,7 @@ fn find_patrol_location<R: Rng>(
 }
 
 /// Find a scout location beyond territory
-fn find_scout_location<R: Rng>(
+pub fn find_scout_location<R: Rng>(
     territory: &HashSet<TileCoord>,
     from: TileCoord,
     world: &WorldData,

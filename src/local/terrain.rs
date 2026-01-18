@@ -3,8 +3,10 @@
 //! Defines the terrain types (ground tiles) and features (objects placed on terrain)
 //! that make up local maps.
 
+use serde::{Deserialize, Serialize};
+
 /// Terrain types for local map cells (~25 types)
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum LocalTerrainType {
     // Ground types
     #[default]
@@ -145,7 +147,7 @@ impl LocalTerrainType {
 }
 
 /// Feature types that can be placed on terrain (~30 types)
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LocalFeature {
     // Trees
     DeciduousTree,
@@ -207,6 +209,24 @@ pub enum LocalFeature {
     Bridge,
     Dock,
 
+    // Buildings (colonist-built)
+    Hut,
+    WoodenHouse,
+    StoneHouse,
+    Farmland,
+    MineEntrance,
+    Workshop,
+    Blacksmith,
+    Granary,
+    Barracks,
+    TownHall,
+    ConstructionSite,
+
+    // Monster structures
+    MonsterLair,
+    MonsterNest,
+    BoneHeap,
+
     // Natural details
     FallenLog,
     MossyRock,
@@ -262,6 +282,22 @@ impl LocalFeature {
             LocalFeature::BerryBush => false,
             LocalFeature::HerbPatch => false,
             LocalFeature::Driftwood => false,
+            // Buildings
+            LocalFeature::Hut => true,
+            LocalFeature::WoodenHouse => true,
+            LocalFeature::StoneHouse => true,
+            LocalFeature::Farmland => false,
+            LocalFeature::MineEntrance => false,
+            LocalFeature::Workshop => true,
+            LocalFeature::Blacksmith => true,
+            LocalFeature::Granary => true,
+            LocalFeature::Barracks => true,
+            LocalFeature::TownHall => true,
+            LocalFeature::ConstructionSite => false,
+            // Monster structures
+            LocalFeature::MonsterLair => false,
+            LocalFeature::MonsterNest => false,
+            LocalFeature::BoneHeap => false,
             _ => false,
         }
     }
@@ -350,6 +386,22 @@ impl LocalFeature {
             LocalFeature::BerryBush => (70, 100, 50),
             LocalFeature::HerbPatch => (80, 130, 70),
             LocalFeature::Driftwood => (140, 120, 100),
+            // Buildings (colonist-built)
+            LocalFeature::Hut => (160, 130, 90),           // Light brown wood
+            LocalFeature::WoodenHouse => (140, 100, 60),   // Darker wood
+            LocalFeature::StoneHouse => (130, 130, 135),   // Gray stone
+            LocalFeature::Farmland => (140, 120, 60),      // Tilled earth
+            LocalFeature::MineEntrance => (60, 50, 45),    // Dark entrance
+            LocalFeature::Workshop => (150, 120, 80),      // Wooden building
+            LocalFeature::Blacksmith => (70, 60, 60),      // Dark with soot
+            LocalFeature::Granary => (180, 160, 100),      // Light wood/thatch
+            LocalFeature::Barracks => (100, 90, 80),       // Stone/wood
+            LocalFeature::TownHall => (160, 150, 140),     // Large stone building
+            LocalFeature::ConstructionSite => (170, 140, 100), // Scaffolding
+            // Monster structures
+            LocalFeature::MonsterLair => (50, 40, 35),     // Dark cave-like
+            LocalFeature::MonsterNest => (80, 70, 50),     // Organic matter
+            LocalFeature::BoneHeap => (200, 195, 180),     // Pale bones
         }
     }
 
@@ -413,6 +465,22 @@ impl LocalFeature {
             LocalFeature::BerryBush => '✿',
             LocalFeature::HerbPatch => '♣',
             LocalFeature::Driftwood => '~',
+            // Buildings (colonist-built)
+            LocalFeature::Hut => '⌂',
+            LocalFeature::WoodenHouse => '⌂',
+            LocalFeature::StoneHouse => '◼',
+            LocalFeature::Farmland => '≡',
+            LocalFeature::MineEntrance => '▼',
+            LocalFeature::Workshop => '⌂',
+            LocalFeature::Blacksmith => '▣',
+            LocalFeature::Granary => '◎',
+            LocalFeature::Barracks => '▣',
+            LocalFeature::TownHall => '▣',
+            LocalFeature::ConstructionSite => '□',
+            // Monster structures
+            LocalFeature::MonsterLair => '◙',
+            LocalFeature::MonsterNest => '◉',
+            LocalFeature::BoneHeap => '☠',
         }
     }
 }
