@@ -1,12 +1,11 @@
-//! Terminal-based world explorer using ratatui
+//! Terminal-based world map explorer using ratatui
 //!
-//! Roguelike-style terminal interface for exploring generated worlds.
-//! Navigate with arrow keys or mouse, inspect tiles, change view modes.
-//! Includes civilization simulation mode for watching tribes evolve.
+//! Simple roguelike-style terminal interface for exploring generated worlds.
+//! Navigate with arrow keys, inspect tiles, change view modes.
 
 use std::io::{self, stdout};
 use std::error::Error;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, MouseEvent, MouseEventKind, MouseButton, EnableMouseCapture, DisableMouseCapture},
@@ -15,19 +14,15 @@ use crossterm::{
 };
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Paragraph, Clear, Gauge},
+    widgets::{Block, Borders, Paragraph, Clear},
     style::{Color, Style, Modifier},
 };
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 
-use crate::ascii::{biome_char, AsciiMode, height_color, temperature_color, moisture_color, stress_color};
-use crate::biomes::ExtendedBiome;
-use crate::local::{generate_local_map_default, LocalMap, LocalMapCache};
-use crate::plates::PlateType;
+use crate::ascii::{biome_char, height_color, temperature_color, moisture_color, stress_color};
 use crate::world::{WorldData, generate_world};
-use crate::simulation::{SimulationState, SimulationParams, TileCoord, TribeId};
-use crate::simulation::types::{GlobalLocalCoord, LOCAL_MAP_SIZE};
+use crate::zlevel::{self, ZTile, z_to_height, z_to_height_ceiling, z_level_description};
+
+use image::{ImageBuffer, Rgb};
 
 /// Viewport for rendering a portion of the map
 struct Viewport {
@@ -37,3197 +32,1562 @@ struct Viewport {
     height: usize,
 }
 
-/// Simulation speed settings
-#[derive(Clone, Copy, PartialEq)]
-enum SimSpeed {
-    Paused,
-    Slow,      // 1 tick per 2 seconds
-    Normal,    // 1 tick per 500ms
-    Fast,      // 1 tick per 100ms
-    VeryFast,  // 1 tick per 20ms
-}
-
-impl SimSpeed {
-    fn tick_interval(&self) -> Option<Duration> {
-        match self {
-            SimSpeed::Paused => None,
-            SimSpeed::Slow => Some(Duration::from_millis(2000)),
-            SimSpeed::Normal => Some(Duration::from_millis(500)),
-            SimSpeed::Fast => Some(Duration::from_millis(100)),
-            SimSpeed::VeryFast => Some(Duration::from_millis(20)),
-        }
-    }
-
-    fn name(&self) -> &'static str {
-        match self {
-            SimSpeed::Paused => "Paused",
-            SimSpeed::Slow => "Slow",
-            SimSpeed::Normal => "Normal",
-            SimSpeed::Fast => "Fast",
-            SimSpeed::VeryFast => "Very Fast",
-        }
-    }
-
-    fn next(&self) -> SimSpeed {
-        match self {
-            SimSpeed::Paused => SimSpeed::Slow,
-            SimSpeed::Slow => SimSpeed::Normal,
-            SimSpeed::Normal => SimSpeed::Fast,
-            SimSpeed::Fast => SimSpeed::VeryFast,
-            SimSpeed::VeryFast => SimSpeed::Paused,
-        }
-    }
-
-    fn prev(&self) -> SimSpeed {
-        match self {
-            SimSpeed::Paused => SimSpeed::VeryFast,
-            SimSpeed::Slow => SimSpeed::Paused,
-            SimSpeed::Normal => SimSpeed::Slow,
-            SimSpeed::Fast => SimSpeed::Normal,
-            SimSpeed::VeryFast => SimSpeed::Fast,
-        }
-    }
-}
-
-/// View mode for the explorer
+/// View mode for the map display
 #[derive(Clone, Copy, PartialEq)]
 enum ViewMode {
-    /// Local map primary view (default)
-    Local,
-    /// World map overview
-    World,
+    Biome,
+    Height,
+    Temperature,
+    Moisture,
+    Plates,
+    Stress,
+    Factions,
+    History,
 }
 
-/// Terminal explorer state
-pub struct Explorer {
-    world: WorldData,
+impl ViewMode {
+    fn name(&self) -> &'static str {
+        match self {
+            ViewMode::Biome => "Biome",
+            ViewMode::Height => "Height",
+            ViewMode::Temperature => "Temperature",
+            ViewMode::Moisture => "Moisture",
+            ViewMode::Plates => "Plates",
+            ViewMode::Stress => "Stress",
+            ViewMode::Factions => "Factions",
+            ViewMode::History => "History",
+        }
+    }
 
-    // World-level cursor (for world view mode)
+    fn next(&self) -> ViewMode {
+        match self {
+            ViewMode::Biome => ViewMode::Height,
+            ViewMode::Height => ViewMode::Temperature,
+            ViewMode::Temperature => ViewMode::Moisture,
+            ViewMode::Moisture => ViewMode::Plates,
+            ViewMode::Plates => ViewMode::Stress,
+            ViewMode::Stress => ViewMode::Factions,
+            ViewMode::Factions => ViewMode::History,
+            ViewMode::History => ViewMode::Biome,
+        }
+    }
+}
+
+/// Explorer state
+struct Explorer {
+    world: WorldData,
     cursor_x: usize,
     cursor_y: usize,
-    viewport: Viewport,
-
-    // Local-primary view state
-    view_mode_type: ViewMode,
-    /// Camera position in global local coordinates
-    camera: GlobalLocalCoord,
-    /// Cursor position in global local coordinates
-    cursor: GlobalLocalCoord,
-    /// Local map cache
-    local_cache: LocalMapCache,
-    /// Show minimap overlay
-    show_minimap: bool,
-    /// Minimap size (world tiles)
-    minimap_width: usize,
-    minimap_height: usize,
-
-    // Legacy local map state (for backward compatibility)
-    local_mode: bool,
-    current_local_map: Option<LocalMap>,
-    local_cursor_x: usize,
-    local_cursor_y: usize,
-    local_viewport: Viewport,
-
-    // Rendering options
-    view_mode: AsciiMode,
-    running: bool,
+    cursor_z: i32,
+    view_mode: ViewMode,
     show_help: bool,
-
-    // Simulation state
-    sim_mode: bool,
-    sim_state: Option<SimulationState>,
-    sim_params: SimulationParams,
-    sim_rng: ChaCha8Rng,
-    sim_speed: SimSpeed,
-    sim_last_tick: Instant,
-    sim_show_territories: bool,
-    selected_tribe: Option<TribeId>,
-    // Combat log display
-    show_combat_log: bool,
-
-    // Follow mode - track a colonist
-    followed_colonist: Option<(crate::simulation::colonists::ColonistId, crate::simulation::TribeId)>,
-
-    // Character control state
-    /// Selected colonist for detailed view/control
-    selected_colonist: Option<(crate::simulation::colonists::ColonistId, crate::simulation::TribeId)>,
-    /// Show action menu for selected colonist
-    show_action_menu: bool,
-    /// Currently highlighted action in menu
-    action_menu_index: usize,
+    /// Zoom level: 1 = normal, 2 = 2x zoom out, 4 = 4x zoom out, etc.
+    zoom: usize,
+    /// Message to display temporarily
+    message: Option<String>,
 }
 
 impl Explorer {
-    pub fn new(world: WorldData) -> Self {
-        let cursor_x = world.width / 2;
-        let cursor_y = world.height / 2;
-        let seed = world.seed;
-        let world_width = world.width;
-        let world_height = world.height;
+    fn new(world: WorldData) -> Self {
+        let cursor_x = world.heightmap.width / 2;
+        let cursor_y = world.heightmap.height / 2;
+        // Start at surface level at the cursor position
+        let cursor_z = *world.surface_z.get(cursor_x, cursor_y);
 
-        // Initialize camera at center of the world in local coordinates
-        let center_tile = TileCoord::new(cursor_x, cursor_y);
-        let camera = GlobalLocalCoord::from_world_tile(center_tile);
-        let cursor = camera;
-
-        // Create local map cache
-        let local_cache = LocalMapCache::new(world_width, world_height);
-
-        Self {
+        Explorer {
             world,
             cursor_x,
             cursor_y,
-            viewport: Viewport {
-                x: 0,
-                y: 0,
-                width: 80,
-                height: 20,
-            },
-
-            // Local-primary view state
-            view_mode_type: ViewMode::Local,
-            camera,
-            cursor,
-            local_cache,
-            show_minimap: true,
-            minimap_width: 40,
-            minimap_height: 20,
-
-            // Legacy local map state
-            local_mode: false,
-            current_local_map: None,
-            local_cursor_x: 32,
-            local_cursor_y: 32,
-            local_viewport: Viewport {
-                x: 0,
-                y: 0,
-                width: 80,
-                height: 20,
-            },
-
-            view_mode: AsciiMode::Biome,
-            running: true,
+            cursor_z,
+            view_mode: ViewMode::Biome,
             show_help: false,
-
-            // Simulation fields
-            sim_mode: false,
-            sim_state: None,
-            sim_params: SimulationParams::default(),
-            sim_rng: ChaCha8Rng::seed_from_u64(seed),
-            sim_speed: SimSpeed::Paused,
-            sim_last_tick: Instant::now(),
-            sim_show_territories: true,
-            selected_tribe: None,
-            // Combat log display
-            show_combat_log: false, // Hidden by default, toggle with L
-            // Follow mode
-            followed_colonist: None,
-            // Character control state
-            selected_colonist: None,
-            show_action_menu: false,
-            action_menu_index: 0,
+            zoom: 1,
+            message: None,
         }
+    }
+
+    /// Zoom out (show more of the map)
+    fn zoom_out(&mut self) {
+        if self.zoom < 16 {
+            self.zoom *= 2;
+            self.message = Some(format!("Zoom: {}x", self.zoom));
+        }
+    }
+
+    /// Zoom in (show less of the map, more detail)
+    fn zoom_in(&mut self) {
+        if self.zoom > 1 {
+            self.zoom /= 2;
+            self.message = Some(format!("Zoom: {}x", self.zoom));
+        }
+    }
+
+    /// Fit entire map on screen
+    fn fit_to_screen(&mut self, screen_width: usize, screen_height: usize) {
+        let map_width = self.world.heightmap.width;
+        let map_height = self.world.heightmap.height;
+
+        // Calculate zoom needed to fit
+        let zoom_x = (map_width / screen_width).max(1);
+        let zoom_y = (map_height / screen_height).max(1);
+        self.zoom = zoom_x.max(zoom_y).next_power_of_two();
+        self.message = Some(format!("Fit to screen: {}x zoom", self.zoom));
     }
 
     /// Regenerate the world with a new random seed
-    pub fn regenerate_random(&mut self) {
-        let new_seed: u64 = rand::random();
+    fn regenerate(&mut self) {
         let width = self.world.width;
         let height = self.world.height;
+        let new_seed: u64 = rand::random();
 
+        self.message = Some(format!("Generating new world (seed: {})...", new_seed));
         self.world = generate_world(width, height, new_seed);
 
-        // Reset cursor to center
+        // Reset cursor to center of map at surface level
         self.cursor_x = width / 2;
         self.cursor_y = height / 2;
-        self.center_viewport();
+        self.cursor_z = *self.world.surface_z.get(self.cursor_x, self.cursor_y);
+        self.zoom = 1;
 
-        // Reset local-primary view
-        let center_tile = TileCoord::new(self.cursor_x, self.cursor_y);
-        self.camera = GlobalLocalCoord::from_world_tile(center_tile);
-        self.cursor = self.camera;
-        self.local_cache = LocalMapCache::new(width, height);
+        self.message = Some(format!("New world generated! Seed: {}", new_seed));
+    }
 
-        // Reset simulation if active
-        if self.sim_mode {
-            self.sim_state = None;
-            self.sim_mode = false;
+    /// Move cursor with wrapping
+    fn move_cursor(&mut self, dx: i32, dy: i32) {
+        let width = self.world.heightmap.width;
+        let height = self.world.heightmap.height;
+
+        // Horizontal wrapping
+        self.cursor_x = ((self.cursor_x as i32 + dx).rem_euclid(width as i32)) as usize;
+        // Vertical clamping
+        self.cursor_y = (self.cursor_y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+    }
+
+    /// Move Z-level up
+    fn move_z_up(&mut self) {
+        if self.cursor_z < zlevel::MAX_Z {
+            self.cursor_z += 1;
         }
     }
 
-    /// Toggle simulation mode on/off
-    fn toggle_simulation(&mut self) {
-        if self.sim_mode {
-            // Turn off simulation
-            self.sim_mode = false;
-            self.sim_state = None;
-            self.selected_tribe = None;
+    /// Move Z-level down
+    fn move_z_down(&mut self) {
+        if self.cursor_z > zlevel::MIN_Z {
+            self.cursor_z -= 1;
+        }
+    }
+
+    /// Go to sea level (Z = 0)
+    fn go_to_sea_level(&mut self) {
+        self.cursor_z = zlevel::SEA_LEVEL_Z;
+    }
+
+    /// Go to surface at current cursor position
+    fn go_to_surface(&mut self) {
+        self.cursor_z = *self.world.surface_z.get(self.cursor_x, self.cursor_y);
+    }
+
+    /// Get tile info at cursor
+    fn tile_info(&self) -> String {
+        let x = self.cursor_x;
+        let y = self.cursor_y;
+
+        let height = *self.world.heightmap.get(x, y);
+        let temp = *self.world.temperature.get(x, y);
+        let moisture = *self.world.moisture.get(x, y);
+        let biome = *self.world.biomes.get(x, y);
+        let surface_z = *self.world.surface_z.get(x, y);
+        let ztile = *self.world.zlevels.get(x, y, self.cursor_z);
+
+        // Show tile type based on what we're looking at
+        let tile_name = ztile_name(ztile);
+
+        // Get history info if available
+        let history_str = if let Some(ref history) = self.world.history {
+            let info = history.tile_info(x, y);
+            info.summary().map(|s| format!(" | {}", s)).unwrap_or_default()
         } else {
-            // Initialize simulation
-            let mut sim_state = SimulationState::new(self.world.seed);
-
-            // Initialize with world and spawn tribes
-            sim_state.initialize(&self.world, &self.sim_params, &mut self.sim_rng);
-
-            self.sim_state = Some(sim_state);
-            self.sim_mode = true;
-            self.sim_speed = SimSpeed::Paused;
-            self.sim_last_tick = Instant::now();
-
-            // Auto-jump to first tribe so user can see colonists immediately
-            self.jump_to_tribe();
-        }
-    }
-
-    /// Process a single simulation tick
-    fn simulation_tick(&mut self) {
-        if let Some(ref mut sim) = self.sim_state {
-            // Set focus point to current camera position for focused simulation
-            sim.set_focus(self.camera);
-            sim.tick(&self.world, &self.sim_params, &mut self.sim_rng);
-            self.sim_last_tick = Instant::now();
-        }
-        // Update camera to follow colonist if in follow mode
-        self.update_follow_camera();
-    }
-
-    /// Check if it's time for a simulation tick and process it
-    fn update_simulation(&mut self) {
-        if !self.sim_mode {
-            return;
-        }
-
-        if let Some(interval) = self.sim_speed.tick_interval() {
-            if self.sim_last_tick.elapsed() >= interval {
-                self.simulation_tick();
-            }
-        }
-
-        // Only update local movement when NOT paused
-        if self.sim_speed != SimSpeed::Paused {
-            self.update_local_movement();
-        }
-    }
-
-    /// Update local movement for entities - runs frequently for smooth animation
-    fn update_local_movement(&mut self) {
-        if let Some(ref mut sim) = self.sim_state {
-            sim.update_local_movement(&mut self.sim_rng);
-        }
-        // Also update follow camera
-        self.update_follow_camera();
-    }
-
-    /// Get the tribe at a specific coordinate
-    fn tribe_at_coord(&self, x: usize, y: usize) -> Option<TribeId> {
-        self.sim_state.as_ref().and_then(|sim| {
-            sim.territory_map.get(&TileCoord::new(x, y)).copied()
-        })
-    }
-
-    /// Update selected tribe based on cursor position
-    fn update_selected_tribe(&mut self) {
-        if self.sim_mode {
-            self.selected_tribe = self.tribe_at_coord(self.cursor_x, self.cursor_y);
-        }
-    }
-
-    /// Jump to the nearest tribe (cycles through tribes on repeated presses)
-    fn jump_to_tribe(&mut self) {
-        if let Some(ref sim) = self.sim_state {
-            // Get list of living tribes
-            let mut tribes: Vec<_> = sim.tribes.values()
-                .filter(|t| t.is_alive)
-                .collect();
-
-            if tribes.is_empty() {
-                return;
-            }
-
-            // Sort by distance from current position for consistent ordering
-            let current_tile = self.cursor.world_tile();
-            tribes.sort_by_key(|t| t.capital.distance_wrapped(&current_tile, self.world.width));
-
-            // Find next tribe (skip the one we're already at)
-            let target_tribe = if tribes.len() > 1 {
-                // If we're at the nearest tribe, go to the next one
-                let nearest = tribes[0];
-                if nearest.capital.distance_wrapped(&current_tile, self.world.width) < 3 {
-                    tribes[1]
-                } else {
-                    nearest
-                }
-            } else {
-                tribes[0]
-            };
-
-            // Jump to tribe's city center
-            self.cursor = target_tribe.city_center;
-            self.camera = self.cursor;
-
-            // Also update world-level cursor for consistency
-            self.cursor_x = target_tribe.capital.x;
-            self.cursor_y = target_tribe.capital.y;
-        }
-    }
-
-    /// Toggle following a colonist near the cursor
-    fn toggle_follow_colonist(&mut self) {
-        // If already following, stop
-        if self.followed_colonist.is_some() {
-            self.followed_colonist = None;
-            return;
-        }
-
-        // Try to find a colonist near the cursor
-        if let Some(ref sim) = self.sim_state {
-            if let Some((colonist, tribe_id)) = sim.get_colonist_near_local(&self.cursor, 2) {
-                self.followed_colonist = Some((colonist.id, tribe_id));
-            }
-        }
-    }
-
-    /// Update camera to follow the tracked colonist
-    fn update_follow_camera(&mut self) {
-        if let Some((colonist_id, tribe_id)) = self.followed_colonist {
-            if let Some(ref sim) = self.sim_state {
-                // Find the colonist in the tribe
-                if let Some(tribe) = sim.tribes.get(&tribe_id) {
-                    if let Some(colonist) = tribe.notable_colonists.colonists.get(&colonist_id) {
-                        if colonist.is_alive {
-                            // Center camera on colonist
-                            self.cursor = colonist.local_position;
-                            self.camera = colonist.local_position;
-                        } else {
-                            // Colonist died, stop following
-                            self.followed_colonist = None;
-                        }
-                    } else {
-                        // Colonist no longer exists, stop following
-                        self.followed_colonist = None;
-                    }
-                } else {
-                    // Tribe no longer exists, stop following
-                    self.followed_colonist = None;
-                }
-            }
-        }
-    }
-
-    /// Get name of followed colonist (if any)
-    fn get_followed_colonist_name(&self) -> Option<String> {
-        if let Some((colonist_id, tribe_id)) = self.followed_colonist {
-            if let Some(ref sim) = self.sim_state {
-                if let Some(tribe) = sim.tribes.get(&tribe_id) {
-                    if let Some(colonist) = tribe.notable_colonists.colonists.get(&colonist_id) {
-                        return Some(colonist.name.clone());
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// Cycle to the next colonist near the cursor
-    fn cycle_to_next_colonist(&mut self) {
-        if let Some(ref sim) = self.sim_state {
-            // Gather all colonists within view radius
-            let view_radius = 20u32;
-            let mut nearby: Vec<(crate::simulation::colonists::ColonistId, TribeId, u32)> = Vec::new();
-
-            for tribe in sim.tribes.values() {
-                for colonist in tribe.notable_colonists.colonists.values() {
-                    if colonist.is_alive {
-                        let dist = colonist.local_position.distance(&self.cursor);
-                        if dist < view_radius {
-                            nearby.push((colonist.id, tribe.id, dist));
-                        }
-                    }
-                }
-            }
-
-            if nearby.is_empty() {
-                return;
-            }
-
-            // Sort by distance for consistent ordering
-            nearby.sort_by_key(|(_, _, dist)| *dist);
-
-            // Find current selection index
-            let current_idx = self.selected_colonist.and_then(|(cid, tid)| {
-                nearby.iter().position(|(id, trib, _)| *id == cid && *trib == tid)
-            });
-
-            // Cycle to next
-            let next_idx = match current_idx {
-                Some(idx) => (idx + 1) % nearby.len(),
-                None => 0,
-            };
-
-            let (next_id, next_tribe, _) = nearby[next_idx];
-            self.selected_colonist = Some((next_id, next_tribe));
-
-            // Move cursor to that colonist
-            if let Some(tribe) = sim.tribes.get(&next_tribe) {
-                if let Some(colonist) = tribe.notable_colonists.colonists.get(&next_id) {
-                    self.cursor = colonist.local_position;
-                    self.camera = self.cursor;
-                }
-            }
-        }
-    }
-
-    /// Execute the selected action from the action menu
-    fn execute_colonist_action(&mut self) {
-        if let Some((colonist_id, tribe_id)) = self.selected_colonist {
-            if let Some(ref mut sim) = self.sim_state {
-                // Get tribe info for finding locations
-                let territory = sim.tribes.get(&tribe_id)
-                    .map(|t| t.territory.clone())
-                    .unwrap_or_default();
-                let capital = sim.tribes.get(&tribe_id)
-                    .map(|t| t.capital)
-                    .unwrap_or_else(|| TileCoord::new(0, 0));
-
-                if let Some(tribe) = sim.tribes.get_mut(&tribe_id) {
-                    if let Some(colonist) = tribe.notable_colonists.colonists.get_mut(&colonist_id) {
-                        use crate::simulation::colonists::{
-                            ColonistActivityState, find_work_location, find_patrol_location, find_scout_location
-                        };
-                        use crate::simulation::jobs::types::JobType;
-
-                        match self.action_menu_index {
-                            0 => {
-                                // Work - find work location based on job and travel there
-                                if let Some(dest) = find_work_location(colonist, &territory, &self.world, &mut self.sim_rng) {
-                                    colonist.destination = Some(dest);
-                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
-                                    colonist.activity_state = ColonistActivityState::Traveling;
-                                } else {
-                                    // No work location found, stay idle but still player-controlled
-                                    colonist.activity_state = ColonistActivityState::Idle;
-                                }
-                                colonist.player_controlled = true;
-                            }
-                            1 => {
-                                // Rest - return to capital
-                                colonist.destination = Some(capital);
-                                colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(capital));
-                                colonist.activity_state = ColonistActivityState::Returning;
-                                colonist.player_controlled = true;
-                            }
-                            2 => {
-                                // Socialize - stay in place
-                                colonist.activity_state = ColonistActivityState::Socializing;
-                                colonist.player_controlled = true;
-                            }
-                            3 => {
-                                // Patrol - find patrol location on territory edge
-                                if let Some(dest) = find_patrol_location(&territory, colonist.location, &self.world, &mut self.sim_rng) {
-                                    colonist.destination = Some(dest);
-                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
-                                    colonist.activity_state = ColonistActivityState::Patrolling;
-                                } else {
-                                    colonist.activity_state = ColonistActivityState::Idle;
-                                }
-                                colonist.player_controlled = true;
-                            }
-                            4 => {
-                                // Scout - find location beyond territory
-                                if let Some(dest) = find_scout_location(&territory, colonist.location, &self.world, &mut self.sim_rng) {
-                                    colonist.destination = Some(dest);
-                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
-                                    colonist.activity_state = ColonistActivityState::Scouting;
-                                } else {
-                                    colonist.activity_state = ColonistActivityState::Idle;
-                                }
-                                colonist.player_controlled = true;
-                            }
-                            5 => {
-                                // Guard - assign guard job and start patrolling
-                                colonist.current_job = Some(JobType::Guard);
-                                if let Some(dest) = find_patrol_location(&territory, colonist.location, &self.world, &mut self.sim_rng) {
-                                    colonist.destination = Some(dest);
-                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
-                                    colonist.activity_state = ColonistActivityState::Patrolling;
-                                } else {
-                                    colonist.activity_state = ColonistActivityState::Idle;
-                                }
-                                colonist.player_controlled = true;
-                            }
-                            6 => {
-                                // Build - assign builder job and find work location
-                                colonist.current_job = Some(JobType::Builder);
-                                if let Some(dest) = find_work_location(colonist, &territory, &self.world, &mut self.sim_rng) {
-                                    colonist.destination = Some(dest);
-                                    colonist.local_destination = Some(GlobalLocalCoord::from_world_tile(dest));
-                                    colonist.activity_state = ColonistActivityState::Traveling;
-                                } else {
-                                    colonist.activity_state = ColonistActivityState::Working;
-                                }
-                                colonist.player_controlled = true;
-                            }
-                            7 => {
-                                // Follow - enable camera follow mode
-                                self.followed_colonist = Some((colonist_id, tribe_id));
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-        self.show_action_menu = false;
-    }
-
-    /// Get a distinct color for a tribe based on its ID
-    fn tribe_color(tribe_id: TribeId) -> (u8, u8, u8) {
-        let colors: [(u8, u8, u8); 16] = [
-            (230, 25, 75),   // Red
-            (60, 180, 75),   // Green
-            (255, 225, 25),  // Yellow
-            (0, 130, 200),   // Blue
-            (245, 130, 48),  // Orange
-            (145, 30, 180),  // Purple
-            (70, 240, 240),  // Cyan
-            (240, 50, 230),  // Magenta
-            (210, 245, 60),  // Lime
-            (250, 190, 212), // Pink
-            (0, 128, 128),   // Teal
-            (220, 190, 255), // Lavender
-            (170, 110, 40),  // Brown
-            (255, 250, 200), // Beige
-            (128, 0, 0),     // Maroon
-            (170, 255, 195), // Mint
-        ];
-        colors[tribe_id.0 as usize % colors.len()]
-    }
-
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        // Setup terminal
-        terminal::enable_raw_mode()?;
-        let mut stdout = stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
-
-        // Center viewport on cursor
-        self.center_viewport();
-
-        // Main loop
-        while self.running {
-            // Get terminal size and update viewport
-            let size = terminal.size()?;
-            self.viewport.width = (size.width as usize).saturating_sub(4).min(self.world.width);
-            self.viewport.height = (size.height as usize).saturating_sub(14).min(self.world.height);
-
-            // Update simulation if running
-            self.update_simulation();
-
-            // Render
-            terminal.draw(|frame| self.render(frame))?;
-
-            // Handle input with shorter poll time for smoother simulation
-            let poll_time = if self.sim_mode && self.sim_speed != SimSpeed::Paused {
-                Duration::from_millis(16) // ~60fps for smooth animation
-            } else {
-                Duration::from_millis(50)
-            };
-
-            if event::poll(poll_time)? {
-                match event::read()? {
-                    Event::Key(key) => self.handle_key_input(key),
-                    Event::Mouse(mouse) => self.handle_mouse_input(mouse),
-                    Event::Resize(_, _) => {
-                        self.adjust_viewport();
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        // Cleanup
-        terminal::disable_raw_mode()?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
-        terminal.show_cursor()?;
-
-        Ok(())
-    }
-
-    fn center_viewport(&mut self) {
-        let half_w = self.viewport.width / 2;
-        let half_h = self.viewport.height / 2;
-
-        self.viewport.x = self.cursor_x.saturating_sub(half_w);
-        self.viewport.y = self.cursor_y.saturating_sub(half_h);
-
-        self.clamp_viewport();
-    }
-
-    fn clamp_viewport(&mut self) {
-        if self.viewport.x + self.viewport.width > self.world.width {
-            self.viewport.x = self.world.width.saturating_sub(self.viewport.width);
-        }
-        if self.viewport.y + self.viewport.height > self.world.height {
-            self.viewport.y = self.world.height.saturating_sub(self.viewport.height);
-        }
-    }
-
-    fn adjust_viewport(&mut self) {
-        let margin = 3;
-
-        if self.cursor_x < self.viewport.x + margin {
-            self.viewport.x = self.cursor_x.saturating_sub(margin);
-        }
-        if self.cursor_x >= self.viewport.x + self.viewport.width - margin {
-            self.viewport.x = self.cursor_x.saturating_sub(self.viewport.width - margin - 1);
-        }
-        if self.cursor_y < self.viewport.y + margin {
-            self.viewport.y = self.cursor_y.saturating_sub(margin);
-        }
-        if self.cursor_y >= self.viewport.y + self.viewport.height - margin {
-            self.viewport.y = self.cursor_y.saturating_sub(self.viewport.height - margin - 1);
-        }
-
-        self.clamp_viewport();
-    }
-
-    fn handle_key_input(&mut self, key: KeyEvent) {
-        // Handle Escape specially
-        if key.code == KeyCode::Esc {
-            match self.view_mode_type {
-                ViewMode::Local => {
-                    self.running = false;
-                }
-                ViewMode::World => {
-                    if self.local_mode {
-                        self.local_mode = false;
-                        self.current_local_map = None;
-                    } else {
-                        self.running = false;
-                    }
-                }
-            }
-            return;
-        }
-
-        // Handle view mode switching
-        match key.code {
-            KeyCode::Char('w') | KeyCode::Char('W') if key.modifiers.contains(crossterm::event::KeyModifiers::NONE) && self.view_mode_type == ViewMode::Local => {
-                // Don't switch if just pressing w for movement - only switch on W
-                if key.code == KeyCode::Char('W') {
-                    self.view_mode_type = ViewMode::World;
-                    // Sync world cursor to local cursor position
-                    let tile = self.cursor.world_tile();
-                    self.cursor_x = tile.x;
-                    self.cursor_y = tile.y;
-                    self.center_viewport();
-                    return;
-                }
-            }
-            KeyCode::Char('l') | KeyCode::Char('L') if self.view_mode_type == ViewMode::World && !self.local_mode => {
-                self.view_mode_type = ViewMode::Local;
-                // Sync local cursor to world cursor position
-                let tile = TileCoord::new(self.cursor_x, self.cursor_y);
-                self.cursor = GlobalLocalCoord::from_world_tile(tile);
-                self.camera = self.cursor;
-                return;
-            }
-            _ => {}
-        }
-
-        // Handle mode-specific input
-        match self.view_mode_type {
-            ViewMode::Local => self.handle_local_primary_key_input(key),
-            ViewMode::World => {
-                if self.local_mode {
-                    self.handle_local_key_input(key);
-                } else {
-                    self.handle_world_key_input(key);
-                }
-            }
-        }
-    }
-
-    /// Handle keyboard input for local-primary view
-    fn handle_local_primary_key_input(&mut self, key: KeyEvent) {
-        let total_local_width = self.world.width as u32 * LOCAL_MAP_SIZE;
-        let total_local_height = self.world.height as u32 * LOCAL_MAP_SIZE;
-
-        match key.code {
-            KeyCode::Char('q') => self.running = false,
-
-            // View controls
-            KeyCode::Char('m') | KeyCode::Char('M') => {
-                self.show_minimap = !self.show_minimap;
-            }
-            KeyCode::Char('W') => {
-                // Switch to world view
-                self.view_mode_type = ViewMode::World;
-                let tile = self.cursor.world_tile();
-                self.cursor_x = tile.x;
-                self.cursor_y = tile.y;
-                self.center_viewport();
-            }
-
-            // Simulation controls
-            KeyCode::Char('S') => self.toggle_simulation(),
-            KeyCode::Char(' ') if self.sim_mode => {
-                if self.sim_speed == SimSpeed::Paused {
-                    self.simulation_tick();
-                } else {
-                    self.sim_speed = SimSpeed::Paused;
-                }
-            }
-            KeyCode::Char('+') | KeyCode::Char('=') if self.sim_mode => {
-                self.sim_speed = self.sim_speed.next();
-            }
-            KeyCode::Char('-') | KeyCode::Char('_') if self.sim_mode => {
-                self.sim_speed = self.sim_speed.prev();
-            }
-            KeyCode::Char('t') | KeyCode::Char('T') if self.sim_mode => {
-                self.sim_show_territories = !self.sim_show_territories;
-            }
-            KeyCode::Char('L') if self.sim_mode => {
-                self.show_combat_log = !self.show_combat_log;
-            }
-
-            // Action menu navigation (must be checked before movement keys)
-            KeyCode::Up | KeyCode::Char('k') if self.show_action_menu => {
-                if self.action_menu_index > 0 {
-                    self.action_menu_index -= 1;
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') if self.show_action_menu => {
-                self.action_menu_index = (self.action_menu_index + 1).min(7); // 8 actions total
-            }
-
-            // Navigation - move cursor in local space (only when action menu is closed)
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.cursor.y > 0 {
-                    self.cursor.y -= 1;
-                    self.camera = self.cursor;
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if self.cursor.y < total_local_height - 1 {
-                    self.cursor.y += 1;
-                    self.camera = self.cursor;
-                }
-            }
-            KeyCode::Left | KeyCode::Char('h') => {
-                // Wrap horizontally
-                self.cursor.x = if self.cursor.x == 0 {
-                    total_local_width - 1
-                } else {
-                    self.cursor.x - 1
-                };
-                self.camera = self.cursor;
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                // Wrap horizontally
-                self.cursor.x = (self.cursor.x + 1) % total_local_width;
-                self.camera = self.cursor;
-            }
-            // WASD support (but not 'w' alone as it might conflict with World view)
-            KeyCode::Char('w') if !self.show_action_menu => {
-                if self.cursor.y > 0 {
-                    self.cursor.y -= 1;
-                    self.camera = self.cursor;
-                }
-            }
-            KeyCode::Char('s') if !self.sim_mode && !self.show_action_menu => {
-                if self.cursor.y < total_local_height - 1 {
-                    self.cursor.y += 1;
-                    self.camera = self.cursor;
-                }
-            }
-            KeyCode::Char('a') if !self.show_action_menu => {
-                self.cursor.x = if self.cursor.x == 0 {
-                    total_local_width - 1
-                } else {
-                    self.cursor.x - 1
-                };
-                self.camera = self.cursor;
-            }
-            KeyCode::Char('d') if !self.show_action_menu => {
-                self.cursor.x = (self.cursor.x + 1) % total_local_width;
-                self.camera = self.cursor;
-            }
-
-            // Fast movement
-            KeyCode::PageUp => {
-                self.cursor.y = self.cursor.y.saturating_sub(10);
-                self.camera = self.cursor;
-            }
-            KeyCode::PageDown => {
-                self.cursor.y = (self.cursor.y + 10).min(total_local_height - 1);
-                self.camera = self.cursor;
-            }
-            KeyCode::Home => {
-                self.cursor.x = ((self.cursor.x as i32 - 10).rem_euclid(total_local_width as i32)) as u32;
-                self.camera = self.cursor;
-            }
-            KeyCode::End => {
-                self.cursor.x = (self.cursor.x + 10) % total_local_width;
-                self.camera = self.cursor;
-            }
-
-            // Other controls
-            KeyCode::Char('c') | KeyCode::Char('C') => {
-                self.camera = self.cursor;
-            }
-            KeyCode::Char('?') | KeyCode::F(1) => {
-                self.show_help = !self.show_help;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') => {
-                self.regenerate_random();
-            }
-            KeyCode::Char('0') => {
-                // Jump to center of world
-                let center_x = total_local_width / 2;
-                let center_y = total_local_height / 2;
-                self.cursor = GlobalLocalCoord::new(center_x, center_y);
-                self.camera = self.cursor;
-            }
-            // Jump to tribe location
-            KeyCode::Char('g') | KeyCode::Char('G') if self.sim_mode => {
-                self.jump_to_tribe();
-            }
-            // Follow mode - lock onto nearby colonist
-            KeyCode::Char('f') | KeyCode::Char('F') if self.sim_mode => {
-                self.toggle_follow_colonist();
-            }
-
-            // Character selection and action menu controls
-            KeyCode::Enter if self.sim_mode => {
-                if self.show_action_menu {
-                    // Execute selected action
-                    self.execute_colonist_action();
-                } else if let Some(ref sim) = self.sim_state {
-                    // Try to select colonist at cursor
-                    if let Some((colonist, tribe_id)) = sim.get_colonist_near_local(&self.cursor, 1) {
-                        if self.selected_colonist.map_or(false, |(cid, tid)| cid == colonist.id && tid == tribe_id) {
-                            // Already selected, open action menu
-                            self.show_action_menu = true;
-                            self.action_menu_index = 0;
-                        } else {
-                            // Select this colonist
-                            self.selected_colonist = Some((colonist.id, tribe_id));
-                        }
-                    }
-                }
-            }
-            KeyCode::Tab if self.sim_mode => {
-                // Cycle to next nearby colonist
-                self.cycle_to_next_colonist();
-            }
-            // Escape: close action menu, deselect, or stop following
-            KeyCode::Esc if self.show_action_menu => {
-                self.show_action_menu = false;
-            }
-            KeyCode::Esc if self.selected_colonist.is_some() => {
-                self.selected_colonist = None;
-            }
-            KeyCode::Esc if self.followed_colonist.is_some() => {
-                self.followed_colonist = None;
-            }
-
-            _ => {}
-        }
-    }
-
-    fn handle_world_key_input(&mut self, key: KeyEvent) {
-        use crossterm::event::KeyModifiers;
-
-        match key.code {
-            KeyCode::Char('q') => self.running = false,
-
-            // Simulation controls
-            KeyCode::Char('S') => self.toggle_simulation(),
-            KeyCode::Char(' ') if self.sim_mode => {
-                // Space = single step when paused, or pause when running
-                if self.sim_speed == SimSpeed::Paused {
-                    self.simulation_tick();
-                } else {
-                    self.sim_speed = SimSpeed::Paused;
-                }
-            }
-            KeyCode::Char('+') | KeyCode::Char('=') if self.sim_mode => {
-                self.sim_speed = self.sim_speed.next();
-            }
-            KeyCode::Char('-') | KeyCode::Char('_') if self.sim_mode => {
-                self.sim_speed = self.sim_speed.prev();
-            }
-            KeyCode::Char('t') if self.sim_mode => {
-                self.sim_show_territories = !self.sim_show_territories;
-            }
-            KeyCode::Char('L') if self.sim_mode => {
-                self.show_combat_log = !self.show_combat_log;
-            }
-
-            KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('k') => {
-                if self.cursor_y > 0 {
-                    self.cursor_y -= 1;
-                    self.adjust_viewport();
-                    self.update_selected_tribe();
-                }
-            }
-            KeyCode::Down | KeyCode::Char('s') | KeyCode::Char('j') => {
-                if self.cursor_y < self.world.height - 1 {
-                    self.cursor_y += 1;
-                    self.adjust_viewport();
-                    self.update_selected_tribe();
-                }
-            }
-            KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('h') => {
-                if self.cursor_x > 0 {
-                    self.cursor_x -= 1;
-                    self.adjust_viewport();
-                    self.update_selected_tribe();
-                }
-            }
-            KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('l') => {
-                if self.cursor_x < self.world.width - 1 {
-                    self.cursor_x += 1;
-                    self.adjust_viewport();
-                    self.update_selected_tribe();
-                }
-            }
-
-            KeyCode::PageUp => {
-                self.cursor_y = self.cursor_y.saturating_sub(10);
-                self.adjust_viewport();
-                self.update_selected_tribe();
-            }
-            KeyCode::PageDown => {
-                self.cursor_y = (self.cursor_y + 10).min(self.world.height - 1);
-                self.adjust_viewport();
-                self.update_selected_tribe();
-            }
-            KeyCode::Home => {
-                self.cursor_x = self.cursor_x.saturating_sub(10);
-                self.adjust_viewport();
-                self.update_selected_tribe();
-            }
-            KeyCode::End => {
-                self.cursor_x = (self.cursor_x + 10).min(self.world.width - 1);
-                self.adjust_viewport();
-                self.update_selected_tribe();
-            }
-
-            KeyCode::Char('v') => self.cycle_view_mode(),
-            KeyCode::Char('?') | KeyCode::F(1) => self.show_help = !self.show_help,
-            KeyCode::Char('c') => self.center_viewport(),
-            KeyCode::Char('n') => self.regenerate_random(),
-            KeyCode::Char('0') => {
-                self.cursor_x = self.world.width / 2;
-                self.cursor_y = self.world.height / 2;
-                self.center_viewport();
-            }
-            // Switch to local primary view (only 'L' to avoid conflict with movement)
-            KeyCode::Char('o') => {
-                self.view_mode_type = ViewMode::Local;
-                let tile = TileCoord::new(self.cursor_x, self.cursor_y);
-                self.cursor = GlobalLocalCoord::from_world_tile(tile);
-                self.camera = self.cursor;
-            }
-            _ => {}
-        }
-    }
-
-    fn handle_local_key_input(&mut self, key: KeyEvent) {
-        let local_map = match &self.current_local_map {
-            Some(map) => map,
-            None => return,
-        };
-        let local_size = local_map.width;
-
-        match key.code {
-            KeyCode::Char('q') => {
-                self.local_mode = false;
-                self.current_local_map = None;
-            }
-
-            KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('k') => {
-                if self.local_cursor_y > 0 {
-                    self.local_cursor_y -= 1;
-                    self.adjust_local_viewport();
-                }
-            }
-            KeyCode::Down | KeyCode::Char('s') | KeyCode::Char('j') => {
-                if self.local_cursor_y < local_size - 1 {
-                    self.local_cursor_y += 1;
-                    self.adjust_local_viewport();
-                }
-            }
-            KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('h') => {
-                if self.local_cursor_x > 0 {
-                    self.local_cursor_x -= 1;
-                    self.adjust_local_viewport();
-                }
-            }
-            KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('l') => {
-                if self.local_cursor_x < local_size - 1 {
-                    self.local_cursor_x += 1;
-                    self.adjust_local_viewport();
-                }
-            }
-
-            KeyCode::PageUp => {
-                self.local_cursor_y = self.local_cursor_y.saturating_sub(10);
-                self.adjust_local_viewport();
-            }
-            KeyCode::PageDown => {
-                self.local_cursor_y = (self.local_cursor_y + 10).min(local_size - 1);
-                self.adjust_local_viewport();
-            }
-            KeyCode::Home => {
-                self.local_cursor_x = self.local_cursor_x.saturating_sub(10);
-                self.adjust_local_viewport();
-            }
-            KeyCode::End => {
-                self.local_cursor_x = (self.local_cursor_x + 10).min(local_size - 1);
-                self.adjust_local_viewport();
-            }
-
-            KeyCode::Char('?') | KeyCode::F(1) => self.show_help = !self.show_help,
-            KeyCode::Char('c') => self.center_local_viewport(),
-            KeyCode::Char('0') => {
-                self.local_cursor_x = local_size / 2;
-                self.local_cursor_y = local_size / 2;
-                self.center_local_viewport();
-            }
-            _ => {}
-        }
-    }
-
-    fn toggle_local_mode(&mut self) {
-        if self.local_mode {
-            // Exit local mode
-            self.local_mode = false;
-            self.current_local_map = None;
-        } else {
-            // Enter local mode - generate local map for current tile
-            let local_map = generate_local_map_default(&self.world, self.cursor_x, self.cursor_y);
-            let size = local_map.width;
-            self.current_local_map = Some(local_map);
-            self.local_mode = true;
-            self.local_cursor_x = size / 2;
-            self.local_cursor_y = size / 2;
-            self.center_local_viewport();
-        }
-    }
-
-    fn center_local_viewport(&mut self) {
-        let half_w = self.local_viewport.width / 2;
-        let half_h = self.local_viewport.height / 2;
-
-        self.local_viewport.x = self.local_cursor_x.saturating_sub(half_w);
-        self.local_viewport.y = self.local_cursor_y.saturating_sub(half_h);
-
-        self.clamp_local_viewport();
-    }
-
-    fn clamp_local_viewport(&mut self) {
-        if let Some(local_map) = &self.current_local_map {
-            if self.local_viewport.x + self.local_viewport.width > local_map.width {
-                self.local_viewport.x = local_map.width.saturating_sub(self.local_viewport.width);
-            }
-            if self.local_viewport.y + self.local_viewport.height > local_map.height {
-                self.local_viewport.y = local_map.height.saturating_sub(self.local_viewport.height);
-            }
-        }
-    }
-
-    fn adjust_local_viewport(&mut self) {
-        let margin = 3;
-
-        if self.local_cursor_x < self.local_viewport.x + margin {
-            self.local_viewport.x = self.local_cursor_x.saturating_sub(margin);
-        }
-        if self.local_cursor_x >= self.local_viewport.x + self.local_viewport.width - margin {
-            self.local_viewport.x = self.local_cursor_x.saturating_sub(self.local_viewport.width - margin - 1);
-        }
-        if self.local_cursor_y < self.local_viewport.y + margin {
-            self.local_viewport.y = self.local_cursor_y.saturating_sub(margin);
-        }
-        if self.local_cursor_y >= self.local_viewport.y + self.local_viewport.height - margin {
-            self.local_viewport.y = self.local_cursor_y.saturating_sub(self.local_viewport.height - margin - 1);
-        }
-
-        self.clamp_local_viewport();
-    }
-
-    fn handle_mouse_input(&mut self, mouse: MouseEvent) {
-        // Map area starts at row 2, column 1 (inside the border)
-        const MAP_START_ROW: u16 = 2;
-        const MAP_START_COL: u16 = 1;
-
-        match mouse.kind {
-            MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left) => {
-                if mouse.row >= MAP_START_ROW && mouse.column >= MAP_START_COL {
-                    let vx = (mouse.column - MAP_START_COL) as usize;
-                    let vy = (mouse.row - MAP_START_ROW) as usize;
-
-                    if vx < self.viewport.width && vy < self.viewport.height {
-                        let world_x = self.viewport.x + vx;
-                        let world_y = self.viewport.y + vy;
-
-                        if world_x < self.world.width && world_y < self.world.height {
-                            self.cursor_x = world_x;
-                            self.cursor_y = world_y;
-                        }
-                    }
-                }
-            }
-            MouseEventKind::Down(MouseButton::Right) => {
-                if mouse.row >= MAP_START_ROW && mouse.column >= MAP_START_COL {
-                    let vx = (mouse.column - MAP_START_COL) as usize;
-                    let vy = (mouse.row - MAP_START_ROW) as usize;
-
-                    if vx < self.viewport.width && vy < self.viewport.height {
-                        let world_x = self.viewport.x + vx;
-                        let world_y = self.viewport.y + vy;
-
-                        if world_x < self.world.width && world_y < self.world.height {
-                            self.cursor_x = world_x;
-                            self.cursor_y = world_y;
-                            self.center_viewport();
-                        }
-                    }
-                }
-            }
-            MouseEventKind::ScrollUp => {
-                self.viewport.y = self.viewport.y.saturating_sub(3);
-                if self.cursor_y >= self.viewport.y + self.viewport.height {
-                    self.cursor_y = self.viewport.y + self.viewport.height - 1;
-                }
-            }
-            MouseEventKind::ScrollDown => {
-                let max_y = self.world.height.saturating_sub(self.viewport.height);
-                self.viewport.y = (self.viewport.y + 3).min(max_y);
-                if self.cursor_y < self.viewport.y {
-                    self.cursor_y = self.viewport.y;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn cycle_view_mode(&mut self) {
-        self.view_mode = match self.view_mode {
-            AsciiMode::Biome => AsciiMode::Height,
-            AsciiMode::Height => AsciiMode::Temperature,
-            AsciiMode::Temperature => AsciiMode::Moisture,
-            AsciiMode::Moisture => AsciiMode::Stress,
-            AsciiMode::Stress => AsciiMode::Plates,
-            AsciiMode::Plates => AsciiMode::Biome,
-        };
-    }
-
-    /// Convert our color tuple to ratatui Color
-    fn to_ratatui_color(rgb: (u8, u8, u8)) -> Color {
-        Color::Rgb(rgb.0, rgb.1, rgb.2)
-    }
-
-    /// Get colors for a tile based on view mode
-    fn get_tile_colors(&self, world_x: usize, world_y: usize) -> (Color, Color) {
-        let biome = *self.world.biomes.get(world_x, world_y);
-
-        match self.view_mode {
-            AsciiMode::Biome => {
-                let (r, g, b) = biome.color();
-                let bg = Color::Rgb(
-                    (r as f32 * 0.6) as u8,
-                    (g as f32 * 0.6) as u8,
-                    (b as f32 * 0.6) as u8,
-                );
-                let luminance = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
-                let fg = if luminance > 128.0 {
-                    Color::Rgb(
-                        r.saturating_add(80).min(255),
-                        g.saturating_add(80).min(255),
-                        b.saturating_add(80).min(255),
-                    )
-                } else {
-                    Color::Rgb(
-                        (r as f32 * 1.5).min(255.0) as u8,
-                        (g as f32 * 1.5).min(255.0) as u8,
-                        (b as f32 * 1.5).min(255.0) as u8,
-                    )
-                };
-                (fg, bg)
-            }
-            AsciiMode::Height => {
-                let elev = *self.world.heightmap.get(world_x, world_y);
-                let c = height_color(elev);
-                (Self::to_ratatui_color(c), Color::Rgb(c.0 / 2, c.1 / 2, c.2 / 2))
-            }
-            AsciiMode::Temperature => {
-                let temp = *self.world.temperature.get(world_x, world_y);
-                let c = temperature_color(temp);
-                (Self::to_ratatui_color(c), Color::Rgb(c.0 / 2, c.1 / 2, c.2 / 2))
-            }
-            AsciiMode::Moisture => {
-                let moist = *self.world.moisture.get(world_x, world_y);
-                let c = moisture_color(moist);
-                (Self::to_ratatui_color(c), Color::Rgb(c.0 / 2, c.1 / 2, c.2 / 2))
-            }
-            AsciiMode::Stress => {
-                let stress = *self.world.stress_map.get(world_x, world_y);
-                let c = stress_color(stress);
-                (Self::to_ratatui_color(c), Color::Rgb(c.0 / 2, c.1 / 2, c.2 / 2))
-            }
-            AsciiMode::Plates => {
-                let plate_id = self.world.plate_map.get(world_x, world_y).0 as usize;
-                let colors: [(u8, u8, u8); 16] = [
-                    (230, 25, 75), (60, 180, 75), (255, 225, 25), (0, 130, 200),
-                    (245, 130, 48), (145, 30, 180), (70, 240, 240), (240, 50, 230),
-                    (210, 245, 60), (250, 190, 212), (0, 128, 128), (220, 190, 255),
-                    (170, 110, 40), (255, 250, 200), (128, 0, 0), (170, 255, 195),
-                ];
-                let c = colors[plate_id % colors.len()];
-                (Color::Rgb(c.0, c.1, c.2), Color::Rgb(c.0 / 3, c.1 / 3, c.2 / 3))
-            }
-        }
-    }
-
-    fn render(&mut self, frame: &mut Frame) {
-        match self.view_mode_type {
-            ViewMode::Local => self.render_local_primary(frame),
-            ViewMode::World => {
-                if self.local_mode {
-                    self.render_local(frame);
-                } else {
-                    self.render_world(frame);
-                }
-            }
-        }
-    }
-
-    /// Render the local-map primary view with seamless tile transitions
-    fn render_local_primary(&mut self, frame: &mut Frame) {
-        let size = frame.area();
-
-        // Update cache based on camera position
-        self.local_cache.update_camera(&self.world, self.camera);
-
-        // Layout: header, simulation bar (if active), map, info panel, controls
-        // When log is hidden, info panel expands to use that space
-        let constraints = if self.sim_mode && self.show_combat_log {
-            vec![
-                Constraint::Length(1),  // Header
-                Constraint::Length(1),  // Simulation status bar
-                Constraint::Min(10),    // Map
-                Constraint::Length(10), // Event log panel
-                Constraint::Length(8),  // Info panel (compact when log visible)
-                Constraint::Length(1),  // Controls
-            ]
-        } else if self.sim_mode {
-            vec![
-                Constraint::Length(1),  // Header
-                Constraint::Length(1),  // Simulation status bar
-                Constraint::Min(10),    // Map
-                Constraint::Length(14), // Expanded info panel (uses log space)
-                Constraint::Length(1),  // Controls
-            ]
-        } else {
-            vec![
-                Constraint::Length(1),  // Header
-                Constraint::Min(10),    // Map
-                Constraint::Length(5),  // Info panel
-                Constraint::Length(1),  // Controls
-            ]
+            String::new()
         };
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(size);
-
-        // Header
-        let (world_tile, local_offset) = self.cursor.to_hierarchical();
-        let biome = self.world.biomes.get(world_tile.x, world_tile.y);
-        let header_text = if self.sim_mode {
+        if self.cursor_z == surface_z {
+            // At surface - show biome
             format!(
-                "LOCAL VIEW - {} - Tile ({},{}) Local ({},{})  [M] Minimap  [W] World View  [?] Help",
-                biome.display_name(),
-                world_tile.x, world_tile.y,
-                local_offset.x, local_offset.y,
+                "({}, {}) | {} | {:?} | {:.0}m | {:.1}°C | {:.0}%{}",
+                x, y, tile_name, biome, height, temp, moisture * 100.0, history_str,
             )
         } else {
+            // Underground - show tile type
             format!(
-                "LOCAL VIEW - {} - Tile ({},{}) Local ({},{}) - Seed: {}  [M] Minimap  [W] World View  [?] Help",
-                biome.display_name(),
-                world_tile.x, world_tile.y,
-                local_offset.x, local_offset.y,
-                self.world.seed,
+                "({}, {}) | {} | Depth: {} | {:.1}°C | {:.0}%{}",
+                x, y, tile_name, surface_z - self.cursor_z, temp, moisture * 100.0, history_str,
             )
-        };
-        let header = Paragraph::new(header_text)
-            .style(Style::default().fg(Color::Green));
-        frame.render_widget(header, chunks[0]);
-
-        // Chunk indices depend on whether simulation bar and combat log are shown
-        let (map_chunk, combat_log_chunk, info_chunk, controls_chunk) = if self.sim_mode && self.show_combat_log {
-            // Render simulation status bar
-            if let Some(ref sim) = self.sim_state {
-                let year = sim.current_tick.year();
-                let season = format!("{:?}", sim.current_tick.season());
-                let living_tribes = sim.tribes.values().filter(|t| t.is_alive).count();
-                let total_pop: u32 = sim.tribes.values().filter(|t| t.is_alive).map(|t| t.population.total()).sum();
-                let monster_count = sim.monsters.living_count();
-
-                let sim_bar = Paragraph::new(format!(
-                    "Year {} {} | Tribes: {} | Pop: {} | Monsters: {} | Speed: {} | [Space] Step [+/-] Speed",
-                    year, season, living_tribes, total_pop, monster_count, self.sim_speed.name(),
-                ))
-                .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray));
-                frame.render_widget(sim_bar, chunks[1]);
-            }
-            (2, Some(3), 4, 5)
-        } else if self.sim_mode {
-            if let Some(ref sim) = self.sim_state {
-                let year = sim.current_tick.year();
-                let season = format!("{:?}", sim.current_tick.season());
-                let living_tribes = sim.tribes.values().filter(|t| t.is_alive).count();
-                let total_pop: u32 = sim.tribes.values().filter(|t| t.is_alive).map(|t| t.population.total()).sum();
-                let monster_count = sim.monsters.living_count();
-
-                let sim_bar = Paragraph::new(format!(
-                    "Year {} {} | Tribes: {} | Pop: {} | Monsters: {} | Speed: {} | [Space] Step [+/-] Speed",
-                    year, season, living_tribes, total_pop, monster_count, self.sim_speed.name(),
-                ))
-                .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray));
-                frame.render_widget(sim_bar, chunks[1]);
-            }
-            (2, None, 3, 4)
-        } else {
-            (1, None, 2, 3)
-        };
-
-        // Render combat log if enabled
-        if let Some(combat_chunk) = combat_log_chunk {
-            self.render_combat_log(frame, chunks[combat_chunk]);
-        }
-
-        // Map area with border
-        let map_block = Block::default()
-            .borders(Borders::ALL)
-            .title(" Local Map ");
-        let map_inner = map_block.inner(chunks[map_chunk]);
-        frame.render_widget(map_block, chunks[map_chunk]);
-
-        // Render local map tiles (spans multiple world tiles seamlessly)
-        let map_width = map_inner.width as usize;
-        let map_height = map_inner.height as usize;
-        let half_w = map_width / 2;
-        let half_h = map_height / 2;
-
-        // Calculate total world size in local coordinates
-        let total_local_width = self.world.width as u32 * LOCAL_MAP_SIZE;
-        let total_local_height = self.world.height as u32 * LOCAL_MAP_SIZE;
-
-        for vy in 0..map_height {
-            for vx in 0..map_width {
-                // Calculate global local coordinate for this screen position
-                let offset_x = vx as i32 - half_w as i32;
-                let offset_y = vy as i32 - half_h as i32;
-
-                let global_x = ((self.camera.x as i32 + offset_x).rem_euclid(total_local_width as i32)) as u32;
-                let global_y = (self.camera.y as i32 + offset_y).clamp(0, total_local_height as i32 - 1) as u32;
-
-                let coord = GlobalLocalCoord::new(global_x, global_y);
-                let is_cursor = global_x == self.cursor.x && global_y == self.cursor.y;
-
-                // Get the tile from the cache
-                let tile = self.local_cache.get_tile(&self.world, coord);
-
-                // Check for terrain modifications from simulation
-                let (world_tile, local_offset) = coord.to_hierarchical();
-                let local_x = local_offset.x as usize;
-                let local_y = local_offset.y as usize;
-
-                // Check for structures first (buildings, lairs)
-                let structure_feature = self.sim_state.as_ref().and_then(|sim| {
-                    sim.local_map_state.get(&world_tile).and_then(|state| {
-                        state.structures.get(&(local_x, local_y)).and_then(|s| {
-                            if s.is_complete() && !s.is_destroyed() {
-                                Some(s.feature)
-                            } else if !s.is_complete() {
-                                // Show construction site for incomplete buildings
-                                Some(crate::local::LocalFeature::ConstructionSite)
-                            } else {
-                                None
-                            }
-                        })
-                    })
-                });
-
-                let feature_modified = self.sim_state.as_ref().and_then(|sim| {
-                    sim.local_map_state.get(&world_tile).and_then(|state| {
-                        // Check if feature was removed
-                        if state.is_feature_removed(local_x, local_y) {
-                            Some(None) // Feature removed - render as no feature
-                        } else {
-                            // Check for added/replaced features
-                            state.feature_mods.get(&(local_x, local_y)).map(|m| {
-                                match m {
-                                    crate::local::FeatureModification::Added(f) => Some(*f),
-                                    crate::local::FeatureModification::Replaced { replacement, .. } => Some(*replacement),
-                                    _ => None,
-                                }
-                            })
-                        }
-                    })
-                });
-
-                let (ch, fg, bg) = if let Some(tile) = tile {
-                    // Get elevation brightness
-                    let brightness = tile.elevation_brightness();
-
-                    // Background = terrain color with elevation shading
-                    let (tr, tg, tb) = tile.terrain.color();
-                    let bg = Color::Rgb(
-                        ((tr as f32 * brightness * 0.6).min(255.0)) as u8,
-                        ((tg as f32 * brightness * 0.6).min(255.0)) as u8,
-                        ((tb as f32 * brightness * 0.6).min(255.0)) as u8,
-                    );
-
-                    // Determine effective feature (structures > modifications > original)
-                    let effective_feature = if let Some(struct_feat) = structure_feature {
-                        Some(struct_feat) // Structures take priority
-                    } else {
-                        match feature_modified {
-                            Some(modified_feature) => modified_feature, // Use modified feature (or None if removed)
-                            None => tile.feature, // Use original feature
-                        }
-                    };
-
-                    // Foreground = feature color if present, else brightened terrain
-                    let (ch, fg) = if let Some(feature) = effective_feature {
-                        let (fr, fg_g, fb) = feature.color();
-                        let fg = Color::Rgb(
-                            ((fr as f32 * brightness * 1.2).min(255.0)) as u8,
-                            ((fg_g as f32 * brightness * 1.2).min(255.0)) as u8,
-                            ((fb as f32 * brightness * 1.2).min(255.0)) as u8,
-                        );
-                        (feature.ascii_char(), fg)
-                    } else {
-                        let fg = Color::Rgb(
-                            ((tr as f32 * brightness * 1.4).min(255.0)) as u8,
-                            ((tg as f32 * brightness * 1.4).min(255.0)) as u8,
-                            ((tb as f32 * brightness * 1.4).min(255.0)) as u8,
-                        );
-                        // Add subtle elevation hint or show stump for removed trees
-                        let ch = if feature_modified.is_some() {
-                            '.' // Show a dot where feature was removed (stump/cleared ground)
-                        } else if tile.elevation_offset > 0.3 {
-                            '\''
-                        } else if tile.elevation_offset < -0.3 {
-                            '_'
-                        } else {
-                            tile.terrain.ascii_char()
-                        };
-                        (ch, fg)
-                    };
-
-                    (ch, fg, bg)
-                } else {
-                    // Out of bounds - show as empty
-                    (' ', Color::Black, Color::Black)
-                };
-
-                // Apply cursor highlighting
-                let (final_ch, final_fg, final_bg) = if is_cursor {
-                    (ch, Color::Black, Color::Yellow)
-                } else {
-                    (ch, fg, bg)
-                };
-
-                let x = map_inner.x + vx as u16;
-                let y = map_inner.y + vy as u16;
-
-                if x < map_inner.x + map_inner.width && y < map_inner.y + map_inner.height {
-                    frame.buffer_mut().set_string(
-                        x, y,
-                        final_ch.to_string(),
-                        Style::default().fg(final_fg).bg(final_bg),
-                    );
-                }
-            }
-        }
-
-        // Render entities (monsters, colonists) on the local map
-        self.render_local_entities(frame, map_inner, half_w, half_h, total_local_width, total_local_height);
-
-        // Render minimap overlay if enabled
-        if self.show_minimap {
-            self.render_minimap(frame, map_inner);
-        }
-
-        // Info panel
-        let (cursor_world_tile, cursor_local_offset) = self.cursor.to_hierarchical();
-        let cursor_biome = self.world.biomes.get(cursor_world_tile.x, cursor_world_tile.y);
-        let tile_info = self.world.get_tile_info(cursor_world_tile.x, cursor_world_tile.y);
-
-        // Count nearby entities if simulation is active
-        let (nearby_colonists, nearby_monsters, owner_tribe) = if let Some(ref sim) = self.sim_state {
-            let view_radius = (map_width.max(map_height) / 2) as u32;
-            let mut colonist_count = 0;
-            let mut monster_count = 0;
-
-            // Count colonists in view
-            for tribe in sim.tribes.values() {
-                for colonist in tribe.notable_colonists.colonists.values() {
-                    if colonist.is_alive {
-                        let dist = colonist.local_position.distance(&self.camera);
-                        if dist < view_radius {
-                            colonist_count += 1;
-                        }
-                    }
-                }
-            }
-
-            // Count monsters in view
-            for monster in sim.monsters.monsters.values() {
-                if !monster.is_dead() {
-                    let dist = monster.local_position.distance(&self.camera);
-                    if dist < view_radius {
-                        monster_count += 1;
-                    }
-                }
-            }
-
-            // Check who owns this tile
-            let owner = sim.territory_map.get(&cursor_world_tile).and_then(|tid| {
-                sim.tribes.get(tid).map(|t| t.name.clone())
-            });
-
-            (colonist_count, monster_count, owner)
-        } else {
-            (0, 0, None)
-        };
-
-        let mut info_lines = vec![
-            Line::from(vec![
-                Span::raw("Local Position: "),
-                Span::styled(format!("({}, {})", cursor_local_offset.x, cursor_local_offset.y), Style::default().fg(Color::Yellow)),
-            ]),
-            Line::from(vec![
-                Span::raw("Biome: "),
-                Span::styled(cursor_biome.display_name().to_string(), Style::default().fg(Color::Green)),
-                Span::raw("  Elev: "),
-                Span::styled(tile_info.elevation_str(), Style::default().fg(Color::Yellow)),
-                Span::raw("  Temp: "),
-                Span::styled(tile_info.temperature_str(), Style::default().fg(Color::Red)),
-            ]),
-        ];
-
-        if self.sim_mode {
-            let owner_str = owner_tribe.unwrap_or_else(|| "Unclaimed".to_string());
-            info_lines.push(Line::from(vec![
-                Span::raw("Territory: "),
-                Span::styled(owner_str, Style::default().fg(Color::Cyan)),
-                Span::raw("  Visible: "),
-                Span::styled(format!("{} colonists", nearby_colonists), Style::default().fg(Color::Green)),
-                Span::raw(", "),
-                Span::styled(format!("{} monsters", nearby_monsters), Style::default().fg(Color::Red)),
-                Span::raw("  [G] Go to tribe"),
-            ]));
-
-            // Check for entity at cursor (using local position)
-            if let Some(ref sim) = self.sim_state {
-                // Check for monster first
-                if let Some(monster) = sim.get_monster_near_local(&self.cursor, 1) {
-                    let (mr, mg, mb) = monster.species.color();
-                    let monster_color = Color::Rgb(mr, mg, mb);
-                    let health_pct = (monster.health / monster.max_health * 100.0) as u32;
-                    let health_color = if health_pct > 60 { Color::Green } else if health_pct > 30 { Color::Yellow } else { Color::Red };
-                    let (state_str, state_color) = match monster.state {
-                        crate::simulation::monsters::MonsterState::Idle => ("Resting", Color::DarkGray),
-                        crate::simulation::monsters::MonsterState::Roaming => ("Roaming", Color::Cyan),
-                        crate::simulation::monsters::MonsterState::Hunting => ("Hunting!", Color::Yellow),
-                        crate::simulation::monsters::MonsterState::Attacking(_) => ("ATTACKING!", Color::Red),
-                        crate::simulation::monsters::MonsterState::Fleeing => ("Fleeing", Color::LightRed),
-                        crate::simulation::monsters::MonsterState::Dead => ("Dead", Color::DarkGray),
-                    };
-                    info_lines.push(Line::from(vec![
-                        Span::styled(format!(">>> {} ", monster.species.name()), Style::default().fg(monster_color).add_modifier(Modifier::BOLD)),
-                        Span::raw("HP: "),
-                        Span::styled(format!("{}%", health_pct), Style::default().fg(health_color)),
-                        Span::raw("  State: "),
-                        Span::styled(state_str, Style::default().fg(state_color)),
-                        Span::raw("  Kills: "),
-                        Span::styled(format!("{}", monster.kills), Style::default().fg(Color::Magenta)),
-                    ]));
-                }
-                // Check for colonist
-                else if let Some((colonist, tribe_id)) = sim.get_colonist_near_local(&self.cursor, 1) {
-                    let (cr, cg, cb) = colonist.color();
-                    let colonist_color = Color::Rgb(cr, cg, cb);
-                    let health_pct = (colonist.health * 100.0) as u32;
-                    let health_color = if health_pct > 60 { Color::Green } else if health_pct > 30 { Color::Yellow } else { Color::Red };
-
-                    // Role and life stage info
-                    let role_str = format!("{:?}", colonist.role);
-                    let gender_str = if colonist.gender == crate::simulation::colonists::Gender::Male { "Male" } else { "Female" };
-                    let life_stage_str = format!("{:?}", colonist.life_stage);
-
-                    let (tr, tg, tb) = Self::tribe_color(tribe_id);
-                    let tribe_color = Color::Rgb(tr, tg, tb);
-                    let tribe_name = sim.tribes.get(&tribe_id).map(|t| t.name.clone()).unwrap_or_default();
-
-                    // Check if this colonist is selected
-                    let is_selected = self.selected_colonist.map_or(false, |(cid, tid)| cid == colonist.id && tid == tribe_id);
-                    let select_marker = if is_selected { "★ " } else { ">>> " };
-
-                    // Line 1: Name and basic info
-                    info_lines.push(Line::from(vec![
-                        Span::styled(format!("{}{}", select_marker, colonist.name), Style::default().fg(colonist_color).add_modifier(Modifier::BOLD)),
-                    ]));
-
-                    // Line 2: Role, Gender, Life Stage, Age
-                    info_lines.push(Line::from(vec![
-                        Span::styled(role_str, Style::default().fg(Color::Yellow)),
-                        Span::raw(", "),
-                        Span::raw(gender_str),
-                        Span::raw(", "),
-                        Span::styled(life_stage_str, Style::default().fg(Color::White)),
-                        Span::raw(" ("),
-                        Span::styled(format!("{} years", colonist.age), Style::default().fg(Color::DarkGray)),
-                        Span::raw(")"),
-                    ]));
-
-                    // Line 3: Health bar
-                    let health_bar_len = 10;
-                    let filled = (health_pct as usize * health_bar_len / 100).min(health_bar_len);
-                    let empty = health_bar_len - filled;
-                    let health_bar = format!("[{}{}] {}%", "█".repeat(filled), "░".repeat(empty), health_pct);
-                    info_lines.push(Line::from(vec![
-                        Span::raw("Health: "),
-                        Span::styled(health_bar, Style::default().fg(health_color)),
-                    ]));
-
-                    // Line 4: Mood with active modifiers
-                    let mood_desc = colonist.mood.description();
-                    let mood_color = match colonist.mood.current_mood {
-                        x if x >= 0.7 => Color::Green,
-                        x if x >= 0.5 => Color::Yellow,
-                        x if x >= 0.3 => Color::LightRed,
-                        _ => Color::Red,
-                    };
-                    let modifiers = colonist.mood.active_modifier_names();
-                    let modifiers_str = if modifiers.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ({})", modifiers.iter().take(3).cloned().collect::<Vec<_>>().join(", "))
-                    };
-                    info_lines.push(Line::from(vec![
-                        Span::raw("Mood: "),
-                        Span::styled(mood_desc, Style::default().fg(mood_color)),
-                        Span::styled(modifiers_str, Style::default().fg(Color::DarkGray)),
-                    ]));
-
-                    // Line 5: Activity
-                    let activity_str = colonist.activity_description();
-                    let activity_color = match colonist.activity_state {
-                        crate::simulation::colonists::ColonistActivityState::Working => Color::Green,
-                        crate::simulation::colonists::ColonistActivityState::Traveling => Color::Yellow,
-                        crate::simulation::colonists::ColonistActivityState::Fleeing => Color::Red,
-                        crate::simulation::colonists::ColonistActivityState::Socializing => Color::Magenta,
-                        crate::simulation::colonists::ColonistActivityState::Patrolling => Color::Cyan,
-                        crate::simulation::colonists::ColonistActivityState::Scouting => Color::Blue,
-                        _ => Color::DarkGray,
-                    };
-                    info_lines.push(Line::from(vec![
-                        Span::raw("Activity: "),
-                        Span::styled(activity_str, Style::default().fg(activity_color)),
-                    ]));
-
-                    // Line 6: Top skills (up to 3)
-                    let mut skill_entries: Vec<_> = colonist.skills.skills_above_level(1);
-                    skill_entries.sort_by(|a, b| b.1.level.cmp(&a.1.level));
-                    let top_skills: Vec<String> = skill_entries.iter()
-                        .take(3)
-                        .map(|(st, sk)| format!("{} ({})", st.name(), crate::simulation::colonists::skill_level_name(sk.level)))
-                        .collect();
-                    let skills_str = if top_skills.is_empty() {
-                        "None".to_string()
-                    } else {
-                        top_skills.join(", ")
-                    };
-                    info_lines.push(Line::from(vec![
-                        Span::raw("Skills: "),
-                        Span::styled(skills_str, Style::default().fg(Color::Cyan)),
-                    ]));
-
-                    // Line 7: Job and Tribe
-                    let job_str = colonist.current_job.map_or("None".to_string(), |j| format!("{:?}", j));
-                    info_lines.push(Line::from(vec![
-                        Span::raw("Job: "),
-                        Span::styled(job_str, Style::default().fg(Color::LightBlue)),
-                        Span::raw("  Tribe: "),
-                        Span::styled(tribe_name, Style::default().fg(tribe_color)),
-                    ]));
-
-                    // Line 8: Family info
-                    let spouse_str = if colonist.spouse.is_some() { "Married" } else { "Single" };
-                    let children_str = if colonist.children.is_empty() {
-                        String::new()
-                    } else {
-                        format!(", {} children", colonist.children.len())
-                    };
-                    info_lines.push(Line::from(vec![
-                        Span::raw("Family: "),
-                        Span::styled(spouse_str, Style::default().fg(Color::Magenta)),
-                        Span::styled(children_str, Style::default().fg(Color::DarkGray)),
-                    ]));
-
-                    // Line 9: Controls hint
-                    info_lines.push(Line::from(vec![
-                        Span::styled("[Enter] Select  [F] Follow  [Tab] Next", Style::default().fg(Color::DarkGray)),
-                    ]));
-                }
-                // Check for fauna
-                else if let Some(fauna) = sim.get_fauna_near_local(&self.cursor, 1).first() {
-                    let (fr, fg, fb) = fauna.species.color();
-                    let fauna_color = Color::Rgb(fr, fg, fb);
-                    let health_pct = (fauna.health / fauna.max_health * 100.0) as u32;
-                    let health_color = if health_pct > 60 { Color::Green } else if health_pct > 30 { Color::Yellow } else { Color::Red };
-                    let state_str = format!("{:?}", fauna.state);
-
-                    info_lines.push(Line::from(vec![
-                        Span::styled(format!(">>> {} ", fauna.species.name()), Style::default().fg(fauna_color).add_modifier(Modifier::BOLD)),
-                        Span::raw("HP: "),
-                        Span::styled(format!("{}%", health_pct), Style::default().fg(health_color)),
-                        Span::raw("  State: "),
-                        Span::styled(state_str, Style::default().fg(Color::Cyan)),
-                        Span::raw("  Age: "),
-                        Span::styled(format!("{}", fauna.age), Style::default().fg(Color::White)),
-                    ]));
-                }
-            }
-        } else {
-            info_lines.push(Line::from(vec![
-                Span::raw("Cache: "),
-                Span::styled(format!("{} tiles", self.local_cache.stats().cached_count), Style::default().fg(Color::Magenta)),
-            ]));
-        }
-
-        // Show follow mode status
-        let panel_title = if let Some(name) = self.get_followed_colonist_name() {
-            info_lines.insert(0, Line::from(vec![
-                Span::styled("FOLLOWING: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(name.clone(), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw("  [F] Stop  [Esc] Stop"),
-            ]));
-            format!(" Following: {} ", name)
-        } else {
-            " Local Info ".to_string()
-        };
-
-        let info_text = info_lines;
-
-        let info_panel = Paragraph::new(info_text)
-            .block(Block::default().borders(Borders::ALL).title(panel_title));
-        frame.render_widget(info_panel, chunks[info_chunk]);
-
-        // Controls
-        let controls_text = if self.sim_mode {
-            if self.followed_colonist.is_some() {
-                "[F/Esc] Stop Follow  [Space] Step  [+/-] Speed  [W] World View  [?] Help  [Q] Quit"
-            } else {
-                "[←↑↓→] Move  [F] Follow  [M] Minimap  [W] World  [Space] Step  [+/-] Speed  [?] Help  [Q] Quit"
-            }
-        } else {
-            "[←↑↓→/WASD] Move  [M] Minimap  [W] World View  [S] Start Sim  [N] New  [?] Help  [Q] Quit"
-        };
-        let controls = Paragraph::new(controls_text)
-            .style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(controls, chunks[controls_chunk]);
-
-        // Help overlay
-        if self.show_help {
-            self.render_local_primary_help(frame);
-        }
-
-        // Action menu overlay
-        if self.show_action_menu {
-            self.render_action_menu(frame);
         }
     }
 
-    /// Render the action menu for a selected colonist
-    fn render_action_menu(&self, frame: &mut Frame) {
-        let size = frame.area();
-
-        // Get colonist name for the title
-        let colonist_name = if let Some((colonist_id, tribe_id)) = self.selected_colonist {
-            self.sim_state.as_ref().and_then(|sim| {
-                sim.tribes.get(&tribe_id).and_then(|t| {
-                    t.notable_colonists.colonists.get(&colonist_id).map(|c| c.name.clone())
-                })
-            }).unwrap_or_else(|| "Colonist".to_string())
-        } else {
-            "Colonist".to_string()
-        };
-
-        // Menu dimensions
-        let menu_width = 26u16;
-        let menu_height = 11u16;
-
-        // Center the menu
-        let menu_x = (size.width.saturating_sub(menu_width)) / 2;
-        let menu_y = (size.height.saturating_sub(menu_height)) / 2;
-        let menu_area = Rect::new(menu_x, menu_y, menu_width, menu_height);
-
-        // Clear the area behind the menu
-        frame.render_widget(Clear, menu_area);
-
-        // Menu items
-        let actions = [
-            "Work (current job)",
-            "Rest",
-            "Socialize",
-            "Patrol",
-            "Scout",
-            "Guard",
-            "Build",
-            "Follow (camera)",
-        ];
-
-        let mut lines: Vec<Line> = Vec::new();
-        for (i, action) in actions.iter().enumerate() {
-            let is_selected = i == self.action_menu_index;
-            let prefix = if is_selected { "> " } else { "  " };
-            let style = if is_selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-            lines.push(Line::from(Span::styled(format!("{}{}", prefix, action), style)));
-        }
-        lines.push(Line::from(Span::styled("[Esc] Cancel", Style::default().fg(Color::DarkGray))));
-
-        let menu = Paragraph::new(lines)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow))
-                .title(format!(" Actions: {} ", colonist_name)));
-
-        frame.render_widget(menu, menu_area);
+    /// Get Z-level status string for the status bar
+    fn z_level_status(&self) -> String {
+        let floor_height = z_to_height(self.cursor_z);
+        let ceiling_height = z_to_height_ceiling(self.cursor_z);
+        let description = z_level_description(self.cursor_z);
+        format!(
+            "Z: {:+} ({:.0}m to {:.0}m) [{}]",
+            self.cursor_z,
+            floor_height,
+            ceiling_height,
+            description,
+        )
     }
 
-    /// Render entities (monsters, colonists) on the local map
-    fn render_local_entities(&self, frame: &mut Frame, map_area: Rect, half_w: usize, half_h: usize, total_local_width: u32, total_local_height: u32) {
-        if !self.sim_mode {
-            return;
-        }
+    /// Render the map
+    fn render_map(&self, area: Rect, buf: &mut Buffer) {
+        let width = self.world.heightmap.width;
+        let height = self.world.heightmap.height;
+        let zoom = self.zoom;
 
-        let sim = match &self.sim_state {
-            Some(s) => s,
-            None => return,
+        // Calculate viewport centered on cursor, accounting for zoom
+        let view_width = area.width as usize;
+        let view_height = area.height as usize;
+
+        // Map area visible = screen size * zoom
+        let map_view_width = view_width * zoom;
+        let map_view_height = view_height * zoom;
+
+        let start_x = if self.cursor_x >= map_view_width / 2 {
+            self.cursor_x - map_view_width / 2
+        } else {
+            0
+        };
+        let start_y = if self.cursor_y >= map_view_height / 2 {
+            self.cursor_y - map_view_height / 2
+        } else {
+            0
         };
 
-        // Render monsters
-        for monster in sim.monsters.monsters.values() {
-            if monster.is_dead() {
-                continue;
-            }
+        for dy in 0..view_height {
+            for dx in 0..view_width {
+                // Sample from the map at zoom intervals
+                let map_x = (start_x + dx * zoom) % width;
+                let map_y = (start_y + dy * zoom).min(height - 1);
 
-            // Check if monster is within viewport
-            let offset_x = monster.local_position.x as i32 - self.camera.x as i32;
-            let offset_y = monster.local_position.y as i32 - self.camera.y as i32;
-
-            // Handle horizontal wrapping
-            let half_total = (total_local_width / 2) as i32;
-            let offset_x = if offset_x > half_total {
-                offset_x - total_local_width as i32
-            } else if offset_x < -half_total {
-                offset_x + total_local_width as i32
-            } else {
-                offset_x
-            };
-
-            let screen_x = half_w as i32 + offset_x;
-            let screen_y = half_h as i32 + offset_y;
-
-            if screen_x >= 0 && screen_x < map_area.width as i32 && screen_y >= 0 && screen_y < map_area.height as i32 {
-                let ch = monster.species.map_char();
-                let (r, g, b) = monster.species.color();
-                let fg = Color::Rgb(r, g, b);
-                let bg = Color::Rgb(100, 30, 30); // Red tint background
-
-                let x = map_area.x + screen_x as u16;
-                let y = map_area.y + screen_y as u16;
-
-                frame.buffer_mut().set_string(
-                    x, y,
-                    ch.to_string(),
-                    Style::default().fg(fg).bg(bg),
-                );
-            }
-        }
-
-        // Render colonists
-        for tribe in sim.tribes.values() {
-            if !tribe.is_alive {
-                continue;
-            }
-
-            for colonist in tribe.notable_colonists.colonists.values() {
-                if !colonist.is_alive {
+                if map_y >= height {
                     continue;
                 }
 
-                let offset_x = colonist.local_position.x as i32 - self.camera.x as i32;
-                let offset_y = colonist.local_position.y as i32 - self.camera.y as i32;
+                let screen_x = area.x + dx as u16;
+                let screen_y = area.y + dy as u16;
 
-                // Handle horizontal wrapping
-                let half_total = (total_local_width / 2) as i32;
-                let offset_x = if offset_x > half_total {
-                    offset_x - total_local_width as i32
-                } else if offset_x < -half_total {
-                    offset_x + total_local_width as i32
+                if screen_x >= area.x + area.width || screen_y >= area.y + area.height {
+                    continue;
+                }
+
+                let (ch, fg, bg) = self.get_tile_display(map_x, map_y);
+
+                // Highlight cursor position (check if cursor is in this cell's range)
+                let cursor_in_cell = self.cursor_x >= map_x && self.cursor_x < map_x + zoom
+                    && self.cursor_y >= map_y && self.cursor_y < map_y + zoom;
+                let style = if cursor_in_cell {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
                 } else {
-                    offset_x
+                    Style::default().fg(fg).bg(bg)
                 };
 
-                let screen_x = half_w as i32 + offset_x;
-                let screen_y = half_h as i32 + offset_y;
+                buf.get_mut(screen_x, screen_y).set_char(ch).set_style(style);
+            }
+        }
+    }
 
-                if screen_x >= 0 && screen_x < map_area.width as i32 && screen_y >= 0 && screen_y < map_area.height as i32 {
-                    let ch = colonist.map_char();
-                    let (r, g, b) = colonist.color();
-                    let fg = Color::Rgb(r, g, b);
-                    let (tr, tg, tb) = Self::tribe_color(tribe.id);
-                    let bg = Color::Rgb(tr / 2, tg / 2, tb / 2);
+    /// Get display character and colors for a tile based on Z-level
+    fn get_tile_display(&self, x: usize, y: usize) -> (char, Color, Color) {
+        let ztile = *self.world.zlevels.get(x, y, self.cursor_z);
+        let surface_z = *self.world.surface_z.get(x, y);
+        let biome = *self.world.biomes.get(x, y);
+        let height = *self.world.heightmap.get(x, y);
+        let temp = *self.world.temperature.get(x, y);
+        let moisture = *self.world.moisture.get(x, y);
+        let stress = *self.world.stress_map.get(x, y);
+        let plate_id = *self.world.plate_map.get(x, y);
 
-                    let x = map_area.x + screen_x as u16;
-                    let y = map_area.y + screen_y as u16;
+        // For non-biome view modes, show layer information
+        match self.view_mode {
+            ViewMode::Biome => {
+                // Show Z-level aware rendering
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(100, 150, 255), Color::Rgb(20, 40, 80)),
+                    ZTile::Surface => {
+                        // Use biome colors for surface
+                        let ch = biome_char(&biome);
+                        let (r, g, b) = biome.color();
+                        (ch, Color::Rgb(r, g, b), Color::Reset)
+                    }
+                    ZTile::Solid => {
+                        // Underground - show rock with depth shading
+                        let depth_below = surface_z - self.cursor_z;
+                        let shade = (80 - depth_below * 4).max(30) as u8;
+                        ('#', Color::Rgb(shade, shade, shade), Color::Rgb(20, 20, 20))
+                    }
+                    ZTile::Aquifer => {
+                        // Underground water reservoir - cyan/teal
+                        ('≈', Color::Rgb(0, 200, 220), Color::Rgb(0, 60, 80))
+                    }
+                    ZTile::UndergroundRiver => {
+                        // Flowing underground channel - light blue
+                        ('~', Color::Rgb(100, 180, 255), Color::Rgb(20, 50, 100))
+                    }
+                    ZTile::WaterCave => {
+                        // Water-filled cave chamber - teal
+                        ('○', Color::Rgb(0, 180, 180), Color::Rgb(0, 40, 60))
+                    }
+                    ZTile::Spring => {
+                        // Surface emergence point - bright cyan on green
+                        ('◊', Color::Rgb(0, 255, 255), Color::Rgb(0, 80, 40))
+                    }
 
-                    frame.buffer_mut().set_string(
-                        x, y,
-                        ch.to_string(),
-                        Style::default().fg(fg).bg(bg),
-                    );
+                    // === Cave Structure ===
+                    ZTile::CaveFloor => {
+                        // Walkable cave floor - gray
+                        ('.', Color::Rgb(60, 55, 50), Color::Rgb(15, 15, 20))
+                    }
+                    ZTile::CaveWall => {
+                        // Cave wall - brown
+                        ('#', Color::Rgb(80, 70, 60), Color::Rgb(20, 18, 15))
+                    }
+
+                    // === Speleothems (Cave Formations) ===
+                    ZTile::Stalactite => {
+                        // Hanging formation - cyan
+                        ('▼', Color::Rgb(180, 200, 220), Color::Rgb(30, 30, 40))
+                    }
+                    ZTile::Stalagmite => {
+                        // Rising formation - tan
+                        ('▲', Color::Rgb(160, 140, 120), Color::Rgb(30, 25, 20))
+                    }
+                    ZTile::Pillar => {
+                        // Merged column - light stone
+                        ('│', Color::Rgb(200, 180, 160), Color::Rgb(40, 35, 30))
+                    }
+                    ZTile::Flowstone => {
+                        // Sheet deposit - cream
+                        ('=', Color::Rgb(180, 170, 150), Color::Rgb(35, 30, 25))
+                    }
+
+                    // === Cave Biomes ===
+                    ZTile::FungalGrowth => {
+                        // Glowing fungi - bright green
+                        ('*', Color::Rgb(100, 255, 180), Color::Rgb(20, 60, 40))
+                    }
+                    ZTile::GiantMushroom => {
+                        // Large mushroom (tower cap) - purple
+                        ('♠', Color::Rgb(180, 100, 220), Color::Rgb(40, 20, 50))
+                    }
+                    ZTile::CrystalFormation => {
+                        // Crystal growths - violet
+                        ('◆', Color::Rgb(200, 100, 255), Color::Rgb(40, 20, 60))
+                    }
+                    ZTile::CaveMoss => {
+                        // Bioluminescent moss - teal
+                        ('\'', Color::Rgb(80, 200, 180), Color::Rgb(15, 40, 35))
+                    }
+
+                    // === Deep Features ===
+                    ZTile::MagmaPool => {
+                        // Molten rock - bright orange/red
+                        ('≈', Color::Rgb(255, 100, 0), Color::Rgb(80, 20, 0))
+                    }
+                    ZTile::MagmaTube => {
+                        // Lava tube passage - dark red
+                        ('○', Color::Rgb(100, 40, 40), Color::Rgb(30, 15, 10))
+                    }
+                    ZTile::ObsidianFloor => {
+                        // Cooled magma - dark gray/black
+                        ('_', Color::Rgb(40, 40, 50), Color::Rgb(10, 10, 15))
+                    }
+
+                    // === Water Integration ===
+                    ZTile::CaveLake => {
+                        // Underground lake - dark blue
+                        ('~', Color::Rgb(40, 80, 120), Color::Rgb(10, 20, 40))
+                    }
+                    ZTile::Waterfall => {
+                        // Falling water - bright blue
+                        ('|', Color::Rgb(150, 200, 255), Color::Rgb(30, 60, 100))
+                    }
+
+                    // === Vertical Passages ===
+                    ZTile::RampUp => {
+                        // Can go up - bright green arrow
+                        ('↑', Color::Rgb(100, 255, 100), Color::Rgb(20, 50, 20))
+                    }
+                    ZTile::RampDown => {
+                        // Can go down - bright red arrow
+                        ('↓', Color::Rgb(255, 100, 100), Color::Rgb(50, 20, 20))
+                    }
+                    ZTile::RampBoth => {
+                        // Can go both ways - bright yellow double arrow
+                        ('↕', Color::Rgb(255, 255, 100), Color::Rgb(50, 50, 20))
+                    }
+
+                    // === Human-Made Structures ===
+
+                    // Structure Walls
+                    ZTile::StoneWall => {
+                        ('#', Color::Rgb(140, 140, 145), Color::Rgb(50, 50, 55))
+                    }
+                    ZTile::BrickWall => {
+                        ('#', Color::Rgb(160, 100, 80), Color::Rgb(60, 35, 25))
+                    }
+                    ZTile::WoodWall => {
+                        ('#', Color::Rgb(180, 140, 100), Color::Rgb(70, 50, 35))
+                    }
+                    ZTile::RuinedWall => {
+                        ('%', Color::Rgb(100, 95, 90), Color::Rgb(40, 38, 35))
+                    }
+
+                    // Structure Floors
+                    ZTile::StoneFloor => {
+                        ('.', Color::Rgb(130, 130, 135), Color::Rgb(45, 45, 50))
+                    }
+                    ZTile::WoodFloor => {
+                        ('.', Color::Rgb(160, 130, 90), Color::Rgb(55, 45, 30))
+                    }
+                    ZTile::CobblestoneFloor => {
+                        (',', Color::Rgb(120, 115, 110), Color::Rgb(40, 38, 35))
+                    }
+                    ZTile::DirtFloor => {
+                        ('.', Color::Rgb(140, 110, 70), Color::Rgb(50, 40, 25))
+                    }
+
+                    // Structure Features
+                    ZTile::Door => {
+                        ('+', Color::Rgb(140, 100, 60), Color::Rgb(50, 35, 25))
+                    }
+                    ZTile::Window => {
+                        ('□', Color::Rgb(180, 200, 220), Color::Rgb(40, 50, 60))
+                    }
+                    ZTile::StairsUp => {
+                        ('<', Color::Rgb(200, 200, 200), Color::Rgb(60, 60, 65))
+                    }
+                    ZTile::StairsDown => {
+                        ('>', Color::Rgb(200, 200, 200), Color::Rgb(60, 60, 65))
+                    }
+                    ZTile::Column => {
+                        ('│', Color::Rgb(180, 175, 170), Color::Rgb(55, 55, 60))
+                    }
+                    ZTile::Rubble => {
+                        ('*', Color::Rgb(90, 85, 80), Color::Rgb(30, 28, 25))
+                    }
+                    ZTile::Chest => {
+                        ('□', Color::Rgb(200, 150, 50), Color::Rgb(60, 45, 15))
+                    }
+                    ZTile::Altar => {
+                        ('╥', Color::Rgb(200, 180, 220), Color::Rgb(50, 45, 60))
+                    }
+
+                    // Roads
+                    ZTile::DirtRoad => {
+                        ('═', Color::Rgb(140, 120, 80), Color::Rgb(50, 40, 25))
+                    }
+                    ZTile::StoneRoad => {
+                        ('═', Color::Rgb(150, 150, 155), Color::Rgb(55, 55, 60))
+                    }
+                    ZTile::Bridge => {
+                        ('═', Color::Rgb(130, 90, 50), Color::Rgb(20, 30, 50))
+                    }
+
+                    // Cave Structures
+                    ZTile::MinedTunnel => {
+                        ('.', Color::Rgb(100, 80, 60), Color::Rgb(30, 25, 20))
+                    }
+                    ZTile::MinedRoom => {
+                        ('.', Color::Rgb(110, 90, 70), Color::Rgb(35, 28, 22))
+                    }
+                    ZTile::MineSupport => {
+                        ('║', Color::Rgb(120, 80, 40), Color::Rgb(35, 25, 15))
+                    }
+                    ZTile::Torch => {
+                        ('☼', Color::Rgb(255, 200, 50), Color::Rgb(80, 40, 0))
+                    }
+
+                    // Mining structures
+                    ZTile::MineShaft => {
+                        ('○', Color::Rgb(80, 60, 40), Color::Rgb(20, 15, 10))
+                    }
+                    ZTile::MineLadder => {
+                        ('H', Color::Rgb(140, 100, 60), Color::Rgb(30, 20, 10))
+                    }
+                    ZTile::MineRails => {
+                        ('═', Color::Rgb(100, 100, 110), Color::Rgb(40, 35, 30))
+                    }
+                    ZTile::OreVein => {
+                        ('*', Color::Rgb(180, 140, 80), Color::Rgb(60, 45, 25))
+                    }
+                    ZTile::RichOreVein => {
+                        ('◆', Color::Rgb(255, 215, 0), Color::Rgb(80, 60, 20))
+                    }
+                    ZTile::MineEntrance => {
+                        ('▼', Color::Rgb(90, 70, 50), Color::Rgb(40, 30, 20))
+                    }
+
+                    // Underground fortress
+                    ZTile::FortressWall => {
+                        ('█', Color::Rgb(80, 80, 90), Color::Rgb(40, 40, 50))
+                    }
+                    ZTile::FortressFloor => {
+                        ('·', Color::Rgb(100, 100, 110), Color::Rgb(35, 35, 45))
+                    }
+                    ZTile::FortressGate => {
+                        ('‡', Color::Rgb(120, 80, 40), Color::Rgb(45, 35, 25))
+                    }
+                    ZTile::Vault => {
+                        ('$', Color::Rgb(200, 180, 80), Color::Rgb(50, 45, 30))
+                    }
+                    ZTile::BarracksFloor => {
+                        ('░', Color::Rgb(110, 90, 70), Color::Rgb(40, 32, 24))
+                    }
+                    ZTile::ForgeFloor => {
+                        ('▒', Color::Rgb(180, 80, 30), Color::Rgb(60, 30, 10))
+                    }
+                    ZTile::Cistern => {
+                        ('≈', Color::Rgb(60, 120, 180), Color::Rgb(20, 40, 60))
+                    }
+
+                    // === Historical Evidence ===
+
+                    // Battlefield evidence
+                    ZTile::BoneField => {
+                        ('☠', Color::Rgb(200, 190, 170), Color::Rgb(40, 35, 30))
+                    }
+                    ZTile::RustedWeapons => {
+                        ('†', Color::Rgb(150, 100, 80), Color::Rgb(45, 30, 25))
+                    }
+                    ZTile::WarMemorial => {
+                        ('╬', Color::Rgb(160, 160, 170), Color::Rgb(50, 50, 55))
+                    }
+                    ZTile::Crater => {
+                        ('○', Color::Rgb(80, 70, 60), Color::Rgb(25, 22, 18))
+                    }
+
+                    // Cultural markers
+                    ZTile::BoundaryStone => {
+                        ('◙', Color::Rgb(140, 140, 145), Color::Rgb(45, 45, 50))
+                    }
+                    ZTile::MileMarker => {
+                        ('│', Color::Rgb(150, 145, 140), Color::Rgb(50, 48, 45))
+                    }
+                    ZTile::Shrine => {
+                        ('╥', Color::Rgb(180, 160, 200), Color::Rgb(50, 45, 60))
+                    }
+                    ZTile::Statue => {
+                        ('♀', Color::Rgb(170, 170, 180), Color::Rgb(55, 55, 60))
+                    }
+                    ZTile::Obelisk => {
+                        ('↑', Color::Rgb(140, 140, 150), Color::Rgb(45, 45, 50))
+                    }
+
+                    // Monster evidence
+                    ZTile::BoneNest => {
+                        ('☠', Color::Rgb(180, 170, 150), Color::Rgb(35, 30, 25))
+                    }
+                    ZTile::WebCluster => {
+                        ('▓', Color::Rgb(200, 200, 210), Color::Rgb(60, 60, 65))
+                    }
+                    ZTile::SlimeTrail => {
+                        ('~', Color::Rgb(100, 180, 80), Color::Rgb(30, 50, 25))
+                    }
+                    ZTile::TerritoryMarking => {
+                        ('!', Color::Rgb(180, 130, 60), Color::Rgb(55, 40, 20))
+                    }
+                    ZTile::AntMound => {
+                        ('▲', Color::Rgb(140, 100, 60), Color::Rgb(45, 32, 20))
+                    }
+                    ZTile::BeeHive => {
+                        ('◆', Color::Rgb(200, 180, 60), Color::Rgb(60, 55, 20))
+                    }
+                    ZTile::ClawMarks => {
+                        ('≡', Color::Rgb(120, 100, 80), Color::Rgb(40, 32, 25))
+                    }
+                    ZTile::CursedGround => {
+                        ('†', Color::Rgb(100, 60, 100), Color::Rgb(30, 18, 30))
+                    }
+                    ZTile::CharredGround => {
+                        ('░', Color::Rgb(50, 50, 50), Color::Rgb(20, 18, 15))
+                    }
+
+                    // Trade/resource evidence
+                    ZTile::AbandonedCart => {
+                        ('□', Color::Rgb(120, 90, 60), Color::Rgb(40, 30, 20))
+                    }
+                    ZTile::WaystationRuin => {
+                        ('■', Color::Rgb(100, 95, 90), Color::Rgb(35, 33, 30))
+                    }
+                    ZTile::DriedWell => {
+                        ('○', Color::Rgb(110, 100, 90), Color::Rgb(38, 35, 30))
+                    }
+                    ZTile::OvergrownGarden => {
+                        ('♣', Color::Rgb(80, 140, 80), Color::Rgb(25, 45, 25))
+                    }
+
+                    // Graveyards
+                    ZTile::Gravestone => {
+                        ('†', Color::Rgb(140, 140, 145), Color::Rgb(45, 45, 48))
+                    }
+                    ZTile::Tomb => {
+                        ('╬', Color::Rgb(130, 125, 130), Color::Rgb(42, 40, 42))
+                    }
+                    ZTile::Mausoleum => {
+                        ('▓', Color::Rgb(150, 150, 155), Color::Rgb(48, 48, 52))
+                    }
+                    ZTile::Ossuary => {
+                        ('☠', Color::Rgb(200, 195, 180), Color::Rgb(50, 48, 45))
+                    }
+                    ZTile::MassGrave => {
+                        ('▓', Color::Rgb(90, 80, 70), Color::Rgb(30, 25, 22))
+                    }
+
+                    // === Artifact Containers ===
+                    ZTile::ArtifactPedestal => {
+                        ('╦', Color::Rgb(200, 180, 100), Color::Rgb(50, 45, 25))
+                    }
+                    ZTile::TreasureChest => {
+                        ('▣', Color::Rgb(180, 140, 60), Color::Rgb(50, 40, 20))
+                    }
+                    ZTile::BookShelf => {
+                        ('▤', Color::Rgb(140, 100, 60), Color::Rgb(40, 28, 18))
+                    }
+                    ZTile::RelicShrine => {
+                        ('╥', Color::Rgb(180, 160, 200), Color::Rgb(45, 40, 55))
+                    }
+                    ZTile::ScrollCase => {
+                        ('▥', Color::Rgb(160, 140, 100), Color::Rgb(45, 40, 28))
+                    }
+
+                    // === Statue Variants ===
+                    ZTile::HeroStatue => {
+                        ('♀', Color::Rgb(180, 180, 190), Color::Rgb(50, 50, 55))
+                    }
+                    ZTile::RuinedStatue => {
+                        ('♀', Color::Rgb(100, 95, 90), Color::Rgb(35, 33, 30))
+                    }
+
+                    // === Dungeon Markers ===
+                    ZTile::DungeonEntrance => {
+                        ('▼', Color::Rgb(120, 80, 100), Color::Rgb(40, 25, 35))
+                    }
+                    ZTile::TreasureHoard => {
+                        ('$', Color::Rgb(255, 215, 0), Color::Rgb(80, 55, 0))
+                    }
+                }
+            }
+            ViewMode::Height => {
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    ZTile::Aquifer => ('≈', Color::Rgb(0, 200, 220), Color::Rgb(0, 60, 80)),
+                    ZTile::UndergroundRiver => ('~', Color::Rgb(100, 180, 255), Color::Rgb(20, 50, 100)),
+                    ZTile::WaterCave | ZTile::CaveLake => ('○', Color::Rgb(0, 180, 180), Color::Rgb(0, 40, 60)),
+                    ZTile::Spring | ZTile::Waterfall => ('◊', Color::Rgb(0, 255, 255), Color::Rgb(0, 80, 40)),
+                    ZTile::MagmaPool => ('≈', Color::Rgb(255, 100, 0), Color::Rgb(80, 20, 0)),
+                    ZTile::Surface | ZTile::Solid => {
+                        let ch = if ztile == ZTile::Surface { '#' } else { '.' };
+                        let (r, g, b) = height_color(height);
+                        (ch, Color::Rgb(r, g, b), Color::Reset)
+                    }
+                    // Cave tiles in height mode - show with height coloring
+                    _ => {
+                        let ch = cave_tile_char(ztile);
+                        let (r, g, b) = height_color(height);
+                        (ch, Color::Rgb(r, g, b), Color::Rgb(15, 15, 20))
+                    }
+                }
+            }
+            ViewMode::Temperature => {
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    ZTile::Aquifer => ('≈', Color::Rgb(0, 200, 220), Color::Rgb(0, 60, 80)),
+                    ZTile::UndergroundRiver => ('~', Color::Rgb(100, 180, 255), Color::Rgb(20, 50, 100)),
+                    ZTile::WaterCave | ZTile::CaveLake => ('○', Color::Rgb(0, 180, 180), Color::Rgb(0, 40, 60)),
+                    ZTile::Spring | ZTile::Waterfall => ('◊', Color::Rgb(0, 255, 255), Color::Rgb(0, 80, 40)),
+                    ZTile::MagmaPool => ('≈', Color::Rgb(255, 100, 0), Color::Rgb(80, 20, 0)),
+                    ZTile::Surface | ZTile::Solid => {
+                        let ch = if ztile == ZTile::Surface { '.' } else { '#' };
+                        let (r, g, b) = temperature_color(temp);
+                        (ch, Color::Rgb(r, g, b), Color::Reset)
+                    }
+                    // Cave tiles in temperature mode - show with temp coloring
+                    _ => {
+                        let ch = cave_tile_char(ztile);
+                        let (r, g, b) = temperature_color(temp);
+                        (ch, Color::Rgb(r, g, b), Color::Rgb(15, 15, 20))
+                    }
+                }
+            }
+            ViewMode::Moisture => {
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    ZTile::Aquifer => ('≈', Color::Rgb(0, 200, 220), Color::Rgb(0, 60, 80)),
+                    ZTile::UndergroundRiver => ('~', Color::Rgb(100, 180, 255), Color::Rgb(20, 50, 100)),
+                    ZTile::WaterCave | ZTile::CaveLake => ('○', Color::Rgb(0, 180, 180), Color::Rgb(0, 40, 60)),
+                    ZTile::Spring | ZTile::Waterfall => ('◊', Color::Rgb(0, 255, 255), Color::Rgb(0, 80, 40)),
+                    ZTile::MagmaPool => ('≈', Color::Rgb(255, 100, 0), Color::Rgb(80, 20, 0)),
+                    ZTile::Surface | ZTile::Solid => {
+                        let ch = if ztile == ZTile::Surface { '.' } else { '#' };
+                        let (r, g, b) = moisture_color(moisture);
+                        (ch, Color::Rgb(r, g, b), Color::Reset)
+                    }
+                    // Cave tiles in moisture mode - show with moisture coloring
+                    _ => {
+                        let ch = cave_tile_char(ztile);
+                        let (r, g, b) = moisture_color(moisture);
+                        (ch, Color::Rgb(r, g, b), Color::Rgb(15, 15, 20))
+                    }
+                }
+            }
+            ViewMode::Plates => {
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    ZTile::Aquifer => ('≈', Color::Rgb(0, 200, 220), Color::Rgb(0, 60, 80)),
+                    ZTile::UndergroundRiver => ('~', Color::Rgb(100, 180, 255), Color::Rgb(20, 50, 100)),
+                    ZTile::WaterCave | ZTile::CaveLake => ('○', Color::Rgb(0, 180, 180), Color::Rgb(0, 40, 60)),
+                    ZTile::Spring | ZTile::Waterfall => ('◊', Color::Rgb(0, 255, 255), Color::Rgb(0, 80, 40)),
+                    ZTile::MagmaPool => ('≈', Color::Rgb(255, 100, 0), Color::Rgb(80, 20, 0)),
+                    ZTile::Surface | ZTile::Solid => {
+                        let ch = if ztile == ZTile::Surface { '#' } else { '.' };
+                        // Color by plate ID
+                        let hue = (plate_id.0 as f32 * 137.5) % 360.0;
+                        let (r, g, b) = hsv_to_rgb(hue, 0.7, 0.9);
+                        (ch, Color::Rgb(r, g, b), Color::Reset)
+                    }
+                    // Cave tiles in plates mode - show with plate coloring
+                    _ => {
+                        let ch = cave_tile_char(ztile);
+                        let hue = (plate_id.0 as f32 * 137.5) % 360.0;
+                        let (r, g, b) = hsv_to_rgb(hue, 0.5, 0.7);
+                        (ch, Color::Rgb(r, g, b), Color::Rgb(15, 15, 20))
+                    }
+                }
+            }
+            ViewMode::Stress => {
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    ZTile::Aquifer => ('≈', Color::Rgb(0, 200, 220), Color::Rgb(0, 60, 80)),
+                    ZTile::UndergroundRiver => ('~', Color::Rgb(100, 180, 255), Color::Rgb(20, 50, 100)),
+                    ZTile::WaterCave | ZTile::CaveLake => ('○', Color::Rgb(0, 180, 180), Color::Rgb(0, 40, 60)),
+                    ZTile::Spring | ZTile::Waterfall => ('◊', Color::Rgb(0, 255, 255), Color::Rgb(0, 80, 40)),
+                    ZTile::MagmaPool => ('≈', Color::Rgb(255, 100, 0), Color::Rgb(80, 20, 0)),
+                    ZTile::Surface | ZTile::Solid => {
+                        let ch = if ztile == ZTile::Surface { '.' } else { '#' };
+                        let (r, g, b) = stress_color(stress);
+                        (ch, Color::Rgb(r, g, b), Color::Reset)
+                    }
+                    // Cave tiles in stress mode - show with stress coloring
+                    _ => {
+                        let ch = cave_tile_char(ztile);
+                        let (r, g, b) = stress_color(stress);
+                        (ch, Color::Rgb(r, g, b), Color::Rgb(15, 15, 20))
+                    }
+                }
+            }
+            ViewMode::Factions => {
+                // Color tiles by faction territory
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    _ => {
+                        // Get faction color if available
+                        if let Some(ref history) = self.world.history {
+                            if let Some(faction) = history.faction_at(x, y) {
+                                let (r, g, b) = faction.color;
+                                let ch = if ztile == ZTile::Surface { '#' } else { cave_tile_char(ztile) };
+                                (ch, Color::Rgb(r, g, b), Color::Reset)
+                            } else {
+                                // Unclaimed territory - gray
+                                let ch = if ztile == ZTile::Surface { '.' } else { cave_tile_char(ztile) };
+                                (ch, Color::Rgb(80, 80, 80), Color::Reset)
+                            }
+                        } else {
+                            // No history - show as gray
+                            ('.', Color::Rgb(80, 80, 80), Color::Reset)
+                        }
+                    }
+                }
+            }
+            ViewMode::History => {
+                // Highlight tiles with historical significance
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    _ => {
+                        if let Some(ref history) = self.world.history {
+                            let info = history.tile_info(x, y);
+                            if info.settlement.is_some() {
+                                // Settlement - bright yellow
+                                ('*', Color::Rgb(255, 215, 0), Color::Reset)
+                            } else if info.lair.is_some() {
+                                // Monster lair - red
+                                ('!', Color::Rgb(255, 50, 50), Color::Reset)
+                            } else if !info.events.is_empty() {
+                                // Historical event - purple
+                                ('+', Color::Rgb(200, 100, 255), Color::Reset)
+                            } else if info.trade_route {
+                                // Trade route - orange
+                                ('=', Color::Rgb(255, 165, 0), Color::Reset)
+                            } else if info.resource.is_some() {
+                                // Resource site - cyan
+                                ('o', Color::Rgb(0, 200, 200), Color::Reset)
+                            } else if info.faction.is_some() {
+                                // Just territory - dim faction color
+                                let ch = if ztile == ZTile::Surface { '.' } else { cave_tile_char(ztile) };
+                                (ch, Color::Rgb(60, 60, 60), Color::Reset)
+                            } else {
+                                // No history
+                                let ch = if ztile == ZTile::Surface { '.' } else { cave_tile_char(ztile) };
+                                (ch, Color::Rgb(40, 40, 40), Color::Reset)
+                            }
+                        } else {
+                            ('.', Color::Rgb(40, 40, 40), Color::Reset)
+                        }
+                    }
                 }
             }
         }
     }
 
-    /// Render the minimap overlay
-    fn render_minimap(&self, frame: &mut Frame, map_area: Rect) {
-        let minimap_w = self.minimap_width.min(map_area.width as usize - 4) as u16;
-        let minimap_h = self.minimap_height.min(map_area.height as usize - 2) as u16;
-
-        // Position in bottom-right corner of map area
-        let minimap_x = map_area.x + map_area.width - minimap_w - 2;
-        let minimap_y = map_area.y + map_area.height - minimap_h - 1;
-
-        let minimap_area = Rect::new(minimap_x, minimap_y, minimap_w, minimap_h);
-
-        // Draw border
-        let minimap_block = Block::default()
-            .borders(Borders::ALL)
-            .title(" World ")
-            .border_style(Style::default().fg(Color::DarkGray));
-        let minimap_inner = minimap_block.inner(minimap_area);
-        frame.render_widget(minimap_block, minimap_area);
-
-        // Calculate what portion of the world to show
-        let camera_tile = self.camera.world_tile();
-        let half_minimap_w = minimap_inner.width as usize / 2;
-        let half_minimap_h = minimap_inner.height as usize / 2;
-
-        for vy in 0..minimap_inner.height as usize {
-            for vx in 0..minimap_inner.width as usize {
-                let world_x = ((camera_tile.x as i32 + vx as i32 - half_minimap_w as i32)
-                    .rem_euclid(self.world.width as i32)) as usize;
-                let world_y = (camera_tile.y as i32 + vy as i32 - half_minimap_h as i32)
-                    .clamp(0, self.world.height as i32 - 1) as usize;
-
-                let biome = self.world.biomes.get(world_x, world_y);
-                let (r, g, b) = biome.color();
-
-                // Determine if this is the current camera tile
-                let is_camera_tile = world_x == camera_tile.x && world_y == camera_tile.y;
-
-                let (fg, bg, ch) = if is_camera_tile {
-                    (Color::Black, Color::Yellow, '@')
-                } else {
-                    // Show territory colors if in sim mode
-                    let coord = TileCoord::new(world_x, world_y);
-                    if self.sim_mode && self.sim_show_territories {
-                        if let Some(tribe_id) = self.tribe_at_coord(world_x, world_y) {
-                            let (tr, tg, tb) = Self::tribe_color(tribe_id);
-                            (Color::Rgb(tr, tg, tb), Color::Rgb(r / 3, g / 3, b / 3), '.')
-                        } else {
-                            (Color::Rgb(r / 2, g / 2, b / 2), Color::Rgb(r / 4, g / 4, b / 4), '.')
-                        }
-                    } else {
-                        (Color::Rgb(r / 2, g / 2, b / 2), Color::Rgb(r / 4, g / 4, b / 4), '.')
-                    }
-                };
-
-                let x = minimap_inner.x + vx as u16;
-                let y = minimap_inner.y + vy as u16;
-
-                frame.buffer_mut().set_string(
-                    x, y,
-                    ch.to_string(),
-                    Style::default().fg(fg).bg(bg),
-                );
-            }
-        }
-    }
-
-    /// Render help for local primary view
-    fn render_local_primary_help(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let popup_width = 54;
-        let popup_height = 22;
-        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-
-        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-        frame.render_widget(Clear, popup_area);
-
+    /// Render help overlay
+    fn render_help(&self, area: Rect, buf: &mut Buffer) {
         let help_text = vec![
-            Line::from("Local Map Help").style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Green)),
-            Line::from(""),
-            Line::from("Navigation:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  Arrow keys / WASD / HJKL - Move cursor"),
-            Line::from("  PgUp/PgDn - Fast vertical movement"),
-            Line::from("  Home/End  - Fast horizontal movement"),
-            Line::from("  C - Center camera on cursor"),
-            Line::from("  Movement seamlessly crosses tile boundaries"),
-            Line::from(""),
-            Line::from("View:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  M - Toggle minimap overlay"),
-            Line::from("  W - Switch to world map view"),
-            Line::from(""),
-            Line::from("Simulation:").style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan)),
-            Line::from("  Shift+S - Start/stop simulation"),
-            Line::from("  Space   - Step (paused) / Pause (running)"),
-            Line::from("  +/-     - Change simulation speed"),
-            Line::from("  T       - Toggle territory overlay"),
-            Line::from(""),
-            Line::from("  ? - Toggle this help    Q/Esc - Quit"),
+            "=== World Map Explorer ===",
+            "",
+            "Navigation:",
+            "  Arrow keys / WASD / HJKL - Move cursor",
+            "  PgUp/PgDn - Fast vertical movement",
+            "  Home/End - Fast horizontal movement",
+            "",
+            "Z-Level Navigation:",
+            "  > / . - Go up one Z-level",
+            "  < / , - Go down one Z-level",
+            "  0 - Go to sea level (Z=0)",
+            "  S - Go to surface at cursor",
+            "",
+            "View Modes:",
+            "  V - Cycle view mode (Biome/Height/Temp/Moisture/Plates/Stress)",
+            "",
+            "Other:",
+            "  ? - Toggle this help",
+            "  Q / Esc - Quit",
+            "",
+            "Press any key to close",
         ];
 
-        let help_popup = Paragraph::new(help_text)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title(" Local Map Help ")
-                .border_style(Style::default().fg(Color::Green))
-                .style(Style::default().bg(Color::DarkGray)))
-            .style(Style::default().fg(Color::White).bg(Color::DarkGray));
+        let width = 50;
+        let height = help_text.len() as u16 + 2;
+        let x = area.x + (area.width.saturating_sub(width)) / 2;
+        let y = area.y + (area.height.saturating_sub(height)) / 2;
 
-        frame.render_widget(help_popup, popup_area);
-    }
+        let help_area = Rect::new(x, y, width, height);
 
-    fn render_world(&self, frame: &mut Frame) {
-        let size = frame.area();
+        // Clear background
+        Clear.render(help_area, buf);
 
-        // Layout: header, simulation bar (if active), map, combat log (if active), info panel, controls
-        let constraints = if self.sim_mode && self.show_combat_log {
-            vec![
-                Constraint::Length(1),  // Header
-                Constraint::Length(1),  // Simulation status bar
-                Constraint::Min(10),    // Map
-                Constraint::Length(6),  // Combat log panel
-                Constraint::Length(6),  // Info panel (expanded for reputation)
-                Constraint::Length(1),  // Controls
-            ]
-        } else if self.sim_mode {
-            vec![
-                Constraint::Length(1),  // Header
-                Constraint::Length(1),  // Simulation status bar
-                Constraint::Min(10),    // Map
-                Constraint::Length(6),  // Info panel (expanded for reputation)
-                Constraint::Length(1),  // Controls
-            ]
-        } else {
-            vec![
-                Constraint::Length(1),  // Header
-                Constraint::Min(10),    // Map
-                Constraint::Length(5),  // Info panel
-                Constraint::Length(1),  // Controls
-            ]
-        };
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(size);
-
-        // Header
-        let header_text = if self.sim_mode {
-            format!(
-                "PLANET EXPLORER - Seed: {} - SIMULATION MODE  [?] Help  [Q] Quit",
-                self.world.seed,
-            )
-        } else {
-            format!(
-                "PLANET EXPLORER - Seed: {}  Size: {}x{} ({:.0} x {:.0} km)  [?] Help  [Q] Quit",
-                self.world.seed,
-                self.world.width,
-                self.world.height,
-                self.world.map_size_km().0,
-                self.world.map_size_km().1,
-            )
-        };
-        let header = Paragraph::new(header_text)
-            .style(Style::default().fg(if self.sim_mode { Color::Green } else { Color::Cyan }));
-        frame.render_widget(header, chunks[0]);
-
-        // Chunk indices depend on whether simulation bar and combat log are shown
-        let (map_chunk, combat_log_chunk, info_chunk, controls_chunk) = if self.sim_mode && self.show_combat_log {
-            // Render simulation status bar
-            if let Some(ref sim) = self.sim_state {
-                let year = sim.current_tick.year();
-                let season = format!("{:?}", sim.current_tick.season());
-                let living_tribes = sim.tribes.values().filter(|t| t.is_alive).count();
-                let total_pop: u32 = sim.tribes.values().filter(|t| t.is_alive).map(|t| t.population.total()).sum();
-                let monster_count = sim.monsters.living_count();
-                let combat_count = sim.combat_log.encounter_count();
-
-                let sim_bar = Paragraph::new(format!(
-                    "Year {} {} | Tribes: {} | Pop: {} | Monsters: {} | Combats: {} | Speed: {} | [+/-] Speed",
-                    year, season, living_tribes, total_pop, monster_count, combat_count, self.sim_speed.name(),
-                ))
-                .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray));
-                frame.render_widget(sim_bar, chunks[1]);
-            }
-            (2, Some(3), 4, 5)
-        } else if self.sim_mode {
-            // Render simulation status bar
-            if let Some(ref sim) = self.sim_state {
-                let year = sim.current_tick.year();
-                let season = format!("{:?}", sim.current_tick.season());
-                let living_tribes = sim.tribes.values().filter(|t| t.is_alive).count();
-                let total_pop: u32 = sim.tribes.values().filter(|t| t.is_alive).map(|t| t.population.total()).sum();
-                let monster_count = sim.monsters.living_count();
-
-                let sim_bar = Paragraph::new(format!(
-                    "Year {} {} | Tribes: {} | Pop: {} | Monsters: {} | Speed: {} | [Space] Step [+/-] Speed",
-                    year, season, living_tribes, total_pop, monster_count, self.sim_speed.name(),
-                ))
-                .style(Style::default().fg(Color::Yellow).bg(Color::DarkGray));
-                frame.render_widget(sim_bar, chunks[1]);
-            }
-            (2, None, 3, 4)
-        } else {
-            (1, None, 2, 3)
-        };
-
-        // Render combat log panel if enabled
-        if let Some(combat_chunk) = combat_log_chunk {
-            self.render_combat_log(frame, chunks[combat_chunk]);
-        }
-
-        // Map area with border
-        let map_title = if self.sim_mode && self.sim_show_territories {
-            format!(" Map - {} + Territories ", self.view_mode.name())
-        } else {
-            format!(" Map - {} ", self.view_mode.name())
-        };
-        let map_block = Block::default()
+        let block = Block::default()
+            .title(" Help ")
             .borders(Borders::ALL)
-            .title(map_title);
-        let map_inner = map_block.inner(chunks[map_chunk]);
-        frame.render_widget(map_block, chunks[map_chunk]);
+            .style(Style::default().bg(Color::DarkGray));
 
-        // Render map tiles directly to buffer
-        let map_width = map_inner.width as usize;
-        let map_height = map_inner.height as usize;
+        let inner = block.inner(help_area);
+        block.render(help_area, buf);
 
-        for vy in 0..map_height.min(self.viewport.height) {
-            let world_y = self.viewport.y + vy;
-            if world_y >= self.world.height {
+        for (i, line) in help_text.iter().enumerate() {
+            if i as u16 >= inner.height {
                 break;
             }
-
-            for vx in 0..map_width.min(self.viewport.width) {
-                let world_x = self.viewport.x + vx;
-                if world_x >= self.world.width {
-                    break;
-                }
-
-                let coord = TileCoord::new(world_x, world_y);
-                let biome = *self.world.biomes.get(world_x, world_y);
-                let mut ch = biome_char(&biome);
-                let is_cursor = world_x == self.cursor_x && world_y == self.cursor_y;
-
-                // Get base colors from biome/view mode
-                let (mut fg, mut bg) = self.get_tile_colors(world_x, world_y);
-
-                // Layer 1: Territory overlay (background blend)
-                if self.sim_mode && self.sim_show_territories {
-                    if let Some(tribe_id) = self.tribe_at_coord(world_x, world_y) {
-                        let (tr, tg, tb) = Self::tribe_color(tribe_id);
-                        let is_selected = self.selected_tribe == Some(tribe_id);
-                        let blend = if is_selected { 0.7 } else { 0.4 };
-
-                        let (br, bg_r, bb) = match bg {
-                            Color::Rgb(r, g, b) => (r, g, b),
-                            _ => (0, 0, 0),
-                        };
-
-                        bg = Color::Rgb(
-                            ((br as f32 * (1.0 - blend) + tr as f32 * blend) as u8).min(255),
-                            ((bg_r as f32 * (1.0 - blend) + tg as f32 * blend) as u8).min(255),
-                            ((bb as f32 * (1.0 - blend) + tb as f32 * blend) as u8).min(255),
-                        );
-
-                        if is_selected {
-                            fg = Color::Rgb(tr, tg, tb);
-                        }
-                    }
-                }
-
-                // Layer 2: Road overlay (change character only if no higher layer)
-                if self.sim_mode {
-                    if let Some(ref sim) = self.sim_state {
-                        if sim.road_network.has_road(&coord) {
-                            ch = sim.road_network.get_road_char(&coord);
-                            let (r, g, b) = sim.road_network.get_road_color(&coord);
-                            fg = Color::Rgb(r, g, b);
-                        }
-                    }
-                }
-
-                // Layer 3: Structure overlay
-                if self.sim_mode {
-                    if let Some(ref sim) = self.sim_state {
-                        if let Some(structure) = sim.get_structure_at(&coord) {
-                            ch = structure.structure_type.map_char();
-                            let (r, g, b) = structure.structure_type.color();
-                            fg = Color::Rgb(r, g, b);
-                        }
-                    }
-                }
-
-                // Layer 3.5: Colonist overlay
-                if self.sim_mode {
-                    if let Some(ref sim) = self.sim_state {
-                        if let Some((colonist, tribe_id)) = sim.get_colonist_at(&coord) {
-                            ch = colonist.map_char();
-                            let (r, g, b) = colonist.color();
-                            fg = Color::Rgb(r, g, b);
-                            // Blend background with tribe color for visibility
-                            let (tr, tg, tb) = Self::tribe_color(tribe_id);
-                            let (br, bg_r, bb) = match bg {
-                                Color::Rgb(r, g, b) => (r, g, b),
-                                _ => (0, 0, 0),
-                            };
-                            bg = Color::Rgb(
-                                ((br as f32 * 0.6 + tr as f32 * 0.4) as u8).min(255),
-                                ((bg_r as f32 * 0.6 + tg as f32 * 0.4) as u8).min(255),
-                                ((bb as f32 * 0.6 + tb as f32 * 0.4) as u8).min(255),
-                            );
-                        }
-                    }
-                }
-
-                // Layer 4: Monster overlay (highest priority)
-                if self.sim_mode {
-                    if let Some(ref sim) = self.sim_state {
-                        if let Some(monster) = sim.get_monster_at(&coord) {
-                            ch = monster.species.map_char();
-                            let (r, g, b) = monster.species.color();
-                            fg = Color::Rgb(r, g, b);
-                            // Tint background red for danger
-                            let (br, bg_r, bb) = match bg {
-                                Color::Rgb(r, g, b) => (r, g, b),
-                                _ => (0, 0, 0),
-                            };
-                            bg = Color::Rgb(
-                                ((br as f32 * 0.7 + 100.0 * 0.3) as u8).min(255),
-                                (bg_r as f32 * 0.7) as u8,
-                                (bb as f32 * 0.7) as u8,
-                            );
-                        }
-                    }
-                }
-
-                // Layer 5: Cursor overlay (absolute highest priority)
-                if is_cursor {
-                    fg = Color::Black;
-                    bg = Color::Yellow;
-                }
-
-                let x = map_inner.x + vx as u16;
-                let y = map_inner.y + vy as u16;
-
-                if x < map_inner.x + map_inner.width && y < map_inner.y + map_inner.height {
-                    frame.buffer_mut().set_string(
-                        x, y,
-                        ch.to_string(),
-                        Style::default().fg(fg).bg(bg),
-                    );
-                }
-            }
+            buf.set_string(inner.x, inner.y + i as u16, line, Style::default().fg(Color::White));
         }
-
-        // Info panel
-        let tile = self.world.get_tile_info(self.cursor_x, self.cursor_y);
-        let (km_x, km_y) = self.world.get_physical_coords(self.cursor_x, self.cursor_y);
-
-        let (br, bg_col, bb) = tile.biome.color();
-        let biome_style = Style::default()
-            .fg(Color::Rgb(br, bg_col, bb))
-            .add_modifier(Modifier::BOLD);
-
-        // Water body color based on type
-        let water_color = match tile.water_body_type {
-            crate::water_bodies::WaterBodyType::Ocean => Color::Blue,
-            crate::water_bodies::WaterBodyType::Lake => Color::Cyan,
-            crate::water_bodies::WaterBodyType::River => Color::LightBlue,
-            crate::water_bodies::WaterBodyType::None => Color::DarkGray,
-        };
-
-        // Build info text - different content based on simulation mode
-        let info_text = if self.sim_mode {
-            let cursor_coord = TileCoord::new(self.cursor_x, self.cursor_y);
-
-            // First check for monster at cursor
-            let monster_info = self.sim_state.as_ref().and_then(|sim| {
-                sim.get_monster_at(&cursor_coord).map(|monster| {
-                    let (mr, mg, mb) = monster.species.color();
-                    let monster_color = Color::Rgb(mr, mg, mb);
-                    let health_pct = (monster.health / monster.max_health * 100.0) as u32;
-                    let health_color = if health_pct > 60 {
-                        Color::Green
-                    } else if health_pct > 30 {
-                        Color::Yellow
-                    } else {
-                        Color::Red
-                    };
-                    let (state_str, state_color) = match monster.state {
-                        crate::simulation::monsters::MonsterState::Idle => ("Resting", Color::DarkGray),
-                        crate::simulation::monsters::MonsterState::Roaming => ("Roaming", Color::Cyan),
-                        crate::simulation::monsters::MonsterState::Hunting => ("Hunting!", Color::Yellow),
-                        crate::simulation::monsters::MonsterState::Attacking(_) => ("ATTACKING!", Color::Red),
-                        crate::simulation::monsters::MonsterState::Fleeing => ("Fleeing", Color::LightRed),
-                        crate::simulation::monsters::MonsterState::Dead => ("Dead", Color::DarkGray),
-                    };
-
-                    // Threat level based on strength and health
-                    let threat_level = (monster.strength * (monster.health / monster.max_health)) as u32;
-                    let threat_str = if threat_level >= 50 {
-                        ("Extreme", Color::Red)
-                    } else if threat_level >= 30 {
-                        ("High", Color::LightRed)
-                    } else if threat_level >= 15 {
-                        ("Moderate", Color::Yellow)
-                    } else {
-                        ("Low", Color::Green)
-                    };
-
-                    vec![
-                        Line::from(vec![
-                            Span::styled(monster.species.name(), Style::default().fg(monster_color).add_modifier(Modifier::BOLD)),
-                            Span::raw(format!(" ({}) - ", monster.species.map_char())),
-                            Span::styled(format!("Threat: {}", threat_str.0), Style::default().fg(threat_str.1)),
-                        ]),
-                        Line::from(vec![
-                            Span::raw("Health: "),
-                            Span::styled(format!("{:.0}/{:.0} ({:.0}%)", monster.health, monster.max_health, health_pct), Style::default().fg(health_color)),
-                            Span::raw("  Strength: "),
-                            Span::styled(format!("{:.1}", monster.strength), Style::default().fg(Color::Red)),
-                        ]),
-                        Line::from(vec![
-                            Span::raw("State: "),
-                            Span::styled(state_str, Style::default().fg(state_color)),
-                            Span::raw("  Kills: "),
-                            Span::styled(format!("{}", monster.kills), Style::default().fg(Color::Magenta)),
-                            Span::raw("  Territory: "),
-                            Span::styled(format!("{} tiles", monster.territory_radius), Style::default().fg(Color::White)),
-                        ]),
-                        Line::from(vec![
-                            Span::raw("Location: "),
-                            Span::styled(format!("({}, {})", monster.location.x, monster.location.y), Style::default().fg(Color::DarkGray)),
-                            Span::raw("  Lair: "),
-                            Span::styled(format!("({}, {})", monster.territory_center.x, monster.territory_center.y), Style::default().fg(Color::DarkGray)),
-                        ]),
-                    ]
-                })
-            });
-
-            if let Some(info) = monster_info {
-                info
-            } else {
-                // Check for colonist at cursor
-                let colonist_info = self.sim_state.as_ref().and_then(|sim| {
-                    sim.get_colonist_at(&cursor_coord).map(|(colonist, tribe_id)| {
-                        let (cr, cg, cb) = colonist.color();
-                        let colonist_color = Color::Rgb(cr, cg, cb);
-                        let health_pct = (colonist.health * 100.0) as u32;
-                        let health_color = if health_pct > 60 {
-                            Color::Green
-                        } else if health_pct > 30 {
-                            Color::Yellow
-                        } else {
-                            Color::Red
-                        };
-                        let state_str = match colonist.activity_state {
-                            crate::simulation::colonists::ColonistActivityState::Idle => "Idle",
-                            crate::simulation::colonists::ColonistActivityState::Traveling => "Traveling",
-                            crate::simulation::colonists::ColonistActivityState::Working => "Working",
-                            crate::simulation::colonists::ColonistActivityState::Returning => "Returning",
-                            crate::simulation::colonists::ColonistActivityState::Fleeing => "Fleeing!",
-                            crate::simulation::colonists::ColonistActivityState::Socializing => "Socializing",
-                            crate::simulation::colonists::ColonistActivityState::Patrolling => "Patrolling",
-                            crate::simulation::colonists::ColonistActivityState::Scouting => "Scouting",
-                        };
-                        let (tr, tg, tb) = Self::tribe_color(tribe_id);
-                        let tribe_color = Color::Rgb(tr, tg, tb);
-                        let job_str = colonist.current_job.map_or("None".to_string(), |j| format!("{:?}", j));
-                        let role_str = format!("{:?}", colonist.role);
-                        let gender_str = format!("{:?}", colonist.gender);
-                        let life_stage_str = format!("{:?}", colonist.life_stage);
-
-                        // Get mood status description
-                        let mood_status = if colonist.mood.current_mood >= 80.0 {
-                            ("Happy", Color::Green)
-                        } else if colonist.mood.current_mood >= 60.0 {
-                            ("Content", Color::LightGreen)
-                        } else if colonist.mood.current_mood >= 40.0 {
-                            ("Neutral", Color::Yellow)
-                        } else if colonist.mood.current_mood >= 20.0 {
-                            ("Unhappy", Color::LightRed)
-                        } else {
-                            ("Miserable", Color::Red)
-                        };
-
-                        // Get top skill
-                        let top_skill = colonist.skills.best_skill()
-                            .map(|(skill_type, skill)| format!("{:?} {}", skill_type, skill.level))
-                            .unwrap_or_else(|| "None".to_string());
-
-                        // Family info
-                        let spouse_str = if colonist.spouse.is_some() { "Married" } else { "Single" };
-                        let children_count = colonist.children.len();
-
-                        // Get tribe name
-                        let tribe_name = sim.tribes.get(&tribe_id)
-                            .map(|t| t.name.clone())
-                            .unwrap_or_else(|| format!("Tribe {}", tribe_id.0));
-
-                        vec![
-                            Line::from(vec![
-                                Span::styled(colonist.name.clone(), Style::default().fg(colonist_color).add_modifier(Modifier::BOLD)),
-                                Span::raw(" - "),
-                                Span::styled(role_str, Style::default().fg(Color::Yellow)),
-                                Span::raw(format!(" ({} {}, age {})", gender_str, life_stage_str, colonist.age)),
-                            ]),
-                            Line::from(vec![
-                                Span::raw("Health: "),
-                                Span::styled(format!("{:.0}%", health_pct), Style::default().fg(health_color)),
-                                Span::raw("  Mood: "),
-                                Span::styled(format!("{:.0} ({})", colonist.mood.current_mood, mood_status.0), Style::default().fg(mood_status.1)),
-                                Span::raw("  Skill: "),
-                                Span::styled(top_skill, Style::default().fg(Color::Cyan)),
-                            ]),
-                            Line::from(vec![
-                                Span::raw("State: "),
-                                Span::styled(state_str, Style::default().fg(Color::Magenta)),
-                                Span::raw("  Job: "),
-                                Span::styled(job_str, Style::default().fg(Color::Cyan)),
-                                Span::raw("  Family: "),
-                                Span::styled(format!("{}, {} children", spouse_str, children_count), Style::default().fg(Color::White)),
-                            ]),
-                            Line::from(vec![
-                                Span::raw("Tribe: "),
-                                Span::styled(tribe_name, Style::default().fg(tribe_color)),
-                                Span::raw(" at "),
-                                Span::styled(format!("({}, {})", colonist.location.x, colonist.location.y), Style::default().fg(Color::DarkGray)),
-                            ]),
-                        ]
-                    })
-                });
-
-                if let Some(info) = colonist_info {
-                    info
-                } else {
-                // Check for fauna at cursor
-                let fauna_info = self.sim_state.as_ref().and_then(|sim| {
-                    let fauna_list = sim.get_fauna_at(&cursor_coord);
-                    fauna_list.first().map(|fauna| {
-                        let (fr, fg, fb) = fauna.species.color();
-                        let fauna_color = Color::Rgb(fr, fg, fb);
-                        let health_pct = (fauna.health / fauna.max_health * 100.0) as u32;
-                        let health_color = if health_pct > 60 {
-                            Color::Green
-                        } else if health_pct > 30 {
-                            Color::Yellow
-                        } else {
-                            Color::Red
-                        };
-                        let activity_str = fauna.current_activity.description();
-                        let state_str = format!("{:?}", fauna.state);
-                        let state_color = match fauna.state {
-                            crate::simulation::fauna::FaunaState::Fleeing => Color::LightRed,
-                            crate::simulation::fauna::FaunaState::Hunting => Color::Yellow,
-                            crate::simulation::fauna::FaunaState::Idle => Color::DarkGray,
-                            crate::simulation::fauna::FaunaState::Grazing => Color::Green,
-                            _ => Color::Cyan,
-                        };
-
-                        // Count other fauna at same location
-                        let fauna_count = fauna_list.len();
-                        let more_str = if fauna_count > 1 {
-                            format!(" (+{} more)", fauna_count - 1)
-                        } else {
-                            String::new()
-                        };
-
-                        vec![
-                            Line::from(vec![
-                                Span::styled(fauna.species.name().to_string(), Style::default().fg(fauna_color).add_modifier(Modifier::BOLD)),
-                                Span::raw(format!(" ({}) - ", fauna.species.map_char())),
-                                Span::styled(state_str, Style::default().fg(state_color)),
-                                Span::styled(more_str, Style::default().fg(Color::DarkGray)),
-                            ]),
-                            Line::from(vec![
-                                Span::raw("Health: "),
-                                Span::styled(format!("{:.0}/{:.0} ({:.0}%)", fauna.health, fauna.max_health, health_pct), Style::default().fg(health_color)),
-                                Span::raw("  Age: "),
-                                Span::styled(format!("{:.0} years", fauna.age), Style::default().fg(Color::White)),
-                            ]),
-                            Line::from(vec![
-                                Span::raw("Activity: "),
-                                Span::styled(activity_str.to_string(), Style::default().fg(state_color)),
-                                Span::raw("  Hunger: "),
-                                Span::styled(format!("{:.0}%", fauna.hunger * 100.0), Style::default().fg(Color::Yellow)),
-                            ]),
-                            Line::from(vec![
-                                Span::raw("Location: "),
-                                Span::styled(format!("({}, {})", fauna.location.x, fauna.location.y), Style::default().fg(Color::DarkGray)),
-                            ]),
-                        ]
-                    })
-                });
-
-                if let Some(info) = fauna_info {
-                    info
-                } else {
-                // Check for tribe info
-                let tribe_info = self.selected_tribe.and_then(|tribe_id| {
-                    self.sim_state.as_ref().and_then(|sim| {
-                        sim.tribes.get(&tribe_id).map(|tribe| {
-                            let (tr, tg, tb) = Self::tribe_color(tribe_id);
-                            let tribe_color = Color::Rgb(tr, tg, tb);
-
-                            // Notable colonists summary
-                            let notable_count = tribe.notable_colonists.count();
-
-                            // Job summary - count workers assigned
-                            let active_jobs = tribe.jobs.jobs.values()
-                                .map(|j| j.total_workers())
-                                .sum::<u32>();
-
-                            // Get species reputations for this tribe
-                            let reputations = sim.reputation.get_tribe_reputations(tribe_id);
-                            let mut rep_spans: Vec<Span> = vec![Span::raw("Species: ")];
-                            let mut rep_count = 0;
-                            for (species, rep) in reputations.iter().take(4) {
-                                if rep_count > 0 {
-                                    rep_spans.push(Span::raw("  "));
-                                }
-                                let rep_color = if rep.is_vengeful() {
-                                    Color::Red
-                                } else if rep.is_hostile() {
-                                    Color::LightRed
-                                } else if rep.is_fearful() {
-                                    Color::Green
-                                } else if rep.is_tolerant() {
-                                    Color::Yellow
-                                } else {
-                                    Color::DarkGray
-                                };
-                                rep_spans.push(Span::styled(
-                                    format!("{}: {} ({})", species.name(), rep.status_label(), rep.current),
-                                    Style::default().fg(rep_color)
-                                ));
-                                rep_count += 1;
-                            }
-                            if reputations.is_empty() {
-                                rep_spans.push(Span::styled("None tracked", Style::default().fg(Color::DarkGray)));
-                            }
-
-                            vec![
-                                Line::from(vec![
-                                    Span::raw("Tribe: "),
-                                    Span::styled(tribe.name.clone(), Style::default().fg(tribe_color).add_modifier(Modifier::BOLD)),
-                                    Span::raw("  Society: "),
-                                    Span::styled(format!("{:?}", tribe.society_state.society_type), Style::default().fg(Color::Cyan)),
-                                    Span::raw("  Leader: "),
-                                    Span::styled(tribe.society_state.leader_name.clone(), Style::default().fg(Color::Yellow)),
-                                ]),
-                                Line::from(vec![
-                                    Span::raw("Pop: "),
-                                    Span::styled(format!("{}", tribe.population.total()), Style::default().fg(Color::White)),
-                                    Span::raw("  Notable: "),
-                                    Span::styled(format!("{}", notable_count), Style::default().fg(Color::Magenta)),
-                                    Span::raw("  Jobs: "),
-                                    Span::styled(format!("{}", active_jobs), Style::default().fg(Color::Green)),
-                                    Span::raw("  Age: "),
-                                    Span::styled(format!("{:?}", tribe.tech_state.current_age()), Style::default().fg(Color::Yellow)),
-                                ]),
-                                Line::from(vec![
-                                    Span::raw("Morale: "),
-                                    Span::styled(format!("{:.0}%", tribe.needs.morale.satisfaction * 100.0), Style::default().fg(Color::Cyan)),
-                                    Span::raw("  Food: "),
-                                    Span::styled(format!("{:.0}%", tribe.needs.food.satisfaction * 100.0), Style::default().fg(Color::Green)),
-                                    Span::raw("  Strength: "),
-                                    Span::styled(format!("{:.1}", tribe.military_strength()), Style::default().fg(Color::Red)),
-                                    Span::raw("  Culture: "),
-                                    Span::styled(tribe.culture.lens.culture_name(), Style::default().fg(Color::Magenta)),
-                                ]),
-                                Line::from(rep_spans),
-                            ]
-                        })
-                    })
-                });
-
-                tribe_info.unwrap_or_else(|| {
-                    // No tribe, monster, or colonist at cursor - show biome info
-                    vec![
-                        Line::from(vec![
-                            Span::raw("Cursor: "),
-                            Span::styled(format!("({}, {})", self.cursor_x, self.cursor_y), Style::default().fg(Color::White)),
-                            Span::raw("  Biome: "),
-                            Span::styled(format!("{}", tile.biome.display_name()), biome_style),
-                        ]),
-                        Line::from(vec![
-                            Span::raw("No tribe, monster, or colonist at this location"),
-                        ]),
-                        Line::from(vec![
-                            Span::raw("Move cursor over territory to view info"),
-                        ]),
-                    ]
-                })
-                }
-                }
-            }
-        } else {
-            // Normal mode: show tile info
-            vec![
-                Line::from(vec![
-                    Span::raw("Cursor: "),
-                    Span::styled(format!("({}, {})", self.cursor_x, self.cursor_y), Style::default().fg(Color::White)),
-                    Span::raw("  Pos: "),
-                    Span::styled(format!("{:.0} km E, {:.0} km S", km_x, km_y), Style::default().fg(Color::White)),
-                ]),
-                Line::from(vec![
-                    Span::raw("Biome: "),
-                    Span::styled(format!("{} {}", biome_char(&tile.biome), tile.biome.display_name()), biome_style),
-                    Span::raw("  Water: "),
-                    Span::styled(tile.water_body_str(), Style::default().fg(water_color)),
-                ]),
-                Line::from(vec![
-                    Span::raw("Elev: "),
-                    Span::styled(tile.elevation_str(), Style::default().fg(Color::Yellow)),
-                    Span::raw("  Temp: "),
-                    Span::styled(tile.temperature_str(), Style::default().fg(Color::Red)),
-                    Span::raw("  Moist: "),
-                    Span::styled(tile.moisture_str(), Style::default().fg(Color::Blue)),
-                ]),
-            ]
-        };
-
-        let info_panel_title = if self.sim_mode {
-            // Determine title based on what's at cursor
-            let cursor_coord = TileCoord::new(self.cursor_x, self.cursor_y);
-            if let Some(ref sim) = self.sim_state {
-                if sim.get_monster_at(&cursor_coord).is_some() {
-                    " Monster Info "
-                } else if sim.get_colonist_at(&cursor_coord).is_some() {
-                    " Colonist Info "
-                } else if !sim.get_fauna_at(&cursor_coord).is_empty() {
-                    " Fauna Info "
-                } else if self.selected_tribe.is_some() {
-                    " Tribe Info "
-                } else {
-                    " Simulation Info "
-                }
-            } else {
-                " Simulation Info "
-            }
-        } else {
-            " Tile Info "
-        };
-        let info_panel = Paragraph::new(info_text)
-            .block(Block::default().borders(Borders::ALL).title(info_panel_title));
-        frame.render_widget(info_panel, chunks[info_chunk]);
-
-        // Controls - different for simulation mode
-        let controls_text = if self.sim_mode {
-            if self.show_combat_log {
-                "[←↑↓→] Move  [Space] Step/Pause  [+/-] Speed  [T] Territories  [Shift+L] Hide Log  [S] Stop  [?] Help"
-            } else {
-                "[←↑↓→] Move  [Space] Step/Pause  [+/-] Speed  [T] Territories  [Shift+L] Show Log  [S] Stop  [?] Help"
-            }
-        } else {
-            "[←↑↓→/WASD] Move  [Enter] Local Map  [S] Start Sim  [V] View  [N] New  [?] Help  [Q] Quit"
-        };
-        let controls = Paragraph::new(controls_text)
-            .style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(controls, chunks[controls_chunk]);
-
-        // Help overlay
-        if self.show_help {
-            self.render_help(frame);
-        }
-    }
-
-    /// Render the combined event log panel (combat + activity)
-    fn render_combat_log(&self, frame: &mut Frame, area: Rect) {
-        let sim = match &self.sim_state {
-            Some(s) => s,
-            None => return,
-        };
-
-        // Calculate how many lines we can show (minus 2 for borders, 1 for stats)
-        let max_entries = (area.height.saturating_sub(3)) as usize;
-
-        // Combine combat and activity events into a unified timeline
-        let combat_entries = sim.combat_log.recent_entries(max_entries);
-        let activity_entries = sim.activity_log.recent_entries(max_entries);
-        let combat_stats = sim.combat_log.stats();
-        let activity_stats = &sim.activity_log.stats;
-
-        // Build combined log lines, interleaving by tick
-        let mut lines: Vec<Line> = Vec::new();
-
-        // Create a combined and sorted list of events
-        #[derive(Clone)]
-        enum EventType<'a> {
-            Combat(&'a crate::simulation::combat::CombatLogEntry),
-            Activity(&'a crate::simulation::activity_log::ActivityEntry),
-        }
-
-        let mut all_events: Vec<(u64, EventType)> = Vec::new();
-        for entry in combat_entries {
-            all_events.push((entry.tick, EventType::Combat(entry)));
-        }
-        for entry in activity_entries {
-            all_events.push((entry.tick, EventType::Activity(entry)));
-        }
-
-        // Sort by tick (newest first)
-        all_events.sort_by(|a, b| b.0.cmp(&a.0));
-
-        if all_events.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("No events yet. ", Style::default().fg(Color::DarkGray)),
-                Span::raw("Events will appear here as the simulation runs."),
-            ]));
-        } else {
-            // Show up to max_entries events
-            for (_, event) in all_events.into_iter().take(max_entries) {
-                match event {
-                    EventType::Combat(entry) => {
-                        let result_color = match &entry.result {
-                            crate::simulation::combat::CombatResult::Kill { .. } => Color::Red,
-                            crate::simulation::combat::CombatResult::Wound => Color::Yellow,
-                            crate::simulation::combat::CombatResult::Hit => Color::Green,
-                            crate::simulation::combat::CombatResult::Miss => Color::DarkGray,
-                            _ => Color::White,
-                        };
-
-                        // Shorten narrative if too long
-                        let max_len = area.width.saturating_sub(12) as usize;
-                        let narrative = if entry.narrative.len() > max_len {
-                            format!("{}...", &entry.narrative[..max_len.saturating_sub(3)])
-                        } else {
-                            entry.narrative.clone()
-                        };
-
-                        lines.push(Line::from(vec![
-                            Span::styled(
-                                format!("[T{}] ", entry.tick),
-                                Style::default().fg(Color::Cyan),
-                            ),
-                            Span::styled("!", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-                            Span::raw(" "),
-                            Span::styled(narrative, Style::default().fg(result_color)),
-                        ]));
-                    }
-                    EventType::Activity(entry) => {
-                        let (cat_r, cat_g, cat_b) = entry.category.color();
-                        let cat_color = Color::Rgb(cat_r, cat_g, cat_b);
-
-                        // Shorten message if too long
-                        let max_len = area.width.saturating_sub(16) as usize;
-                        let message = if entry.message.len() > max_len {
-                            format!("{}...", &entry.message[..max_len.saturating_sub(3)])
-                        } else {
-                            entry.message.clone()
-                        };
-
-                        lines.push(Line::from(vec![
-                            Span::styled(
-                                format!("[T{}] ", entry.tick),
-                                Style::default().fg(Color::Cyan),
-                            ),
-                            Span::styled(
-                                format!("[{}] ", entry.category.label()),
-                                Style::default().fg(cat_color),
-                            ),
-                            Span::styled(message, Style::default().fg(Color::White)),
-                        ]));
-                    }
-                }
-            }
-        }
-
-        // Add stats line
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(
-                    "Combat: {} kills, {} wounds | Activity: {} events",
-                    combat_stats.total_kills, combat_stats.total_wounds, activity_stats.total_events
-                ),
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
-            ),
-        ]));
-
-        let combat_log = Paragraph::new(lines)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title(" Event Log ")
-                .border_style(Style::default().fg(Color::Yellow)));
-        frame.render_widget(combat_log, area);
-    }
-
-    fn render_local(&self, frame: &mut Frame) {
-        let local_map = match &self.current_local_map {
-            Some(map) => map,
-            None => return,
-        };
-
-        let size = frame.area();
-
-        // Layout: header, map, info panel, controls
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),  // Header
-                Constraint::Min(10),    // Map
-                Constraint::Length(4),  // Info panel
-                Constraint::Length(1),  // Controls
-            ])
-            .split(size);
-
-        // Get world biome for header
-        let world_biome = self.world.biomes.get(self.cursor_x, self.cursor_y);
-
-        // Header
-        let header = Paragraph::new(format!(
-            "LOCAL VIEW - Tile ({}, {}) - {} - 64x64  [Enter/Esc] Return to World  [?] Help",
-            self.cursor_x,
-            self.cursor_y,
-            world_biome.display_name(),
-        ))
-        .style(Style::default().fg(Color::Green));
-        frame.render_widget(header, chunks[0]);
-
-        // Map area with border
-        let map_block = Block::default()
-            .borders(Borders::ALL)
-            .title(" Local Map ");
-        let map_inner = map_block.inner(chunks[1]);
-        frame.render_widget(map_block, chunks[1]);
-
-        // Render local map tiles
-        let map_width = map_inner.width as usize;
-        let map_height = map_inner.height as usize;
-
-        for vy in 0..map_height.min(self.local_viewport.height) {
-            let local_y = self.local_viewport.y + vy;
-            if local_y >= local_map.height {
-                break;
-            }
-
-            for vx in 0..map_width.min(self.local_viewport.width) {
-                let local_x = self.local_viewport.x + vx;
-                if local_x >= local_map.width {
-                    break;
-                }
-
-                let tile = local_map.get(local_x, local_y);
-                let is_cursor = local_x == self.local_cursor_x && local_y == self.local_cursor_y;
-
-                // Choose character: feature if present, else terrain with elevation hint
-                let ch = if tile.feature.is_some() {
-                    tile.ascii_char()
-                } else {
-                    // Add subtle elevation hint to terrain
-                    let elev = tile.elevation_offset;
-                    if elev > 0.3 {
-                        '\'' // High terrain
-                    } else if elev < -0.3 {
-                        '_' // Low terrain
-                    } else {
-                        tile.terrain.ascii_char()
-                    }
-                };
-
-                let (fg, bg) = if is_cursor {
-                    (Color::Black, Color::Yellow)
-                } else {
-                    // Get elevation brightness
-                    let brightness = tile.elevation_brightness();
-
-                    // Background = terrain color with elevation shading
-                    let (tr, tg, tb) = tile.terrain.color();
-                    let bg = Color::Rgb(
-                        ((tr as f32 * brightness * 0.6).min(255.0)) as u8,
-                        ((tg as f32 * brightness * 0.6).min(255.0)) as u8,
-                        ((tb as f32 * brightness * 0.6).min(255.0)) as u8,
-                    );
-
-                    // Foreground = feature color if present, else brightened terrain
-                    let fg = if let Some((fr, fg_g, fb)) = tile.feature_color() {
-                        Color::Rgb(
-                            ((fr as f32 * brightness * 1.2).min(255.0)) as u8,
-                            ((fg_g as f32 * brightness * 1.2).min(255.0)) as u8,
-                            ((fb as f32 * brightness * 1.2).min(255.0)) as u8,
-                        )
-                    } else {
-                        // Brighten terrain color for foreground
-                        Color::Rgb(
-                            ((tr as f32 * brightness * 1.4).min(255.0)) as u8,
-                            ((tg as f32 * brightness * 1.4).min(255.0)) as u8,
-                            ((tb as f32 * brightness * 1.4).min(255.0)) as u8,
-                        )
-                    };
-                    (fg, bg)
-                };
-
-                let x = map_inner.x + vx as u16;
-                let y = map_inner.y + vy as u16;
-
-                if x < map_inner.x + map_inner.width && y < map_inner.y + map_inner.height {
-                    frame.buffer_mut().set_string(
-                        x, y,
-                        ch.to_string(),
-                        Style::default().fg(fg).bg(bg),
-                    );
-                }
-            }
-        }
-
-        // Info panel
-        let tile = local_map.get(self.local_cursor_x, self.local_cursor_y);
-        let terrain_name = format!("{:?}", tile.terrain);
-        let feature_name = tile.feature.map_or("None".to_string(), |f| format!("{:?}", f));
-        let walkable_str = if tile.walkable { "Yes" } else { "No" };
-        let cost_str = if tile.movement_cost.is_finite() {
-            format!("{:.1}", tile.movement_cost)
-        } else {
-            "Impassable".to_string()
-        };
-        let elevation_str = format!("{:+.2}", tile.elevation_offset);
-        let elevation_color = if tile.elevation_offset > 0.2 {
-            Color::Rgb(200, 220, 255) // High = light blue
-        } else if tile.elevation_offset < -0.2 {
-            Color::Rgb(100, 80, 60) // Low = brown
-        } else {
-            Color::Gray
-        };
-
-        let (tr, tg, tb) = tile.terrain.color();
-
-        let info_text = vec![
-            Line::from(vec![
-                Span::raw("Position: "),
-                Span::styled(format!("({}, {})", self.local_cursor_x, self.local_cursor_y), Style::default().fg(Color::White)),
-                Span::raw("  Terrain: "),
-                Span::styled(terrain_name, Style::default().fg(Color::Rgb(tr, tg, tb))),
-                Span::raw("  Elev: "),
-                Span::styled(elevation_str, Style::default().fg(elevation_color)),
-            ]),
-            Line::from(vec![
-                Span::raw("Feature: "),
-                Span::styled(feature_name, Style::default().fg(Color::Magenta)),
-                Span::raw("  Walkable: "),
-                Span::styled(walkable_str, Style::default().fg(if tile.walkable { Color::Green } else { Color::Red })),
-                Span::raw("  Cost: "),
-                Span::styled(cost_str, Style::default().fg(Color::Yellow)),
-            ]),
-        ];
-
-        let info_panel = Paragraph::new(info_text)
-            .block(Block::default().borders(Borders::ALL).title(" Tile Info "));
-        frame.render_widget(info_panel, chunks[2]);
-
-        // Controls
-        let controls = Paragraph::new("[←↑↓→/WASD] Move  [Enter/Esc] Return to World  [C] Center  [?] Help")
-            .style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(controls, chunks[3]);
-
-        // Help overlay
-        if self.show_help {
-            self.render_local_help(frame);
-        }
-    }
-
-    fn render_local_help(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let popup_width = 48;
-        let popup_height = 16;
-        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-
-        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-        frame.render_widget(Clear, popup_area);
-
-        let help_text = vec![
-            Line::from("Local Map Help").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from(""),
-            Line::from("Navigation:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  Arrow keys / WASD / HJKL - Move cursor"),
-            Line::from("  PgUp/PgDn - Fast vertical movement"),
-            Line::from("  Home/End  - Fast horizontal movement"),
-            Line::from("  C - Center viewport on cursor"),
-            Line::from("  0 - Jump to map center"),
-            Line::from(""),
-            Line::from("Other:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  Enter/Esc - Return to world view"),
-            Line::from("  ? - Toggle this help"),
-            Line::from(""),
-            Line::from("Local maps show detailed terrain for each"),
-            Line::from("world tile. Edge tiles blend with neighbors."),
-        ];
-
-        let help_popup = Paragraph::new(help_text)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title(" Local Map Help ")
-                .style(Style::default().bg(Color::DarkGray)))
-            .style(Style::default().fg(Color::White).bg(Color::DarkGray));
-
-        frame.render_widget(help_popup, popup_area);
-    }
-
-    fn render_help(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        // Simulation mode has a different help screen
-        if self.sim_mode {
-            self.render_simulation_help(frame);
-            return;
-        }
-
-        // Center the help popup
-        let popup_width = 50;
-        let popup_height = 24;
-        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-
-        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-        // Clear the area behind the popup
-        frame.render_widget(Clear, popup_area);
-
-        let help_text = vec![
-            Line::from("Keyboard:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  Arrow keys / WASD / HJKL - Move"),
-            Line::from("  PgUp/PgDn - Fast vertical"),
-            Line::from("  Home/End  - Fast horizontal"),
-            Line::from("  Enter - View local map (64x64 detail)"),
-            Line::from(""),
-            Line::from("Mouse:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  Left click  - Move cursor to tile"),
-            Line::from("  Right click - Center on tile"),
-            Line::from("  Scroll      - Pan the viewport"),
-            Line::from(""),
-            Line::from("Views (V to cycle):").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  Biome / Height / Temp / Moisture / Stress"),
-            Line::from(""),
-            Line::from("Simulation:").style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Green)),
-            Line::from("  Shift+S - Start civilization simulation"),
-            Line::from(""),
-            Line::from("Other:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  N - New random seed (regenerate)"),
-            Line::from("  C - Center viewport on cursor"),
-            Line::from("  0 - Jump to map center"),
-            Line::from("  ? - Toggle this help"),
-            Line::from("  Q/Esc - Quit"),
-        ];
-
-        let help_popup = Paragraph::new(help_text)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title(" Help ")
-                .style(Style::default().bg(Color::DarkGray)))
-            .style(Style::default().fg(Color::White).bg(Color::DarkGray));
-
-        frame.render_widget(help_popup, popup_area);
-    }
-
-    fn render_simulation_help(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let popup_width = 54;
-        let popup_height = 26;
-        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-
-        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-        frame.render_widget(Clear, popup_area);
-
-        let help_text = vec![
-            Line::from("Simulation Controls:").style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Green)),
-            Line::from("  Space     - Step (when paused) / Pause (running)"),
-            Line::from("  +/=       - Increase simulation speed"),
-            Line::from("  -/_       - Decrease simulation speed"),
-            Line::from("  T         - Toggle territory overlay"),
-            Line::from("  Shift+L   - Toggle combat log panel"),
-            Line::from("  Shift+S   - Stop simulation and return to explore"),
-            Line::from(""),
-            Line::from("Navigation:").style(Style::default().add_modifier(Modifier::BOLD)),
-            Line::from("  Arrow keys / WASD / HJKL - Move cursor"),
-            Line::from("  PgUp/PgDn - Fast vertical movement"),
-            Line::from("  C - Center viewport on cursor"),
-            Line::from(""),
-            Line::from("Colony System:").style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan)),
-            Line::from("  Each tribe has a society type (Monarchy,"),
-            Line::from("  Theocracy, Democracy, etc.) affecting bonuses."),
-            Line::from("  Notable colonists have skills and jobs."),
-            Line::from(""),
-            Line::from("Move cursor over territory to see tribe details"),
-            Line::from("including society, leader, colonists, and jobs."),
-            Line::from(""),
-            Line::from("  ? - Toggle this help    Q/Esc - Quit"),
-        ];
-
-        let help_popup = Paragraph::new(help_text)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .title(" Simulation Help ")
-                .border_style(Style::default().fg(Color::Green))
-                .style(Style::default().bg(Color::DarkGray)))
-            .style(Style::default().fg(Color::White).bg(Color::DarkGray));
-
-        frame.render_widget(help_popup, popup_area);
     }
 }
 
-/// Run the terminal explorer
+/// Convert HSV to RGB
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = v - c;
+
+    let (r, g, b) = if h < 60.0 {
+        (c, x, 0.0)
+    } else if h < 120.0 {
+        (x, c, 0.0)
+    } else if h < 180.0 {
+        (0.0, c, x)
+    } else if h < 240.0 {
+        (0.0, x, c)
+    } else if h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    (
+        ((r + m) * 255.0) as u8,
+        ((g + m) * 255.0) as u8,
+        ((b + m) * 255.0) as u8,
+    )
+}
+
+/// Get display character for cave tiles
+fn cave_tile_char(tile: ZTile) -> char {
+    match tile {
+        ZTile::CaveFloor => '.',
+        ZTile::CaveWall => '#',
+        ZTile::Stalactite => '▼',
+        ZTile::Stalagmite => '▲',
+        ZTile::Pillar => '│',
+        ZTile::Flowstone => '=',
+        ZTile::FungalGrowth => '*',
+        ZTile::GiantMushroom => '♠',
+        ZTile::CrystalFormation => '◆',
+        ZTile::CaveMoss => '\'',
+        ZTile::MagmaPool => '≈',
+        ZTile::MagmaTube => '○',
+        ZTile::ObsidianFloor => '_',
+        ZTile::CaveLake => '~',
+        ZTile::Waterfall => '|',
+        ZTile::RampUp => '↑',
+        ZTile::RampDown => '↓',
+        ZTile::RampBoth => '↕',
+        // Structure tiles
+        ZTile::StoneWall | ZTile::BrickWall | ZTile::WoodWall => '#',
+        ZTile::RuinedWall => '%',
+        ZTile::StoneFloor | ZTile::WoodFloor | ZTile::DirtFloor => '.',
+        ZTile::CobblestoneFloor => ',',
+        ZTile::Door => '+',
+        ZTile::Window => '□',
+        ZTile::StairsUp => '<',
+        ZTile::StairsDown => '>',
+        ZTile::Column => '│',
+        ZTile::Rubble => '*',
+        ZTile::Chest => '□',
+        ZTile::Altar => '╥',
+        ZTile::DirtRoad | ZTile::StoneRoad | ZTile::Bridge => '═',
+        ZTile::MinedTunnel | ZTile::MinedRoom => '.',
+        ZTile::MineSupport => '║',
+        ZTile::Torch => '☼',
+        // Artifact containers
+        ZTile::ArtifactPedestal => '╦',
+        ZTile::TreasureChest => '▣',
+        ZTile::BookShelf => '▤',
+        ZTile::RelicShrine => '╥',
+        ZTile::ScrollCase => '▥',
+        // Statues
+        ZTile::HeroStatue | ZTile::RuinedStatue => '♀',
+        // Dungeon markers
+        ZTile::DungeonEntrance => '▼',
+        ZTile::TreasureHoard => '$',
+        _ => '?', // Fallback for any unexpected tile
+    }
+}
+
+/// Get human-readable name for a ZTile
+fn ztile_name(tile: ZTile) -> &'static str {
+    match tile {
+        ZTile::Air => "Air",
+        ZTile::Surface => "Surface",
+        ZTile::Solid => "Solid Rock",
+        ZTile::Water => "Water",
+        ZTile::Aquifer => "Aquifer",
+        ZTile::UndergroundRiver => "Underground River",
+        ZTile::WaterCave => "Water Cave",
+        ZTile::Spring => "Spring",
+        // Cave structure
+        ZTile::CaveFloor => "Cave Floor",
+        ZTile::CaveWall => "Cave Wall",
+        // Speleothems
+        ZTile::Stalactite => "Stalactite (▼)",
+        ZTile::Stalagmite => "Stalagmite (▲)",
+        ZTile::Pillar => "Pillar (│)",
+        ZTile::Flowstone => "Flowstone (=)",
+        // Cave biomes
+        ZTile::FungalGrowth => "Glowing Fungi (*)",
+        ZTile::GiantMushroom => "Giant Mushroom (♠)",
+        ZTile::CrystalFormation => "Crystal (◆)",
+        ZTile::CaveMoss => "Cave Moss (')",
+        // Deep features
+        ZTile::MagmaPool => "Magma Pool (≈)",
+        ZTile::MagmaTube => "Lava Tube (○)",
+        ZTile::ObsidianFloor => "Obsidian Floor (_)",
+        // Water integration
+        ZTile::CaveLake => "Cave Lake (~)",
+        ZTile::Waterfall => "Waterfall (|)",
+        // Vertical passages
+        ZTile::RampUp => "Ramp Up (↑) - ascend",
+        ZTile::RampDown => "Ramp Down (↓) - descend",
+        ZTile::RampBoth => "Ramp (↕) - up/down",
+        // Human-made structures
+        ZTile::StoneWall => "Stone Wall (#)",
+        ZTile::BrickWall => "Brick Wall (#)",
+        ZTile::WoodWall => "Wood Wall (#)",
+        ZTile::RuinedWall => "Ruined Wall (%)",
+        ZTile::StoneFloor => "Stone Floor (.)",
+        ZTile::WoodFloor => "Wood Floor (.)",
+        ZTile::CobblestoneFloor => "Cobblestone (,)",
+        ZTile::DirtFloor => "Dirt Floor (.)",
+        ZTile::Door => "Door (+)",
+        ZTile::Window => "Window (□)",
+        ZTile::StairsUp => "Stairs Up (<)",
+        ZTile::StairsDown => "Stairs Down (>)",
+        ZTile::Column => "Column (│)",
+        ZTile::Rubble => "Rubble (*)",
+        ZTile::Chest => "Chest (□)",
+        ZTile::Altar => "Altar (╥)",
+        ZTile::DirtRoad => "Dirt Road (═)",
+        ZTile::StoneRoad => "Stone Road (═)",
+        ZTile::Bridge => "Bridge (═)",
+        ZTile::MinedTunnel => "Mine Tunnel (.)",
+        ZTile::MinedRoom => "Mine Chamber (.)",
+        ZTile::MineSupport => "Mine Support (║)",
+        ZTile::Torch => "Torch (☼)",
+        ZTile::MineShaft => "Mine Shaft (○)",
+        ZTile::MineLadder => "Mine Ladder (H)",
+        ZTile::MineRails => "Mine Rails (═)",
+        ZTile::OreVein => "Ore Vein (*)",
+        ZTile::RichOreVein => "Rich Ore (◆)",
+        ZTile::MineEntrance => "Mine Entrance (▼)",
+        ZTile::FortressWall => "Fortress Wall (█)",
+        ZTile::FortressFloor => "Fortress Floor (·)",
+        ZTile::FortressGate => "Fortress Gate (‡)",
+        ZTile::Vault => "Treasure Vault ($)",
+        ZTile::BarracksFloor => "Barracks (░)",
+        ZTile::ForgeFloor => "Forge (▒)",
+        ZTile::Cistern => "Cistern (≈)",
+        // Historical evidence tiles
+        ZTile::BoneField => "Bone Field (☠)",
+        ZTile::RustedWeapons => "Rusted Weapons (†)",
+        ZTile::WarMemorial => "War Memorial (╬)",
+        ZTile::Crater => "Crater (○)",
+        ZTile::BoundaryStone => "Boundary Stone (◙)",
+        ZTile::MileMarker => "Mile Marker (│)",
+        ZTile::Shrine => "Shrine (╥)",
+        ZTile::Statue => "Statue (♀)",
+        ZTile::Obelisk => "Obelisk (↑)",
+        ZTile::BoneNest => "Bone Nest (☠)",
+        ZTile::WebCluster => "Web Cluster (▓)",
+        ZTile::SlimeTrail => "Slime Trail (~)",
+        ZTile::TerritoryMarking => "Territory Marking (!)",
+        ZTile::AntMound => "Ant Mound (▲)",
+        ZTile::BeeHive => "Bee Hive (◆)",
+        ZTile::ClawMarks => "Claw Marks (≡)",
+        ZTile::CursedGround => "Cursed Ground (†)",
+        ZTile::CharredGround => "Charred Ground (░)",
+        ZTile::AbandonedCart => "Abandoned Cart (□)",
+        ZTile::WaystationRuin => "Waystation Ruin (■)",
+        ZTile::DriedWell => "Dried Well (○)",
+        ZTile::OvergrownGarden => "Overgrown Garden (♣)",
+        ZTile::Gravestone => "Gravestone (†)",
+        ZTile::Tomb => "Tomb (╬)",
+        ZTile::Mausoleum => "Mausoleum (▓)",
+        ZTile::Ossuary => "Ossuary (☠)",
+        ZTile::MassGrave => "Mass Grave (▓)",
+        // Artifact containers
+        ZTile::ArtifactPedestal => "Artifact Pedestal (╦)",
+        ZTile::TreasureChest => "Treasure Chest (▣)",
+        ZTile::BookShelf => "Book Shelf (▤)",
+        ZTile::RelicShrine => "Relic Shrine (╥)",
+        ZTile::ScrollCase => "Scroll Case (▥)",
+        // Statues
+        ZTile::HeroStatue => "Hero Statue (♀)",
+        ZTile::RuinedStatue => "Ruined Statue (♀)",
+        // Dungeon markers
+        ZTile::DungeonEntrance => "Dungeon Entrance (▼)",
+        ZTile::TreasureHoard => "Treasure Hoard ($)",
+    }
+}
+
+/// Convert ratatui Color to RGB values
+fn color_to_rgb(color: Color) -> (u8, u8, u8) {
+    match color {
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::Black => (0, 0, 0),
+        Color::Red => (255, 0, 0),
+        Color::Green => (0, 255, 0),
+        Color::Yellow => (255, 255, 0),
+        Color::Blue => (0, 0, 255),
+        Color::Magenta => (255, 0, 255),
+        Color::Cyan => (0, 255, 255),
+        Color::Gray => (128, 128, 128),
+        Color::DarkGray => (64, 64, 64),
+        Color::LightRed => (255, 128, 128),
+        Color::LightGreen => (128, 255, 128),
+        Color::LightYellow => (255, 255, 128),
+        Color::LightBlue => (128, 128, 255),
+        Color::LightMagenta => (255, 128, 255),
+        Color::LightCyan => (128, 255, 255),
+        Color::White => (255, 255, 255),
+        Color::Reset => (128, 128, 128),
+        _ => (128, 128, 128),
+    }
+}
+
+/// Export the entire map as a PNG image at the given Z-level
+pub fn export_map_image(
+    world: &WorldData,
+    z: i32,
+    view_mode: ViewMode,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let width = world.heightmap.width;
+    let height = world.heightmap.height;
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let mut ztile = *world.zlevels.get(x, y, z);
+            let surface_z = *world.surface_z.get(x, y);
+            let biome = *world.biomes.get(x, y);
+            let h = *world.heightmap.get(x, y);
+            let temp = *world.temperature.get(x, y);
+            let moisture = *world.moisture.get(x, y);
+            let stress = *world.stress_map.get(x, y);
+            let plate_id = *world.plate_map.get(x, y);
+
+            // If current Z is empty (Air), find the highest visible tile below
+            let mut display_z = z;
+            if ztile == ZTile::Air {
+                // Search downward from current z to find the first non-Air tile
+                for check_z in (-16..=z).rev() {
+                    let check_tile = *world.zlevels.get(x, y, check_z);
+                    if check_tile != ZTile::Air {
+                        ztile = check_tile;
+                        display_z = check_z;
+                        break;
+                    }
+                }
+            }
+
+            // Get the color based on view mode
+            let (r, g, b) = match view_mode {
+                ViewMode::Biome => {
+                    // Use tile colors for biome view
+                    let (_ch, fg, bg) = get_tile_color_for_export(ztile, surface_z, display_z, &biome, h);
+                    // Blend fg and bg
+                    let (fr, fg_g, fb) = color_to_rgb(fg);
+                    let (br, bg_g, bb) = color_to_rgb(bg);
+                    // Use foreground primarily, with bg influence
+                    (
+                        ((fr as u16 * 3 + br as u16) / 4) as u8,
+                        ((fg_g as u16 * 3 + bg_g as u16) / 4) as u8,
+                        ((fb as u16 * 3 + bb as u16) / 4) as u8,
+                    )
+                }
+                ViewMode::Height => {
+                    height_color(h)
+                }
+                ViewMode::Temperature => {
+                    temperature_color(temp)
+                }
+                ViewMode::Moisture => {
+                    moisture_color(moisture)
+                }
+                ViewMode::Stress => {
+                    stress_color(stress)
+                }
+                ViewMode::Plates => {
+                    // Simple plate coloring
+                    let hue = (plate_id.0 as f32 * 37.0) % 360.0;
+                    hsv_to_rgb(hue, 0.7, 0.8)
+                }
+                ViewMode::Factions => {
+                    // Faction territory coloring (use gray for export since we don't have history access)
+                    (80, 80, 80)
+                }
+                ViewMode::History => {
+                    // History view (use gray for export)
+                    (60, 60, 60)
+                }
+            };
+
+            img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
+        }
+    }
+
+    img.save(filename)?;
+    println!("Exported map to {}", filename);
+    Ok(())
+}
+
+/// Export an aesthetic top-down view showing the highest tile at each position
+/// This creates a satellite-like view of the world from above
+pub fn export_topdown_image(
+    world: &WorldData,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let width = world.heightmap.width;
+    let height = world.heightmap.height;
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let biome = *world.biomes.get(x, y);
+            let h = *world.heightmap.get(x, y);
+            let surface_z = *world.surface_z.get(x, y);
+
+            // Find the highest non-Air tile from top down
+            let mut top_z = surface_z;
+            let mut top_tile = ZTile::Air;
+            for check_z in (zlevel::MIN_Z..=zlevel::MAX_Z).rev() {
+                let tile = *world.zlevels.get(x, y, check_z);
+                if tile != ZTile::Air {
+                    top_z = check_z;
+                    top_tile = tile;
+                    break;
+                }
+            }
+
+            // Get base color from the tile
+            let (base_r, base_g, base_b) = get_topdown_tile_color(top_tile, &biome, h, top_z, surface_z);
+
+            // Apply smooth hillshading using a larger kernel to avoid noise
+            // Sample heights in a 5x5 area for smoother gradients
+            let mut shade = 1.0f32;
+            if x >= 2 && y >= 2 && x < width - 2 && y < height - 2 {
+                // Average height to the top-left (light source direction)
+                let mut h_topleft = 0.0f32;
+                let mut h_botright = 0.0f32;
+                for dy in 0..3 {
+                    for dx in 0..3 {
+                        h_topleft += *world.heightmap.get(x - 2 + dx, y - 2 + dy);
+                        h_botright += *world.heightmap.get(x + dx, y + dy);
+                    }
+                }
+                h_topleft /= 9.0;
+                h_botright /= 9.0;
+
+                // Gentle shading based on slope
+                let slope = (h_botright - h_topleft) / 200.0;
+                shade = (1.0 + slope).clamp(0.85, 1.15);
+            }
+
+            // Subtle elevation-based brightness
+            let elevation_factor = if h > 0.0 {
+                // Land: very subtle height variation
+                0.95 + (h / 4000.0).min(0.1)
+            } else {
+                // Water: slightly darker for depth
+                0.95 + (h / 1000.0).max(-0.15)
+            };
+
+            let final_factor = (elevation_factor * shade).clamp(0.7, 1.2);
+
+            let r = ((base_r as f32 * final_factor).min(255.0)) as u8;
+            let g = ((base_g as f32 * final_factor).min(255.0)) as u8;
+            let b = ((base_b as f32 * final_factor).min(255.0)) as u8;
+
+            img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
+        }
+    }
+
+    img.save(filename)?;
+    println!("Exported top-down view to {}", filename);
+    Ok(())
+}
+
+/// Get color for top-down aesthetic view
+fn get_topdown_tile_color(
+    tile: ZTile,
+    biome: &crate::biomes::ExtendedBiome,
+    height: f32,
+    tile_z: i32,
+    surface_z: i32,
+) -> (u8, u8, u8) {
+    match tile {
+        // Natural terrain - use biome colors
+        ZTile::Surface | ZTile::Air => biome.color(),
+
+        // Water bodies
+        ZTile::Water => {
+            // Deeper water = darker blue
+            let depth = (-height).max(0.0);
+            let depth_factor = (1.0 - depth / 500.0).max(0.3);
+            (
+                (40.0 * depth_factor) as u8,
+                (80.0 + 60.0 * depth_factor) as u8,
+                (150.0 + 80.0 * depth_factor) as u8,
+            )
+        }
+
+        // Underground solid (shouldn't appear in top-down, but just in case)
+        ZTile::Solid => (80, 75, 70),
+
+        // Structures - use distinctive colors
+        ZTile::StoneWall | ZTile::FortressWall => (120, 115, 110),
+        ZTile::BrickWall => (140, 90, 70),
+        ZTile::WoodWall => (160, 120, 80),
+        ZTile::RuinedWall | ZTile::Rubble => (90, 85, 80),
+
+        ZTile::StoneFloor | ZTile::FortressFloor => (140, 135, 130),
+        ZTile::WoodFloor => (170, 140, 100),
+        ZTile::CobblestoneFloor => (130, 125, 120),
+        ZTile::DirtFloor => (140, 120, 90),
+
+        // Roads stand out
+        ZTile::DirtRoad => (160, 140, 100),
+        ZTile::StoneRoad => (170, 165, 160),
+        ZTile::Bridge => (150, 110, 70),
+
+        // Special structure features
+        ZTile::Door | ZTile::FortressGate => (120, 80, 50),
+        ZTile::Column => (180, 175, 170),
+        ZTile::Chest | ZTile::Vault => (180, 150, 50),
+        ZTile::Altar => (200, 200, 220),
+
+        // Cave/underground features (if exposed)
+        ZTile::CaveFloor => (100, 90, 80),
+        ZTile::Aquifer => (80, 180, 200),
+        ZTile::UndergroundRiver => (60, 140, 200),
+        ZTile::MagmaPool => (255, 80, 0),
+
+        // Mine features
+        ZTile::MineEntrance => (90, 70, 50),
+        ZTile::MineShaft | ZTile::MinedTunnel | ZTile::MinedRoom => (70, 60, 50),
+        ZTile::MineLadder | ZTile::MineSupport => (120, 80, 40),
+        ZTile::MineRails => (100, 100, 110),
+        ZTile::OreVein => (180, 160, 80),
+        ZTile::RichOreVein => (220, 180, 60),
+        ZTile::ForgeFloor => (80, 60, 50),
+        ZTile::BarracksFloor => (110, 100, 90),
+        ZTile::Cistern => (60, 100, 140),
+
+        // Cave formations
+        ZTile::Stalactite | ZTile::Stalagmite | ZTile::Pillar | ZTile::Flowstone => (160, 150, 140),
+        ZTile::CrystalFormation => (200, 180, 255),
+        ZTile::GiantMushroom => (100, 255, 150),
+        ZTile::FungalGrowth | ZTile::CaveMoss => (80, 120, 60),
+
+        // Misc
+        ZTile::Torch => (255, 200, 100),
+        ZTile::Window => (180, 200, 220),
+        ZTile::StairsUp | ZTile::StairsDown => (150, 145, 140),
+
+        // Fallback
+        _ => (128, 128, 128),
+    }
+}
+
+/// Get tile color for export (simplified version of get_tile_display)
+fn get_tile_color_for_export(
+    ztile: ZTile,
+    surface_z: i32,
+    current_z: i32,
+    biome: &crate::biomes::ExtendedBiome,
+    height: f32,
+) -> (char, Color, Color) {
+    match ztile {
+        ZTile::Air => (' ', Color::Black, Color::Black),
+        ZTile::Water => ('~', Color::Rgb(100, 150, 255), Color::Rgb(20, 40, 80)),
+        ZTile::Surface => {
+            let (r, g, b) = biome.color();
+            ('.', Color::Rgb(r, g, b), Color::Rgb(r / 2, g / 2, b / 2))
+        }
+        ZTile::Solid => {
+            let depth_below = surface_z - current_z;
+            let shade = (80 - depth_below * 4).max(30) as u8;
+            ('#', Color::Rgb(shade, shade, shade), Color::Rgb(20, 20, 20))
+        }
+        ZTile::CaveFloor => ('.', Color::Rgb(100, 90, 80), Color::Rgb(30, 28, 25)),
+        ZTile::Aquifer => ('≈', Color::Rgb(0, 200, 220), Color::Rgb(0, 60, 80)),
+        ZTile::UndergroundRiver => ('~', Color::Rgb(100, 180, 255), Color::Rgb(20, 50, 100)),
+        ZTile::MagmaPool => ('≈', Color::Rgb(255, 100, 0), Color::Rgb(80, 20, 0)),
+        ZTile::StoneWall => ('#', Color::Rgb(140, 140, 145), Color::Rgb(50, 50, 55)),
+        ZTile::BrickWall => ('#', Color::Rgb(160, 100, 80), Color::Rgb(60, 35, 25)),
+        ZTile::WoodWall => ('#', Color::Rgb(180, 140, 100), Color::Rgb(70, 50, 35)),
+        ZTile::StoneFloor => ('.', Color::Rgb(130, 130, 135), Color::Rgb(45, 45, 50)),
+        ZTile::WoodFloor => ('.', Color::Rgb(160, 130, 90), Color::Rgb(55, 45, 30)),
+        ZTile::CobblestoneFloor => (',', Color::Rgb(120, 115, 110), Color::Rgb(40, 38, 35)),
+        ZTile::MinedTunnel => ('.', Color::Rgb(100, 80, 60), Color::Rgb(30, 25, 20)),
+        ZTile::MinedRoom => ('.', Color::Rgb(110, 90, 70), Color::Rgb(35, 28, 22)),
+        ZTile::MineShaft => ('○', Color::Rgb(80, 60, 40), Color::Rgb(20, 15, 10)),
+        ZTile::OreVein => ('*', Color::Rgb(180, 140, 80), Color::Rgb(60, 45, 25)),
+        ZTile::RichOreVein => ('◆', Color::Rgb(255, 215, 0), Color::Rgb(80, 60, 20)),
+        ZTile::FortressWall => ('█', Color::Rgb(80, 80, 90), Color::Rgb(40, 40, 50)),
+        ZTile::FortressFloor => ('·', Color::Rgb(100, 100, 110), Color::Rgb(35, 35, 45)),
+        ZTile::DirtRoad | ZTile::StoneRoad => ('═', Color::Rgb(140, 120, 80), Color::Rgb(50, 40, 25)),
+        _ => {
+            // Default for other tiles
+            let (r, g, b) = height_color(height);
+            ('.', Color::Rgb(r, g, b), Color::Rgb(r / 2, g / 2, b / 2))
+        }
+    }
+}
+
+/// Run the explorer
 pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
+    // Setup terminal
+    terminal::enable_raw_mode()?;
+    let mut stdout = stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
     let mut explorer = Explorer::new(world);
-    explorer.run()
+
+    loop {
+        // Render
+        terminal.draw(|f| {
+            let size = f.area();
+
+            // Main layout: map area + status bar
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
+                .split(size);
+
+            let map_area = chunks[0];
+            let status_area = chunks[1];
+
+            // Render map
+            explorer.render_map(map_area, f.buffer_mut());
+
+            // Render status bar
+            let zoom_str = if explorer.zoom > 1 { format!(" | Zoom:{}x", explorer.zoom) } else { String::new() };
+            let msg_str = explorer.message.as_ref().map(|m| format!(" | {}", m)).unwrap_or_default();
+            let status = format!(
+                " {} | {}{} | {}{} | -/+ Zoom | F Fit | E Export | T TopDown | R New | Q Quit",
+                explorer.z_level_status(),
+                explorer.view_mode.name(),
+                zoom_str,
+                explorer.tile_info(),
+                msg_str,
+            );
+            let status_para = Paragraph::new(status)
+                .style(Style::default().bg(Color::DarkGray).fg(Color::White));
+            f.render_widget(status_para, status_area);
+
+            // Clear message after display
+            explorer.message = None;
+
+            // Render help if active
+            if explorer.show_help {
+                explorer.render_help(map_area, f.buffer_mut());
+            }
+        })?;
+
+        // Handle input
+        if event::poll(Duration::from_millis(50))? {
+            match event::read()? {
+                Event::Key(key) => {
+                    if explorer.show_help {
+                        explorer.show_help = false;
+                        continue;
+                    }
+
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => break,
+                        KeyCode::Char('?') => explorer.show_help = true,
+                        KeyCode::Char('v') | KeyCode::Char('V') => {
+                            explorer.view_mode = explorer.view_mode.next();
+                        }
+
+                        // Movement
+                        KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('k') => {
+                            explorer.move_cursor(0, -1);
+                        }
+                        KeyCode::Down | KeyCode::Char('s') | KeyCode::Char('j') => {
+                            explorer.move_cursor(0, 1);
+                        }
+                        KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('h') => {
+                            explorer.move_cursor(-1, 0);
+                        }
+                        KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('l') => {
+                            explorer.move_cursor(1, 0);
+                        }
+
+                        // Fast movement
+                        KeyCode::PageUp => explorer.move_cursor(0, -20),
+                        KeyCode::PageDown => explorer.move_cursor(0, 20),
+                        KeyCode::Home => explorer.move_cursor(-20, 0),
+                        KeyCode::End => explorer.move_cursor(20, 0),
+
+                        // Z-level navigation
+                        KeyCode::Char('>') | KeyCode::Char('.') => explorer.move_z_up(),
+                        KeyCode::Char('<') | KeyCode::Char(',') => explorer.move_z_down(),
+                        KeyCode::Char('0') => explorer.go_to_sea_level(),
+                        KeyCode::Char('S') => explorer.go_to_surface(),
+
+                        // Zoom controls
+                        KeyCode::Char('-') | KeyCode::Char('_') => explorer.zoom_out(),
+                        KeyCode::Char('+') | KeyCode::Char('=') => explorer.zoom_in(),
+                        KeyCode::Char('f') | KeyCode::Char('F') => {
+                            let size = terminal.size()?;
+                            explorer.fit_to_screen(size.width as usize, (size.height - 1) as usize);
+                        }
+
+                        // Export image
+                        KeyCode::Char('e') | KeyCode::Char('E') => {
+                            let filename = format!("world_z{}.png", explorer.cursor_z);
+                            match export_map_image(&explorer.world, explorer.cursor_z, explorer.view_mode, &filename) {
+                                Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
+                                Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
+                            }
+                        }
+
+                        // Regenerate world with new seed
+                        KeyCode::Char('r') | KeyCode::Char('R') => {
+                            explorer.regenerate();
+                        }
+
+                        // Top-down aesthetic export
+                        KeyCode::Char('t') | KeyCode::Char('T') => {
+                            let filename = format!("world_topdown_{}.png", explorer.world.seed);
+                            match export_topdown_image(&explorer.world, &filename) {
+                                Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
+                                Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
+                            }
+                        }
+
+                        _ => {}
+                    }
+                }
+                Event::Mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column, row, .. }) => {
+                    // Click to move cursor
+                    let size = terminal.size()?;
+                    if row < size.height - 1 {
+                        let view_width = size.width as usize;
+                        let view_height = (size.height - 1) as usize;
+
+                        let start_x = if explorer.cursor_x >= view_width / 2 {
+                            explorer.cursor_x - view_width / 2
+                        } else {
+                            0
+                        };
+                        let start_y = if explorer.cursor_y >= view_height / 2 {
+                            explorer.cursor_y - view_height / 2
+                        } else {
+                            0
+                        };
+
+                        let new_x = (start_x + column as usize) % explorer.world.heightmap.width;
+                        let new_y = (start_y + row as usize).min(explorer.world.heightmap.height - 1);
+
+                        explorer.cursor_x = new_x;
+                        explorer.cursor_y = new_y;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Cleanup
+    terminal::disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    terminal.show_cursor()?;
+
+    Ok(())
 }

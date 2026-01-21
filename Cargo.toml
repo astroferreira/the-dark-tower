@@ -12,14 +12,6 @@ path = "src/lib.rs"
 name = "planet_generator"
 path = "src/main.rs"
 
-[[bin]]
-name = "debug_erosion"
-path = "src/bin/debug_erosion.rs"
-
-[[bin]]
-name = "profile_erosion"
-path = "src/bin/profile_erosion.rs"
-
 [dependencies]
 image = "0.25"
 clap = { version = "4.5", features = ["derive"] }

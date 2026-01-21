@@ -4,6 +4,15 @@ use crate::plates::{Plate, PlateId, PlateType};
 use crate::scale::{MapScale, scale_distance, scale_frequency, scale_elevation};
 use crate::tilemap::Tilemap;
 
+/// Normalize a seed value to a small floating point range suitable for noise coordinates.
+/// This prevents crashes from using very large u64 seeds directly as 3D noise coordinates.
+#[inline]
+fn seed_to_z(seed: u64, offset: f64) -> f64 {
+    // Hash the seed down to a small range [0, 1000) and add offset
+    let hash = ((seed.wrapping_mul(0x517cc1b727220a95)) >> 48) as f64 / 65536.0 * 1000.0;
+    hash + offset
+}
+
 // =============================================================================
 // TERRAIN PARAMETERS
 // =============================================================================
@@ -368,19 +377,19 @@ fn generate_coastal_islands(
     let large_cluster = coast_noise.get([
         x * 120.0,
         y * 120.0,
-        seed as f64 * 0.001,
+        seed_to_z(seed, 2.1),
     ]);
-    
+
     let medium_cluster = coast_noise.get([
         x * 250.0 + 5.2,
         y * 250.0 + 3.1,
-        seed as f64 * 0.002,
+        seed_to_z(seed, 2.2),
     ]);
-    
+
     let small_peaks = detail_noise.get([
         x * 500.0,
         y * 500.0,
-        seed as f64 * 0.003,
+        seed_to_z(seed, 2.3),
     ]);
     
     // Combine scales - larger features guide smaller ones
@@ -541,18 +550,18 @@ fn generate_island_arc(
 
     // Island placement along the arc (creates chain pattern)
     // Use sine wave along tangent direction for regular spacing
-    let arc_position = terrain_noise.get([u * arc_freq, v * 0.02, seed as f64 * 0.004]) as f32;
+    let arc_position = terrain_noise.get([u * arc_freq, v * 0.02, seed_to_z(seed, 0.4)]) as f32;
 
     // Island spacing along the arc (~50-100km apart in chain)
     let chain_pattern = (u * spacing_freq + arc_position as f64 * 0.5).sin() as f32;
     let is_in_chain = chain_pattern > 0.3;  // Creates discrete island spots along arc
 
     // Width of the island arc band (narrower = more linear chain)
-    let arc_width_noise = detail_noise.get([x * 0.08, y * 0.08, seed as f64 * 0.005]) as f32;
+    let arc_width_noise = detail_noise.get([x * 0.08, y * 0.08, seed_to_z(seed, 0.5)]) as f32;
     let arc_band = 0.15 + arc_width_noise * 0.05;  // Narrow band for arc
 
     // Check if we're in the arc band
-    let distance_from_center = (terrain_noise.get([v * 0.1, u * 0.02, seed as f64 * 0.006]) as f32).abs();
+    let distance_from_center = (terrain_noise.get([v * 0.1, u * 0.02, seed_to_z(seed, 0.6)]) as f32).abs();
     let in_arc_band = distance_from_center < arc_band;
 
     if !is_in_chain || !in_arc_band {
@@ -560,7 +569,7 @@ fn generate_island_arc(
     }
 
     // High-frequency detail for island peaks
-    let peak_noise = detail_noise.get([x * detail_freq, y * detail_freq, seed as f64 * 0.007]) as f32;
+    let peak_noise = detail_noise.get([x * detail_freq, y * detail_freq, seed_to_z(seed, 0.7)]) as f32;
     let is_peak = peak_noise > 0.2;
 
     if !is_peak {
@@ -593,11 +602,11 @@ fn generate_volcanic_islands(
     let stress_factor = (stress / 0.2).min(1.0);
     
     // High-frequency noise for isolated island spots
-    let spot1 = noise.get([x * 500.0, y * 500.0, seed as f64 * 0.001]);
-    let spot2 = noise.get([x * 450.0 + 77.0, y * 450.0 + 33.0, seed as f64 * 0.002]);
-    
-    // Cluster zones - medium frequency  
-    let cluster = noise.get([x * 80.0, y * 80.0, seed as f64 * 0.003]);
+    let spot1 = noise.get([x * 500.0, y * 500.0, seed_to_z(seed, 0.1)]);
+    let spot2 = noise.get([x * 450.0 + 77.0, y * 450.0 + 33.0, seed_to_z(seed, 0.2)]);
+
+    // Cluster zones - medium frequency
+    let cluster = noise.get([x * 80.0, y * 80.0, seed_to_z(seed, 0.3)]);
     let in_cluster = cluster > -0.4; // ~70% of stressed areas can have islands
     
     if !in_cluster {
@@ -652,11 +661,11 @@ fn generate_volcanic_islands_scaled(
     let stress_factor = (stress / 0.2).min(1.0);
 
     // High-frequency noise for isolated island spots
-    let spot1 = noise.get([x * spot_freq1, y * spot_freq1, seed as f64 * 0.001]);
-    let spot2 = noise.get([x * spot_freq2 + 77.0, y * spot_freq2 + 33.0, seed as f64 * 0.002]);
+    let spot1 = noise.get([x * spot_freq1, y * spot_freq1, seed_to_z(seed, 1.1)]);
+    let spot2 = noise.get([x * spot_freq2 + 77.0, y * spot_freq2 + 33.0, seed_to_z(seed, 1.2)]);
 
     // Cluster zones - medium frequency
-    let cluster = noise.get([x * cluster_freq, y * cluster_freq, seed as f64 * 0.003]);
+    let cluster = noise.get([x * cluster_freq, y * cluster_freq, seed_to_z(seed, 1.3)]);
     let in_cluster = cluster > -0.4; // ~70% of stressed areas can have islands
 
     if !in_cluster {
@@ -741,8 +750,8 @@ fn generate_barrier_islands(
     let perp_freq = scale_frequency(0.12, map_scale);       // Short axis - high freq = narrow
 
     // Sample noise at both frequencies
-    let parallel_noise = terrain_noise.get([x * parallel_freq, y * parallel_freq, seed as f64 + 7.0]) as f32;
-    let perp_noise = detail_noise.get([x * perp_freq, y * perp_freq, seed as f64 + 8.0]) as f32;
+    let parallel_noise = terrain_noise.get([x * parallel_freq, y * parallel_freq, seed_to_z(seed, 7.0)]) as f32;
+    let perp_noise = detail_noise.get([x * perp_freq, y * perp_freq, seed_to_z(seed, 8.0)]) as f32;
 
     // Combine: weight heavily toward parallel (elongated) pattern
     // The perpendicular noise creates breaks in the chain (inlets)
@@ -762,7 +771,7 @@ fn generate_barrier_islands(
 
     // Add small-scale dune detail
     let dune_freq = scale_frequency(0.5, map_scale);
-    let dune_noise = detail_noise.get([x * dune_freq, y * dune_freq, seed as f64 + 9.0]) as f32;
+    let dune_noise = detail_noise.get([x * dune_freq, y * dune_freq, seed_to_z(seed, 9.0)]) as f32;
     let dune_height = scale_elevation(2.0, map_scale) * dune_noise.abs();
 
     height + dune_height
@@ -841,7 +850,7 @@ pub fn generate_sinkhole_terrain(
 
     // High-frequency noise for sinkhole placement
     let spot_freq = scale_frequency(0.4, map_scale);
-    let spot_noise = sinkhole_noise.get([x * spot_freq, y * spot_freq, seed as f64 + 20.0]) as f32;
+    let spot_noise = sinkhole_noise.get([x * spot_freq, y * spot_freq, seed_to_z(seed, 20.0)]) as f32;
 
     // Only create sinkholes at local maxima of noise (isolated spots)
     let threshold = 0.6 - karst_potential * 0.2;  // Higher karst = more sinkholes
@@ -855,7 +864,7 @@ pub fn generate_sinkhole_terrain(
     let max_extra = scale_elevation(35.0, map_scale);   // Up to 50m total
 
     // Add variation
-    let detail = detail_noise.get([x * spot_freq * 3.0, y * spot_freq * 3.0, seed as f64 + 21.0]) as f32;
+    let detail = detail_noise.get([x * spot_freq * 3.0, y * spot_freq * 3.0, seed_to_z(seed, 21.0)]) as f32;
 
     // Return negative value (depression)
     -(base_depth + strength * max_extra) * (0.7 + detail.abs() * 0.3) * karst_potential
@@ -882,11 +891,11 @@ pub fn generate_tower_karst_terrain(
 
     // Tower placement - creates isolated pillars
     let tower_freq = scale_frequency(0.25, map_scale);
-    let tower_base = tower_noise.get([x * tower_freq, y * tower_freq, seed as f64 + 30.0]) as f32;
+    let tower_base = tower_noise.get([x * tower_freq, y * tower_freq, seed_to_z(seed, 30.0)]) as f32;
 
     // Secondary frequency for grouping towers
     let group_freq = scale_frequency(0.08, map_scale);
-    let group_noise = tower_noise.get([x * group_freq, y * group_freq, seed as f64 + 31.0]) as f32;
+    let group_noise = tower_noise.get([x * group_freq, y * group_freq, seed_to_z(seed, 31.0)]) as f32;
     let in_tower_zone = group_noise > 0.0;
 
     if !in_tower_zone {
@@ -907,7 +916,7 @@ pub fn generate_tower_karst_terrain(
 
     // Add detail for varied tower shapes
     let detail_freq = scale_frequency(0.8, map_scale);
-    let detail = detail_noise.get([x * detail_freq, y * detail_freq, seed as f64 + 32.0]) as f32;
+    let detail = detail_noise.get([x * detail_freq, y * detail_freq, seed_to_z(seed, 32.0)]) as f32;
 
     (base_height + strength * max_extra) * karst_potential * tropical_factor * (0.8 + detail.abs() * 0.2)
 }

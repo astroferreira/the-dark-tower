@@ -1,18 +1,24 @@
 //! Planet generation library
 //!
-//! Re-exports modules for use by binaries and tools.
+//! A procedural world map generator featuring:
+//! - Tectonic plate simulation
+//! - Hydraulic and glacial erosion
+//! - Climate modeling (temperature, moisture)
+//! - 50+ biome types
+//! - Water body detection (oceans, lakes, rivers)
+//! - Human-made structures (castles, cities, villages, roads)
+//! - Historical world enrichment (factions, events, settlements, monsters, trade routes)
 
 pub mod ascii;
 pub mod biomes;
 pub mod climate;
 pub mod erosion;
-pub mod export;
 pub mod heightmap;
-pub mod local;
+pub mod history;
 pub mod plates;
 pub mod scale;
-pub mod simulation;
+pub mod structures;
 pub mod tilemap;
 pub mod water_bodies;
 pub mod world;
-pub mod lore;
+pub mod zlevel;

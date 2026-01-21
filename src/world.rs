@@ -8,10 +8,12 @@ use rand::SeedableRng;
 use crate::biomes::{self, ExtendedBiome};
 use crate::climate;
 use crate::heightmap;
+use crate::history::{WorldHistory, generate_world_history};
 use crate::plates::{self, Plate, PlateId};
 use crate::scale::MapScale;
 use crate::tilemap::Tilemap;
 use crate::water_bodies::{self, WaterBody, WaterBodyId, WaterBodyType};
+use crate::zlevel::{self, Tilemap3D, ZTile};
 
 /// All generated world data bundled together
 pub struct WorldData {
@@ -43,6 +45,12 @@ pub struct WorldData {
     pub water_body_map: Tilemap<WaterBodyId>,
     /// List of water bodies with metadata
     pub water_bodies: Vec<WaterBody>,
+    /// 3D Z-level map (voxel-like terrain data)
+    pub zlevels: Tilemap3D<ZTile>,
+    /// Surface Z-level at each (x, y) position
+    pub surface_z: Tilemap<i32>,
+    /// Historical world data (factions, events, settlements)
+    pub history: Option<WorldHistory>,
 }
 
 impl WorldData {
@@ -60,6 +68,9 @@ impl WorldData {
         hardness_map: Option<Tilemap<f32>>,
         water_body_map: Tilemap<WaterBodyId>,
         water_bodies: Vec<WaterBody>,
+        zlevels: Tilemap3D<ZTile>,
+        surface_z: Tilemap<i32>,
+        history: Option<WorldHistory>,
     ) -> Self {
         let width = heightmap.width;
         let height = heightmap.height;
@@ -78,6 +89,9 @@ impl WorldData {
             hardness_map,
             water_body_map,
             water_bodies,
+            zlevels,
+            surface_z,
+            history,
         }
     }
 
@@ -230,6 +244,11 @@ impl TileInfo {
 /// Note: This version skips erosion for faster generation (useful for exploration/preview).
 /// For full quality with erosion, use the main generation pipeline.
 pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
+    // Special seed 666: Generate a minimal test world (4x4) for debugging
+    if seed == 666 {
+        return generate_test_world();
+    }
+
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let scale = MapScale::default();
 
@@ -287,6 +306,52 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         seed,
     );
 
+    // Generate Z-level data
+    let (mut zlevels, surface_z) = zlevel::generate_zlevels(&heightmap);
+
+    // Generate underground water
+    zlevel::generate_underground_water(
+        &mut zlevels,
+        &surface_z,
+        &heightmap,
+        &moisture,
+        seed,
+    );
+
+    // Generate cave system
+    zlevel::generate_caves(
+        &mut zlevels,
+        &surface_z,
+        &heightmap,
+        &moisture,
+        &stress_map,
+        seed,
+    );
+
+    // Generate structures (castles, cities, villages, mines, roads)
+    crate::structures::generate_structures(
+        &mut zlevels,
+        &surface_z,
+        &heightmap,
+        &moisture,
+        &temperature,
+        &extended_biomes,
+        &stress_map,
+        &water_body_map,
+        seed,
+    );
+
+    // Generate world history (factions, events, settlements, monsters, trade)
+    let history = generate_world_history(
+        &mut zlevels,
+        &surface_z,
+        &heightmap,
+        &extended_biomes,
+        &water_body_map,
+        &stress_map,
+        seed,
+    );
+
     WorldData::new(
         seed,
         scale,
@@ -300,5 +365,67 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         None, // No hardness map without erosion
         water_body_map,
         water_bodies_list,
+        zlevels,
+        surface_z,
+        Some(history),
     )
+}
+
+/// Generate a minimal test world (4x4) for debugging colonist behavior.
+/// Used when seed 666 is specified.
+/// All tiles are flat grassland, perfect for testing simulation mechanics.
+pub fn generate_test_world() -> WorldData {
+    const SIZE: usize = 4;
+
+    // Create flat terrain (all land at 0.5 elevation)
+    let heightmap = Tilemap::new_with(SIZE, SIZE, 0.5);
+
+    // Mild temperate climate
+    let temperature = Tilemap::new_with(SIZE, SIZE, 15.0);
+
+    // Moderate moisture
+    let moisture = Tilemap::new_with(SIZE, SIZE, 0.5);
+
+    // All temperate grassland - ideal for all activities
+    let biomes = Tilemap::new_with(SIZE, SIZE, ExtendedBiome::TemperateGrassland);
+
+    // No tectonic stress
+    let stress_map = Tilemap::new_with(SIZE, SIZE, 0.0);
+
+    // Single plate
+    let plate_map = Tilemap::new_with(SIZE, SIZE, PlateId(0));
+    let plates = vec![plates::Plate {
+        id: PlateId(0),
+        plate_type: plates::PlateType::Continental,
+        velocity: plates::Vec2::new(0.0, 0.0),
+        base_elevation: 0.5,
+        color: [100, 180, 100],
+    }];
+
+    // No water bodies in test world
+    let water_body_map = Tilemap::new_with(SIZE, SIZE, WaterBodyId::NONE);
+    let water_bodies = vec![];
+
+    // Generate Z-level data
+    let (zlevels, surface_z) = zlevel::generate_zlevels(&heightmap);
+
+    WorldData {
+        seed: 666,
+        width: SIZE,
+        height: SIZE,
+        scale: MapScale::default(),
+        heightmap,
+        temperature,
+        moisture,
+        biomes,
+        stress_map,
+        plate_map,
+        plates,
+        hardness_map: None,
+        water_body_map,
+        water_bodies,
+        zlevels,
+        surface_z,
+        history: None,
+    }
 }
