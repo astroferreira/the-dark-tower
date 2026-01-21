@@ -9,6 +9,7 @@ mod erosion;
 mod explorer;
 mod heightmap;
 mod history;
+mod multiscale;
 mod plates;
 mod scale;
 mod structures;

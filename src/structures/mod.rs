@@ -14,6 +14,12 @@
 //! - Cellular automata for decay/ruins effects
 //! - Dijkstra's algorithm for road network and intelligent placement
 
+/// Whether to write structure tiles to world zlevels.
+/// Set to false to defer all structure rendering to local map generation.
+/// When false, only structure METADATA is generated (positions, types, sizes).
+/// The actual tiles are generated when entering the local map.
+const WRITE_STRUCTURE_TILES: bool = false;
+
 pub mod generation;
 pub mod placement;
 pub mod prefabs;
@@ -117,16 +123,18 @@ pub fn generate_structures(
     println!("  Placed {} cities", cities.len());
     all_structures.extend(cities.clone());
 
-    // Phase 3: Generate road network
-    println!("  Generating road network...");
-    let _road_segments = generate_road_network(
-        &all_structures,
-        heightmap,
-        water_bodies,
-        zlevels,
-        surface_z,
-        &mut rng,
-    );
+    // Phase 3: Generate road network (only if writing tiles)
+    if WRITE_STRUCTURE_TILES {
+        println!("  Generating road network...");
+        let _road_segments = generate_road_network(
+            &all_structures,
+            heightmap,
+            water_bodies,
+            zlevels,
+            surface_z,
+            &mut rng,
+        );
+    }
 
     // Phase 4: Place villages (occasional small settlements)
     let village_count = ((rng.gen_range(0..=2) as f32 * scale_factor) as usize);
@@ -148,160 +156,165 @@ pub fn generate_structures(
     println!("  Placed {} villages", villages.len());
     all_structures.extend(villages.clone());
 
-    // Phase 5: Generate structure interiors
-    println!("  Generating structure interiors...");
+    // Phase 5: Generate structure interiors (only if writing tiles)
+    if WRITE_STRUCTURE_TILES {
+        println!("  Generating structure interiors...");
 
-    // Generate castle interiors
-    for castle in &castles {
-        let (size_min, size_max) = StructureType::Castle.size_range();
-        let size = rng.gen_range(size_min..=size_max);
+        // Generate castle interiors
+        for castle in &castles {
+            let (size_min, size_max) = StructureType::Castle.size_range();
+            let size = rng.gen_range(size_min..=size_max);
 
-        generate_complex_castle(
-            zlevels,
-            castle.x + castle.width / 2,
-            castle.y + castle.height / 2,
-            size,
-            castle.z,
-            &mut rng,
-            width,
-            height,
-        );
-
-        // Generate dungeon below castle
-        if castle.z > MIN_Z + 2 {
-            let dungeon_z = castle.z - 1;
-            let _rooms = generate_dungeon_level(
+            generate_complex_castle(
                 zlevels,
-                castle.x,
-                castle.y,
-                castle.width,
-                castle.height,
-                dungeon_z,
+                castle.x + castle.width / 2,
+                castle.y + castle.height / 2,
+                size,
+                castle.z,
+                &mut rng,
+                width,
+                height,
+            );
+
+            // Generate dungeon below castle
+            if castle.z > MIN_Z + 2 {
+                let dungeon_z = castle.z - 1;
+                let _rooms = generate_dungeon_level(
+                    zlevels,
+                    castle.x,
+                    castle.y,
+                    castle.width,
+                    castle.height,
+                    dungeon_z,
+                    &mut rng,
+                    width,
+                    height,
+                );
+            }
+        }
+
+        // Generate city interiors
+        for city in &cities {
+            let (size_min, size_max) = StructureType::City.size_range();
+            let size = rng.gen_range(size_min..=size_max);
+
+            generate_city_block(
+                zlevels,
+                city.x,
+                city.y,
+                size,
+                size,
+                city.z,
                 &mut rng,
                 width,
                 height,
             );
         }
+
+        // Generate village interiors using prefabs
+        let village_prefabs = prefabs_by_tag("village");
+        for village in &villages {
+            generate_village(
+                zlevels,
+                surface_z,
+                village,
+                &village_prefabs,
+                &mut rng,
+                width,
+                height,
+            );
+
+            // Add village paths
+            generate_village_paths(
+                zlevels,
+                surface_z,
+                village.x + village.width / 2,
+                village.y + village.height / 2,
+                village.width / 2,
+                &mut rng,
+            );
+        }
     }
 
-    // Generate city interiors
-    for city in &cities {
-        let (size_min, size_max) = StructureType::City.size_range();
-        let size = rng.gen_range(size_min..=size_max);
-
-        generate_city_block(
+    // Phase 6-8: Only if writing tiles to world
+    if WRITE_STRUCTURE_TILES {
+        // Phase 6: Place cave dwellings
+        println!("  Placing cave dwellings...");
+        let cave_dwellings = place_cave_dwellings(
             zlevels,
-            city.x,
-            city.y,
-            size,
-            size,
-            city.z,
+            surface_z,
             &mut rng,
             width,
             height,
         );
-    }
+        all_structures.extend(cave_dwellings);
 
-    // Generate village interiors using prefabs
-    let village_prefabs = prefabs_by_tag("village");
-    for village in &villages {
-        generate_village(
+        // Phase 7: Generate mines and underground fortresses
+        println!("  Generating mines...");
+        let mines = generation::generate_mines(
             zlevels,
             surface_z,
-            village,
-            &village_prefabs,
+            heightmap,
+            stress_map,
             &mut rng,
+            scale_factor,
+        );
+        println!("  Placed {} mines", mines.len());
+        all_structures.extend(mines);
+
+        // Generate standalone underground fortresses (very rare)
+        let fortresses = generation::generate_standalone_fortress(
+            zlevels,
+            surface_z,
+            heightmap,
+            &mut rng,
+            scale_factor,
             width,
             height,
         );
+        if !fortresses.is_empty() {
+            println!("  Placed {} underground fortresses", fortresses.len());
+            all_structures.extend(fortresses);
+        }
 
-        // Add village paths
-        generate_village_paths(
-            zlevels,
-            surface_z,
-            village.x + village.width / 2,
-            village.y + village.height / 2,
-            village.width / 2,
-            &mut rng,
-        );
-    }
+        // Phase 8: Apply decay
+        println!("  Applying decay to structures...");
+        for structure in &all_structures {
+            let decay_pct = structure.structure_type.decay_percentage();
+            let iterations = match structure.structure_type {
+                StructureType::Castle => 3,
+                StructureType::City => 4,
+                StructureType::Village => 2,
+                StructureType::CaveDwelling => 2,
+                StructureType::Dungeon => 2,
+            };
 
-    // Phase 6: Place cave dwellings
-    println!("  Placing cave dwellings...");
-    let cave_dwellings = place_cave_dwellings(
-        zlevels,
-        surface_z,
-        &mut rng,
-        width,
-        height,
-    );
-    all_structures.extend(cave_dwellings);
+            apply_decay(
+                zlevels,
+                surface_z,
+                structure.x,
+                structure.y,
+                structure.width,
+                structure.height,
+                structure.z,
+                decay_pct,
+                iterations,
+                &mut rng,
+            );
 
-    // Phase 7: Generate mines and underground fortresses
-    println!("  Generating mines...");
-    let mines = generation::generate_mines(
-        zlevels,
-        surface_z,
-        heightmap,
-        stress_map,
-        &mut rng,
-        scale_factor,
-    );
-    println!("  Placed {} mines", mines.len());
-    all_structures.extend(mines);
-
-    // Generate standalone underground fortresses (very rare)
-    let fortresses = generation::generate_standalone_fortress(
-        zlevels,
-        surface_z,
-        heightmap,
-        &mut rng,
-        scale_factor,
-        width,
-        height,
-    );
-    if !fortresses.is_empty() {
-        println!("  Placed {} underground fortresses", fortresses.len());
-        all_structures.extend(fortresses);
-    }
-
-    // Phase 8: Apply decay
-    println!("  Applying decay to structures...");
-    for structure in &all_structures {
-        let decay_pct = structure.structure_type.decay_percentage();
-        let iterations = match structure.structure_type {
-            StructureType::Castle => 3,
-            StructureType::City => 4,
-            StructureType::Village => 2,
-            StructureType::CaveDwelling => 2,
-            StructureType::Dungeon => 2,
-        };
-
-        apply_decay(
-            zlevels,
-            surface_z,
-            structure.x,
-            structure.y,
-            structure.width,
-            structure.height,
-            structure.z,
-            decay_pct,
-            iterations,
-            &mut rng,
-        );
-
-        // Apply overgrowth in moist areas
-        apply_overgrowth(
-            zlevels,
-            surface_z,
-            moisture,
-            structure.x,
-            structure.y,
-            structure.width,
-            structure.height,
-            structure.z,
-            &mut rng,
-        );
+            // Apply overgrowth in moist areas
+            apply_overgrowth(
+                zlevels,
+                surface_z,
+                moisture,
+                structure.x,
+                structure.y,
+                structure.width,
+                structure.height,
+                structure.z,
+                &mut rng,
+            );
+        }
     }
 
     println!("  Total structures placed: {}", all_structures.len());

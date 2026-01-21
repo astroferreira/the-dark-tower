@@ -19,6 +19,12 @@ use ratatui::{
 };
 
 use crate::ascii::{biome_char, height_color, temperature_color, moisture_color, stress_color};
+use crate::multiscale::{
+    ChunkCache, LocalCoord, ScaleLevel,
+    LocalChunk, LocalTile, LocalTerrain, LocalFeature,
+    local::generate_local_chunk,
+    LOCAL_SIZE,
+};
 use crate::world::{WorldData, generate_world};
 use crate::zlevel::{self, ZTile, z_to_height, z_to_height_ceiling, z_level_description};
 
@@ -73,6 +79,31 @@ impl ViewMode {
     }
 }
 
+/// Scale mode for multi-scale zoom (Dwarf Fortress style: World + Local)
+#[derive(Clone, Copy, PartialEq)]
+enum ScaleMode {
+    /// World scale (~5km/tile) - existing behavior
+    World { zoom: usize },
+    /// Local scale (~2m/tile) - embark site with z-levels (48x48 per world tile)
+    Local { world_x: usize, world_y: usize, current_z: i16 },
+}
+
+impl ScaleMode {
+    fn name(&self) -> &'static str {
+        match self {
+            ScaleMode::World { .. } => "World",
+            ScaleMode::Local { .. } => "Local",
+        }
+    }
+
+    fn meters_per_tile(&self) -> f32 {
+        match self {
+            ScaleMode::World { .. } => 5000.0,
+            ScaleMode::Local { .. } => 2.0,
+        }
+    }
+}
+
 /// Explorer state
 struct Explorer {
     world: WorldData,
@@ -85,6 +116,19 @@ struct Explorer {
     zoom: usize,
     /// Message to display temporarily
     message: Option<String>,
+    /// Current scale mode for multi-scale zoom
+    scale_mode: ScaleMode,
+    /// Local cursor position (within current world tile, 0-47)
+    local_cursor_x: usize,
+    local_cursor_y: usize,
+    /// Local z-level
+    local_cursor_z: i16,
+    /// Chunk cache for local data
+    chunk_cache: ChunkCache,
+    /// Currently cached local chunk (if in local mode)
+    current_local: Option<LocalChunk>,
+    /// Verification report to display (press Y to generate)
+    verification_report: Option<String>,
 }
 
 impl Explorer {
@@ -103,7 +147,33 @@ impl Explorer {
             show_help: false,
             zoom: 1,
             message: None,
+            scale_mode: ScaleMode::World { zoom: 1 },
+            local_cursor_x: LOCAL_SIZE / 2,
+            local_cursor_y: LOCAL_SIZE / 2,
+            local_cursor_z: 0,
+            chunk_cache: ChunkCache::new(),
+            current_local: None,
+            verification_report: None,
         }
+    }
+
+    /// Run verification and store the report
+    fn run_verification(&mut self) {
+        use crate::multiscale::verify::verify_world_quick;
+        use crate::multiscale::local::generate_local_chunk;
+
+        self.message = Some("Running verification...".to_string());
+
+        let report = verify_world_quick(&self.world, |world, x, y| {
+            generate_local_chunk(world, x, y)
+        });
+
+        self.verification_report = Some(report.format());
+        self.message = Some(format!(
+            "Verification complete: {} chunks, {} issues",
+            report.chunks_verified,
+            report.issues.len()
+        ));
     }
 
     /// Zoom out (show more of the map)
@@ -152,6 +222,193 @@ impl Explorer {
         self.message = Some(format!("New world generated! Seed: {}", new_seed));
     }
 
+    /// Embark on current world tile (World -> Local)
+    fn scale_zoom_in(&mut self) {
+        match self.scale_mode {
+            ScaleMode::World { .. } => {
+                // Generate local chunk first to get actual surface z
+                let chunk = generate_local_chunk(
+                    &self.world,
+                    self.cursor_x,
+                    self.cursor_y,
+                );
+
+                // Use the chunk's surface_z (accounts for geology)
+                let surface_z = chunk.surface_z;
+
+                // Find a passable spawn position at the surface
+                let spawn_x = LOCAL_SIZE / 2;
+                let spawn_y = LOCAL_SIZE / 2;
+
+                // Find the actual surface z at the spawn position (scan from above)
+                let mut spawn_z = surface_z;
+                for z in (chunk.z_min..=chunk.z_max).rev() {
+                    let tile = chunk.get(spawn_x, spawn_y, z);
+                    if tile.is_passable() {
+                        // Found a passable tile, check if there's solid ground below
+                        if z > chunk.z_min {
+                            let below = chunk.get(spawn_x, spawn_y, z - 1);
+                            if below.terrain.is_solid() || !below.terrain.is_passable() {
+                                spawn_z = z;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                self.scale_mode = ScaleMode::Local {
+                    world_x: self.cursor_x,
+                    world_y: self.cursor_y,
+                    current_z: spawn_z,
+                };
+                self.local_cursor_x = spawn_x;
+                self.local_cursor_y = spawn_y;
+                self.local_cursor_z = spawn_z;
+                self.current_local = Some(chunk);
+
+                let biome = self.world.biomes.get(self.cursor_x, self.cursor_y);
+
+                // Check for structures at this location
+                let world_surface_z = *self.world.surface_z.get(self.cursor_x, self.cursor_y);
+                let surface_ztile = *self.world.zlevels.get(self.cursor_x, self.cursor_y, world_surface_z);
+                let structure_info = match surface_ztile {
+                    ZTile::DungeonEntrance => " [DUNGEON]",
+                    ZTile::MineEntrance => " [MINE]",
+                    ZTile::StoneWall | ZTile::BrickWall | ZTile::WoodWall => " [BUILDING]",
+                    _ => "",
+                };
+
+                self.message = Some(format!(
+                    "Embarked at ({}, {}) - {:?} | Z:{}{}",
+                    self.cursor_x, self.cursor_y, biome, spawn_z, structure_info
+                ));
+            }
+            ScaleMode::Local { .. } => {
+                // Already at maximum zoom
+                self.message = Some("Already at local scale (maximum detail)".to_string());
+            }
+        }
+    }
+
+    /// Return to world view (Local -> World)
+    fn scale_zoom_out(&mut self) {
+        match self.scale_mode {
+            ScaleMode::World { .. } => {
+                self.message = Some("Already at world scale".to_string());
+            }
+            ScaleMode::Local { world_x, world_y, .. } => {
+                // Return to world view, cursor stays where it was
+                self.scale_mode = ScaleMode::World { zoom: self.zoom };
+                self.cursor_x = world_x;
+                self.cursor_y = world_y;
+                self.current_local = None;
+                self.message = Some("Returned to world view".to_string());
+            }
+        }
+    }
+
+    /// Move z-level up (ascend)
+    fn move_z_up(&mut self) {
+        if let ScaleMode::Local { current_z, .. } = &mut self.scale_mode {
+            if *current_z < zlevel::MAX_Z as i16 {
+                *current_z += 1;
+                self.local_cursor_z = *current_z;
+                let desc = z_level_description(*current_z as i32);
+                self.message = Some(format!("Z-level: {} ({})", *current_z, desc));
+            } else {
+                self.message = Some("At maximum z-level".to_string());
+            }
+        }
+    }
+
+    /// Move z-level down (descend)
+    fn move_z_down(&mut self) {
+        if let ScaleMode::Local { current_z, .. } = &mut self.scale_mode {
+            if *current_z > zlevel::MIN_Z as i16 {
+                *current_z -= 1;
+                self.local_cursor_z = *current_z;
+                let desc = z_level_description(*current_z as i32);
+                self.message = Some(format!("Z-level: {} ({})", *current_z, desc));
+            } else {
+                self.message = Some("At minimum z-level".to_string());
+            }
+        }
+    }
+
+    /// Move cursor in local scale (within embark site)
+    fn move_local_cursor(&mut self, dx: i32, dy: i32) {
+        // Handle movement within local chunk or across world tiles
+        let new_x = self.local_cursor_x as i32 + dx;
+        let new_y = self.local_cursor_y as i32 + dy;
+
+        if new_x >= 0 && new_x < LOCAL_SIZE as i32 &&
+           new_y >= 0 && new_y < LOCAL_SIZE as i32 {
+            self.local_cursor_x = new_x as usize;
+            self.local_cursor_y = new_y as usize;
+            return;
+        }
+
+        // Crossing world tile boundary - extract current world position
+        let (mut wx, mut wy, current_z) = match self.scale_mode {
+            ScaleMode::Local { world_x, world_y, current_z } => (world_x, world_y, current_z),
+            _ => return,
+        };
+
+        let width = self.world.heightmap.width;
+        let height = self.world.heightmap.height;
+        let mut need_regenerate = false;
+
+        if new_x < 0 {
+            wx = ((wx as i32 - 1).rem_euclid(width as i32)) as usize;
+            self.local_cursor_x = LOCAL_SIZE - 1;
+            need_regenerate = true;
+        } else if new_x >= LOCAL_SIZE as i32 {
+            wx = (wx + 1) % width;
+            self.local_cursor_x = 0;
+            need_regenerate = true;
+        }
+
+        if new_y < 0 && wy > 0 {
+            wy -= 1;
+            self.local_cursor_y = LOCAL_SIZE - 1;
+            need_regenerate = true;
+        } else if new_y >= LOCAL_SIZE as i32 && wy < height - 1 {
+            wy += 1;
+            self.local_cursor_y = 0;
+            need_regenerate = true;
+        }
+
+        // Regenerate local chunk for new world tile
+        if need_regenerate {
+            // Update the world cursor to match the new world tile position
+            self.cursor_x = wx;
+            self.cursor_y = wy;
+
+            self.current_local = Some(generate_local_chunk(
+                &self.world,
+                wx,
+                wy,
+            ));
+
+            // Update local z to new tile's surface
+            let new_surface_z = if let Some(ref local) = self.current_local {
+                local.surface_z
+            } else {
+                current_z
+            };
+
+            self.scale_mode = ScaleMode::Local {
+                world_x: wx,
+                world_y: wy,
+                current_z: new_surface_z,
+            };
+            self.local_cursor_z = new_surface_z;
+
+            let biome = self.world.biomes.get(wx, wy);
+            self.message = Some(format!("Entered world tile ({}, {}) - {:?}", wx, wy, biome));
+        }
+    }
+
     /// Move cursor with wrapping
     fn move_cursor(&mut self, dx: i32, dy: i32) {
         let width = self.world.heightmap.width;
@@ -163,15 +420,15 @@ impl Explorer {
         self.cursor_y = (self.cursor_y as i32 + dy).clamp(0, height as i32 - 1) as usize;
     }
 
-    /// Move Z-level up
-    fn move_z_up(&mut self) {
+    /// Move Z-level up (world cursor)
+    fn move_world_z_up(&mut self) {
         if self.cursor_z < zlevel::MAX_Z {
             self.cursor_z += 1;
         }
     }
 
-    /// Move Z-level down
-    fn move_z_down(&mut self) {
+    /// Move Z-level down (world cursor)
+    fn move_world_z_down(&mut self) {
         if self.cursor_z > zlevel::MIN_Z {
             self.cursor_z -= 1;
         }
@@ -227,20 +484,85 @@ impl Explorer {
 
     /// Get Z-level status string for the status bar
     fn z_level_status(&self) -> String {
-        let floor_height = z_to_height(self.cursor_z);
-        let ceiling_height = z_to_height_ceiling(self.cursor_z);
-        let description = z_level_description(self.cursor_z);
-        format!(
-            "Z: {:+} ({:.0}m to {:.0}m) [{}]",
-            self.cursor_z,
-            floor_height,
-            ceiling_height,
-            description,
-        )
+        match self.scale_mode {
+            ScaleMode::Local { current_z, .. } => {
+                let desc = z_level_description(current_z as i32);
+                format!("Local Z: {} [{}]", current_z, desc)
+            }
+            _ => {
+                let floor_height = z_to_height(self.cursor_z);
+                let ceiling_height = z_to_height_ceiling(self.cursor_z);
+                let description = z_level_description(self.cursor_z);
+                format!(
+                    "Z: {:+} ({:.0}m to {:.0}m) [{}]",
+                    self.cursor_z,
+                    floor_height,
+                    ceiling_height,
+                    description,
+                )
+            }
+        }
     }
 
-    /// Render the map
+    /// Get scale status string for the status bar
+    fn scale_status(&self) -> String {
+        match self.scale_mode {
+            ScaleMode::World { zoom: _ } => {
+                format!("WORLD ({},{})", self.cursor_x, self.cursor_y)
+            }
+            ScaleMode::Local { world_x, world_y, current_z } => {
+                let biome = self.world.biomes.get(world_x, world_y);
+                let surface_z = if let Some(ref local) = self.current_local {
+                    local.surface_z
+                } else {
+                    current_z
+                };
+                let z_desc = if current_z > surface_z {
+                    "Sky"
+                } else if current_z == surface_z {
+                    "Surface"
+                } else {
+                    "Underground"
+                };
+                format!(
+                    "LOCAL ({},{}) Z:{} ({}) | {:?}",
+                    self.local_cursor_x, self.local_cursor_y,
+                    current_z, z_desc, biome
+                )
+            }
+        }
+    }
+
+    /// Get scale-appropriate tile info
+    fn scale_tile_info(&self) -> String {
+        match self.scale_mode {
+            ScaleMode::World { .. } => self.tile_info(),
+            ScaleMode::Local { .. } => {
+                if let Some(ref local) = self.current_local {
+                    let tile = local.get(self.local_cursor_x, self.local_cursor_y, self.local_cursor_z);
+                    let terrain = format!("{:?}", tile.terrain);
+                    let feature = match tile.feature {
+                        LocalFeature::None => String::new(),
+                        f => format!(" | {:?}", f),
+                    };
+                    format!("{}{}", terrain, feature)
+                } else {
+                    "No data".to_string()
+                }
+            }
+        }
+    }
+
+    /// Render the map (dispatches based on scale mode)
     fn render_map(&self, area: Rect, buf: &mut Buffer) {
+        match self.scale_mode {
+            ScaleMode::World { .. } => self.render_world_map(area, buf),
+            ScaleMode::Local { .. } => self.render_local_map(area, buf),
+        }
+    }
+
+    /// Render world-scale map (existing behavior)
+    fn render_world_map(&self, area: Rect, buf: &mut Buffer) {
         let width = self.world.heightmap.width;
         let height = self.world.heightmap.height;
         let zoom = self.zoom;
@@ -294,6 +616,204 @@ impl Explorer {
 
                 buf.get_mut(screen_x, screen_y).set_char(ch).set_style(style);
             }
+        }
+    }
+
+    /// Render local-scale map
+    fn render_local_map(&self, area: Rect, buf: &mut Buffer) {
+        let local = match &self.current_local {
+            Some(l) => l,
+            None => return,
+        };
+
+        let view_width = area.width as usize;
+        let view_height = area.height as usize;
+
+        // Aspect ratio correction: terminal chars are ~2x taller than wide
+        // Show 2 horizontal screen chars per map tile to make it look square
+        // This fills a widescreen terminal better
+        let map_view_width = view_width / 2;
+
+        // Center on local cursor
+        let start_x = if self.local_cursor_x >= map_view_width / 2 {
+            self.local_cursor_x - map_view_width / 2
+        } else {
+            0
+        };
+        let start_y = if self.local_cursor_y >= view_height / 2 {
+            self.local_cursor_y - view_height / 2
+        } else {
+            0
+        };
+
+        let z = self.local_cursor_z;
+
+        for dy in 0..view_height {
+            for dx in 0..view_width {
+                // Map 2 horizontal screen chars to 1 map tile for aspect ratio correction
+                let lx = start_x + dx / 2;
+                let ly = start_y + dy;
+
+                let screen_x = area.x + dx as u16;
+                let screen_y = area.y + dy as u16;
+
+                if screen_x >= area.x + area.width || screen_y >= area.y + area.height {
+                    continue;
+                }
+
+                if lx >= LOCAL_SIZE || ly >= LOCAL_SIZE {
+                    buf.get_mut(screen_x, screen_y).set_char(' ').set_style(Style::default().bg(Color::Black));
+                    continue;
+                }
+
+                let tile = local.get(lx, ly, z);
+                let (ch, fg, bg) = self.get_local_tile_display(tile);
+
+                // Highlight cursor
+                let is_cursor = lx == self.local_cursor_x && ly == self.local_cursor_y;
+                let style = if is_cursor {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                } else {
+                    Style::default().fg(fg).bg(bg)
+                };
+
+                buf.get_mut(screen_x, screen_y).set_char(ch).set_style(style);
+            }
+        }
+    }
+
+    /// Get display for a local tile
+    fn get_local_tile_display(&self, tile: &LocalTile) -> (char, Color, Color) {
+        // Check features first
+        match tile.feature {
+            LocalFeature::Door { open } => {
+                let ch = if open { '\'' } else { '+' };
+                return (ch, Color::Rgb(180, 140, 100), Color::Rgb(40, 30, 20));
+            }
+            LocalFeature::Chest => {
+                return ('$', Color::Rgb(255, 200, 50), Color::Rgb(60, 40, 0));
+            }
+            LocalFeature::Altar => {
+                return ('╬', Color::Rgb(255, 220, 180), Color::Rgb(50, 40, 30));
+            }
+            LocalFeature::StairsUp => {
+                return ('<', Color::Rgb(200, 200, 200), Color::Rgb(40, 40, 40));
+            }
+            LocalFeature::StairsDown => {
+                return ('>', Color::Rgb(200, 200, 200), Color::Rgb(40, 40, 40));
+            }
+            LocalFeature::Ladder => {
+                return ('H', Color::Rgb(180, 140, 100), Color::Rgb(40, 30, 20));
+            }
+            LocalFeature::Torch => {
+                return ('*', Color::Rgb(255, 200, 100), Color::Rgb(80, 50, 20));
+            }
+            LocalFeature::WeaponRack => {
+                return ('Γ', Color::Rgb(160, 160, 180), Color::Rgb(40, 40, 50));
+            }
+            LocalFeature::Bookshelf => {
+                return ('░', Color::Rgb(140, 100, 60), Color::Rgb(40, 25, 15));
+            }
+            LocalFeature::Table => {
+                return ('┬', Color::Rgb(160, 120, 80), Color::Rgb(40, 30, 20));
+            }
+            LocalFeature::Chair => {
+                return ('h', Color::Rgb(160, 120, 80), Color::Rgb(40, 30, 20));
+            }
+            LocalFeature::Bed => {
+                return ('═', Color::Rgb(200, 150, 150), Color::Rgb(60, 30, 30));
+            }
+            LocalFeature::Barrel => {
+                return ('o', Color::Rgb(140, 100, 60), Color::Rgb(40, 25, 15));
+            }
+            LocalFeature::Fountain => {
+                return ('≡', Color::Rgb(100, 180, 255), Color::Rgb(20, 50, 80));
+            }
+            LocalFeature::Well => {
+                return ('O', Color::Rgb(80, 80, 80), Color::Rgb(20, 40, 60));
+            }
+            LocalFeature::Statue => {
+                return ('♦', Color::Rgb(180, 180, 180), Color::Rgb(50, 50, 50));
+            }
+            LocalFeature::Pillar => {
+                return ('│', Color::Rgb(160, 150, 140), Color::Rgb(50, 45, 40));
+            }
+            LocalFeature::Rubble => {
+                return (':', Color::Rgb(120, 110, 100), Color::Rgb(40, 35, 30));
+            }
+            LocalFeature::Trap { hidden } => {
+                let ch = if hidden { '^' } else { 'x' };  // Hidden trap vs triggered
+                return (ch, Color::Rgb(255, 100, 100), Color::Rgb(40, 20, 20));
+            }
+            LocalFeature::Lever { active } => {
+                let ch = if active { '/' } else { '\\' };
+                return (ch, Color::Rgb(180, 160, 140), Color::Rgb(40, 35, 30));
+            }
+            LocalFeature::Tree { height } => {
+                let ch = if height > 5 { 'T' } else { 't' };
+                return (ch, Color::Rgb(40, 120, 40), Color::Rgb(10, 30, 10));
+            }
+            LocalFeature::Bush => {
+                return ('*', Color::Rgb(50, 100, 50), Color::Rgb(15, 30, 15));
+            }
+            LocalFeature::Boulder => {
+                return ('O', Color::Rgb(130, 125, 120), Color::Rgb(40, 38, 36));
+            }
+            LocalFeature::RampUp => {
+                return ('/', Color::Rgb(150, 145, 140), Color::Rgb(45, 43, 41));
+            }
+            LocalFeature::RampDown => {
+                return ('\\', Color::Rgb(150, 145, 140), Color::Rgb(45, 43, 41));
+            }
+            LocalFeature::Stalagmite => {
+                return ('▲', Color::Rgb(100, 95, 90), Color::Rgb(30, 28, 26));
+            }
+            LocalFeature::Stalactite => {
+                return ('▼', Color::Rgb(100, 95, 90), Color::Rgb(30, 28, 26));
+            }
+            LocalFeature::Crystal => {
+                return ('◊', Color::Rgb(180, 150, 255), Color::Rgb(50, 35, 80));
+            }
+            LocalFeature::Mushroom => {
+                return ('♠', Color::Rgb(180, 160, 140), Color::Rgb(45, 40, 35));
+            }
+            LocalFeature::GiantMushroom => {
+                return ('♠', Color::Rgb(200, 100, 180), Color::Rgb(60, 30, 55));
+            }
+            LocalFeature::OreVein => {
+                return ('◆', Color::Rgb(200, 170, 100), Color::Rgb(60, 50, 30));
+            }
+            LocalFeature::None => {}
+        }
+
+        // Terrain
+        match tile.terrain {
+            LocalTerrain::Air => (' ', Color::Black, Color::Black),
+            LocalTerrain::StoneFloor => ('.', Color::Rgb(100, 95, 90), Color::Rgb(30, 28, 26)),
+            LocalTerrain::DirtFloor => ('.', Color::Rgb(120, 100, 70), Color::Rgb(35, 28, 18)),
+            LocalTerrain::WoodFloor => ('.', Color::Rgb(160, 120, 80), Color::Rgb(40, 30, 20)),
+            LocalTerrain::Cobblestone => (',', Color::Rgb(130, 125, 120), Color::Rgb(35, 33, 31)),
+            LocalTerrain::Grass => (',', Color::Rgb(80, 150, 60), Color::Rgb(20, 40, 15)),
+            LocalTerrain::Sand => ('.', Color::Rgb(220, 200, 140), Color::Rgb(60, 55, 35)),
+            LocalTerrain::StoneWall => ('#', Color::Rgb(120, 115, 110), Color::Rgb(40, 38, 36)),
+            LocalTerrain::BrickWall => ('#', Color::Rgb(160, 100, 80), Color::Rgb(50, 30, 25)),
+            LocalTerrain::WoodWall => ('#', Color::Rgb(140, 100, 60), Color::Rgb(40, 25, 15)),
+            LocalTerrain::CaveFloor => ('.', Color::Rgb(60, 55, 50), Color::Rgb(15, 15, 20)),
+            LocalTerrain::CaveWall => ('#', Color::Rgb(80, 70, 60), Color::Rgb(20, 18, 15)),
+            LocalTerrain::ShallowWater => ('~', Color::Rgb(100, 150, 255), Color::Rgb(20, 40, 80)),
+            LocalTerrain::DeepWater => ('≈', Color::Rgb(50, 100, 200), Color::Rgb(10, 25, 50)),
+            LocalTerrain::Lava => ('~', Color::Rgb(255, 150, 50), Color::Rgb(150, 50, 0)),
+            LocalTerrain::Ice => ('.', Color::Rgb(200, 220, 255), Color::Rgb(60, 70, 90)),
+            LocalTerrain::Gravel => (':', Color::Rgb(140, 130, 120), Color::Rgb(40, 35, 30)),
+            LocalTerrain::Mud => ('~', Color::Rgb(100, 80, 50), Color::Rgb(30, 25, 15)),
+            LocalTerrain::DenseVegetation => ('♣', Color::Rgb(40, 120, 40), Color::Rgb(10, 35, 10)),
+            LocalTerrain::Soil { .. } => ('.', Color::Rgb(110, 90, 60), Color::Rgb(30, 25, 18)),
+            LocalTerrain::Stone { .. } => ('#', Color::Rgb(110, 105, 100), Color::Rgb(35, 33, 31)),
+            LocalTerrain::Snow => ('.', Color::Rgb(240, 245, 255), Color::Rgb(180, 185, 195)),
+            LocalTerrain::FlowingWater => ('~', Color::Rgb(80, 130, 230), Color::Rgb(15, 35, 70)),
+            LocalTerrain::Magma => ('≈', Color::Rgb(255, 150, 50), Color::Rgb(180, 60, 0)),
+            LocalTerrain::ConstructedFloor { .. } => ('.', Color::Rgb(160, 155, 150), Color::Rgb(50, 48, 46)),
+            LocalTerrain::ConstructedWall { .. } => ('#', Color::Rgb(170, 165, 160), Color::Rgb(55, 53, 51)),
         }
     }
 
@@ -878,6 +1398,7 @@ impl Explorer {
             "",
             "Other:",
             "  ? - Toggle this help",
+            "  Y - Run/toggle verification report",
             "  Q / Esc - Quit",
             "",
             "Press any key to close",
@@ -906,6 +1427,52 @@ impl Explorer {
                 break;
             }
             buf.set_string(inner.x, inner.y + i as u16, line, Style::default().fg(Color::White));
+        }
+    }
+
+    fn render_verification_report(&self, area: Rect, buf: &mut Buffer) {
+        if let Some(ref report) = self.verification_report {
+            let lines: Vec<&str> = report.lines().collect();
+
+            let width = 60.min(area.width.saturating_sub(4));
+            let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(4));
+            let x = area.x + (area.width.saturating_sub(width)) / 2;
+            let y = area.y + (area.height.saturating_sub(height)) / 2;
+
+            let report_area = Rect::new(x, y, width, height);
+
+            // Clear background
+            Clear.render(report_area, buf);
+
+            let block = Block::default()
+                .title(" Verification Report (Y to close) ")
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::Black));
+
+            let inner = block.inner(report_area);
+            block.render(report_area, buf);
+
+            for (i, line) in lines.iter().enumerate() {
+                if i as u16 >= inner.height {
+                    break;
+                }
+                // Color code based on content
+                let style = if line.contains("✓") {
+                    Style::default().fg(Color::Green)
+                } else if line.contains("✗") || line.contains("FAILED") {
+                    Style::default().fg(Color::Red)
+                } else if line.contains("[HIGH]") || line.contains("[CRITICAL]") {
+                    Style::default().fg(Color::Yellow)
+                } else if line.contains("PASSED") {
+                    Style::default().fg(Color::Green)
+                } else if line.contains("═") {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+                let truncated: String = line.chars().take(inner.width as usize).collect();
+                buf.set_string(inner.x, inner.y + i as u16, &truncated, style);
+            }
         }
     }
 }
@@ -1457,12 +2024,14 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
             // Render status bar
             let zoom_str = if explorer.zoom > 1 { format!(" | Zoom:{}x", explorer.zoom) } else { String::new() };
             let msg_str = explorer.message.as_ref().map(|m| format!(" | {}", m)).unwrap_or_default();
+            let scale_str = explorer.scale_status();
             let status = format!(
-                " {} | {}{} | {}{} | -/+ Zoom | F Fit | E Export | T TopDown | R New | Q Quit",
-                explorer.z_level_status(),
+                " {} | {} | {}{} | {}{} | Z/X Scale | Q Quit",
+                scale_str,
                 explorer.view_mode.name(),
+                explorer.scale_tile_info(),
                 zoom_str,
-                explorer.tile_info(),
+                explorer.z_level_status(),
                 msg_str,
             );
             let status_para = Paragraph::new(status)
@@ -1475,6 +2044,11 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
             // Render help if active
             if explorer.show_help {
                 explorer.render_help(map_area, f.buffer_mut());
+            }
+
+            // Render verification report if active
+            if explorer.verification_report.is_some() {
+                explorer.render_verification_report(map_area, f.buffer_mut());
             }
         })?;
 
@@ -1494,33 +2068,79 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                             explorer.view_mode = explorer.view_mode.next();
                         }
 
-                        // Movement
+                        // Movement (scale-aware)
                         KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('k') => {
-                            explorer.move_cursor(0, -1);
+                            match explorer.scale_mode {
+                                ScaleMode::World { .. } => explorer.move_cursor(0, -1),
+                                ScaleMode::Local { .. } => explorer.move_local_cursor(0, -1),
+                            }
                         }
                         KeyCode::Down | KeyCode::Char('s') | KeyCode::Char('j') => {
-                            explorer.move_cursor(0, 1);
+                            match explorer.scale_mode {
+                                ScaleMode::World { .. } => explorer.move_cursor(0, 1),
+                                ScaleMode::Local { .. } => explorer.move_local_cursor(0, 1),
+                            }
                         }
                         KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('h') => {
-                            explorer.move_cursor(-1, 0);
+                            match explorer.scale_mode {
+                                ScaleMode::World { .. } => explorer.move_cursor(-1, 0),
+                                ScaleMode::Local { .. } => explorer.move_local_cursor(-1, 0),
+                            }
                         }
                         KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('l') => {
-                            explorer.move_cursor(1, 0);
+                            match explorer.scale_mode {
+                                ScaleMode::World { .. } => explorer.move_cursor(1, 0),
+                                ScaleMode::Local { .. } => explorer.move_local_cursor(1, 0),
+                            }
                         }
 
                         // Fast movement
-                        KeyCode::PageUp => explorer.move_cursor(0, -20),
-                        KeyCode::PageDown => explorer.move_cursor(0, 20),
-                        KeyCode::Home => explorer.move_cursor(-20, 0),
-                        KeyCode::End => explorer.move_cursor(20, 0),
+                        KeyCode::PageUp => {
+                            match explorer.scale_mode {
+                                ScaleMode::World { .. } => explorer.move_cursor(0, -20),
+                                ScaleMode::Local { .. } => explorer.move_local_cursor(0, -10),
+                            }
+                        }
+                        KeyCode::PageDown => {
+                            match explorer.scale_mode {
+                                ScaleMode::World { .. } => explorer.move_cursor(0, 20),
+                                ScaleMode::Local { .. } => explorer.move_local_cursor(0, 10),
+                            }
+                        }
+                        KeyCode::Home => {
+                            match explorer.scale_mode {
+                                ScaleMode::World { .. } => explorer.move_cursor(-20, 0),
+                                ScaleMode::Local { .. } => explorer.move_local_cursor(-10, 0),
+                            }
+                        }
+                        KeyCode::End => {
+                            match explorer.scale_mode {
+                                ScaleMode::World { .. } => explorer.move_cursor(20, 0),
+                                ScaleMode::Local { .. } => explorer.move_local_cursor(10, 0),
+                            }
+                        }
 
-                        // Z-level navigation
-                        KeyCode::Char('>') | KeyCode::Char('.') => explorer.move_z_up(),
-                        KeyCode::Char('<') | KeyCode::Char(',') => explorer.move_z_down(),
+                        // Z-level navigation (scale-aware)
+                        KeyCode::Char('>') | KeyCode::Char('.') => {
+                            match explorer.scale_mode {
+                                ScaleMode::Local { .. } => explorer.move_z_down(), // Go deeper (lower z)
+                                ScaleMode::World { .. } => explorer.move_world_z_down(),
+                            }
+                        }
+                        KeyCode::Char('<') | KeyCode::Char(',') => {
+                            match explorer.scale_mode {
+                                ScaleMode::Local { .. } => explorer.move_z_up(), // Go up (higher z)
+                                ScaleMode::World { .. } => explorer.move_world_z_up(),
+                            }
+                        }
                         KeyCode::Char('0') => explorer.go_to_sea_level(),
                         KeyCode::Char('S') => explorer.go_to_surface(),
 
-                        // Zoom controls
+                        // Scale zoom controls (Enter/Z to zoom in, Backspace/X to zoom out)
+                        KeyCode::Enter | KeyCode::Char('z') => explorer.scale_zoom_in(),
+                        KeyCode::Backspace | KeyCode::Char('x') => explorer.scale_zoom_out(),
+
+                        // Zoom controls (for world view sampling)
                         KeyCode::Char('-') | KeyCode::Char('_') => explorer.zoom_out(),
                         KeyCode::Char('+') | KeyCode::Char('=') => explorer.zoom_in(),
                         KeyCode::Char('f') | KeyCode::Char('F') => {
@@ -1548,6 +2168,16 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                             match export_topdown_image(&explorer.world, &filename) {
                                 Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
                                 Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
+                            }
+                        }
+
+                        // Run verification
+                        KeyCode::Char('y') | KeyCode::Char('Y') => {
+                            if explorer.verification_report.is_some() {
+                                // Toggle off if already showing
+                                explorer.verification_report = None;
+                            } else {
+                                explorer.run_verification();
                             }
                         }
 

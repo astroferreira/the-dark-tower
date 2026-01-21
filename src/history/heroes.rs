@@ -803,9 +803,11 @@ mod tests {
             architecture: ArchitectureStyle::Imperial,
             founded: Year::years_ago(500),
             collapsed: None,
+            collapse_reason: None,
+            color: (100, 100, 200),
             capital: None,
-            relations: HashMap::new(),
-            population_peak: 10000,
+            peak_settlements: 5,
+            peak_population: 10000,
         };
         factions.add(faction);
 

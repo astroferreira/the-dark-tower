@@ -17,6 +17,11 @@ use super::monsters::MonsterRegistry;
 use super::trade::TradeRegistry;
 use super::types::*;
 
+/// Whether to write historical evidence tiles to world zlevels.
+/// Set to false to defer all evidence rendering to local map generation.
+/// The metadata is still tracked in WorldHistory registries.
+const WRITE_EVIDENCE_TILES: bool = false;
+
 /// Generate all historical evidence in the world
 pub fn generate_historical_evidence(
     zlevels: &mut Tilemap3D<ZTile>,
@@ -28,6 +33,12 @@ pub fn generate_historical_evidence(
     trade: &TradeRegistry,
     seed: u64,
 ) {
+    // Skip tile placement if disabled - metadata is still tracked in registries
+    if !WRITE_EVIDENCE_TILES {
+        println!("  Skipping historical evidence tiles (metadata only)...");
+        return;
+    }
+
     let mut rng = ChaCha8Rng::seed_from_u64(seed.wrapping_add(0xE01DE1CE));
     let width = surface_z.width;
     let height = surface_z.height;

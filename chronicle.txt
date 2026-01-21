@@ -7,37 +7,37 @@
                               THE FACTIONS
 ═══════════════════════════════════════════════════════════════════════════════
 
-  Stone Company [Collapsed in 791 years ago]
-    Species: Dwarf | Culture: Mercantile | Architecture: Underground
-    Founded: Year 1074 years ago | Capital: None
-
-  Ember Warband [Collapsed in 157 years ago]
-    Species: DragonKin | Culture: Militaristic | Architecture: Ancient
-    Founded: Year 343 years ago | Capital: None
-
-  Night League [Collapsed in 115 years ago]
-    Species: Goblin | Culture: Mercantile | Architecture: Underground
-    Founded: Year 480 years ago | Capital: None
+  Gold Works [Active]
+    Species: Dwarf | Culture: Industrial | Architecture: Dwarven
+    Founded: Year 1401 years ago | Capital: None
 
   Sun Sanctuary [Collapsed in 1167 years ago]
     Species: Elf | Culture: Isolationist | Architecture: Elven
     Founded: Year 1668 years ago | Capital: None
 
-  Sun Seekers [Collapsed in 1159 years ago]
-    Species: Elf | Culture: Scholarly | Architecture: Elven
-    Founded: Year 1774 years ago | Capital: None
+  Ember Warband [Collapsed in 157 years ago]
+    Species: DragonKin | Culture: Militaristic | Architecture: Ancient
+    Founded: Year 343 years ago | Capital: None
+
+  Ancient Legion [Collapsed in 498 years ago]
+    Species: Human | Culture: Militaristic | Architecture: Imperial
+    Founded: Year 1321 years ago | Capital: None
 
   Skull Vanguard [Collapsed in 573 years ago]
     Species: Orc | Culture: Militaristic | Architecture: Underground
     Founded: Year 1778 years ago | Capital: None
 
-  Gold Works [Active]
-    Species: Dwarf | Culture: Industrial | Architecture: Dwarven
-    Founded: Year 1401 years ago | Capital: None
+  Stone Company [Collapsed in 791 years ago]
+    Species: Dwarf | Culture: Mercantile | Architecture: Underground
+    Founded: Year 1074 years ago | Capital: None
 
-  Ancient Legion [Collapsed in 498 years ago]
-    Species: Human | Culture: Militaristic | Architecture: Imperial
-    Founded: Year 1321 years ago | Capital: None
+  Night League [Collapsed in 115 years ago]
+    Species: Goblin | Culture: Mercantile | Architecture: Underground
+    Founded: Year 480 years ago | Capital: None
+
+  Sun Seekers [Collapsed in 1159 years ago]
+    Species: Elf | Culture: Scholarly | Architecture: Elven
+    Founded: Year 1774 years ago | Capital: None
 
 ═══════════════════════════════════════════════════════════════════════════════
                            TIMELINE OF AGES
@@ -48,49 +48,49 @@
 │  Type: Primordial | Duration: 773 years
 └─────────────────────────────────────────────────────────────────────────────┘
 
-  Year 1686 years ago: Great Discovery [Night League] at (359, 95)
+  Year 1686 years ago: Great Discovery [Ember Warband] at (359, 95)
               Great Discovery.
 
-  Year 1651 years ago: Settlement Founded [Skull Vanguard] at (26, 48)
+  Year 1651 years ago: Settlement Founded [Stone Company] at (26, 48)
               Settlement Founded.
 
-  Year 1612 years ago: Great Discovery [Ancient Legion] at (20, 250)
+  Year 1612 years ago: Great Discovery [Sun Seekers] at (20, 250)
               Great Discovery.
 
-  Year 1600 years ago: Great Discovery [Ancient Legion] at (303, 33)
+  Year 1600 years ago: Great Discovery [Sun Seekers] at (303, 33)
               Great Discovery.
 
-  Year 1552 years ago: The Sacred Arch [Stone Company] at (413, 239)
+  Year 1552 years ago: The Sacred Arch [Gold Works] at (413, 239)
               The Sacred Arch was constructed to commemorate the era.
 
-  Year 1469 years ago: Great Discovery [Sun Seekers] at (484, 139)
+  Year 1469 years ago: Great Discovery [Skull Vanguard] at (484, 139)
               Great Discovery.
 
-  Year 1416 years ago: Settlement Founded [Sun Sanctuary] at (80, 167)
+  Year 1416 years ago: Settlement Founded [Ancient Legion] at (80, 167)
               Settlement Founded.
 
-  Year 1394 years ago: Settlement Founded [Night League] at (437, 14)
+  Year 1394 years ago: Settlement Founded [Ember Warband] at (437, 14)
               Settlement Founded.
 
-  Year 1349 years ago: Settlement Founded [Gold Works] at (104, 28)
+  Year 1349 years ago: Settlement Founded [Night League] at (104, 28)
               Settlement Founded.
 
-  Year 1236 years ago: Settlement Founded [Ember Warband] at (0, 250)
+  Year 1236 years ago: Settlement Founded [Sun Sanctuary] at (0, 250)
               Settlement Founded.
 
-  Year 1152 years ago: Great Discovery [Stone Company] at (501, 251)
+  Year 1152 years ago: Great Discovery [Gold Works] at (501, 251)
               Great Discovery.
 
-  Year 1132 years ago: The Eternal Temple [Night League] at (419, 28)
+  Year 1132 years ago: The Eternal Temple [Ember Warband] at (419, 28)
               The Eternal Temple was constructed to commemorate the era.
 
-  Year 1125 years ago: Monster Invasion [Stone Company] at (286, 151)
+  Year 1125 years ago: Monster Invasion [Gold Works] at (286, 151)
               Monster Invasion.
 
-  Year 1089 years ago: The Ancient Arch [Ancient Legion] at (119, 116)
+  Year 1089 years ago: The Ancient Arch [Sun Seekers] at (119, 116)
               The Ancient Arch was constructed to commemorate the era.
 
-  Year 1073 years ago: Settlement Founded [Sun Sanctuary] at (103, 154)
+  Year 1073 years ago: Settlement Founded [Ancient Legion] at (103, 154)
               Settlement Founded.
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -98,335 +98,333 @@
 │  Type: GoldenAge | Duration: 662 years
 └─────────────────────────────────────────────────────────────────────────────┘
 
-  Year 981 years ago: Settlement Expanded [Stone Company] at (163, 154)
+  Year 981 years ago: Settlement Expanded [Gold Works] at (163, 154)
               Settlement Expanded.
 
-  Year 939 years ago: Great Discovery [Gold Works] at (93, 114)
+  Year 939 years ago: Great Discovery [Night League] at (93, 114)
               Great Discovery.
 
-  Year 931 years ago: Settlement Expanded [Ember Warband] at (340, 188)
+  Year 931 years ago: Settlement Expanded [Sun Sanctuary] at (340, 188)
               Settlement Expanded.
 
-  Year 927 years ago: Alliance of Sun Seekers and Skull Vanguard [Sun Seekers] at (293, 109)
-              Alliance of Sun Seekers and Skull Vanguard.
+  Year 927 years ago: Alliance of Skull Vanguard and Stone Company [Skull Vanguard] at (293, 109)
+              Alliance of Skull Vanguard and Stone Company.
 
-  Year 927 years ago: Settlement Expanded [Night League] at (336, 242)
-              Settlement Expanded.
-
-  Year 914 years ago: Crown of Stone Hearts [Stone Company] at (401, 195)
+  Year 914 years ago: Crown of Stone Hearts [Gold Works] at (401, 195)
               Crown of Stone Hearts.
 
-  Year 914 years ago: Settlement Expanded [Ancient Legion] at (298, 220)
-              Settlement Expanded.
+  Year 886 years ago: Chalice of Shadow [Ancient Legion] at (377, 30)
+              Chalice of Shadow.
 
-  Year 875 years ago: The Great Tomb [Stone Company] at (192, 26)
+  Year 875 years ago: The Great Tomb [Gold Works] at (192, 26)
               The Great Tomb was constructed to commemorate the era.
 
-  Year 863 years ago: Great Discovery [Skull Vanguard] at (189, 233)
+  Year 863 years ago: Great Discovery [Stone Company] at (189, 233)
               Great Discovery.
 
-  Year 820 years ago: Settlement Founded [Sun Sanctuary] at (138, 103)
+  Year 820 years ago: Settlement Founded [Ancient Legion] at (138, 103)
               Settlement Founded.
 
-  Year 813 years ago: Settlement Founded [Stone Company] at (81, 239)
+  Year 813 years ago: Settlement Founded [Gold Works] at (81, 239)
               Settlement Founded.
 
-  Year 794 years ago: Settlement Founded [Sun Sanctuary] at (505, 115)
+  Year 794 years ago: Settlement Founded [Ancient Legion] at (505, 115)
               Settlement Founded.
 
-  Year 790 years ago: Settlement Founded [Sun Seekers] at (257, 210)
+  Year 790 years ago: Settlement Founded [Skull Vanguard] at (257, 210)
               Settlement Founded.
 
-  Year 774 years ago: Blade of Starlight [Sun Seekers] at (401, 22)
-              Blade of Starlight.
+  Year 778 years ago: Settlement Founded [Night League] at (419, 7)
+              Settlement Founded.
 
-  Year 769 years ago: The Great Obelisk [Gold Works] at (103, 234)
+  Year 774 years ago: Amulet of Power [Skull Vanguard] at (401, 22)
+              Amulet of Power.
+
+  Year 769 years ago: The Great Obelisk [Night League] at (103, 234)
               The Great Obelisk was constructed to commemorate the era.
 
-  Year 738 years ago: The Ancient Tower [Ancient Legion] at (242, 234)
-              The Ancient Tower was constructed to commemorate the era.
-
-  Year 734 years ago: The Mighty Statue [Ember Warband] at (390, 122)
+  Year 734 years ago: The Mighty Statue [Sun Sanctuary] at (390, 122)
               The Mighty Statue was constructed to commemorate the era.
 
-  Year 723 years ago: Alliance of Stone Company and Sun Sanctuary [Stone Company] at (24, 123)
-              Alliance of Stone Company and Sun Sanctuary.
-
-  Year 711 years ago: Settlement Founded [Ember Warband] at (247, 237)
-              Settlement Founded.
-
-  Year 676 years ago: Settlement Expanded [Ember Warband] at (121, 82)
+  Year 729 years ago: Settlement Expanded [Sun Sanctuary] at (383, 75)
               Settlement Expanded.
 
-  Year 669 years ago: The Mighty Tomb [Ancient Legion] at (307, 227)
+  Year 723 years ago: Alliance of Gold Works and Ancient Legion [Gold Works] at (24, 123)
+              Alliance of Gold Works and Ancient Legion.
+
+  Year 676 years ago: Settlement Expanded [Sun Sanctuary] at (121, 82)
+              Settlement Expanded.
+
+  Year 669 years ago: The Mighty Tomb [Sun Seekers] at (307, 227)
               The Mighty Tomb was constructed to commemorate the era.
 
-  Year 668 years ago: The Eternal Temple [Stone Company] at (507, 89)
+  Year 668 years ago: The Eternal Temple [Gold Works] at (507, 89)
               The Eternal Temple was constructed to commemorate the era.
 
-  Year 642 years ago: Ring of Iron Will [Gold Works] at (105, 199)
-              Ring of Iron Will.
+  Year 642 years ago: Tome of Doom [Night League] at (105, 199)
+              Tome of Doom.
 
-  Year 628 years ago: The Sacred Tomb [Night League] at (235, 188)
+  Year 628 years ago: The Sacred Tomb [Ember Warband] at (235, 188)
               The Sacred Tomb was constructed to commemorate the era.
 
-  Year 593 years ago: Alliance of Sun Sanctuary and Ancient Legion [Sun Sanctuary] at (137, 176)
-              Alliance of Sun Sanctuary and Ancient Legion.
+  Year 593 years ago: Settlement Founded [Ancient Legion] at (137, 176)
+              Settlement Founded.
 
-  Year 525 years ago: The Eternal Tomb [Stone Company] at (492, 91)
+  Year 587 years ago: The Great Tower [Stone Company] at (398, 215)
+              The Great Tower was constructed to commemorate the era.
+
+  Year 581 years ago: Settlement Expanded [Ember Warband] at (188, 21)
+              Settlement Expanded.
+
+  Year 525 years ago: The Eternal Tomb [Gold Works] at (492, 91)
               The Eternal Tomb was constructed to commemorate the era.
 
-  Year 501 years ago: Settlement Expanded [Gold Works] at (270, 27)
+  Year 501 years ago: Settlement Expanded [Night League] at (270, 27)
               Settlement Expanded.
 
-  Year 485 years ago: Great Discovery [Sun Sanctuary] at (23, 251)
+  Year 485 years ago: Great Discovery [Ancient Legion] at (23, 251)
               Great Discovery.
 
-  Year 468 years ago: The Mighty Statue [Night League] at (369, 238)
+  Year 468 years ago: The Mighty Statue [Ember Warband] at (369, 238)
               The Mighty Statue was constructed to commemorate the era.
 
-  Year 435 years ago: Great Discovery [Sun Sanctuary] at (401, 18)
+  Year 435 years ago: Great Discovery [Ancient Legion] at (401, 18)
               Great Discovery.
 
-  Year 430 years ago: Settlement Expanded [Stone Company] at (309, 88)
+  Year 430 years ago: Settlement Expanded [Gold Works] at (309, 88)
               Settlement Expanded.
 
-  Year 397 years ago: Settlement Expanded [Ancient Legion] at (103, 157)
+  Year 397 years ago: Settlement Expanded [Sun Seekers] at (103, 157)
               Settlement Expanded.
-
-  Year 395 years ago: The Great Tower [Sun Sanctuary] at (373, 18)
-              The Great Tower was constructed to commemorate the era.
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  The Dark Period (343 years ago to Year 0)
 │  Type: GreatWar | Duration: 343 years
 └─────────────────────────────────────────────────────────────────────────────┘
 
-  Year 325 years ago: Sack of Belaz [Gold Works] at (105, 72)
-              The Sack of Belaz ended in a bloody stalemate.
+  Year 325 years ago: Sack of Nikwarren [Night League] at (105, 72)
+              The Sack of Nikwarren ended in a bloody stalemate.
               Casualties: 1418
 
-  Year 312 years ago: Settlement Conquered [Stone Company] at (241, 121)
+  Year 312 years ago: Settlement Conquered [Gold Works] at (241, 121)
               Settlement Conquered.
 
-  Year 300 years ago: Siege of Thundhold [Gold Works] at (40, 223)
-              The siege lasted 20 months.
-              Casualties: 8174
+  Year 308 years ago: Death of Galathil the Unifier [Sun Seekers] at (399, 46)
+              Death of Galathil the Unifier.
 
-  Year 299 years ago: Death of Celebrian [Sun Seekers] at (326, 120)
-              Death of Celebrian.
+  Year 299 years ago: Death of Bonesnapper the Great [Skull Vanguard] at (326, 120)
+              Death of Bonesnapper the Great.
 
-  Year 293 years ago: Settlement Destroyed [Sun Sanctuary] at (305, 212)
+  Year 294 years ago: Death of Cordelia the Blessed [Ancient Legion] at (305, 212)
+              Death of Cordelia the Blessed.
+
+  Year 289 years ago: Sun Sanctuary-Ancient Legion War [Sun Sanctuary] at (104, 177)
+              Sun Sanctuary-Ancient Legion War.
+
+  Year 284 years ago: Settlement Destroyed [Sun Seekers] at (64, 18)
               Settlement Destroyed.
 
-  Year 289 years ago: Ember Warband-Sun Sanctuary War [Ember Warband] at (104, 177)
-              Ember Warband-Sun Sanctuary War.
+  Year 280 years ago: Siege of Lunaduin [Sun Seekers] at (11, 136)
+              The siege lasted 6 months.
+              Casualties: 2358
 
-  Year 257 years ago: Siege of Grotlair [Night League] at (117, 2)
+  Year 280 years ago: Settlement Conquered [Skull Vanguard] at (322, 84)
+              Settlement Conquered.
+
+  Year 279 years ago: Siege of Gikburrow [Night League] at (36, 126)
+              The siege lasted 4 months.
+              Casualties: 1441
+
+  Year 260 years ago: Fall of Thrakpit [Skull Vanguard] at (140, 254)
+              The Fall of Thrakpit resulted in a decisive victory.
+              Casualties: 4441
+
+  Year 259 years ago: Fall of Arador [Sun Sanctuary] at (45, 105)
+              The Fall of Arador saw heavy losses on both sides.
+              Casualties: 1712
+
+  Year 257 years ago: Siege of Searspire [Ember Warband] at (117, 2)
               The siege lasted 11 months.
               Casualties: 9963
 
-  Year 256 years ago: Massacre [Ancient Legion] at (505, 84)
-              Massacre.
-              Casualties: 19397
-
-  Year 255 years ago: Massacre [Ember Warband] at (179, 22)
+  Year 255 years ago: Massacre [Sun Sanctuary] at (179, 22)
               Massacre.
               Casualties: 1305
 
-  Year 255 years ago: Settlement Destroyed [Ember Warband] at (291, 66)
-              Settlement Destroyed.
+  Year 255 years ago: Settlement Conquered [Ancient Legion] at (320, 112)
+              Settlement Conquered.
 
-  Year 250 years ago: Battle of Durgor [Stone Company] at (498, 6)
+  Year 250 years ago: Battle of Durgor [Gold Works] at (498, 6)
               The siege lasted 4 months.
               Casualties: 7804
 
-  Year 246 years ago: Ember Warband-Skull Vanguard War [Ember Warband] at (74, 64)
-              Ember Warband-Skull Vanguard War.
+  Year 246 years ago: Sun Sanctuary-Stone Company War [Sun Sanctuary] at (74, 64)
+              Sun Sanctuary-Stone Company War.
 
-  Year 228 years ago: Fall of Southwatch [Ancient Legion] at (262, 242)
-              The Fall of Southwatch ended in a bloody stalemate.
-              Casualties: 352
+  Year 228 years ago: Siege of Rialrin [Sun Seekers] at (262, 242)
+              The Siege of Rialrin ended in a bloody stalemate.
+              Casualties: 4146
 
-  Year 213 years ago: Ember Warband-Night League War [Ember Warband] at (501, 201)
-              Ember Warband-Night League War.
+  Year 213 years ago: Sun Sanctuary-Ember Warband War [Sun Sanctuary] at (501, 201)
+              Sun Sanctuary-Ember Warband War.
 
-  Year 209 years ago: Night League-Ancient Legion War [Night League] at (402, 169)
-              Night League-Ancient Legion War.
-
-  Year 208 years ago: Defense of Oldhaven [Ancient Legion] at (272, 239)
-              The Defense of Oldhaven marked a turning point in the war.
-              Casualties: 2998
-
-  Year 206 years ago: Settlement Destroyed [Gold Works] at (476, 50)
+  Year 206 years ago: Settlement Destroyed [Night League] at (476, 50)
               Settlement Destroyed.
 
-  Year 202 years ago: Death of Dwalin the Great [Gold Works] at (133, 90)
-              Death of Dwalin the Great.
+  Year 196 years ago: Battle of Malhold [Stone Company] at (136, 121)
+              The Battle of Malhold marked a turning point in the war.
+              Casualties: 319
 
-  Year 186 years ago: Battle of Faelmir [Sun Sanctuary] at (490, 116)
-              The Battle of Faelmir marked a turning point in the war.
-              Casualties: 4612
-
-  Year 185 years ago: Settlement Conquered [Skull Vanguard] at (213, 217)
+  Year 185 years ago: Settlement Conquered [Stone Company] at (213, 217)
               Settlement Conquered.
 
-  Year 180 years ago: Settlement Destroyed [Skull Vanguard] at (179, 48)
-              Settlement Destroyed.
+  Year 178 years ago: Siege of Fanglair [Ember Warband] at (95, 14)
+              The siege lasted 15 months.
+              Casualties: 3855
 
-  Year 176 years ago: Siege of Celedor [Sun Sanctuary] at (320, 112)
-              The Siege of Celedor marked a turning point in the war.
-              Casualties: 2885
-
-  Year 150 years ago: Siege of Thundul [Stone Company] at (56, 63)
+  Year 150 years ago: Siege of Thundul [Gold Works] at (56, 63)
               The siege lasted 9 months.
               Casualties: 3895
 
-  Year 147 years ago: Sack of Zulul [Gold Works] at (298, 114)
-              The siege lasted 1 months.
-              Casualties: 9533
+  Year 136 years ago: Fall of Zikcave [Night League] at (163, 228)
+              The Fall of Zikcave ended in a bloody stalemate.
+              Casualties: 4244
 
-  Year 142 years ago: Battle of Barakim [Stone Company] at (471, 228)
-              The siege lasted 22 months.
-              Casualties: 1104
-
-  Year 136 years ago: Fall of Auralas [Sun Sanctuary] at (447, 37)
-              The Fall of Auralas resulted in a decisive victory.
-              Casualties: 1595
-
-  Year 129 years ago: Battle of Skabhole [Night League] at (234, 165)
-              The Battle of Skabhole resulted in a decisive victory.
-              Casualties: 921
-
-  Year 118 years ago: Fall of Zhufbarak [Stone Company] at (477, 77)
+  Year 118 years ago: Fall of Zhufbarak [Gold Works] at (477, 77)
               The Fall of Zhufbarak saw heavy losses on both sides.
               Casualties: 1898
 
-  Year 114 years ago: Fall of Zuglair [Skull Vanguard] at (452, 171)
-              The siege lasted 23 months.
-              Casualties: 7713
+  Year 116 years ago: Fall of Drakonnest [Ember Warband] at (113, 50)
+              The Fall of Drakonnest marked a turning point in the war.
+              Casualties: 1912
 
-  Year 112 years ago: Settlement Destroyed [Ember Warband] at (11, 101)
+  Year 112 years ago: Settlement Destroyed [Sun Sanctuary] at (11, 101)
               Settlement Destroyed.
 
-  Year 108 years ago: Settlement Conquered [Sun Seekers] at (267, 138)
+  Year 108 years ago: Settlement Conquered [Skull Vanguard] at (267, 138)
               Settlement Conquered.
 
-  Year 100 years ago: Night League-Stone Company War [Night League] at (114, 138)
-              Night League-Stone Company War.
+  Year 107 years ago: Battle of Khrumrim [Gold Works] at (402, 209)
+              The siege lasted 17 months.
+              Casualties: 2525
 
-  Year 97 years ago: Sack of Celenost [Sun Seekers] at (511, 88)
-              The Sack of Celenost saw heavy losses on both sides.
-              Casualties: 2233
+  Year 101 years ago: Battle of Westhold [Ancient Legion] at (115, 0)
+              The Battle of Westhold saw heavy losses on both sides.
+              Casualties: 2886
 
-  Year 86 years ago: Settlement Conquered [Stone Company] at (49, 238)
+  Year 100 years ago: Ember Warband-Gold Works War [Ember Warband] at (114, 138)
+              Ember Warband-Gold Works War.
+
+  Year 99 years ago: Stone Company-Sun Seekers War [Stone Company] at (99, 149)
+              Stone Company-Sun Seekers War.
+
+  Year 93 years ago: Settlement Conquered [Sun Seekers] at (77, 222)
               Settlement Conquered.
 
-  Year 79 years ago: Fall of Gromim [Stone Company] at (328, 180)
-              The siege lasted 22 months.
-              Casualties: 6399
-
-  Year 75 years ago: Sack of Woodwall [Ancient Legion] at (164, 27)
-              The siege lasted 16 months.
-              Casualties: 4971
-
-  Year 68 years ago: Stone Company-Skull Vanguard War [Stone Company] at (79, 21)
-              Stone Company-Skull Vanguard War.
-
-  Year 65 years ago: Settlement Conquered [Sun Sanctuary] at (298, 248)
+  Year 86 years ago: Settlement Conquered [Gold Works] at (49, 238)
               Settlement Conquered.
 
-  Year 64 years ago: Sun Sanctuary-Ember Warband War [Sun Sanctuary] at (113, 215)
-              Sun Sanctuary-Ember Warband War.
+  Year 75 years ago: Defense of Quelliel [Sun Seekers] at (164, 27)
+              The siege lasted 13 months.
+              Casualties: 4684
 
-  Year 54 years ago: Settlement Destroyed [Skull Vanguard] at (50, 189)
-              Settlement Destroyed.
+  Year 68 years ago: Gold Works-Stone Company War [Gold Works] at (79, 21)
+              Gold Works-Stone Company War.
 
-  Year 41 years ago: Ember Warband-Ancient Legion War [Ember Warband] at (460, 144)
-              Ember Warband-Ancient Legion War.
+  Year 65 years ago: Settlement Conquered [Ancient Legion] at (298, 248)
+              Settlement Conquered.
 
-  Year 36 years ago: Massacre [Ember Warband] at (225, 76)
+  Year 57 years ago: Gold Works-Sun Sanctuary War [Gold Works] at (147, 1)
+              Gold Works-Sun Sanctuary War.
+
+  Year 41 years ago: Sun Sanctuary-Sun Seekers War [Sun Sanctuary] at (460, 144)
+              Sun Sanctuary-Sun Seekers War.
+
+  Year 39 years ago: Massacre [Gold Works] at (185, 90)
               Massacre.
-              Casualties: 18934
+              Casualties: 14693
 
-  Year 33 years ago: Sun Seekers-Sun Sanctuary War [Sun Seekers] at (79, 53)
-              Sun Seekers-Sun Sanctuary War.
+  Year 35 years ago: Massacre [Ember Warband] at (303, 149)
+              Massacre.
+              Casualties: 2597
 
-  Year 29 years ago: Battle of Celeiel [Sun Seekers] at (83, 52)
-              The siege lasted 2 months.
-              Casualties: 4454
+  Year 33 years ago: Skull Vanguard-Ancient Legion War [Skull Vanguard] at (79, 53)
+              Skull Vanguard-Ancient Legion War.
 
-  Year 24 years ago: Fall of Rikmound [Night League] at (295, 177)
+  Year 24 years ago: Fall of Wingkeep [Ember Warband] at (295, 177)
               The siege lasted 11 months.
               Casualties: 5835
 
-  Year 22 years ago: Sun Seekers-Ember Warband War [Sun Seekers] at (271, 9)
-              Sun Seekers-Ember Warband War.
+  Year 22 years ago: Skull Vanguard-Sun Sanctuary War [Skull Vanguard] at (271, 9)
+              Skull Vanguard-Sun Sanctuary War.
 
-  Year 19 years ago: Gold Works-Stone Company War [Gold Works] at (144, 116)
-              Gold Works-Stone Company War.
+  Year 19 years ago: Night League-Gold Works War [Night League] at (144, 116)
+              Night League-Gold Works War.
 
-  Year 19 years ago: Defense of Wingsanctum [Ember Warband] at (328, 237)
-              The siege lasted 4 months.
-              Casualties: 7505
+  Year 16 years ago: Night League-Stone Company War [Night League] at (108, 8)
+              Night League-Stone Company War.
 
-  Year 16 years ago: Gold Works-Skull Vanguard War [Gold Works] at (108, 8)
-              Gold Works-Skull Vanguard War.
-
-  Year 4 years ago: Sack of Silvlas [Sun Sanctuary] at (257, 181)
-              The Sack of Silvlas saw heavy losses on both sides.
+  Year 4 years ago: Fall of Southvale [Ancient Legion] at (257, 181)
+              The Fall of Southvale saw heavy losses on both sides.
               Casualties: 596
+
+  Year 2 years ago: Siege of Wingthrone [Ember Warband] at (238, 237)
+              The Siege of Wingthrone resulted in a decisive victory.
+              Casualties: 4977
+
+  Year Year 0: Skull Vanguard-Ember Warband War [Skull Vanguard] at (425, 88)
+              Skull Vanguard-Ember Warband War.
 
 ═══════════════════════════════════════════════════════════════════════════════
                              SETTLEMENTS
 ═══════════════════════════════════════════════════════════════════════════════
 
-  Vrakkraal (Destroyed)
-    Location: (261, 155) | Type: Capital
+  Thrakfort (Destroyed)
+    Location: (181, 64) | Type: Capital
     Founded: Year 1778 years ago by Skull Vanguard
     Abandoned due to: ResourceDepletion
 
-  Mogden (Destroyed)
-    Location: (292, 156) | Type: City
-    Founded: Year 1778 years ago by Skull Vanguard
-    Abandoned due to: ResourceDepletion
-
-  Lordil (Destroyed)
-    Location: (112, 81) | Type: Town
-    Founded: Year 1774 years ago by Sun Seekers
-    Abandoned due to: MonsterAttack
-
-  Solarin (Destroyed)
-    Location: (83, 73) | Type: Capital
+  Solalas (Destroyed)
+    Location: (135, 75) | Type: Capital
     Founded: Year 1774 years ago by Sun Seekers
     Abandoned due to: MonsterAttack
 
   Lorrin (Destroyed)
-    Location: (383, 71) | Type: Capital
+    Location: (298, 71) | Type: Capital
     Founded: Year 1668 years ago by Sun Sanctuary
     Abandoned due to: War
 
-  Belgrim (Thriving)
-    Location: (414, 69) | Type: Capital
+  Kragaz (Thriving)
+    Location: (355, 45) | Type: Capital
     Founded: Year 1401 years ago by Gold Works
 
-  Blackham (Ruined)
-    Location: (197, 74) | Type: Capital
+  Southdale (Ruined)
+    Location: (336, 72) | Type: Capital
     Founded: Year 1321 years ago by Ancient Legion
     Abandoned due to: NaturalDisaster
 
-  Kragaz (Destroyed)
-    Location: (355, 45) | Type: Capital
+  Khrumrim (Destroyed)
+    Location: (70, 69) | Type: Capital
     Founded: Year 1074 years ago by Stone Company
     Abandoned due to: Conquest
 
-  Nitmound (Abandoned)
-    Location: (298, 71) | Type: Capital
+  Gikhole (Abandoned)
+    Location: (225, 74) | Type: Capital
     Founded: Year 480 years ago by Night League
     Abandoned due to: War
 
-  Wyrmaerie (Abandoned)
-    Location: (163, 69) | Type: Capital
+  Scaldpeak (Abandoned)
+    Location: (366, 100) | Type: Town
+    Founded: Year 343 years ago by Ember Warband
+    Abandoned due to: MonsterAttack
+
+  Drakonnest (Abandoned)
+    Location: (397, 71) | Type: Capital
+    Founded: Year 343 years ago by Ember Warband
+    Abandoned due to: MonsterAttack
+
+  Charthrone (Abandoned)
+    Location: (384, 99) | Type: Town
     Founded: Year 343 years ago by Ember Warband
     Abandoned due to: MonsterAttack
 
@@ -434,73 +432,79 @@
                             MONSTER LAIRS
 ═══════════════════════════════════════════════════════════════════════════════
 
-  The Sylvan Cave - GoblinBand
-    Location: (346, 49, z=0) | Active: false
-    Territory Size: 197 tiles | Danger Level: 5
+  The Deep Web - GiantSpider
+    Location: (331, 189, z=0) | Active: true
+    Territory Size: 197 tiles | Danger Level: 3
 
   The Ancient Barrow - Lich
     Location: (327, 161, z=0) | Active: true
     Territory Size: 1257 tiles | Danger Level: 11
 
-  The Frozen Den - Elemental
-    Location: (209, 27, z=0) | Active: true
+  The Crumbling Vault - DarkElf
+    Location: (291, 152, z=-8) | Active: true
     Territory Size: 197 tiles | Danger Level: 7
-
-  The Broken Crypt - DarkElf
-    Location: (371, 71, z=-5) | Active: true
-    Territory Size: 197 tiles | Danger Level: 7
-
-  The Deep Web - GiantSpider
-    Location: (331, 189, z=0) | Active: true
-    Territory Size: 197 tiles | Danger Level: 3
-
-  The Free Warren - GiantAnt
-    Location: (325, 139, z=-7) | Active: true
-    Territory Size: 1257 tiles | Danger Level: 5
-
-  The Forgotten Barrow - Ogre
-    Location: (336, 141, z=0) | Active: true
-    Territory Size: 317 tiles | Danger Level: 6
-
-  The Crag Spire - Harpy
-    Location: (334, 181, z=0) | Active: false
-    Territory Size: 197 tiles | Danger Level: 4
 
   The Hidden Lair - Ogre
     Location: (51, 137, z=0) | Active: false
     Territory Size: 317 tiles | Danger Level: 4
 
-  The Crumbling Vault - DarkElf
-    Location: (291, 152, z=-8) | Active: true
+  The Frozen Den - Elemental
+    Location: (209, 27, z=0) | Active: true
     Territory Size: 197 tiles | Danger Level: 7
+
+  The Sylvan Cave - GoblinBand
+    Location: (346, 49, z=0) | Active: false
+    Territory Size: 197 tiles | Danger Level: 5
+
+  The Broken Crypt - DarkElf
+    Location: (371, 71, z=-5) | Active: true
+    Territory Size: 197 tiles | Danger Level: 7
+
+  The Free Warren - GiantAnt
+    Location: (325, 139, z=-7) | Active: true
+    Territory Size: 1257 tiles | Danger Level: 5
+
+  The Crag Spire - Harpy
+    Location: (334, 181, z=0) | Active: false
+    Territory Size: 197 tiles | Danger Level: 4
+
+  The Forgotten Barrow - Ogre
+    Location: (336, 141, z=0) | Active: true
+    Territory Size: 317 tiles | Danger Level: 6
 
 ═══════════════════════════════════════════════════════════════════════════════
                             TRADE ROUTES
 ═══════════════════════════════════════════════════════════════════════════════
 
-  Route from (298, 71) to (261, 155)
-    Length: 86 tiles | Active: false | Waypoints: 5
+  Route from (397, 71) to (384, 99)
+    Length: 29 tiles | Active: false | Waypoints: 1
 
-  Route from (383, 71) to (414, 69)
-    Length: 32 tiles | Active: false | Waypoints: 1
+  Route from (397, 71) to (298, 71)
+    Length: 100 tiles | Active: false | Waypoints: 4
 
-  Route from (163, 69) to (197, 74)
-    Length: 35 tiles | Active: false | Waypoints: 1
+  Route from (336, 72) to (384, 99)
+    Length: 52 tiles | Active: false | Waypoints: 2
 
-  Route from (298, 71) to (355, 45)
-    Length: 58 tiles | Active: false | Waypoints: 3
+  Route from (397, 71) to (336, 72)
+    Length: 62 tiles | Active: false | Waypoints: 2
 
-  Route from (383, 71) to (355, 45)
-    Length: 34 tiles | Active: false | Waypoints: 1
+  Route from (298, 71) to (336, 72)
+    Length: 39 tiles | Active: false | Waypoints: 1
 
-  Route from (261, 155) to (292, 156)
-    Length: 32 tiles | Active: false | Waypoints: 1
+  Route from (181, 64) to (135, 75)
+    Length: 47 tiles | Active: false | Waypoints: 2
 
-  Route from (298, 71) to (383, 71)
-    Length: 86 tiles | Active: false | Waypoints: 4
+  Route from (181, 64) to (225, 74)
+    Length: 45 tiles | Active: false | Waypoints: 2
 
-  Route from (383, 71) to (261, 155)
-    Length: 140 tiles | Active: false | Waypoints: 6
+  Route from (355, 45) to (298, 71)
+    Length: 67 tiles | Active: false | Waypoints: 3
+
+  Route from (366, 100) to (397, 71)
+    Length: 39 tiles | Active: false | Waypoints: 1
+
+  Route from (366, 100) to (298, 71)
+    Length: 90 tiles | Active: false | Waypoints: 4
 
 ═══════════════════════════════════════════════════════════════════════════════
                            RESOURCE SITES
@@ -564,740 +568,585 @@
                            NOTABLE HEROES
 ═══════════════════════════════════════════════════════════════════════════════
 
-  Bonesnapper [Orc Ruler]
-    Faction: Skull Vanguard | Fame: 87 | Life: 646 years ago to 593 years ago
-    Titles: Blood King
-    Doctrine: "Attack! Always attack! Defense is for cowards."
-
-  Thrain the Wise [Dwarf Warrior]
-    Faction: Gold Works | Fame: 84 | Life: 1297 years ago to 1030 years ago
-    Titles: Champion, Battle Champion
-    Doctrine: "Artillery wins wars; the hammer falls before the sword rises."
-    Buried at: (271, 112, z=0)
-
   Gimli the Unifier [Dwarf Ruler]
-    Faction: Stone Company | Fame: 82 | Life: 882 years ago to 615 years ago
+    Faction: Gold Works | Fame: 99 | Life: 860 years ago to 679 years ago
+    Titles: Master of Halls, Mountain Lord, High King
+    Faith: "The Sacred Forge burns eternal; through craft, we worship."
+    Buried at: (228, 82, z=-3)
+
+  Laereth the Bold [Elf Ruler]
+    Faction: Sun Seekers | Fame: 93 | Life: 756 years ago - present
+    Titles: Moon King
+    Philosophy: "In the silence between stars, truth reveals itself to patient hearts."
+
+  Nori the Great [Dwarf Ruler]
+    Faction: Stone Company | Fame: 89 | Life: 351 years ago to 162 years ago
     Titles: Lord of the Deep
-    Philosophy: "A fortress is only as strong as the will of those who defend it."
-    Buried at: (298, 80, z=-2)
-
-  Gimli the Bold [Dwarf General]
-    Faction: Gold Works | Fame: 81 | Life: 911 years ago to 670 years ago
-    Titles: High Commander, Battle Lord
-    Doctrine: "Artillery wins wars; the hammer falls before the sword rises."
-    Buried at: (145, 98, z=0)
-
-  William [Human Warrior]
-    Faction: Ancient Legion | Fame: 81 | Life: 377 years ago to 291 years ago
-    Titles: Sword Saint
-    Doctrine: "Logistics determine victory; armies march on their stomachs."
-    Buried at: (35, 170, z=0)
-
-  Galadriel [Elf Explorer]
-    Faction: Sun Seekers | Fame: 77 | Life: 1611 years ago to 532 years ago
-    Titles: Chief Scout, Realm Walker
-    Buried at: (418, 175, z=0)
-
-  Morgana [Human Craftsman]
-    Faction: Ancient Legion | Fame: 75 | Life: 1140 years ago to 1090 years ago
-    Titles: Chief Builder, Grand Artisan, Forge Lord
-
-  Thorin the Great [Dwarf Priest]
-    Faction: Gold Works | Fame: 74 | Life: 340 years ago to 77 years ago
-    Titles: Prophet
-    Faith: "Ancestors watch from the halls of the deep; honor them in all deeds."
+    Philosophy: "True wealth is not gold, but the bonds forged in labor alongside kin."
     Buried at: (192, 76, z=-3)
 
-  Elrohir the Great [Elf Explorer]
-    Faction: Sun Sanctuary | Fame: 74 | Life: 1269 years ago to 410 years ago
-    Titles: Master Explorer, Realm Walker
-    Buried at: (286, 157, z=0)
+  Dwalin the Bold [Dwarf General]
+    Faction: Stone Company | Fame: 87 | Life: 295 years ago to 94 years ago
+    Titles: High Commander
+    Doctrine: "Supply lines are blood lines; starve the enemy before engaging."
 
-  Gorefist the Valiant [Orc Warrior]
-    Faction: Skull Vanguard | Fame: 74 | Life: 1193 years ago to 1158 years ago
-    Titles: First Blade, Battle Champion, Champion
-    Doctrine: "Burn everything; leave nothing for retreat."
-    Buried at: (324, 173, z=0)
+  Aelindel the Wise [Elf Scholar]
+    Faction: Sun Sanctuary | Fame: 86 | Life: 525 years ago - present
+    Titles: Chief Librarian, Grand Sage
+    Philosophy: "In the silence between stars, truth reveals itself to patient hearts."
 
-  Fyraxxis the Betrayer [Dragon-kin Villain]
-    Faction: Ember Warband | Fame: 73 | Life: 290 years ago - present
-    Titles: Accursed One, Bane
+  Laereth the Great [Elf Scholar]
+    Faction: Sun Seekers | Fame: 85 | Life: 647 years ago - present
+    Titles: High Archivist, Keeper of Knowledge
+    Philosophy: "Beauty is the language through which the eternal speaks to the mortal."
 
-  Aelwyn [Human Priest]
-    Faction: Ancient Legion | Fame: 73 | Life: 740 years ago to 657 years ago
-    Titles: Prophet, Voice of the Divine, High Priest
-    Faith: "The divine speaks through prophets; heed their words."
-    Buried at: (417, 118, z=-3)
+  Melian the Wise [Elf General]
+    Faction: Sun Sanctuary | Fame: 82 | Life: 841 years ago to 237 years ago
+    Titles: Marshal
+    Doctrine: "Patience is the deadliest weapon; wait for the perfect moment."
+    Buried at: (334, 170, z=0)
 
-  Rowena the Wise [Human Ruler]
-    Faction: Ancient Legion | Fame: 72 | Life: 1122 years ago to 1060 years ago
-    Titles: High Lord, Arch-Duke, Emperor
-    Philosophy: "Legacy is the shadow we cast into the future; make it long and bright."
+  Gwendolyn [Human Ruler]
+    Faction: Ancient Legion | Fame: 82 | Life: 497 years ago to 445 years ago
+    Titles: Arch-Duke, Emperor
+    Philosophy: "A kingdom rises on the backs of its people; honor them, and prosper."
+    Buried at: (86, 164, z=-3)
 
-  Godric the Wise [Human Priest]
-    Faction: Ancient Legion | Fame: 71 | Life: 831 years ago to 754 years ago
-    Titles: Prophet, Oracle
-    Faith: "The gods test us through hardship; emerge stronger."
-    Buried at: (336, 138, z=-4)
+  Ashscale the Wise [Dragon-kin Ruler]
+    Faction: Ember Warband | Fame: 81 | Life: 331 years ago - present
+    Titles: Overlord
+    Faith: "Faith shapes reality; believe and it becomes true."
 
-  Snikkit [Goblin Craftsman]
-    Faction: Night League | Fame: 70 | Life: 232 years ago to 186 years ago
-    Titles: Master Smith
-    Buried at: (315, 145, z=0)
+  Nimrodel [Elf Warrior]
+    Faction: Sun Sanctuary | Fame: 79 | Life: 793 years ago - present
+    Titles: Sword Saint
+    Doctrine: "Never meet strength with strength; flow like water around stone."
 
-  Cindermaw the Great [Dragon-kin Warrior]
-    Faction: Ember Warband | Fame: 69 | Life: 127 years ago - present
-    Titles: Champion, Battle Champion
-    Doctrine: "Deception is the commander's greatest tool."
+  Oswald the Bold [Human General]
+    Faction: Ancient Legion | Fame: 79 | Life: 296 years ago to 222 years ago
+    Titles: Marshal, Siege Master
+    Doctrine: "Morale is the multiplier; a motivated army fights like ten."
+    Buried at: (424, 166, z=0)
 
-  Grakk the Wise [Orc Warrior]
-    Faction: Skull Vanguard | Fame: 68 | Life: 1375 years ago to 1343 years ago
-    Titles: First Blade
-    Doctrine: "The charge wins all; momentum is unstoppable."
+  Bertram the Wise [Human Villain]
+    Faction: Ancient Legion | Fame: 79 | Life: 755 years ago to 689 years ago
+    Titles: Accursed One, Betrayer, Dark Lord
     Buried at: (303, 136, z=0)
 
+  Celebrian the Chosen [Elf Priest]
+    Faction: Sun Sanctuary | Fame: 79 | Life: 217 years ago - present
+    Titles: Blessed One, Voice of the Divine
+    Faith: "The stars are the eyes of the Eternal Ones; they guide our path."
+
+  Nozrat the Marshal [Goblin General]
+    Faction: Night League | Fame: 78 | Life: 397 years ago to 371 years ago
+    Titles: High Commander, Marshal
+    Doctrine: "Deception is the commander's greatest tool."
+    Buried at: (304, 151, z=0)
+
+  Greta the Great [Dwarf Ruler]
+    Faction: Gold Works | Fame: 77 | Life: 1039 years ago to 795 years ago
+    Titles: Stone Throne
+    Faith: "The earth shelters the faithful; dig deep and find salvation."
+    Buried at: (315, 145, z=-4)
+
+  Skabrat [Goblin Priest]
+    Faction: Night League | Fame: 77 | Life: 445 years ago to 406 years ago
+    Titles: Voice of the Divine, Oracle
+    Faith: "Power flows from the unseen; open your spirit to receive."
+
+  Blazewing the Brave [Dragon-kin Warrior]
+    Faction: Ember Warband | Fame: 77 | Life: 199 years ago - present
+    Titles: Sword Saint, Shield Bearer
+    Doctrine: "Unity of command; one voice, one will."
+
+  Skabrat the Bold [Goblin Explorer]
+    Faction: Night League | Fame: 72 | Life: 314 years ago to 277 years ago
+    Titles: Pathfinder, Realm Walker
+
+  Faelar the Builder [Elf Craftsman]
+    Faction: Sun Seekers | Fame: 72 | Life: 137 years ago - present
+    Titles: Forge Lord
+
+  Gorefist [Orc Warrior]
+    Faction: Skull Vanguard | Fame: 70 | Life: 1671 years ago to 1635 years ago
+    Titles: Sword Saint, Champion
+    Doctrine: "Encircle and annihilate; leave no enemy alive."
+    Buried at: (423, 116, z=0)
+
   Hilda [Dwarf Craftsman]
-    Faction: Stone Company | Fame: 68 | Life: 686 years ago to 414 years ago
+    Faction: Gold Works | Fame: 68 | Life: 883 years ago to 611 years ago
     Titles: Master of Craft
     Buried at: (89, 79, z=0)
 
-  Skullcrusher Ironclad [Orc General]
-    Faction: Skull Vanguard | Fame: 68 | Life: 575 years ago to 527 years ago
-    Titles: High Commander, Warden
-    Doctrine: "Attack! Always attack! Defense is for cowards."
-    Buried at: (335, 137, z=0)
+  Slyfoot [Goblin Craftsman]
+    Faction: Night League | Fame: 68 | Life: 467 years ago to 430 years ago
+    Titles: Chief Builder, Master of Craft
 
-  Idril the Wise [Elf Craftsman]
-    Faction: Sun Seekers | Fame: 67 | Life: 429 years ago - present
-    Titles: Chief Builder
+  Bloodfang Worldwalker [Orc Explorer]
+    Faction: Skull Vanguard | Fame: 63 | Life: 1388 years ago to 1339 years ago
+    Titles: Realm Walker
+    Buried at: (145, 98, z=0)
 
-  Gritfang the Chosen [Goblin Priest]
-    Faction: Night League | Fame: 67 | Life: 185 years ago to 142 years ago
-    Titles: Blessed One, Oracle
-    Faith: "Faith shapes reality; believe and it becomes true."
-    Buried at: (396, 178, z=-5)
+  Dain the Wise [Dwarf Villain]
+    Faction: Stone Company | Fame: 62 | Life: 860 years ago to 541 years ago
+    Titles: Bane
 
-  Luthien the Great [Elf Villain]
-    Faction: Sun Sanctuary | Fame: 66 | Life: 1046 years ago to 483 years ago
-    Titles: Accursed One, Bane
-    Buried at: (324, 163, z=0)
+  Aelwyn the Wise [Human Explorer]
+    Faction: Ancient Legion | Fame: 60 | Life: 318 years ago to 260 years ago
+    Titles: Chief Scout
+    Buried at: (147, 87, z=0)
 
-  Galadriel [Elf Priest]
-    Faction: Sun Sanctuary | Fame: 66 | Life: 272 years ago - present
-    Titles: High Priest
-    Faith: "Time is sacred; we are its stewards, not its masters."
+  Searing [Dragon-kin Explorer]
+    Faction: Ember Warband | Fame: 59 | Life: 158 years ago - present
+    Titles: Master Explorer
 
-  Infernus the Great [Dragon-kin Warrior]
-    Faction: Ember Warband | Fame: 63 | Life: 236 years ago - present
-    Titles: Shield Bearer, First Blade
-    Doctrine: "Reserve your strength; the final blow wins the battle."
-
-  Disa [Dwarf Villain]
-    Faction: Stone Company | Fame: 63 | Life: 605 years ago to 366 years ago
-    Titles: Dark Lord, Bane
-    Buried at: (340, 85, z=0)
-
-  Cindermaw the Valiant [Dragon-kin Warrior]
-    Faction: Ember Warband | Fame: 61 | Life: 102 years ago - present
-    Titles: Battle Champion
-    Doctrine: "Control the high ground; position is everything."
-
-  Gloin the Wise [Dwarf Warrior]
-    Faction: Gold Works | Fame: 58 | Life: 1141 years ago to 960 years ago
-    Titles: Shield Bearer, Champion
-    Doctrine: "Artillery wins wars; the hammer falls before the sword rises."
-    Buried at: (305, 139, z=0)
+  Elrohir [Elf Warrior]
+    Faction: Sun Sanctuary | Fame: 58 | Life: 914 years ago to 16 years ago
+    Titles: First Blade
+    Doctrine: "Never meet strength with strength; flow like water around stone."
+    Buried at: (414, 165, z=0)
 
   Ingrid [Dwarf Warrior]
-    Faction: Gold Works | Fame: 57 | Life: 823 years ago to 606 years ago
+    Faction: Stone Company | Fame: 57 | Life: 641 years ago to 424 years ago
     Titles: Battle Champion, First Blade
     Doctrine: "Hold the line. The enemy breaks upon our shields like waves upon stone."
 
-  Pyraxis Soulguard [Dragon-kin Priest]
-    Faction: Ember Warband | Fame: 56 | Life: 329 years ago - present
-    Titles: Oracle, High Priest
-    Faith: "Power flows from the unseen; open your spirit to receive."
-
-  Skullcrusher [Orc Warrior]
-    Faction: Skull Vanguard | Fame: 56 | Life: 1343 years ago to 1292 years ago
-    Titles: Champion, Battle Champion
-    Doctrine: "The charge wins all; momentum is unstoppable."
+  Elrohir the Great [Elf Explorer]
+    Faction: Sun Seekers | Fame: 56 | Life: 1699 years ago to 441 years ago
+    Titles: Chief Scout, Realm Walker, Master Explorer
+    Buried at: (50, 179, z=0)
 
 ═══════════════════════════════════════════════════════════════════════════════
                               ARTIFACTS
 ═══════════════════════════════════════════════════════════════════════════════
 
-  FlameDivinity (Legendary Urn)
-    A legendary tarnished bronze urn, crafted with great skill.
-    Origin: Night League | Created: 175 years ago
-    Creator: Gritfang the Chosen
-    Lore: Faith of Faith of Gritfang the Chosen
-    Powers: Protects the faithful; Wards off evil; Wards off evil
+  ShadowFortune (Legendary Goblet)
+    A legendary golden-iron goblet, crafted with great skill.
+    Origin: Night League | Created: 461 years ago
+    Creator: Slyfoot
+    Powers: Glows in darkness; Grants strange dreams; Never breaks
     History:
-      175 years ago - Created by Gritfang the Chosen
-      142 years ago - Inherited after death of Gritfang the Chosen
-    Current Location: Carried by Hero#8
+      461 years ago - Created by Slyfoot
+      430 years ago - Inherited after death of Slyfoot
+      406 years ago - Lost when Skabrat fell at (384, 123, z=0)
+      191 years ago - Captured by The Deep Web at (331, 189, z=0)
+    Current Location: Giant Spider's Hoard
 
-  StoneOpulence (Legendary Goblet)
-    A legendary wind-steel goblet, crafted with great skill.
-    Origin: Stone Company | Created: 658 years ago
-    Creator: Hilda
-    Powers: Never breaks; Speaks to the wielder
+  DawnBinding (Legendary Circlet)
+    A legendary grass-copper circlet, crafted with great skill.
+    Origin: Sun Seekers | Created: 189 years ago
+    Creator: Laereth the Bold
+    Powers: Enhances charisma; Detects lies
     History:
-      658 years ago - Created by Hilda
-      414 years ago - Lost when Hilda fell at (25, 88, z=0)
-      318 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-      28 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+      189 years ago - Created by Laereth the Bold
+    Current Location: Carried by Hero#27
 
-  MountainGlory (Legendary Ring)
-    A legendary deep iron ring, crafted with great skill.
-    Origin: Stone Company | Created: 285 years ago
-    Powers: Detects lies; Allows flight
+  StoneMajesty (Legendary Goblet)
+    A legendary adamantine goblet, crafted with great skill.
+    Origin: Gold Works | Created: 986 years ago
+    Powers: Never breaks; Never breaks; Never breaks
     History:
-      285 years ago - Created by unknown artisans
-      125 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+      986 years ago - Created by unknown artisans
+      556 years ago - Found by Elrohir the Great
+      441 years ago - Buried with Elrohir the Great at (50, 179, z=0)
+      296 years ago - Found by Aelwyn the Wise
+      260 years ago - Lost when Aelwyn the Wise fell at (266, 4, z=0)
+      146 years ago - Found by Searing
+    Current Location: Carried by Hero#10
 
-  BlessedSanctity (Legendary Chalice)
-    A legendary golden-iron chalice, crafted with great skill.
-    Origin: Ancient Legion | Created: 668 years ago
-    Creator: Aelwyn
-    Lore: Faith of Faith of Aelwyn
-    Powers: Purifies corruption; Speaks the will of the gods
+  PrimalGlory (Legendary Circlet)
+    A legendary dragon-scale circlet, crafted with great skill.
+    Origin: Ember Warband | Created: 21 years ago
+    Creator: Ashscale the Wise
+    Powers: Detects lies; Grants longevity; Enhances charisma
     History:
-      668 years ago - Created by Aelwyn
-      657 years ago - Buried with Aelwyn at (417, 118, z=-3)
-    Current Location: Tomb at (417, 118, z=-3)
+      21 years ago - Created by Ashscale the Wise
+    Current Location: Carried by Hero#9
 
-  MoonGlory (Legendary Ring)
-    A legendary wind-steel ring, crafted with great skill.
-    Origin: Sun Seekers | Created: 92 years ago
-    Creator: Idril the Wise
-    Powers: Allows flight; Detects lies
+  PrimalDivinity (Legendary Holy Symbol)
+    A legendary crude alloy holy symbol, crafted with great skill.
+    Origin: Night League | Created: 438 years ago
+    Creator: Skabrat
+    Lore: Faith of Faith of Skabrat
+    Powers: Speaks the will of the gods; Protects the faithful; Protects the faithful
     History:
-      92 years ago - Created by Idril the Wise
-    Current Location: Carried by Hero#13
+      438 years ago - Created by Skabrat
+      430 years ago - Inherited after death of Slyfoot
+      406 years ago - Inherited after death of Skabrat
+    Current Location: Carried by Hero#24
+
+  EternalGrace (Legendary Holy Symbol)
+    A legendary grass-copper holy symbol, crafted with great skill.
+    Origin: Sun Sanctuary | Created: 102 years ago
+    Creator: Celebrian the Chosen
+    Lore: Faith of Faith of Celebrian the Chosen
+    Powers: Heals wounds; Heals wounds
+    History:
+      102 years ago - Created by Celebrian the Chosen
+    Current Location: Carried by Hero#3
 
   DeepDestiny (Legendary Amulet)
     A legendary mithril amulet, crafted with great skill.
-    Origin: Stone Company | Created: 475 years ago
+    Origin: Gold Works | Created: 475 years ago
     Powers: Protects the mind; Grants wisdom; Protects the mind; Grants wisdom
     History:
       475 years ago - Created by unknown artisans
-      425 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+    Current Location: The Ice Shaft (233, 48, z=-10)
 
-  GoldDivinity (Legendary Holy Symbol)
-    A legendary rune-etched steel holy symbol, crafted with great skill.
-    Origin: Gold Works | Created: 291 years ago
-    Creator: Thorin the Great
-    Lore: Faith of Faith of Thorin the Great
-    Powers: Speaks the will of the gods; Protects the faithful; Protects the faithful
+  MoonTruth (Epic Codex)
+    A magnificent grass-copper codex, crafted with great skill.
+    Origin: Sun Seekers | Created: 546 years ago
+    Creator: Laereth the Great
+    Lore: Metaphysics: "Beauty is the language through which the eternal s"
+    Powers: Records new information; Contains prophecies; Contains prophecies
     History:
-      291 years ago - Created by Thorin the Great
-      77 years ago - Lost when Thorin the Great fell at (58, 221, z=0)
-    Current Location: Lost at unknown battle
+      546 years ago - Created by Laereth the Great
+      441 years ago - Inherited after death of Elrohir the Great
+    Current Location: Carried by Hero#26
 
-  BlessedBinding (Legendary Crown)
-    A legendary gilded bronze crown, crafted with great skill.
-    Origin: Ancient Legion | Created: 1136 years ago
-    Creator: Morgana
-    Powers: Grants wisdom; Enhances charisma; Enhances charisma; Detects lies
+  TwilightBane (Epic Staff)
+    A magnificent crystal staff, crafted with great skill.
+    Origin: Sun Sanctuary | Created: 111 years ago
+    Creator: Celebrian the Chosen
+    Powers: Never dulls; Deals extra damage to undead; Cuts through armor
     History:
-      1136 years ago - Created by Morgana
-      1090 years ago - Buried with Morgana at (304, 230, z=-3)
-      436 years ago - Found by Elrohir the Great
-      410 years ago - Inherited after death of Elrohir the Great
+      111 years ago - Created by Celebrian the Chosen
+    Current Location: Carried by Hero#3
+
+  MountainBinding (Epic Crown)
+    A magnificent mithril crown, crafted with great skill.
+    Origin: Gold Works | Created: 763 years ago
+    Powers: Protects the mind; Protects the mind; Grants longevity
+    History:
+      763 years ago - Created by unknown artisans
+      693 years ago - Captured by The Deep Web at (331, 189, z=0)
+      153 years ago - Found by Searing
     Current Location: Carried by Hero#10
 
   ForgeWealth (Epic Gem)
     A magnificent adamantine gem, crafted with great skill.
-    Origin: Stone Company | Created: 150 years ago
+    Origin: Gold Works | Created: 150 years ago
     Powers: Attracts fortune; Attracts fortune; Speaks to the wielder
     History:
       150 years ago - Created by unknown artisans
-    Current Location: The Frost Sepulcher (390, 40, z=-10)
+    Current Location: The Forgotten Barrow's Hoard
 
-  GoldDestiny (Epic Scepter)
-    A magnificent plains-bronze scepter, crafted with great skill.
-    Origin: Stone Company | Created: 691 years ago
-    Creator: Gimli the Unifier
-    Powers: Grants longevity; Grants wisdom; Grants longevity
+  IronMajesty (Rare Goblet)
+    A exceptional deep iron goblet, crafted with great skill.
+    Origin: Gold Works | Created: 178 years ago
+    Powers: Never breaks; Speaks to the wielder
     History:
-      691 years ago - Created by Gimli the Unifier
-      615 years ago - Lost when Gimli the Unifier fell at (66, 128, z=0)
-      611 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+      178 years ago - Created by unknown artisans
+      58 years ago - Captured by The Deep Web at (331, 189, z=0)
+    Current Location: Giant Spider's Hoard
 
-  MountainBinding (Epic Crown)
-    A magnificent mithril crown, crafted with great skill.
-    Origin: Stone Company | Created: 763 years ago
-    Powers: Protects the mind; Protects the mind; Grants longevity
-    History:
-      763 years ago - Created by unknown artisans
-      693 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-      683 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-      533 years ago - Found by Galadriel
-      532 years ago - Buried with Galadriel at (418, 175, z=0)
-    Current Location: Tomb at (418, 175, z=0)
-
-  AncientOpulence (Epic Gold Statuette)
-    A magnificent grass-copper gold statuette, crafted with great skill.
-    Origin: Night League | Created: 197 years ago
-    Creator: Snikkit
-    Powers: Attracts fortune; Never breaks; Glows in darkness
-    History:
-      197 years ago - Created by Snikkit
-      186 years ago - Inherited after death of Snikkit
-      142 years ago - Inherited after death of Gritfang the Chosen
-    Current Location: Carried by Hero#8
-
-  IronLight (Rare Amulet)
-    A exceptional deep iron amulet, crafted with great skill.
-    Origin: Stone Company | Created: 451 years ago
-    Powers: Enhances charisma; Grants wisdom
-    History:
-      451 years ago - Created by unknown artisans
-    Current Location: The Frozen Keep (406, 54, z=-10)
-
-  IronFortune (Rare Goblet)
-    A exceptional adamantine goblet, crafted with great skill.
-    Origin: Stone Company | Created: 888 years ago
-    Powers: Glows in darkness
-    History:
-      888 years ago - Created by unknown artisans
-      648 years ago - Found by Galadriel
-      532 years ago - Inherited after death of Galadriel
-      238 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
-
-  MountainBane (Rare Hammer)
-    A exceptional wind-steel hammer, crafted with great skill.
-    Origin: Stone Company | Created: 682 years ago
+  DeepMajesty (Uncommon Goblet)
+    A fine deep iron goblet, crafted with great skill.
+    Origin: Gold Works | Created: 693 years ago
     Creator: Hilda
-    Powers: Flames on command; Returns when thrown
     History:
-      682 years ago - Created by Hilda
-      414 years ago - Buried with Hilda at (89, 79, z=0)
-      392 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+      693 years ago - Created by Hilda
+      611 years ago - Inherited after death of Hilda
+      33 years ago - Found by Searing
+    Current Location: Carried by Hero#10
 
-  MoonBinding (Uncommon Ring)
-    A fine wind-steel ring, crafted with great skill.
-    Origin: Sun Sanctuary | Created: 249 years ago
-    Creator: Galadriel
+  MountainDestiny (Uncommon Amulet)
+    A fine mithril amulet, crafted with great skill.
+    Origin: Gold Works | Created: 327 years ago
+    Powers: Grants wisdom
     History:
-      249 years ago - Created by Galadriel
-    Current Location: Carried by Hero#12
+      327 years ago - Created by unknown artisans
+    Current Location: The Quiet Depths (106, 50, z=-12)
 
-  GoldBinding (Uncommon Crown)
-    A fine adamantine crown, crafted with great skill.
-    Origin: Stone Company | Created: 632 years ago
+  StarFury (Uncommon Hammer)
+    A fine starsilver hammer, crafted with great skill.
+    Origin: Sun Seekers | Created: 43 years ago
+    Creator: Faelar the Builder
     History:
-      632 years ago - Created by unknown artisans
-    Current Location: The Bitter Monastery (437, 31, z=-9)
-
-  DoomSlayer (Uncommon Sword)
-    A fine grass-copper sword, crafted with great skill.
-    Origin: Skull Vanguard | Created: 1164 years ago
-    Creator: Gorefist the Valiant
-    Lore: 0 battles, 63 kills
-    Powers: Cuts through armor
-    History:
-      1164 years ago - Created by Gorefist the Valiant
-      1158 years ago - Lost when Gorefist the Valiant fell at (459, 133, z=0)
-      1154 years ago - Found by Galadriel
-      532 years ago - Inherited after death of Galadriel
-      424 years ago - Found by Elrohir the Great
-      410 years ago - Buried with Elrohir the Great at (286, 157, z=0)
-    Current Location: Tomb at (286, 157, z=0)
-
-  EternalSplendor (Uncommon Goblet)
-    A fine plains-bronze goblet, crafted with great skill.
-    Origin: Sun Seekers | Created: 262 years ago
-    Creator: Idril the Wise
-    Powers: Grants strange dreams
-    History:
-      262 years ago - Created by Idril the Wise
-    Current Location: Carried by Hero#13
+      43 years ago - Created by Faelar the Builder
+    Current Location: Carried by Hero#26
 
   DeepWealth (Uncommon Gem)
     A fine deep iron gem, crafted with great skill.
-    Origin: Stone Company | Created: 117 years ago
+    Origin: Gold Works | Created: 117 years ago
     Powers: Grants strange dreams
     History:
       117 years ago - Created by unknown artisans
-    Current Location: The Frozen Keep (406, 54, z=-10)
+    Current Location: The Winter Temple (392, 20, z=-10)
 
-  ForgeDestiny (Uncommon Amulet)
-    A fine adamantine amulet, crafted with great skill.
-    Origin: Stone Company | Created: 113 years ago
-    Powers: Protects the mind
+  IronLight (Uncommon Ring)
+    A fine mithril ring, crafted with great skill.
+    Origin: Gold Works | Created: 717 years ago
     History:
-      113 years ago - Created by unknown artisans
-      13 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+      717 years ago - Created by unknown artisans
+      667 years ago - Found by Elrohir the Great
+      441 years ago - Lost when Elrohir the Great fell at (198, 96, z=0)
+      297 years ago - Captured by The Deep Web at (331, 189, z=0)
+    Current Location: Giant Spider's Hoard
 
-  DeepPower (Uncommon Amulet)
-    A fine adamantine amulet, crafted with great skill.
-    Origin: Stone Company | Created: 707 years ago
-    History:
-      707 years ago - Created by unknown artisans
-    Current Location: The Tangled Hollow (130, 51, z=-12)
-
-  ForgeMajesty (Uncommon Gem)
-    A fine adamantine gem, crafted with great skill.
-    Origin: Stone Company | Created: 529 years ago
-    History:
-      529 years ago - Created by unknown artisans
-    Current Location: The Forgotten Barrow's Hoard
-
-  PrimalBane (Uncommon Hammer)
-    A fine plains-bronze hammer, crafted with great skill.
-    Origin: Night League | Created: 194 years ago
-    Creator: Snikkit
-    Powers: Flames on command
-    History:
-      194 years ago - Created by Snikkit
-      186 years ago - Inherited after death of Snikkit
-      142 years ago - Lost when Gritfang the Chosen fell at (395, 93, z=0)
-    Current Location: Lost at unknown battle
-
-  AncientDestiny (Uncommon Ring)
-    A fine golden-iron ring, crafted with great skill.
-    Origin: Ancient Legion | Created: 731 years ago
-    Creator: Aelwyn
-    Powers: Allows flight
-    History:
-      731 years ago - Created by Aelwyn
-      657 years ago - Lost when Aelwyn fell at (435, 119, z=0)
-    Current Location: Lost at unknown battle
-
-  StoneMajesty (Uncommon Gem)
-    A fine deep iron gem, crafted with great skill.
-    Origin: Stone Company | Created: 637 years ago
-    History:
-      637 years ago - Created by unknown artisans
-      597 years ago - Found by Galadriel
-      532 years ago - Lost when Galadriel fell at (316, 21, z=0)
-      447 years ago - Found by Elrohir the Great
-      410 years ago - Inherited after death of Elrohir the Great
-    Current Location: Carried by Hero#10
-
-  StarGlory (Uncommon Ring)
-    A fine wind-steel ring, crafted with great skill.
-    Origin: Sun Seekers | Created: 419 years ago
-    Creator: Idril the Wise
-    Powers: Enhances charisma
-    History:
-      419 years ago - Created by Idril the Wise
-    Current Location: Carried by Hero#13
-
-  FlameDestiny (Uncommon Ring)
-    A fine wind-steel ring, crafted with great skill.
-    Origin: Ember Warband | Created: 178 years ago
-    Creator: Pyraxis Soulguard
-    Powers: Allows flight
-    History:
-      178 years ago - Created by Pyraxis Soulguard
-    Current Location: Carried by Hero#4
-
-  StoneBulwark (Uncommon Shield)
-    A fine rune-etched steel shield, crafted with great skill.
-    Origin: Stone Company | Created: 603 years ago
-    Powers: Repairs itself
-    History:
-      603 years ago - Created by unknown artisans
-    Current Location: The Hidden Lair's Hoard
-
-  StoneMajesty (Uncommon Goblet)
-    A fine rune-etched steel goblet, crafted with great skill.
-    Origin: Stone Company | Created: 453 years ago
-    Powers: Glows in darkness
-    History:
-      453 years ago - Created by unknown artisans
-    Current Location: The Tangled Hollow (130, 51, z=-12)
-
-  PrimalGlory (Uncommon Ring)
-    A fine tarnished bronze ring, crafted with great skill.
-    Origin: Night League | Created: 172 years ago
-    Creator: Gritfang the Chosen
-    History:
-      172 years ago - Created by Gritfang the Chosen
-      142 years ago - Lost when Gritfang the Chosen fell at (393, 71, z=0)
-    Current Location: Lost at unknown battle
-
-  MountainOpulence (Uncommon Gem)
-    A fine rune-etched steel gem, crafted with great skill.
-    Origin: Stone Company | Created: 533 years ago
+  StoneWealth (Uncommon Gold Statuette)
+    A fine mithril gold statuette, crafted with great skill.
+    Origin: Gold Works | Created: 826 years ago
     Creator: Hilda
     Powers: Never breaks
     History:
-      533 years ago - Created by Hilda
-      366 years ago - Inherited after death of Disa
-    Current Location: Carried by Hero#2
+      826 years ago - Created by Hilda
+      679 years ago - Inherited after death of Gimli the Unifier
+      611 years ago - Lost when Hilda fell at (131, 214, z=0)
+    Current Location: Lost at unknown battle
 
-  AncientLight (Uncommon Ring)
-    A fine wind-steel ring, crafted with great skill.
-    Origin: Ancient Legion | Created: 1118 years ago
-    Creator: Rowena the Wise
-    Powers: Grants longevity
+  SilverLore (Uncommon History Tome)
+    A fine starsilver history tome, crafted with great skill.
+    Origin: Sun Sanctuary | Created: 504 years ago
+    Creator: Aelindel the Wise
+    Lore: Metaphysics: "In the silence between stars, truth reveals itself"
+    Powers: Answers questions
     History:
-      1118 years ago - Created by Rowena the Wise
-      1060 years ago - Lost when Rowena the Wise fell at (98, 88, z=0)
-      498 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-      318 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+      504 years ago - Created by Aelindel the Wise
+    Current Location: Carried by Hero#7
 
-  MysticBinding (Uncommon Ring)
-    A fine tarnished bronze ring, crafted with great skill.
-    Origin: Night League | Created: 196 years ago
-    Creator: Snikkit
-    Powers: Grants wisdom
+  DeepGuardian (Uncommon Shield)
+    A fine mithril shield, crafted with great skill.
+    Origin: Gold Works | Created: 799 years ago
+    Powers: Deflects arrows
     History:
-      196 years ago - Created by Snikkit
-      186 years ago - Inherited after death of Snikkit
-    Current Location: Carried by Hero#9
+      799 years ago - Created by unknown artisans
+      519 years ago - Captured by The Deep Web at (331, 189, z=0)
+    Current Location: Giant Spider's Hoard
 
-  GoldEdge (Common Sword)
-    A well-crafted deep iron sword, crafted with great skill.
-    Origin: Stone Company | Created: 523 years ago
+  SacredDestiny (Uncommon Amulet)
+    A fine plains-bronze amulet, crafted with great skill.
+    Origin: Ancient Legion | Created: 296 years ago
+    Creator: Aelwyn the Wise
     History:
-      523 years ago - Created by unknown artisans
-    Current Location: The Quiet Hollow (427, 50, z=-5)
+      296 years ago - Created by Aelwyn the Wise
+      260 years ago - Inherited after death of Aelwyn the Wise
+      222 years ago - Lost when Oswald the Bold fell at (326, 107, z=0)
+      96 years ago - Found by Searing
+    Current Location: Carried by Hero#10
+
+  SilverGlory (Uncommon Crown)
+    A fine plains-bronze crown, crafted with great skill.
+    Origin: Sun Seekers | Created: 137 years ago
+    Creator: Faelar the Builder
+    Powers: Enhances charisma
+    History:
+      137 years ago - Created by Faelar the Builder
+    Current Location: Carried by Hero#26
+
+  StoneMajesty (Uncommon Goblet)
+    A fine rune-etched steel goblet, crafted with great skill.
+    Origin: Gold Works | Created: 453 years ago
+    Powers: Glows in darkness
+    History:
+      453 years ago - Created by unknown artisans
+    Current Location: The Quiet Depths (106, 50, z=-12)
+
+  GoldProtector (Common Shield)
+    A well-crafted mithril shield, crafted with great skill.
+    Origin: Gold Works | Created: 126 years ago
+    History:
+      126 years ago - Created by unknown artisans
+    Current Location: The Pale Fane (369, 37, z=-8)
+
+  IronLight (Common Ring)
+    A well-crafted deep iron ring, crafted with great skill.
+    Origin: Gold Works | Created: 356 years ago
+    History:
+      356 years ago - Created by unknown artisans
+    Current Location: The Frozen Sanctum (410, 31, z=-6)
+
+  ForgeBinding (Common Ring)
+    A well-crafted deep iron ring, crafted with great skill.
+    Origin: Gold Works | Created: 268 years ago
+    History:
+      268 years ago - Created by unknown artisans
+    Current Location: The Ice Shaft (233, 48, z=-10)
+
+  DeepEdge (Common Sword)
+    A well-crafted rune-etched steel sword, crafted with great skill.
+    Origin: Gold Works | Created: 802 years ago
+    Creator: Greta the Great
+    History:
+      802 years ago - Created by Greta the Great
+      611 years ago - Inherited after death of Hilda
+    Current Location: Carried by Hero#0
+
+  ForgeDestiny (Common Ring)
+    A well-crafted wind-steel ring, crafted with great skill.
+    Origin: Gold Works | Created: 820 years ago
+    Creator: Hilda
+    History:
+      820 years ago - Created by Hilda
+      611 years ago - Buried with Hilda at (89, 79, z=0)
+      450 years ago - Found by Elrohir the Great
+      441 years ago - Inherited after death of Elrohir the Great
+    Current Location: Carried by Hero#26
+
+  IronLight (Common Amulet)
+    A well-crafted deep iron amulet, crafted with great skill.
+    Origin: Gold Works | Created: 451 years ago
+    History:
+      451 years ago - Created by unknown artisans
+      151 years ago - Captured by The Deep Web at (331, 189, z=0)
+    Current Location: Giant Spider's Hoard
 
   DeepPower (Common Ring)
     A well-crafted rune-etched steel ring, crafted with great skill.
-    Origin: Stone Company | Created: 703 years ago
+    Origin: Gold Works | Created: 703 years ago
     History:
       703 years ago - Created by unknown artisans
-      113 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+      683 years ago - Found by Elrohir the Great
+      441 years ago - Lost when Elrohir the Great fell at (214, 85, z=0)
+      103 years ago - Found by Searing
+    Current Location: Carried by Hero#10
 
-  ForgeWrath (Common Axe)
-    A well-crafted golden-iron axe, crafted with great skill.
-    Origin: Gold Works | Created: 738 years ago
-    Creator: Gimli the Bold
-    Lore: 0 battles, 82 kills
+  TwilightMajesty (Common Gold Statuette)
+    A well-crafted starsilver gold statuette, crafted with great skill.
+    Origin: Sun Seekers | Created: 110 years ago
+    Creator: Faelar the Builder
     History:
-      738 years ago - Created by Gimli the Bold
-      606 years ago - Inherited after death of Ingrid
-      448 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
-
-  MoonEcho (Common Horn)
-    A well-crafted crystal horn, crafted with great skill.
-    Origin: Sun Sanctuary | Created: 601 years ago
-    Creator: Elrohir the Great
-    History:
-      601 years ago - Created by Elrohir the Great
-      483 years ago - Buried with Luthien the Great at (324, 163, z=0)
-    Current Location: Tomb at (324, 163, z=0)
-
-  BlessedLight (Common Crown)
-    A well-crafted tempered iron crown, crafted with great skill.
-    Origin: Ancient Legion | Created: 1095 years ago
-    Creator: Rowena the Wise
-    History:
-      1095 years ago - Created by Rowena the Wise
-      1060 years ago - Buried with Rowena the Wise at (271, 14, z=-5)
-      975 years ago - Found by Galadriel
-      532 years ago - Lost when Galadriel fell at (198, 96, z=0)
-      385 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
-
-  NobleOpulence (Common Goblet)
-    A well-crafted plains-bronze goblet, crafted with great skill.
-    Origin: Ancient Legion | Created: 1129 years ago
-    Creator: Morgana
-    History:
-      1129 years ago - Created by Morgana
-      1090 years ago - Lost when Morgana fell at (312, 215, z=0)
-      699 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
-
-  SilverOpulence (Common Goblet)
-    A well-crafted starsilver goblet, crafted with great skill.
-    Origin: Sun Seekers | Created: 213 years ago
-    Creator: Idril the Wise
-    History:
-      213 years ago - Created by Idril the Wise
-    Current Location: Carried by Hero#13
-
-  GoldBinding (Common Crown)
-    A well-crafted deep iron crown, crafted with great skill.
-    Origin: Stone Company | Created: 221 years ago
-    History:
-      221 years ago - Created by unknown artisans
-    Current Location: The Frost Sepulcher (390, 40, z=-10)
-
-  EternalFaith (Common Holy Symbol)
-    A well-crafted golden-iron holy symbol, crafted with great skill.
-    Origin: Sun Sanctuary | Created: Year 0
-    Creator: Galadriel
-    Lore: Faith of Faith of Galadriel
-    History:
-      Year 0 - Created by Galadriel
-    Current Location: Carried by Hero#12
-
-  MysticPower (Common Ring)
-    A well-crafted golden-iron ring, crafted with great skill.
-    Origin: Night League | Created: 207 years ago
-    Creator: Snikkit
-    History:
-      207 years ago - Created by Snikkit
-      186 years ago - Lost when Snikkit fell at (124, 58, z=0)
-    Current Location: Lost at unknown battle
-
-  FlameSplendor (Common Gold Statuette)
-    A well-crafted grass-copper gold statuette, crafted with great skill.
-    Origin: Night League | Created: 191 years ago
-    Creator: Snikkit
-    History:
-      191 years ago - Created by Snikkit
-      186 years ago - Inherited after death of Snikkit
-      142 years ago - Buried with Gritfang the Chosen at (396, 178, z=-5)
-    Current Location: Tomb at (396, 178, z=-5)
+      110 years ago - Created by Faelar the Builder
+    Current Location: Carried by Hero#26
 
   StoneGlory (Common Ring)
     A well-crafted deep iron ring, crafted with great skill.
-    Origin: Stone Company | Created: 798 years ago
+    Origin: Gold Works | Created: 798 years ago
     History:
       798 years ago - Created by unknown artisans
-    Current Location: Hidden at (181, 91, z=0)
+      608 years ago - Captured by The Deep Web at (331, 189, z=0)
+    Current Location: Giant Spider's Hoard
 
-  StoneFury (Common Sword)
-    A well-crafted plains-bronze sword, crafted with great skill.
-    Origin: Stone Company | Created: 636 years ago
-    Creator: Gimli the Unifier
+  SilverShield (Common Helm)
+    A well-crafted wind-steel helm, crafted with great skill.
+    Origin: Sun Sanctuary | Created: 864 years ago
+    Creator: Elrohir
+    Lore: 1 battles, 30 kills
     History:
-      636 years ago - Created by Gimli the Unifier
-      414 years ago - Inherited after death of Hilda
-      366 years ago - Inherited after death of Disa
-    Current Location: Carried by Hero#2
+      864 years ago - Created by Elrohir
+      16 years ago - Inherited after death of Elrohir
+    Current Location: Carried by Hero#3
 
-  GoldMajesty (Common Goblet)
-    A well-crafted deep iron goblet, crafted with great skill.
-    Origin: Stone Company | Created: 345 years ago
+  StoneBulwark (Common Shield)
+    A well-crafted adamantine shield, crafted with great skill.
+    Origin: Gold Works | Created: 191 years ago
     History:
-      345 years ago - Created by unknown artisans
-    Current Location: The Frozen Sanctum (410, 31, z=-6)
+      191 years ago - Created by unknown artisans
+    Current Location: The Hidden Lair's Hoard
 
-  BlessedGlory (Common Ring)
-    A well-crafted fine steel ring, crafted with great skill.
-    Origin: Ancient Legion | Created: 816 years ago
-    Creator: Godric the Wise
+  MountainBane (Common Sword)
+    A well-crafted adamantine sword, crafted with great skill.
+    Origin: Stone Company | Created: 229 years ago
+    Creator: Nori the Great
     History:
-      816 years ago - Created by Godric the Wise
-      754 years ago - Buried with Godric the Wise at (336, 138, z=-4)
-      426 years ago - Found by Elrohir the Great
-      410 years ago - Buried with Elrohir the Great at (286, 157, z=0)
-    Current Location: Tomb at (286, 157, z=0)
+      229 years ago - Created by Nori the Great
+      162 years ago - Inherited after death of Nori the Great
+      94 years ago - Inherited after death of Dwalin the Bold
+    Current Location: Carried by Hero#20
 
-  GrandSplendor (Common Goblet)
-    A well-crafted blessed silver goblet, crafted with great skill.
-    Origin: Ancient Legion | Created: 1119 years ago
-    Creator: Morgana
+  DeepBane (Common Sword)
+    A well-crafted deep iron sword, crafted with great skill.
+    Origin: Stone Company | Created: 174 years ago
+    Creator: Nori the Great
     History:
-      1119 years ago - Created by Morgana
-      1090 years ago - Lost when Morgana fell at (326, 134, z=0)
+      174 years ago - Created by Nori the Great
+      162 years ago - Lost when Nori the Great fell at (433, 57, z=0)
     Current Location: Lost at unknown battle
 
-  ForgeOpulence (Common Gem)
-    A well-crafted adamantine gem, crafted with great skill.
-    Origin: Stone Company | Created: 434 years ago
-    History:
-      434 years ago - Created by unknown artisans
-    Current Location: The Frozen Sanctum (410, 31, z=-6)
-
-  DeepFortune (Common Goblet)
-    A well-crafted rune-etched steel goblet, crafted with great skill.
-    Origin: Stone Company | Created: 524 years ago
-    Creator: Hilda
-    History:
-      524 years ago - Created by Hilda
-      366 years ago - Inherited after death of Disa
-      124 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
-
-  NobleBane (Common Hammer)
-    A well-crafted fine steel hammer, crafted with great skill.
-    Origin: Ancient Legion | Created: 359 years ago
-    Creator: William
-    Lore: 0 battles, 99 kills
-    History:
-      359 years ago - Created by William
-      291 years ago - Buried with William at (35, 170, z=0)
-    Current Location: Tomb at (35, 170, z=0)
-
-  DawnSlayer (Common Hammer)
+  EternalFury (Common Hammer)
     A well-crafted grass-copper hammer, crafted with great skill.
-    Origin: Sun Seekers | Created: 86 years ago
-    Creator: Idril the Wise
+    Origin: Sun Sanctuary | Created: 662 years ago
+    Creator: Nimrodel
+    Lore: 1 battles, 54 kills
     History:
-      86 years ago - Created by Idril the Wise
+      662 years ago - Created by Nimrodel
+    Current Location: Carried by Hero#3
+
+  IronWrath (Common Sword)
+    A well-crafted deep iron sword, crafted with great skill.
+    Origin: Gold Works | Created: 555 years ago
+    History:
+      555 years ago - Created by unknown artisans
+      95 years ago - Found by Searing
+    Current Location: Carried by Hero#10
+
+  StoneWrath (Common Hammer)
+    A well-crafted deep iron hammer, crafted with great skill.
+    Origin: Gold Works | Created: 255 years ago
+    History:
+      255 years ago - Created by unknown artisans
+      135 years ago - Found by Searing
+    Current Location: Carried by Hero#10
+
+  MysticWealth (Common Gem)
+    A well-crafted wind-steel gem, crafted with great skill.
+    Origin: Night League | Created: 462 years ago
+    Creator: Slyfoot
+    History:
+      462 years ago - Created by Slyfoot
+      430 years ago - Buried with Slyfoot at (458, 80, z=-2)
+      312 years ago - Found by Aelwyn the Wise
+      260 years ago - Inherited after death of Aelwyn the Wise
+      222 years ago - Inherited after death of Oswald the Bold
     Current Location: Carried by Hero#13
 
-  SacredOpulence (Common Gem)
-    A well-crafted golden-iron gem, crafted with great skill.
-    Origin: Ancient Legion | Created: 1109 years ago
-    Creator: Morgana
+  ForgeProtector (Common Shield)
+    A well-crafted deep iron shield, crafted with great skill.
+    Origin: Gold Works | Created: 514 years ago
     History:
-      1109 years ago - Created by Morgana
-      1060 years ago - Inherited after death of Rowena the Wise
-      809 years ago - Found by Galadriel
-      532 years ago - Buried with Galadriel at (418, 175, z=0)
-      9 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-    Current Location: Goblin Band's Hoard
+      514 years ago - Created by unknown artisans
+    Current Location: The Howling Monastery (211, 29, z=-11)
 
-  ShadowSanctity (Common Holy Symbol)
-    A well-crafted golden-iron holy symbol, crafted with great skill.
-    Origin: Ember Warband | Created: 170 years ago
-    Creator: Pyraxis Soulguard
-    Lore: Faith of Faith of Pyraxis Soulguard
+  GoldLight (Common Amulet)
+    A well-crafted adamantine amulet, crafted with great skill.
+    Origin: Gold Works | Created: 934 years ago
     History:
-      170 years ago - Created by Pyraxis Soulguard
-    Current Location: Carried by Hero#4
-
-  BlessedSlayer (Common Hammer)
-    A well-crafted tempered iron hammer, crafted with great skill.
-    Origin: Ancient Legion | Created: 1122 years ago
-    Creator: Morgana
-    History:
-      1122 years ago - Created by Morgana
-      1090 years ago - Inherited after death of Morgana
-      1060 years ago - Inherited after death of Rowena the Wise
-      1052 years ago - Captured by The Sylvan Cave at (346, 49, z=0)
-      922 years ago - Found by Galadriel
-      532 years ago - Lost when Galadriel fell at (206, 4, z=0)
+      934 years ago - Created by unknown artisans
+      864 years ago - Found by Elrohir the Great
+      441 years ago - Lost when Elrohir the Great fell at (316, 21, z=0)
     Current Location: Lost at unknown battle
+
+  MountainMajesty (Common Gem)
+    A well-crafted deep iron gem, crafted with great skill.
+    Origin: Gold Works | Created: 851 years ago
+    History:
+      851 years ago - Created by unknown artisans
+      571 years ago - Found by Elrohir the Great
+      441 years ago - Inherited after death of Elrohir the Great
+    Current Location: Carried by Hero#26
+
+  SilverSecrets (Common Codex)
+    A well-crafted living wood codex, crafted with great skill.
+    Origin: Sun Seekers | Created: 89 years ago
+    Creator: Laereth the Great
+    Lore: Magic: "Beauty is the language through which the eternal s"
+    History:
+      89 years ago - Created by Laereth the Great
+    Current Location: Carried by Hero#27
+
+  GoldPower (Common Crown)
+    A well-crafted mithril crown, crafted with great skill.
+    Origin: Gold Works | Created: 194 years ago
+    History:
+      194 years ago - Created by unknown artisans
+    Current Location: The Quiet Depths (106, 50, z=-12)
 
 ═══════════════════════════════════════════════════════════════════════════════
                               DUNGEONS
 ═══════════════════════════════════════════════════════════════════════════════
 
-  The Frozen Sanctum (AncientTemple)
-    Location: (410, 31) | Depth: z=-6 to z=-2
-    Founded: 1231 years ago | Size: ~56 tiles
-    Abandoned: 244 years ago
-    Artifacts: ForgeOpulence, GoldMajesty
+  The Quiet Depths (MonsterLair)
+    Location: (106, 50) | Depth: z=-12 to z=-6
+    Founded: 1023 years ago | Size: ~24 tiles
+    Abandoned: 102 years ago
+    Artifacts: StoneMajesty, MountainDestiny, GoldPower
     History:
-      1231 years ago: Temple consecrated to the old gods
-      1005 years ago: Expedition lost in the lower chambers
-      334 years ago: Strange sounds reported from the depths
-      314 years ago: Mysterious disappearances in the area
-      244 years ago: Temple abandoned as faith waned
-
-  The Quiet Hollow (NaturalCave)
-    Location: (427, 50) | Depth: z=-5 to z=-3
-    Founded: 1269 years ago | Size: ~66 tiles
-    Artifacts: GoldEdge
-    History:
-      1269 years ago: Cave system discovered by explorers
-      1262 years ago: Mysterious disappearances in the area
-      1055 years ago: Expedition lost in the lower chambers
-      655 years ago: Local villagers reported strange lights
+      1023 years ago: Cave first inhabited by creatures
+      932 years ago: Ancient wards began to fail
+      690 years ago: Strange sounds reported from the depths
+      148 years ago: Strange sounds reported from the depths
+      102 years ago: Creatures displaced, lair abandoned
 
   The Cold Hold (WizardsTower)
     Location: (422, 15) | Depth: z=-12 to z=-8
@@ -1309,71 +1158,47 @@
       276 years ago: Strange sounds reported from the depths
       92 years ago: Wizard disappeared, tower sealed
 
-  The Frost Sepulcher (AncientTomb)
-    Location: (390, 40) | Depth: z=-10 to z=-6
-    Founded: 1098 years ago | Size: ~40 tiles
-    Abandoned: 1003 years ago
-    Artifacts: GoldBinding, ForgeWealth
-    History:
-      1098 years ago: Royal burial chambers constructed
-      1056 years ago: Treasure hunters explored the upper levels
-      1021 years ago: Expedition lost in the lower chambers
-      1003 years ago: Tomb sealed after grave robbers struck
-
   The Ice Shaft (CollapsedMine)
     Location: (233, 48) | Depth: z=-10 to z=-6
     Founded: 990 years ago | Size: ~79 tiles
     Abandoned: 74 years ago
+    Artifacts: DeepDestiny, ForgeBinding
     History:
       990 years ago: Mining operations begun
       296 years ago: Expedition lost in the lower chambers
       248 years ago: Mysterious disappearances in the area
       74 years ago: Mine collapsed, workers fled
 
-  The Tangled Hollow (MonsterLair)
-    Location: (130, 51) | Depth: z=-12 to z=-6
-    Founded: 632 years ago | Size: ~34 tiles
-    Abandoned: 241 years ago
-    Artifacts: StoneMajesty, DeepPower
+  The Frozen Sanctum (AncientTemple)
+    Location: (410, 31) | Depth: z=-6 to z=-2
+    Founded: 1231 years ago | Size: ~56 tiles
+    Abandoned: 244 years ago
+    Artifacts: IronLight
     History:
-      632 years ago: Cave first inhabited by creatures
-      586 years ago: Local villagers reported strange lights
-      577 years ago: Local villagers reported strange lights
-      286 years ago: Treasure hunters explored the upper levels
-      241 years ago: Creatures displaced, lair abandoned
+      1231 years ago: Temple consecrated to the old gods
+      1005 years ago: Expedition lost in the lower chambers
+      334 years ago: Strange sounds reported from the depths
+      314 years ago: Mysterious disappearances in the area
+      244 years ago: Temple abandoned as faith waned
+
+  The Howling Monastery (AncientTemple)
+    Location: (211, 29) | Depth: z=-11 to z=-5
+    Founded: 399 years ago | Size: ~62 tiles
+    Abandoned: 177 years ago
+    Artifacts: ForgeProtector
+    History:
+      399 years ago: Temple consecrated to the old gods
+      396 years ago: Mysterious disappearances in the area
+      177 years ago: Temple abandoned as faith waned
 
   The Frozen Keep (FallenFortress)
     Location: (406, 54) | Depth: z=-10 to z=-6
     Founded: 236 years ago | Size: ~64 tiles
     Abandoned: 223 years ago
-    Artifacts: IronLight, DeepWealth
     History:
       236 years ago: Fortress construction completed
       225 years ago: Ancient wards began to fail
       223 years ago: Fortress fell to enemy forces
-
-  The Bitter Monastery (AncientTemple)
-    Location: (437, 31) | Depth: z=-9 to z=-5
-    Founded: 1190 years ago | Size: ~54 tiles
-    Abandoned: 571 years ago
-    Artifacts: GoldBinding
-    History:
-      1190 years ago: Temple consecrated to the old gods
-      1035 years ago: Ancient wards began to fail
-      985 years ago: Local villagers reported strange lights
-      636 years ago: Ancient wards began to fail
-      571 years ago: Temple abandoned as faith waned
-
-  The Quiet Depths (MonsterLair)
-    Location: (106, 50) | Depth: z=-12 to z=-6
-    Founded: 1023 years ago | Size: ~24 tiles
-    Abandoned: 102 years ago
-    History:
-      1023 years ago: Cave first inhabited by creatures
-      932 years ago: Ancient wards began to fail
-      690 years ago: Strange sounds reported from the depths
-      148 years ago: Strange sounds reported from the depths
-      102 years ago: Creatures displaced, lair abandoned
 
   The Tangled Den (NaturalCave)
     Location: (322, 54) | Depth: z=-9 to z=-3
@@ -1383,43 +1208,6 @@
       168 years ago: Expedition lost in the lower chambers
       141 years ago: Mysterious disappearances in the area
       47 years ago: Expedition lost in the lower chambers
-
-  The Pale Fane (AncientTemple)
-    Location: (369, 37) | Depth: z=-8 to z=-3
-    Founded: 818 years ago | Size: ~40 tiles
-    Abandoned: 524 years ago
-    History:
-      818 years ago: Temple consecrated to the old gods
-      732 years ago: Expedition lost in the lower chambers
-      719 years ago: Ancient wards began to fail
-      585 years ago: Treasure hunters explored the upper levels
-      524 years ago: Temple abandoned as faith waned
-
-  The Verdant Depths (NaturalCave)
-    Location: (208, 51) | Depth: z=-9 to z=-5
-    Founded: 274 years ago | Size: ~59 tiles
-    History:
-      274 years ago: Cave system discovered by explorers
-      75 years ago: Mysterious disappearances in the area
-
-  The Winter Temple (AncientTemple)
-    Location: (392, 20) | Depth: z=-10 to z=-6
-    Founded: 733 years ago | Size: ~71 tiles
-    Abandoned: 375 years ago
-    History:
-      733 years ago: Temple consecrated to the old gods
-      607 years ago: Mysterious disappearances in the area
-      410 years ago: Expedition lost in the lower chambers
-      375 years ago: Temple abandoned as faith waned
-
-  The Howling Monastery (AncientTemple)
-    Location: (211, 29) | Depth: z=-11 to z=-5
-    Founded: 399 years ago | Size: ~62 tiles
-    Abandoned: 177 years ago
-    History:
-      399 years ago: Temple consecrated to the old gods
-      396 years ago: Mysterious disappearances in the area
-      177 years ago: Temple abandoned as faith waned
 
   The Ancient Den (MonsterLair)
     Location: (346, 49) | Depth: z=-7 to z=-3
@@ -1432,37 +1220,100 @@
       457 years ago: Expedition lost in the lower chambers
       130 years ago: Creatures displaced, lair abandoned
 
+  The Bitter Monastery (AncientTemple)
+    Location: (437, 31) | Depth: z=-9 to z=-5
+    Founded: 1190 years ago | Size: ~54 tiles
+    Abandoned: 571 years ago
+    History:
+      1190 years ago: Temple consecrated to the old gods
+      1035 years ago: Ancient wards began to fail
+      985 years ago: Local villagers reported strange lights
+      636 years ago: Ancient wards began to fail
+      571 years ago: Temple abandoned as faith waned
+
+  The Pale Fane (AncientTemple)
+    Location: (369, 37) | Depth: z=-8 to z=-3
+    Founded: 818 years ago | Size: ~40 tiles
+    Abandoned: 524 years ago
+    Artifacts: GoldProtector
+    History:
+      818 years ago: Temple consecrated to the old gods
+      732 years ago: Expedition lost in the lower chambers
+      719 years ago: Ancient wards began to fail
+      585 years ago: Treasure hunters explored the upper levels
+      524 years ago: Temple abandoned as faith waned
+
+  The Frost Sepulcher (AncientTomb)
+    Location: (390, 40) | Depth: z=-10 to z=-6
+    Founded: 1098 years ago | Size: ~40 tiles
+    Abandoned: 1003 years ago
+    History:
+      1098 years ago: Royal burial chambers constructed
+      1056 years ago: Treasure hunters explored the upper levels
+      1021 years ago: Expedition lost in the lower chambers
+      1003 years ago: Tomb sealed after grave robbers struck
+
+  The Verdant Depths (NaturalCave)
+    Location: (208, 51) | Depth: z=-9 to z=-5
+    Founded: 274 years ago | Size: ~59 tiles
+    History:
+      274 years ago: Cave system discovered by explorers
+      75 years ago: Mysterious disappearances in the area
+
+  The Winter Temple (AncientTemple)
+    Location: (392, 20) | Depth: z=-10 to z=-6
+    Founded: 733 years ago | Size: ~71 tiles
+    Abandoned: 375 years ago
+    Artifacts: DeepWealth
+    History:
+      733 years ago: Temple consecrated to the old gods
+      607 years ago: Mysterious disappearances in the area
+      410 years ago: Expedition lost in the lower chambers
+      375 years ago: Temple abandoned as faith waned
+
+  The Tangled Hollow (MonsterLair)
+    Location: (130, 51) | Depth: z=-12 to z=-6
+    Founded: 632 years ago | Size: ~34 tiles
+    Abandoned: 241 years ago
+    History:
+      632 years ago: Cave first inhabited by creatures
+      586 years ago: Local villagers reported strange lights
+      577 years ago: Local villagers reported strange lights
+      286 years ago: Treasure hunters explored the upper levels
+      241 years ago: Creatures displaced, lair abandoned
+
+  The Quiet Hollow (NaturalCave)
+    Location: (427, 50) | Depth: z=-5 to z=-3
+    Founded: 1269 years ago | Size: ~66 tiles
+    History:
+      1269 years ago: Cave system discovered by explorers
+      1262 years ago: Mysterious disappearances in the area
+      1055 years ago: Expedition lost in the lower chambers
+      655 years ago: Local villagers reported strange lights
+
 ═══════════════════════════════════════════════════════════════════════════════
                            MONSTER HOARDS
 ═══════════════════════════════════════════════════════════════════════════════
 
-  The Sylvan Cave (GoblinBand)
-    Location: (346, 49, z=0) | Active: false
-    Hoard (14 items):
-      - IronFortune (Rare Goblet)
-      - DeepPower (Common Ring)
-      - ForgeWrath (Common Axe)
-      - BlessedLight (Common Crown)
-      - ForgeDestiny (Uncommon Amulet)
-      - NobleOpulence (Common Goblet)
-      - MountainBane (Rare Hammer)
-      - StoneOpulence (Legendary Goblet)
-      - MountainGlory (Legendary Ring)
-      - DeepDestiny (Legendary Amulet)
-      - DeepFortune (Common Goblet)
-      - GoldDestiny (Epic Scepter)
-      - SacredOpulence (Common Gem)
-      - AncientLight (Uncommon Ring)
-
-  The Forgotten Barrow (Ogre)
-    Location: (336, 141, z=0) | Active: true
-    Hoard (1 items):
-      - ForgeMajesty (Uncommon Gem)
+  The Deep Web (GiantSpider)
+    Location: (331, 189, z=0) | Active: true
+    Hoard (6 items):
+      - IronMajesty (Rare Goblet)
+      - ShadowFortune (Legendary Goblet)
+      - IronLight (Common Amulet)
+      - StoneGlory (Common Ring)
+      - IronLight (Uncommon Ring)
+      - DeepGuardian (Uncommon Shield)
 
   The Hidden Lair (Ogre)
     Location: (51, 137, z=0) | Active: false
     Hoard (1 items):
-      - StoneBulwark (Uncommon Shield)
+      - StoneBulwark (Common Shield)
+
+  The Forgotten Barrow (Ogre)
+    Location: (336, 141, z=0) | Active: true
+    Hoard (1 items):
+      - ForgeWealth (Epic Gem)
 
 ═══════════════════════════════════════════════════════════════════════════════
                           END OF CHRONICLE
