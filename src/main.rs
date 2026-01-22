@@ -3,8 +3,10 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 mod ascii;
+mod biome_feathering;
 mod biomes;
 mod climate;
+mod coastline;
 mod erosion;
 mod explorer;
 mod heightmap;
@@ -41,6 +43,42 @@ struct Args {
     /// Export timeline to a text file (e.g., "chronicle.txt")
     #[arg(long)]
     export_timeline: Option<String>,
+
+    /// Export local maps to PNG (specify output path)
+    #[arg(long)]
+    export_local: Option<String>,
+
+    /// Center X coordinate for local export (default: center of map)
+    #[arg(long)]
+    export_local_x: Option<usize>,
+
+    /// Center Y coordinate for local export (default: center of map)
+    #[arg(long)]
+    export_local_y: Option<usize>,
+
+    /// Radius in chunks for local export (default: 5)
+    #[arg(long, default_value = "5")]
+    export_local_radius: usize,
+
+    /// Scale factor for local export (1-4, default: 1)
+    #[arg(long, default_value = "1")]
+    export_local_scale: u32,
+
+    /// Show chunk grid in local export
+    #[arg(long)]
+    export_local_grid: bool,
+
+    /// Export debug info for local maps (text file for analysis)
+    #[arg(long)]
+    debug_local: Option<String>,
+
+    /// X coordinate for debug export (default: center of map)
+    #[arg(long)]
+    debug_local_x: Option<usize>,
+
+    /// Y coordinate for debug export (default: center of map)
+    #[arg(long)]
+    debug_local_y: Option<usize>,
 }
 
 fn main() {
@@ -130,6 +168,16 @@ fn main() {
     }
     println!("Post-erosion heightmap range: {:.1}m to {:.1}m", min_h, max_h);
 
+    // Apply coastline jittering for more organic shorelines
+    println!("Applying coastline jittering...");
+    let coastline_params = coastline::CoastlineParams::default();
+    let coastline_network = coastline::generate_coastline_network(&heightmap, &coastline_params, seed);
+    coastline::apply_coastline_to_heightmap(&coastline_network, &mut heightmap, coastline_params.blend_width);
+
+    // Apply terrain noise layers based on region type
+    println!("Applying terrain noise layers...");
+    heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seed);
+
     // Detect water bodies (lakes, rivers, ocean)
     println!("Detecting water bodies...");
     let (water_body_map, water_bodies_list) = water_bodies::detect_water_bodies(&heightmap);
@@ -183,6 +231,15 @@ fn main() {
     if unique_biomes_placed > 0 {
         println!("Placed {} unique biomes", unique_biomes_placed);
     }
+
+    // Compute biome feathering map for smooth transitions
+    println!("Computing biome feathering map...");
+    let feather_config = biome_feathering::FeatherConfig::default();
+    let biome_feather_map = biome_feathering::compute_biome_feathering(
+        &extended_biomes,
+        &feather_config,
+        seed,
+    );
 
     // Generate Z-level data
     println!("Generating Z-level data...");
@@ -246,6 +303,9 @@ fn main() {
     // Launch explorer
     println!("Launching terminal explorer...");
     let map_scale = scale::MapScale::default();
+    // Generate Bezier river network (Phase 1)
+    let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seed);
+
     let world_data = world::WorldData::new(
         seed,
         map_scale,
@@ -262,7 +322,70 @@ fn main() {
         zlevels,
         surface_z,
         Some(world_history),
+        Some(river_network),
+        Some(biome_feather_map),
     );
+
+    // Export local maps if requested
+    if let Some(ref export_path) = args.export_local {
+        use multiscale::{export_local_area, ExportOptions};
+
+        let center_x = args.export_local_x.unwrap_or(args.width / 2);
+        let center_y = args.export_local_y.unwrap_or(args.height / 2);
+        let radius = args.export_local_radius;
+
+        println!("Exporting local maps...");
+        println!("  Center: ({}, {})", center_x, center_y);
+        println!("  Radius: {} chunks", radius);
+        println!("  Scale: {}x", args.export_local_scale);
+
+        let options = ExportOptions {
+            z_level: None,
+            auto_surface: true,
+            show_features: true,
+            scale: args.export_local_scale.clamp(1, 4),
+            show_chunk_grid: args.export_local_grid,
+        };
+
+        match export_local_area(&world_data, center_x, center_y, radius, export_path, &options) {
+            Ok((width, height)) => {
+                println!("Exported local maps to: {}", export_path);
+                println!("  Image size: {}x{} pixels", width, height);
+            }
+            Err(e) => {
+                eprintln!("Failed to export local maps: {}", e);
+            }
+        }
+    }
+
+    // Export debug info for local maps if requested
+    if let Some(ref debug_path) = args.debug_local {
+        use multiscale::export_debug_local_maps;
+
+        let center_x = args.debug_local_x.unwrap_or(args.width / 2);
+        let center_y = args.debug_local_y.unwrap_or(args.height / 2);
+
+        println!("Exporting debug local map info...");
+        println!("  Center: ({}, {})", center_x, center_y);
+
+        match export_debug_local_maps(&world_data, center_x, center_y, debug_path) {
+            Ok(()) => {
+                println!("Debug export saved to: {}", debug_path);
+            }
+            Err(e) => {
+                eprintln!("Failed to export debug info: {}", e);
+            }
+        }
+
+        // Exit without launching explorer when debug exporting
+        return;
+    }
+
+    // Export local maps exits early too
+    if args.export_local.is_some() {
+        return;
+    }
+
     if let Err(e) = explorer::run_explorer(world_data) {
         eprintln!("Explorer error: {}", e);
     }

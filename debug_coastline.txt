@@ -1,0 +1,261 @@
+=== LOCAL MAP DEBUG EXPORT ===
+Center world position: (100, 100)
+World seed: 42
+Local chunk size: 48x48
+
+=== WORLD TILE INFO (3x3 around center) ===
+
+World tile (99, 99):
+  Biome: StarfallCrater
+  Height: 369.9m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: StarfallCrater (water=false)
+    NE: Desert (water=false)
+    SW: StarfallCrater (water=false)
+    SE: StarfallCrater (water=false)
+  Water corner count: 0/4
+
+World tile (100, 99):
+  Biome: Desert
+  Height: 368.2m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: Desert (water=false)
+    NE: Desert (water=false)
+    SW: StarfallCrater (water=false)
+    SE: Desert (water=false)
+  Water corner count: 0/4
+
+World tile (101, 99):
+  Biome: Desert
+  Height: 212.3m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: Desert (water=false)
+    NE: Desert (water=false)
+    SW: Desert (water=false)
+    SE: SaltFlats (water=false)
+  Water corner count: 0/4
+
+World tile (99, 100):
+  Biome: StarfallCrater
+  Height: 386.3m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: StarfallCrater (water=false)
+    NE: StarfallCrater (water=false)
+    SW: StarfallCrater (water=false)
+    SE: StarfallCrater (water=false)
+  Water corner count: 0/4
+
+World tile (100, 100):
+  Biome: StarfallCrater
+  Height: 296.0m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: StarfallCrater (water=false)
+    NE: Desert (water=false)
+    SW: StarfallCrater (water=false)
+    SE: Desert (water=false)
+  Water corner count: 0/4
+
+World tile (101, 100):
+  Biome: Desert
+  Height: 372.5m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: Desert (water=false)
+    NE: SaltFlats (water=false)
+    SW: Desert (water=false)
+    SE: Desert (water=false)
+  Water corner count: 0/4
+
+World tile (99, 101):
+  Biome: StarfallCrater
+  Height: 353.5m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: StarfallCrater (water=false)
+    NE: StarfallCrater (water=false)
+    SW: StarfallCrater (water=false)
+    SE: Desert (water=false)
+  Water corner count: 0/4
+
+World tile (100, 101):
+  Biome: StarfallCrater
+  Height: 386.7m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: StarfallCrater (water=false)
+    NE: Desert (water=false)
+    SW: Desert (water=false)
+    SE: Desert (water=false)
+  Water corner count: 0/4
+
+World tile (101, 101):
+  Biome: Desert
+  Height: 264.7m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: Desert (water=false)
+    NE: Desert (water=false)
+    SW: Desert (water=false)
+    SE: Desert (water=false)
+  Water corner count: 0/4
+
+=== TERRAIN MAP (surface z=1) ===
+Legend: . = floor, ~ = water, # = wall/solid, ' ' = air
+Chunk boundaries marked with | and -
+
+     |012345678901|012345678901|012345678901|
+     +------------+------------+------------+
+c0y00|.........#..|...         |    ..#####.|
+  y04|.......#####|....        |    ..######|
+  y08|#.....######|.....       |     .######|
+  y12|###.########|##*...      |     .######|
+  y16|############|####.....*  |     .######|
+  y20|############|#####...... |      ######|
+  y24|############|########....|.......#####|
+  y28|####....####|##########..|.......  ...|
+  y32|##.......###|###########.|.......    .|
+  y36|...........#|############|.......     |
+  y40|....     ...|.###########|.....       |
+  y44|...       ..|..#########.|....        |
+     +------------+------------+------------+
+c1y00|..         .|..#########.|....        |
+  y04|.          .|...####..#..|...         |
+  y08|.           |....######..|..          |
+  y12|            |....#####...|..          |
+  y16|.           |....#####...|...         |
+  y20|..         .|....####..T.|....        |
+  y24|....      ..|...#####....|*.....     .|
+  y28|.......  ...|..######....|............|
+  y32|............|.#######....|............|
+  y36|.####.......|.######.....|............|
+  y40|#####.......|.######....*|...##.......|
+  y44|.####.......|.#####......|...##.......|
+     +------------+------------+------------+
+c2y00|..##........|...#........|........*...|
+  y04|......... ..|.........  .|............|
+  y08|......*     |........    |.........   |
+  y12| .....      | ......     |........    |
+  y16|   .        |            |.......     |
+  y20|            |           .|.......     |
+  y24|            |         ..*|.......     |
+  y28|            |        ....|.......     |
+  y32|    ....    |       .....|........    |
+  y36|  .......   |      .*..##|..........  |
+  y40| ........T. |      ...###|............|
+  y44|....##.##...|     ....###|............|
+     +------------+------------+------------+
+
+=== WATER FACTOR MAP (center chunk only) ===
+Values: 0=land, 9=water, shown for every 4th tile
+
+     0 4 8121620242832364044
+  0  0 0 0 0 0 0 0 0 0 0 0 0
+  4  0 0 0 0 0 0 0 0 0 0 0 0
+  8  0 0 0 0 0 0 0 0 0 0 0 0
+ 12  0 0 0 0 0 0 0 0 0 0 0 0
+ 16  0 0 0 0 0 0 0 0 0 0 0 0
+ 20  0 0 0 0 0 0 0 0 0 0 0 0
+ 24  0 0 0 0 0 0 0 0 0 0 0 0
+ 28  0 0 0 0 0 0 0 0 0 0 0 0
+ 32  0 0 0 0 0 0 0 0 0 0 0 0
+ 36  0 0 0 0 0 0 0 0 0 0 0 0
+ 40  0 0 0 0 0 0 0 0 0 0 0 0
+ 44  0 0 0 0 0 0 0 0 0 0 0 0
+
+=== DETAILED TILE INFO (corners and edges of center chunk) ===
+
+NW corner (0, 0):
+  Terrain: DirtFloor
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+N edge center (24, 0):
+  Terrain: Soil { soil_type: Gravel }
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+NE corner (47, 0):
+  Terrain: Sand
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+W edge center (0, 24):
+  Terrain: DirtFloor
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+Center (24, 24):
+  Terrain: Soil { soil_type: Gravel }
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+E edge center (47, 24):
+  Terrain: DirtFloor
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+SW corner (0, 47):
+  Terrain: DirtFloor
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+S edge center (24, 47):
+  Terrain: Sand
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+SE corner (47, 47):
+  Terrain: Sand
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+=== CHUNK BOUNDARY COMPARISON ===
+Comparing edges between adjacent chunks
+
+Center chunk EAST edge vs East chunk WEST edge:
+Y    Center(x=47)  East(x=0)    Match?
+  0  .            .            OK
+  4  .            .            OK
+  8  .            .            OK
+ 12  .            .            OK
+ 16  .            .            OK
+ 20  .            .            OK
+ 24  .            *            OK
+ 28  .            .            OK
+ 32  .            .            OK
+ 36  .            .            OK
+ 40  .            .            OK
+ 44  .            .            OK
+Total mismatches: 0/12
+
+Center chunk SOUTH edge vs South chunk NORTH edge:
+X    Center(y=47)  South(y=0)   Match?
+  0  .            .            OK
+  4  .            .            OK
+  8  #            .            MISMATCH
+ 12  #            #            OK
+ 16  #            .            MISMATCH
+ 20  .            .            OK
+ 24  .            .            OK
+ 28  .            .            OK
+ 32  .            .            OK
+ 36  .            .            OK
+ 40  .            .            OK
+ 44  .            .            OK
+Total mismatches: 2/12
+
+=== END DEBUG EXPORT ===

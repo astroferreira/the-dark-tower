@@ -22,7 +22,6 @@ use crate::ascii::{biome_char, height_color, temperature_color, moisture_color, 
 use crate::multiscale::{
     ChunkCache, LocalCoord, ScaleLevel,
     LocalChunk, LocalTile, LocalTerrain, LocalFeature,
-    local::generate_local_chunk,
     LOCAL_SIZE,
 };
 use crate::world::{WorldData, generate_world};
@@ -49,6 +48,11 @@ enum ViewMode {
     Stress,
     Factions,
     History,
+    // New view modes for procedural generation systems (Phase 1-4)
+    Rivers,      // Bezier river paths with width and confluences
+    BiomeBlend,  // Biome feathering depth map overlay
+    Coastline,   // Jittered coastline segments
+    Structures,  // Join points and connections
 }
 
 impl ViewMode {
@@ -62,6 +66,10 @@ impl ViewMode {
             ViewMode::Stress => "Stress",
             ViewMode::Factions => "Factions",
             ViewMode::History => "History",
+            ViewMode::Rivers => "Rivers",
+            ViewMode::BiomeBlend => "BiomeBlend",
+            ViewMode::Coastline => "Coastline",
+            ViewMode::Structures => "Structures",
         }
     }
 
@@ -74,7 +82,11 @@ impl ViewMode {
             ViewMode::Plates => ViewMode::Stress,
             ViewMode::Stress => ViewMode::Factions,
             ViewMode::Factions => ViewMode::History,
-            ViewMode::History => ViewMode::Biome,
+            ViewMode::History => ViewMode::Rivers,
+            ViewMode::Rivers => ViewMode::BiomeBlend,
+            ViewMode::BiomeBlend => ViewMode::Coastline,
+            ViewMode::Coastline => ViewMode::Structures,
+            ViewMode::Structures => ViewMode::Biome,
         }
     }
 }
@@ -125,8 +137,11 @@ struct Explorer {
     local_cursor_z: i16,
     /// Chunk cache for local data
     chunk_cache: ChunkCache,
-    /// Currently cached local chunk (if in local mode)
-    current_local: Option<LocalChunk>,
+    /// 3x3 grid of local chunks around the current world tile
+    /// [0][0] = NW, [1][0] = N, [2][0] = NE
+    /// [0][1] = W,  [1][1] = Center, [2][1] = E
+    /// [0][2] = SW, [1][2] = S, [2][2] = SE
+    local_chunks: [[Option<LocalChunk>; 3]; 3],
     /// Verification report to display (press Y to generate)
     verification_report: Option<String>,
 }
@@ -137,6 +152,14 @@ impl Explorer {
         let cursor_y = world.heightmap.height / 2;
         // Start at surface level at the cursor position
         let cursor_z = *world.surface_z.get(cursor_x, cursor_y);
+
+        // Create chunk cache with persistence enabled
+        // Chunks are saved to "saves/chunks/world_{seed}/" directory
+        let chunk_cache = ChunkCache::with_persistence(
+            "saves/chunks",
+            world.seed,
+            super::multiscale::DEFAULT_LOCAL_CACHE_SIZE,
+        );
 
         Explorer {
             world,
@@ -151,8 +174,12 @@ impl Explorer {
             local_cursor_x: LOCAL_SIZE / 2,
             local_cursor_y: LOCAL_SIZE / 2,
             local_cursor_z: 0,
-            chunk_cache: ChunkCache::new(),
-            current_local: None,
+            chunk_cache,
+            local_chunks: [
+                [None, None, None],
+                [None, None, None],
+                [None, None, None],
+            ],
             verification_report: None,
         }
     }
@@ -174,6 +201,61 @@ impl Explorer {
             report.chunks_verified,
             report.issues.len()
         ));
+    }
+
+    /// Load all 9 chunks in a 3x3 grid around the given world coordinates.
+    ///
+    /// Uses the chunk cache with boundary conditions to ensure seamless edges
+    /// between adjacent chunks. Chunks are generated in reading order (row by row,
+    /// left to right) so that each new chunk can use boundaries from already-generated
+    /// neighbors to the north and west.
+    fn load_local_chunks(&mut self, center_wx: usize, center_wy: usize) {
+        let width = self.world.heightmap.width;
+        let height = self.world.heightmap.height;
+
+        // Generate chunks in row-by-row order (gy outer, gx inner)
+        // This ensures north and west neighbors are generated before the current chunk
+        for gy in 0..3 {
+            for gx in 0..3 {
+                // Calculate world coordinates for this grid position
+                // gx=0 is west (-1), gx=1 is center, gx=2 is east (+1)
+                // gy=0 is north (-1), gy=1 is center, gy=2 is south (+1)
+                let rel_x = gx as i32 - 1;
+                let rel_y = gy as i32 - 1;
+
+                let wx = ((center_wx as i32 + rel_x).rem_euclid(width as i32)) as usize;
+
+                // Y doesn't wrap - check bounds
+                let wy_signed = center_wy as i32 + rel_y;
+                if wy_signed < 0 || wy_signed >= height as i32 {
+                    self.local_chunks[gx][gy] = None;
+                    continue;
+                }
+                let wy = wy_signed as usize;
+
+                // Use cache's get_or_generate_local which automatically applies
+                // boundary conditions from any cached neighbors
+                let chunk = self.chunk_cache.get_or_generate_local(&self.world, wx, wy).clone();
+                self.local_chunks[gx][gy] = Some(chunk);
+            }
+        }
+    }
+
+    /// Get the center chunk (for convenience)
+    fn center_chunk(&self) -> Option<&LocalChunk> {
+        self.local_chunks[1][1].as_ref()
+    }
+
+    /// Get a chunk from the 3x3 grid by relative position
+    /// rel_x, rel_y are in range -1..=1
+    fn get_chunk_relative(&self, rel_x: i32, rel_y: i32) -> Option<&LocalChunk> {
+        let gx = (rel_x + 1) as usize;
+        let gy = (rel_y + 1) as usize;
+        if gx < 3 && gy < 3 {
+            self.local_chunks[gx][gy].as_ref()
+        } else {
+            None
+        }
     }
 
     /// Zoom out (show more of the map)
@@ -226,12 +308,17 @@ impl Explorer {
     fn scale_zoom_in(&mut self) {
         match self.scale_mode {
             ScaleMode::World { .. } => {
-                // Generate local chunk first to get actual surface z
-                let chunk = generate_local_chunk(
-                    &self.world,
-                    self.cursor_x,
-                    self.cursor_y,
-                );
+                // Load all 9 chunks around the current world position
+                self.load_local_chunks(self.cursor_x, self.cursor_y);
+
+                // Get the center chunk for spawn calculations
+                let chunk = match self.center_chunk() {
+                    Some(c) => c,
+                    None => {
+                        self.message = Some("Failed to generate local chunk".to_string());
+                        return;
+                    }
+                };
 
                 // Use the chunk's surface_z (accounts for geology)
                 let surface_z = chunk.surface_z;
@@ -264,7 +351,6 @@ impl Explorer {
                 self.local_cursor_x = spawn_x;
                 self.local_cursor_y = spawn_y;
                 self.local_cursor_z = spawn_z;
-                self.current_local = Some(chunk);
 
                 let biome = self.world.biomes.get(self.cursor_x, self.cursor_y);
 
@@ -301,7 +387,12 @@ impl Explorer {
                 self.scale_mode = ScaleMode::World { zoom: self.zoom };
                 self.cursor_x = world_x;
                 self.cursor_y = world_y;
-                self.current_local = None;
+                // Clear the local chunks grid
+                self.local_chunks = [
+                    [None, None, None],
+                    [None, None, None],
+                    [None, None, None],
+                ];
                 self.message = Some("Returned to world view".to_string());
             }
         }
@@ -335,9 +426,9 @@ impl Explorer {
         }
     }
 
-    /// Move cursor in local scale (within embark site)
+    /// Move cursor in local scale (within the 3x3 chunk grid)
     fn move_local_cursor(&mut self, dx: i32, dy: i32) {
-        // Handle movement within local chunk or across world tiles
+        // Handle movement within the center chunk first
         let new_x = self.local_cursor_x as i32 + dx;
         let new_y = self.local_cursor_y as i32 + dy;
 
@@ -356,43 +447,41 @@ impl Explorer {
 
         let width = self.world.heightmap.width;
         let height = self.world.heightmap.height;
-        let mut need_regenerate = false;
+        let mut need_shift = false;
 
         if new_x < 0 {
             wx = ((wx as i32 - 1).rem_euclid(width as i32)) as usize;
             self.local_cursor_x = LOCAL_SIZE - 1;
-            need_regenerate = true;
+            need_shift = true;
         } else if new_x >= LOCAL_SIZE as i32 {
             wx = (wx + 1) % width;
             self.local_cursor_x = 0;
-            need_regenerate = true;
+            need_shift = true;
         }
 
         if new_y < 0 && wy > 0 {
             wy -= 1;
             self.local_cursor_y = LOCAL_SIZE - 1;
-            need_regenerate = true;
+            need_shift = true;
         } else if new_y >= LOCAL_SIZE as i32 && wy < height - 1 {
             wy += 1;
             self.local_cursor_y = 0;
-            need_regenerate = true;
+            need_shift = true;
         }
 
-        // Regenerate local chunk for new world tile
-        if need_regenerate {
+        // Shift the 3x3 chunk grid to the new center
+        if need_shift {
             // Update the world cursor to match the new world tile position
             self.cursor_x = wx;
             self.cursor_y = wy;
 
-            self.current_local = Some(generate_local_chunk(
-                &self.world,
-                wx,
-                wy,
-            ));
+            // Reload all 9 chunks around the new center
+            self.load_local_chunks(wx, wy);
 
-            // Update local z to new tile's surface
-            let new_surface_z = if let Some(ref local) = self.current_local {
-                local.surface_z
+            // Preserve current z-level when crossing boundaries, clamped to valid range
+            let preserved_z = if let Some(ref local) = self.center_chunk() {
+                // Clamp to the new chunk's valid z-range
+                current_z.clamp(local.z_min, local.z_max)
             } else {
                 current_z
             };
@@ -400,12 +489,12 @@ impl Explorer {
             self.scale_mode = ScaleMode::Local {
                 world_x: wx,
                 world_y: wy,
-                current_z: new_surface_z,
+                current_z: preserved_z,
             };
-            self.local_cursor_z = new_surface_z;
+            self.local_cursor_z = preserved_z;
 
             let biome = self.world.biomes.get(wx, wy);
-            self.message = Some(format!("Entered world tile ({}, {}) - {:?}", wx, wy, biome));
+            self.message = Some(format!("Entered world tile ({}, {}) at z={} - {:?}", wx, wy, preserved_z, biome));
         }
     }
 
@@ -512,7 +601,7 @@ impl Explorer {
             }
             ScaleMode::Local { world_x, world_y, current_z } => {
                 let biome = self.world.biomes.get(world_x, world_y);
-                let surface_z = if let Some(ref local) = self.current_local {
+                let surface_z = if let Some(ref local) = self.center_chunk() {
                     local.surface_z
                 } else {
                     current_z
@@ -538,7 +627,7 @@ impl Explorer {
         match self.scale_mode {
             ScaleMode::World { .. } => self.tile_info(),
             ScaleMode::Local { .. } => {
-                if let Some(ref local) = self.current_local {
+                if let Some(ref local) = self.center_chunk() {
                     let tile = local.get(self.local_cursor_x, self.local_cursor_y, self.local_cursor_z);
                     let terrain = format!("{:?}", tile.terrain);
                     let feature = match tile.feature {
@@ -619,29 +708,36 @@ impl Explorer {
         }
     }
 
-    /// Render local-scale map
+    /// Render local-scale map from the 3x3 chunk grid
     fn render_local_map(&self, area: Rect, buf: &mut Buffer) {
-        let local = match &self.current_local {
-            Some(l) => l,
-            None => return,
-        };
+        // Check if we have the center chunk
+        if self.center_chunk().is_none() {
+            return;
+        }
 
         let view_width = area.width as usize;
         let view_height = area.height as usize;
 
         // Aspect ratio correction: terminal chars are ~2x taller than wide
         // Show 2 horizontal screen chars per map tile to make it look square
-        // This fills a widescreen terminal better
         let map_view_width = view_width / 2;
 
-        // Center on local cursor
-        let start_x = if self.local_cursor_x >= map_view_width / 2 {
-            self.local_cursor_x - map_view_width / 2
+        // Virtual coordinate space is 3*LOCAL_SIZE x 3*LOCAL_SIZE (144x144)
+        // The cursor is in the CENTER chunk, so its virtual position is:
+        // virtual_cursor_x = LOCAL_SIZE + local_cursor_x
+        // virtual_cursor_y = LOCAL_SIZE + local_cursor_y
+        let virtual_cursor_x = LOCAL_SIZE + self.local_cursor_x;
+        let virtual_cursor_y = LOCAL_SIZE + self.local_cursor_y;
+        let virtual_size = LOCAL_SIZE * 3;
+
+        // Center view on cursor in virtual space
+        let start_vx = if virtual_cursor_x >= map_view_width / 2 {
+            (virtual_cursor_x - map_view_width / 2).min(virtual_size.saturating_sub(map_view_width))
         } else {
             0
         };
-        let start_y = if self.local_cursor_y >= view_height / 2 {
-            self.local_cursor_y - view_height / 2
+        let start_vy = if virtual_cursor_y >= view_height / 2 {
+            (virtual_cursor_y - view_height / 2).min(virtual_size.saturating_sub(view_height))
         } else {
             0
         };
@@ -651,8 +747,8 @@ impl Explorer {
         for dy in 0..view_height {
             for dx in 0..view_width {
                 // Map 2 horizontal screen chars to 1 map tile for aspect ratio correction
-                let lx = start_x + dx / 2;
-                let ly = start_y + dy;
+                let vx = start_vx + dx / 2;
+                let vy = start_vy + dy;
 
                 let screen_x = area.x + dx as u16;
                 let screen_y = area.y + dy as u16;
@@ -661,16 +757,111 @@ impl Explorer {
                     continue;
                 }
 
-                if lx >= LOCAL_SIZE || ly >= LOCAL_SIZE {
+                // Check bounds of virtual space
+                if vx >= virtual_size || vy >= virtual_size {
                     buf.get_mut(screen_x, screen_y).set_char(' ').set_style(Style::default().bg(Color::Black));
                     continue;
                 }
 
-                let tile = local.get(lx, ly, z);
-                let (ch, fg, bg) = self.get_local_tile_display(tile);
+                // Determine which chunk this virtual coordinate belongs to
+                // gx, gy = 0, 1, 2 for the 3x3 grid
+                let gx = vx / LOCAL_SIZE;
+                let gy = vy / LOCAL_SIZE;
+                // Local coordinate within the chunk
+                let lx = vx % LOCAL_SIZE;
+                let ly = vy % LOCAL_SIZE;
 
-                // Highlight cursor
-                let is_cursor = lx == self.local_cursor_x && ly == self.local_cursor_y;
+                // Get the chunk
+                let chunk = if gx < 3 && gy < 3 {
+                    self.local_chunks[gx][gy].as_ref()
+                } else {
+                    None
+                };
+
+                let (ch, fg, bg) = if let Some(chunk) = chunk {
+                    // Check z-level is within chunk bounds
+                    if z < chunk.z_min || z > chunk.z_max {
+                        // Z-level outside chunk range - show as void
+                        (' ', Color::Black, Color::Rgb(5, 5, 8))
+                    } else {
+                    let tile = chunk.get(lx, ly, z);
+
+                    // Check if there's solid rock above (we're underground)
+                    let tile_above = if z + 1 <= chunk.z_max {
+                        Some(chunk.get(lx, ly, z + 1))
+                    } else {
+                        None
+                    };
+                    let solid_above = tile_above.map(|t| t.terrain.is_solid()).unwrap_or(false);
+
+                    // DF-style visibility rules apply to all z-levels
+                    if tile.terrain == LocalTerrain::Air {
+                        if solid_above {
+                            // Underground enclosed space - show black
+                            (' ', Color::Black, Color::Rgb(5, 5, 8))
+                        } else {
+                            // Open air - look down to find the actual surface
+                            let mut found_surface = false;
+                            let mut surface_z = z;
+                            for check_z in (chunk.z_min..z).rev() {
+                                let below = chunk.get(lx, ly, check_z);
+                                if below.terrain != LocalTerrain::Air {
+                                    found_surface = true;
+                                    surface_z = check_z;
+                                    break;
+                                }
+                            }
+
+                            if found_surface {
+                                // Show dimmed surface below
+                                let surface_tile = chunk.get(lx, ly, surface_z);
+                                let (ch, fg, bg) = self.get_local_tile_display(surface_tile);
+                                // Dim based on distance below current z
+                                let depth = (z - surface_z).min(5) as f32;
+                                let dim_factor = (1.0 - depth * 0.12).max(0.3);
+                                let fg = Self::dim_color(fg, dim_factor);
+                                let bg = Self::dim_color(bg, dim_factor);
+                                (ch, fg, bg)
+                            } else {
+                                // No surface below - show black (void/sky)
+                                (' ', Color::Black, Color::Black)
+                            }
+                        }
+                    } else if tile.terrain.is_water() {
+                        // Water is always visible
+                        self.get_local_tile_display(tile)
+                    } else {
+                        // All other terrain (solid underground OR surface terrain like Grass/Sand)
+                        // Apply edge detection - only show edges, hide interior
+                        let has_feature = tile.feature != LocalFeature::None;
+                        let is_edge = self.is_horizontal_edge(chunk, lx, ly, z);
+
+                        if has_feature {
+                            // Has important feature (ramp, stairs, etc.) - always visible
+                            self.get_local_tile_display(tile)
+                        } else if is_edge {
+                            // Edge tile (cliff face) - show with wall character for solid,
+                            // or normal display for surface terrain at edges
+                            if tile.terrain.is_solid() {
+                                let (_, _, bg) = self.get_local_tile_display(tile);
+                                ('▓', Self::brighten_color(bg, 1.3), Self::dim_color(bg, 0.5))
+                            } else {
+                                // Surface terrain edge - show normally
+                                self.get_local_tile_display(tile)
+                            }
+                        } else {
+                            // Interior - hidden, show black
+                            (' ', Color::Black, Color::Rgb(8, 8, 10))
+                        }
+                    }
+                    } // close z-bounds check
+                } else {
+                    // No chunk here (e.g., at map edge)
+                    ('?', Color::DarkGray, Color::Black)
+                };
+
+                // Highlight cursor (virtual_cursor_x, virtual_cursor_y in virtual space)
+                let is_cursor = vx == virtual_cursor_x && vy == virtual_cursor_y;
                 let style = if is_cursor {
                     Style::default().fg(Color::Black).bg(Color::Yellow)
                 } else {
@@ -760,10 +951,12 @@ impl Explorer {
                 return ('O', Color::Rgb(130, 125, 120), Color::Rgb(40, 38, 36));
             }
             LocalFeature::RampUp => {
-                return ('/', Color::Rgb(150, 145, 140), Color::Rgb(45, 43, 41));
+                // Bright cyan for visibility - indicates you can go UP
+                return ('▲', Color::Rgb(100, 220, 200), Color::Rgb(25, 55, 50));
             }
             LocalFeature::RampDown => {
-                return ('\\', Color::Rgb(150, 145, 140), Color::Rgb(45, 43, 41));
+                // Orange/yellow for visibility - indicates you can go DOWN
+                return ('▼', Color::Rgb(220, 180, 100), Color::Rgb(55, 45, 25));
             }
             LocalFeature::Stalagmite => {
                 return ('▲', Color::Rgb(100, 95, 90), Color::Rgb(30, 28, 26));
@@ -795,11 +988,11 @@ impl Explorer {
             LocalTerrain::Cobblestone => (',', Color::Rgb(130, 125, 120), Color::Rgb(35, 33, 31)),
             LocalTerrain::Grass => (',', Color::Rgb(80, 150, 60), Color::Rgb(20, 40, 15)),
             LocalTerrain::Sand => ('.', Color::Rgb(220, 200, 140), Color::Rgb(60, 55, 35)),
-            LocalTerrain::StoneWall => ('#', Color::Rgb(120, 115, 110), Color::Rgb(40, 38, 36)),
-            LocalTerrain::BrickWall => ('#', Color::Rgb(160, 100, 80), Color::Rgb(50, 30, 25)),
-            LocalTerrain::WoodWall => ('#', Color::Rgb(140, 100, 60), Color::Rgb(40, 25, 15)),
+            LocalTerrain::StoneWall => ('▓', Color::Rgb(120, 115, 110), Color::Rgb(40, 38, 36)),
+            LocalTerrain::BrickWall => ('▒', Color::Rgb(160, 100, 80), Color::Rgb(50, 30, 25)),
+            LocalTerrain::WoodWall => ('▒', Color::Rgb(140, 100, 60), Color::Rgb(40, 25, 15)),
             LocalTerrain::CaveFloor => ('.', Color::Rgb(60, 55, 50), Color::Rgb(15, 15, 20)),
-            LocalTerrain::CaveWall => ('#', Color::Rgb(80, 70, 60), Color::Rgb(20, 18, 15)),
+            LocalTerrain::CaveWall => ('▓', Color::Rgb(80, 70, 60), Color::Rgb(20, 18, 15)),
             LocalTerrain::ShallowWater => ('~', Color::Rgb(100, 150, 255), Color::Rgb(20, 40, 80)),
             LocalTerrain::DeepWater => ('≈', Color::Rgb(50, 100, 200), Color::Rgb(10, 25, 50)),
             LocalTerrain::Lava => ('~', Color::Rgb(255, 150, 50), Color::Rgb(150, 50, 0)),
@@ -807,13 +1000,229 @@ impl Explorer {
             LocalTerrain::Gravel => (':', Color::Rgb(140, 130, 120), Color::Rgb(40, 35, 30)),
             LocalTerrain::Mud => ('~', Color::Rgb(100, 80, 50), Color::Rgb(30, 25, 15)),
             LocalTerrain::DenseVegetation => ('♣', Color::Rgb(40, 120, 40), Color::Rgb(10, 35, 10)),
-            LocalTerrain::Soil { .. } => ('.', Color::Rgb(110, 90, 60), Color::Rgb(30, 25, 18)),
-            LocalTerrain::Stone { .. } => ('#', Color::Rgb(110, 105, 100), Color::Rgb(35, 33, 31)),
+            LocalTerrain::Soil { .. } => ('▒', Color::Rgb(110, 90, 60), Color::Rgb(30, 25, 18)),
+            LocalTerrain::Stone { .. } => ('▓', Color::Rgb(110, 105, 100), Color::Rgb(35, 33, 31)),
             LocalTerrain::Snow => ('.', Color::Rgb(240, 245, 255), Color::Rgb(180, 185, 195)),
             LocalTerrain::FlowingWater => ('~', Color::Rgb(80, 130, 230), Color::Rgb(15, 35, 70)),
             LocalTerrain::Magma => ('≈', Color::Rgb(255, 150, 50), Color::Rgb(180, 60, 0)),
             LocalTerrain::ConstructedFloor { .. } => ('.', Color::Rgb(160, 155, 150), Color::Rgb(50, 48, 46)),
-            LocalTerrain::ConstructedWall { .. } => ('#', Color::Rgb(170, 165, 160), Color::Rgb(55, 53, 51)),
+            LocalTerrain::ConstructedWall { .. } => ('▒', Color::Rgb(170, 165, 160), Color::Rgb(55, 53, 51)),
+        }
+    }
+
+    /// Dim a color by a factor (0.0 = black, 1.0 = unchanged)
+    fn dim_color(color: Color, factor: f32) -> Color {
+        match color {
+            Color::Rgb(r, g, b) => {
+                let r = (r as f32 * factor) as u8;
+                let g = (g as f32 * factor) as u8;
+                let b = (b as f32 * factor) as u8;
+                Color::Rgb(r, g, b)
+            }
+            _ => color,
+        }
+    }
+
+    /// Check if a tile is at an edge (horizontally adjacent to air at same z-level)
+    /// This is used for DF-style visibility - only edge tiles of elevated terrain are visible
+    fn is_horizontal_edge(&self, chunk: &LocalChunk, x: usize, y: usize, z: i16) -> bool {
+        // Only check 4 cardinal directions at the SAME z-level
+        // This detects cliff edges without considering air above/below
+        let directions: [(i32, i32); 4] = [
+            (0, -1), (0, 1), (-1, 0), (1, 0),  // N, S, W, E
+        ];
+
+        for (dx, dy) in directions {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+
+            // Check bounds - only check within chunk, ignore boundaries
+            // (chunk boundaries are NOT automatically edges)
+            if nx >= 0 && nx < LOCAL_SIZE as i32 && ny >= 0 && ny < LOCAL_SIZE as i32 {
+                // Check z bounds before accessing
+                if z >= chunk.z_min && z <= chunk.z_max {
+                    let tile = chunk.get(nx as usize, ny as usize, z);
+                    // Air at same z-level means this is an edge (cliff face)
+                    if tile.terrain == LocalTerrain::Air {
+                        return true;
+                    }
+                }
+            }
+            // Don't treat chunk boundaries as edges - that creates visual artifacts
+        }
+        false
+    }
+
+    /// Check if a tile has adjacent air in 3D (for underground cave visibility)
+    fn has_adjacent_air_3d(&self, chunk: &LocalChunk, x: usize, y: usize, z: i16) -> bool {
+        let directions: [(i32, i32, i32); 6] = [
+            (0, -1, 0), (0, 1, 0), (-1, 0, 0), (1, 0, 0),  // N, S, W, E
+            (0, 0, -1), (0, 0, 1),  // Down, Up
+        ];
+
+        for (dx, dy, dz) in directions {
+            let nx = x as i32 + dx;
+            let ny = y as i32 + dy;
+            let nz = z as i32 + dz;
+
+            if nx >= 0 && nx < LOCAL_SIZE as i32
+                && ny >= 0 && ny < LOCAL_SIZE as i32
+                && nz >= chunk.z_min as i32 && nz <= chunk.z_max as i32
+            {
+                let tile = chunk.get(nx as usize, ny as usize, nz as i16);
+                if tile.terrain == LocalTerrain::Air || tile.terrain.is_passable() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Brighten a color by a factor (1.0 = unchanged, >1.0 = brighter)
+    fn brighten_color(color: Color, factor: f32) -> Color {
+        match color {
+            Color::Rgb(r, g, b) => {
+                let r = ((r as f32 * factor).min(255.0)) as u8;
+                let g = ((g as f32 * factor).min(255.0)) as u8;
+                let b = ((b as f32 * factor).min(255.0)) as u8;
+                Color::Rgb(r, g, b)
+            }
+            _ => color,
+        }
+    }
+
+    /// Blend two colors together (factor 0.0 = color1, 1.0 = color2)
+    fn blend_color(color1: Color, color2: Color, factor: f32) -> Color {
+        match (color1, color2) {
+            (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) => {
+                let r = (r1 as f32 * (1.0 - factor) + r2 as f32 * factor) as u8;
+                let g = (g1 as f32 * (1.0 - factor) + g2 as f32 * factor) as u8;
+                let b = (b1 as f32 * (1.0 - factor) + b2 as f32 * factor) as u8;
+                Color::Rgb(r, g, b)
+            }
+            _ => color1,
+        }
+    }
+
+    /// Check if tile at virtual coords is passable ground at this z-level
+    fn is_passable_ground_at(
+        chunks: &[[Option<LocalChunk>; 3]; 3],
+        vx: usize,
+        vy: usize,
+        z: i16,
+        virtual_size: usize,
+    ) -> bool {
+        if vx >= virtual_size || vy >= virtual_size {
+            return false;
+        }
+        let gx = vx / LOCAL_SIZE;
+        let gy = vy / LOCAL_SIZE;
+        if gx >= 3 || gy >= 3 {
+            return false;
+        }
+        let lx = vx % LOCAL_SIZE;
+        let ly = vy % LOCAL_SIZE;
+
+        if let Some(chunk) = &chunks[gx][gy] {
+            let tile = chunk.get(lx, ly, z);
+            // Check if this is walkable ground (not air, not solid wall)
+            tile.terrain.is_passable() && tile.terrain != LocalTerrain::Air
+        } else {
+            false
+        }
+    }
+
+    /// Check if tile at virtual coords is a "drop" (Air with ground below)
+    fn is_drop_at(
+        chunks: &[[Option<LocalChunk>; 3]; 3],
+        vx: usize,
+        vy: usize,
+        z: i16,
+        virtual_size: usize,
+    ) -> bool {
+        if vx >= virtual_size || vy >= virtual_size {
+            return false;
+        }
+        let gx = vx / LOCAL_SIZE;
+        let gy = vy / LOCAL_SIZE;
+        if gx >= 3 || gy >= 3 {
+            return false;
+        }
+        let lx = vx % LOCAL_SIZE;
+        let ly = vy % LOCAL_SIZE;
+
+        if let Some(chunk) = &chunks[gx][gy] {
+            let tile = chunk.get(lx, ly, z);
+            // Air at current level
+            if tile.terrain == LocalTerrain::Air && tile.feature == LocalFeature::None {
+                // Check if there's ground below
+                let tile_below = chunk.get(lx, ly, z - 1);
+                tile_below.terrain != LocalTerrain::Air
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Check if this tile is at an edge (borders a drop or wall)
+    fn check_edge_at(
+        &self,
+        chunks: &[[Option<LocalChunk>; 3]; 3],
+        vx: usize,
+        vy: usize,
+        z: i16,
+        virtual_size: usize,
+    ) -> bool {
+        // Only check edges for passable ground tiles
+        if !Self::is_passable_ground_at(chunks, vx, vy, z, virtual_size) {
+            return false;
+        }
+
+        // Check 4 neighbors for drops
+        let neighbors = [
+            (vx.wrapping_sub(1), vy),  // West
+            (vx + 1, vy),              // East
+            (vx, vy.wrapping_sub(1)),  // North
+            (vx, vy + 1),              // South
+        ];
+
+        for (nx, ny) in neighbors {
+            if Self::is_drop_at(chunks, nx, ny, z, virtual_size) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get edge character based on which neighbors are drops
+    fn get_edge_char(
+        &self,
+        chunks: &[[Option<LocalChunk>; 3]; 3],
+        vx: usize,
+        vy: usize,
+        z: i16,
+        virtual_size: usize,
+    ) -> Option<char> {
+        let west_drop = Self::is_drop_at(chunks, vx.wrapping_sub(1), vy, z, virtual_size);
+        let east_drop = Self::is_drop_at(chunks, vx + 1, vy, z, virtual_size);
+        let north_drop = Self::is_drop_at(chunks, vx, vy.wrapping_sub(1), z, virtual_size);
+        let south_drop = Self::is_drop_at(chunks, vx, vy + 1, z, virtual_size);
+
+        // Return edge character based on drop configuration
+        match (north_drop, south_drop, west_drop, east_drop) {
+            (true, false, false, false) => Some('▀'),  // Drop to north - top edge
+            (false, true, false, false) => Some('▄'),  // Drop to south - bottom edge
+            (false, false, true, false) => Some('▌'),  // Drop to west - left edge
+            (false, false, false, true) => Some('▐'),  // Drop to east - right edge
+            (true, true, false, false) => Some('─'),   // Drops north and south
+            (false, false, true, true) => Some('│'),   // Drops west and east
+            (true, false, true, false) => Some('▛'),   // Corner NW
+            (true, false, false, true) => Some('▜'),   // Corner NE
+            (false, true, true, false) => Some('▙'),   // Corner SW
+            (false, true, false, true) => Some('▟'),   // Corner SE
+            _ => None, // Multiple edges or no specific pattern
         }
     }
 
@@ -1374,6 +1783,153 @@ impl Explorer {
                     }
                 }
             }
+            // New view modes for procedural generation systems (Phase 1-4)
+            ViewMode::Rivers => {
+                // Show rivers with Bezier paths highlighted
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => {
+                        // Check if this is part of a river network
+                        if let Some(ref river_network) = self.world.river_network {
+                            let width = river_network.get_width_at(x as f32, y as f32, 2.0);
+                            if width > 0.0 {
+                                // River - bright blue with width indication
+                                let intensity = (width * 30.0).min(255.0) as u8;
+                                ('~', Color::Rgb(50, intensity, 255), Color::Rgb(0, 20, intensity / 2))
+                            } else {
+                                ('~', Color::Rgb(50, 100, 200), Color::Reset)
+                            }
+                        } else {
+                            ('~', Color::Rgb(50, 100, 200), Color::Reset)
+                        }
+                    }
+                    ZTile::Surface => {
+                        // Check for rivers on land
+                        if let Some(ref river_network) = self.world.river_network {
+                            let width = river_network.get_width_at(x as f32, y as f32, 1.0);
+                            if width > 0.0 {
+                                // River on land - cyan
+                                ('≈', Color::Rgb(0, 200, 255), Color::Reset)
+                            } else {
+                                let (r, g, b) = height_color(height);
+                                ('.', Color::Rgb(r, g, b), Color::Reset)
+                            }
+                        } else {
+                            let (r, g, b) = height_color(height);
+                            ('.', Color::Rgb(r, g, b), Color::Reset)
+                        }
+                    }
+                    _ => {
+                        let ch = cave_tile_char(ztile);
+                        (ch, Color::Rgb(60, 60, 60), Color::Reset)
+                    }
+                }
+            }
+            ViewMode::BiomeBlend => {
+                // Show biome feathering depth as color gradient
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    ZTile::Surface | ZTile::Solid => {
+                        // Calculate edge blend factor (simplified - use distance from neighbors)
+                        let biome = *self.world.biomes.get(x, y);
+                        let mut is_edge = false;
+
+                        // Check if any neighbor has different biome
+                        for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                            let nx = (x as i32 + dx).rem_euclid(self.world.width as i32) as usize;
+                            let ny = (y as i32 + dy).clamp(0, self.world.height as i32 - 1) as usize;
+                            if *self.world.biomes.get(nx, ny) != biome {
+                                is_edge = true;
+                                break;
+                            }
+                        }
+
+                        if is_edge {
+                            // Edge tiles - orange
+                            ('*', Color::Rgb(255, 165, 0), Color::Reset)
+                        } else {
+                            // Interior - green gradient based on base biome
+                            let (r, g, b) = biome.color();
+                            ('.', Color::Rgb(r, g, b), Color::Reset)
+                        }
+                    }
+                    _ => {
+                        let ch = cave_tile_char(ztile);
+                        (ch, Color::Rgb(40, 40, 40), Color::Reset)
+                    }
+                }
+            }
+            ViewMode::Coastline => {
+                // Show coastline with jitter visualization
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => {
+                        // Check if this is coastal water
+                        let is_coastal = self.world.heightmap.neighbors_8(x, y).into_iter().any(|(nx, ny)| {
+                            *self.world.heightmap.get(nx, ny) >= 0.0
+                        });
+
+                        if is_coastal {
+                            // Coastal water - cyan
+                            ('≈', Color::Rgb(0, 200, 200), Color::Rgb(0, 50, 50))
+                        } else {
+                            ('~', Color::Rgb(50, 100, 200), Color::Reset)
+                        }
+                    }
+                    ZTile::Surface => {
+                        // Check if this is coastal land
+                        let h = *self.world.heightmap.get(x, y);
+                        let is_coastal = self.world.heightmap.neighbors_8(x, y).into_iter().any(|(nx, ny)| {
+                            *self.world.heightmap.get(nx, ny) < 0.0
+                        });
+
+                        if is_coastal {
+                            // Coastal land - yellow
+                            ('▓', Color::Rgb(255, 255, 100), Color::Reset)
+                        } else if h < 50.0 {
+                            // Near coast - orange
+                            ('.', Color::Rgb(200, 150, 100), Color::Reset)
+                        } else {
+                            let (r, g, b) = height_color(h);
+                            ('.', Color::Rgb(r, g, b), Color::Reset)
+                        }
+                    }
+                    _ => {
+                        let ch = cave_tile_char(ztile);
+                        (ch, Color::Rgb(40, 40, 40), Color::Reset)
+                    }
+                }
+            }
+            ViewMode::Structures => {
+                // Show structure locations and join points
+                match ztile {
+                    ZTile::Air => (' ', Color::Black, Color::Black),
+                    ZTile::Water => ('~', Color::Rgb(50, 100, 200), Color::Reset),
+                    _ => {
+                        // Check if there's a structure at this location
+                        if let Some(ref history) = self.world.history {
+                            let info = history.tile_info(x, y);
+                            if info.settlement.is_some() {
+                                // Settlement structure - bright purple
+                                ('◆', Color::Rgb(200, 100, 255), Color::Reset)
+                            } else if info.lair.is_some() {
+                                // Lair structure - red
+                                ('◆', Color::Rgb(255, 50, 50), Color::Reset)
+                            } else if info.trade_route {
+                                // Road/path connection - orange line
+                                ('═', Color::Rgb(255, 165, 0), Color::Reset)
+                            } else {
+                                let (r, g, b) = height_color(height);
+                                ('.', Color::Rgb(r, g, b), Color::Reset)
+                            }
+                        } else {
+                            let (r, g, b) = height_color(height);
+                            ('.', Color::Rgb(r, g, b), Color::Reset)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1774,6 +2330,32 @@ pub fn export_map_image(
                     // History view (use gray for export)
                     (60, 60, 60)
                 }
+                ViewMode::Rivers => {
+                    // Rivers view - blue for water, cyan for rivers
+                    if h < 0.0 {
+                        (50, 100, 200)
+                    } else {
+                        height_color(h)
+                    }
+                }
+                ViewMode::BiomeBlend => {
+                    // Biome blend view - use biome colors
+                    biome.color()
+                }
+                ViewMode::Coastline => {
+                    // Coastline view - yellow for coast, blue for water
+                    if h < 0.0 {
+                        if h > -50.0 { (0, 200, 200) } else { (50, 100, 200) }
+                    } else if h < 50.0 {
+                        (255, 255, 100)
+                    } else {
+                        height_color(h)
+                    }
+                }
+                ViewMode::Structures => {
+                    // Structures view - use height color as base
+                    height_color(h)
+                }
             };
 
             img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
@@ -2025,9 +2607,14 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
             let zoom_str = if explorer.zoom > 1 { format!(" | Zoom:{}x", explorer.zoom) } else { String::new() };
             let msg_str = explorer.message.as_ref().map(|m| format!(" | {}", m)).unwrap_or_default();
             let scale_str = explorer.scale_status();
+            let world_pos = match explorer.scale_mode {
+                ScaleMode::World { .. } => format!("({},{})", explorer.cursor_x, explorer.cursor_y),
+                ScaleMode::Local { world_x, world_y, .. } => format!("({},{})", world_x, world_y),
+            };
             let status = format!(
-                " {} | {} | {}{} | {}{} | Z/X Scale | Q Quit",
+                " {} | W:{} | {} | {}{} | {}{} | Z/X Scale | Q Quit",
                 scale_str,
+                world_pos,
                 explorer.view_mode.name(),
                 explorer.scale_tile_info(),
                 zoom_str,

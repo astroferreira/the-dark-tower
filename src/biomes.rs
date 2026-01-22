@@ -8,7 +8,7 @@ use crate::climate::Biome;
 use crate::tilemap::Tilemap;
 
 /// Extended biome enum with fantasy variants
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ExtendedBiome {
     // Base biomes (from climate.rs)
     DeepOcean,

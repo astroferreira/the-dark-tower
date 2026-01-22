@@ -10,7 +10,7 @@ use crate::biomes::ExtendedBiome;
 use crate::erosion::rivers::{compute_flow_direction, compute_flow_accumulation};
 
 /// Type of water body
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum WaterBodyType {
     #[default]
     None,   // Land tile

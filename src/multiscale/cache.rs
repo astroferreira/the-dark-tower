@@ -1,11 +1,15 @@
 //! LRU chunk cache for efficient memory management of local chunks.
 //!
 //! Provides caching for local chunks (embark sites) with configurable memory budgets.
+//! Supports optional disk persistence to ensure generated chunks remain consistent.
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::path::Path;
 
-use super::local::LocalChunk;
+use crate::world::WorldData;
+use super::local::{LocalChunk, BoundaryConditions, ChunkEdge, EdgeDirection, generate_local_chunk_with_boundaries};
+use super::storage::ChunkStorage;
 use super::DEFAULT_LOCAL_CACHE_SIZE;
 
 /// Cache statistics for monitoring
@@ -129,28 +133,75 @@ impl LocalCache {
 ///
 /// Provides LRU eviction to stay within memory budget.
 /// Each world tile can have one cached local chunk.
+/// Optionally persists chunks to disk for consistency across sessions.
 pub struct ChunkCache {
     /// Local chunk cache
     local: LocalCache,
     /// Statistics
     stats: CacheStats,
+    /// Optional disk storage for persistence
+    storage: Option<ChunkStorage>,
+    /// Number of chunks loaded from disk
+    disk_loads: usize,
+    /// Number of chunks saved to disk
+    disk_saves: usize,
 }
 
 impl ChunkCache {
-    /// Create a new chunk cache with default size
+    /// Create a new chunk cache with default size (no persistence)
     pub fn new() -> Self {
         Self {
             local: LocalCache::new(DEFAULT_LOCAL_CACHE_SIZE),
             stats: CacheStats::default(),
+            storage: None,
+            disk_loads: 0,
+            disk_saves: 0,
         }
     }
 
-    /// Create a new chunk cache with custom size
+    /// Create a new chunk cache with custom size (no persistence)
     pub fn with_size(local_max: usize) -> Self {
         Self {
             local: LocalCache::new(local_max),
             stats: CacheStats::default(),
+            storage: None,
+            disk_loads: 0,
+            disk_saves: 0,
         }
+    }
+
+    /// Create a new chunk cache with disk persistence enabled.
+    ///
+    /// Chunks will be saved to disk when generated and loaded from disk
+    /// when requested, ensuring consistency across sessions.
+    pub fn with_persistence<P: AsRef<Path>>(base_dir: P, world_seed: u64, local_max: usize) -> Self {
+        Self {
+            local: LocalCache::new(local_max),
+            stats: CacheStats::default(),
+            storage: Some(ChunkStorage::new(base_dir, world_seed)),
+            disk_loads: 0,
+            disk_saves: 0,
+        }
+    }
+
+    /// Enable disk persistence for this cache.
+    pub fn enable_persistence<P: AsRef<Path>>(&mut self, base_dir: P, world_seed: u64) {
+        self.storage = Some(ChunkStorage::new(base_dir, world_seed));
+    }
+
+    /// Check if persistence is enabled
+    pub fn has_persistence(&self) -> bool {
+        self.storage.is_some()
+    }
+
+    /// Get disk load count
+    pub fn disk_loads(&self) -> usize {
+        self.disk_loads
+    }
+
+    /// Get disk save count
+    pub fn disk_saves(&self) -> usize {
+        self.disk_saves
     }
 
     /// Get a local chunk from cache
@@ -212,6 +263,302 @@ impl ChunkCache {
     pub fn warm_local(&mut self, _center_x: usize, _center_y: usize, _radius: usize) {
         // This is just a hint - actual chunks are generated on demand
         // Could be used to trigger background generation in future
+    }
+
+    /// Extract boundary conditions from already-cached neighboring chunks.
+    ///
+    /// For a chunk at (world_x, world_y), this extracts edges from:
+    /// - North neighbor (world_x, world_y - 1): their south edge becomes our north boundary
+    /// - South neighbor (world_x, world_y + 1): their north edge becomes our south boundary
+    /// - West neighbor (world_x - 1, world_y): their east edge becomes our west boundary
+    /// - East neighbor (world_x + 1, world_y): their west edge becomes our east boundary
+    pub fn get_boundary_conditions(&self, world_x: usize, world_y: usize) -> BoundaryConditions {
+        let mut boundaries = BoundaryConditions::new();
+
+        // North neighbor (y - 1) provides our north edge from their south edge
+        if world_y > 0 {
+            if let Some(north_chunk) = self.local.chunks.get(&(world_x, world_y - 1)) {
+                boundaries.north = Some(north_chunk.extract_edge(EdgeDirection::South));
+            }
+        }
+
+        // South neighbor (y + 1) provides our south edge from their north edge
+        if let Some(south_chunk) = self.local.chunks.get(&(world_x, world_y + 1)) {
+            boundaries.south = Some(south_chunk.extract_edge(EdgeDirection::North));
+        }
+
+        // West neighbor (x - 1) provides our west edge from their east edge
+        if world_x > 0 {
+            if let Some(west_chunk) = self.local.chunks.get(&(world_x - 1, world_y)) {
+                boundaries.west = Some(west_chunk.extract_edge(EdgeDirection::East));
+            }
+        }
+
+        // East neighbor (x + 1) provides our east edge from their west edge
+        if let Some(east_chunk) = self.local.chunks.get(&(world_x + 1, world_y)) {
+            boundaries.east = Some(east_chunk.extract_edge(EdgeDirection::West));
+        }
+
+        boundaries
+    }
+
+    /// Get or generate a local chunk, using boundary conditions from cached neighbors.
+    ///
+    /// This is the preferred way to get chunks when seamless boundaries are required.
+    /// It automatically:
+    /// 1. Checks the memory cache
+    /// 2. Checks disk storage (if persistence is enabled)
+    /// 3. Generates with boundary conditions from neighbors
+    /// 4. Saves to disk (if persistence is enabled)
+    pub fn get_or_generate_local(
+        &mut self,
+        world: &WorldData,
+        world_x: usize,
+        world_y: usize,
+    ) -> &LocalChunk {
+        let key = (world_x, world_y);
+
+        // Check memory cache first
+        if self.local.contains(&key) {
+            self.stats.hits += 1;
+            return self.local.chunks.get(&key).unwrap();
+        }
+
+        // Check disk storage if enabled
+        if let Some(ref storage) = self.storage {
+            if let Ok(Some(chunk)) = storage.load_chunk(world_x, world_y) {
+                // Found on disk - insert into memory cache
+                if self.local.insert(key, chunk).is_some() {
+                    self.stats.evictions += 1;
+                }
+                self.disk_loads += 1;
+                self.stats.hits += 1; // Count as hit since it existed
+                self.update_stats();
+                return self.local.chunks.get(&key).unwrap();
+            }
+        }
+
+        // Not in cache or on disk - need to generate
+        // First, try to load neighbors from disk for boundary conditions
+        self.ensure_neighbors_loaded(world, world_x, world_y);
+
+        // Get boundary conditions from cached neighbors (now including disk-loaded ones)
+        let boundaries = self.get_boundary_conditions(world_x, world_y);
+
+        // Generate the chunk with boundary conditions
+        let chunk = generate_local_chunk_with_boundaries(world, world_x, world_y, &boundaries);
+
+        // Save to disk if persistence is enabled
+        if let Some(ref storage) = self.storage {
+            if let Err(e) = storage.save_chunk(&chunk) {
+                eprintln!("Warning: Failed to save chunk ({}, {}): {}", world_x, world_y, e);
+            } else {
+                self.disk_saves += 1;
+            }
+        }
+
+        // Insert into memory cache
+        if self.local.insert(key, chunk).is_some() {
+            self.stats.evictions += 1;
+        }
+        self.stats.misses += 1;
+        self.update_stats();
+
+        self.local.chunks.get(&key).unwrap()
+    }
+
+    /// Ensure neighboring chunks are loaded (from disk if available) for boundary conditions.
+    fn ensure_neighbors_loaded(&mut self, world: &WorldData, world_x: usize, world_y: usize) {
+        if self.storage.is_none() {
+            return;
+        }
+
+        let neighbors = [
+            (world_x.wrapping_sub(1), world_y),  // West
+            (world_x + 1, world_y),               // East
+            (world_x, world_y.wrapping_sub(1)),  // North
+            (world_x, world_y + 1),               // South
+        ];
+
+        for (nx, ny) in neighbors {
+            // Skip if already in memory cache
+            if self.local.contains(&(nx, ny)) {
+                continue;
+            }
+
+            // Skip invalid coordinates (wrapping overflow)
+            if nx >= world.heightmap.width || ny >= world.heightmap.height {
+                continue;
+            }
+
+            // Try to load from disk
+            if let Some(ref storage) = self.storage {
+                if let Ok(Some(chunk)) = storage.load_chunk(nx, ny) {
+                    if self.local.insert((nx, ny), chunk).is_some() {
+                        self.stats.evictions += 1;
+                    }
+                    self.disk_loads += 1;
+                    self.update_stats();
+                }
+            }
+        }
+    }
+
+    /// Generate a local chunk with explicit boundary conditions.
+    ///
+    /// Use this when you have specific boundary requirements, or when you
+    /// want to control exactly which edges are constrained.
+    pub fn generate_with_boundaries(
+        &mut self,
+        world: &WorldData,
+        world_x: usize,
+        world_y: usize,
+        boundaries: &BoundaryConditions,
+    ) -> &LocalChunk {
+        // Generate the chunk with boundary conditions
+        let chunk = generate_local_chunk_with_boundaries(world, world_x, world_y, boundaries);
+
+        // Insert into cache (potentially evicting old chunk)
+        if self.local.insert((world_x, world_y), chunk).is_some() {
+            self.stats.evictions += 1;
+        }
+        self.update_stats();
+
+        self.local.chunks.get(&(world_x, world_y)).unwrap()
+    }
+
+    /// Get or generate a local chunk with validation.
+    ///
+    /// Like `get_or_generate_local`, but validates the chunk against boundary
+    /// conditions and world data. If validation fails, the chunk is regenerated
+    /// up to `max_retries` times.
+    ///
+    /// Returns the chunk and whether it passed validation.
+    pub fn get_or_generate_validated(
+        &mut self,
+        world: &WorldData,
+        world_x: usize,
+        world_y: usize,
+        max_retries: usize,
+    ) -> (&LocalChunk, bool) {
+        use super::verify::{verify_boundary_conditions, verify_geology_consistency, Severity};
+
+        let key = (world_x, world_y);
+
+        // Check memory cache first
+        if self.local.contains(&key) {
+            self.stats.hits += 1;
+            // Already cached chunks are assumed valid
+            return (self.local.chunks.get(&key).unwrap(), true);
+        }
+
+        // Check disk storage if enabled
+        if let Some(ref storage) = self.storage {
+            if let Ok(Some(chunk)) = storage.load_chunk(world_x, world_y) {
+                // Found on disk - insert into memory cache (trusted)
+                if self.local.insert(key, chunk).is_some() {
+                    self.stats.evictions += 1;
+                }
+                self.disk_loads += 1;
+                self.stats.hits += 1;
+                self.update_stats();
+                return (self.local.chunks.get(&key).unwrap(), true);
+            }
+        }
+
+        // Not in cache - need to generate with validation
+        self.ensure_neighbors_loaded(world, world_x, world_y);
+        let boundaries = self.get_boundary_conditions(world_x, world_y);
+
+        let mut last_valid = false;
+
+        for attempt in 0..=max_retries {
+            // Generate the chunk
+            let chunk = generate_local_chunk_with_boundaries(world, world_x, world_y, &boundaries);
+
+            // Validate against boundary conditions
+            let boundary_results = verify_boundary_conditions(&chunk, &boundaries);
+            let has_boundary_critical = boundary_results.iter()
+                .any(|r| !r.passed && r.severity >= Severity::High);
+
+            // Validate against world data
+            let geology_results = verify_geology_consistency(world, &chunk, world_x, world_y);
+            let has_geology_critical = geology_results.iter()
+                .any(|r| !r.passed && r.severity >= Severity::Critical);
+
+            let is_valid = !has_boundary_critical && !has_geology_critical;
+
+            if is_valid || attempt == max_retries {
+                // Accept this chunk (either valid or final retry)
+                last_valid = is_valid;
+
+                // Save to disk if persistence is enabled
+                if let Some(ref storage) = self.storage {
+                    if let Err(e) = storage.save_chunk(&chunk) {
+                        eprintln!("Warning: Failed to save chunk ({}, {}): {}", world_x, world_y, e);
+                    } else {
+                        self.disk_saves += 1;
+                    }
+                }
+
+                // Insert into memory cache
+                if self.local.insert(key, chunk).is_some() {
+                    self.stats.evictions += 1;
+                }
+                self.stats.misses += 1;
+                self.update_stats();
+
+                return (self.local.chunks.get(&key).unwrap(), last_valid);
+            }
+
+            // Log retry in debug builds
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "Chunk ({}, {}) failed validation, retry {}/{}",
+                world_x, world_y, attempt + 1, max_retries
+            );
+        }
+
+        // Should not reach here, but just in case
+        (self.local.chunks.get(&key).unwrap(), last_valid)
+    }
+
+    /// Validate all cached chunks and get a summary.
+    ///
+    /// Returns (valid_count, invalid_count, issues).
+    pub fn validate_cached_chunks(
+        &self,
+        world: &WorldData,
+    ) -> (usize, usize, Vec<String>) {
+        use super::verify::{verify_boundary_conditions, Severity};
+
+        let mut valid = 0;
+        let mut invalid = 0;
+        let mut issues = Vec::new();
+
+        for (&(world_x, world_y), chunk) in &self.local.chunks {
+            let boundaries = self.get_boundary_conditions(world_x, world_y);
+            let results = verify_boundary_conditions(chunk, &boundaries);
+
+            let has_critical = results.iter()
+                .any(|r| !r.passed && r.severity >= Severity::High);
+
+            if has_critical {
+                invalid += 1;
+                for r in &results {
+                    if !r.passed && r.severity >= Severity::High {
+                        issues.push(format!(
+                            "Chunk ({}, {}): {}",
+                            world_x, world_y, r.message
+                        ));
+                    }
+                }
+            } else {
+                valid += 1;
+            }
+        }
+
+        (valid, invalid, issues)
     }
 }
 

@@ -13,11 +13,11 @@ use crate::world::WorldData;
 use crate::zlevel::{self, ZTile};
 
 use super::LOCAL_SIZE;
-use super::coords::{LocalCoord, chunk_seed};
-use super::geology::{GeologyParams, derive_geology, biome_soil_type, biome_surface_material};
+use super::coords::{LocalCoord, chunk_seed, world_noise_coord, world_noise_coord_3d, feature_seed, should_place_feature, position_random_range};
+use super::geology::{GeologyParams, derive_geology, biome_soil_type, biome_surface_material, get_corner_surface_heights, interpolate_surface_z, CornerHeights, query_river_at_local, world_tile_has_river, get_corner_biomes};
 
 /// Material types for local tiles
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum Material {
     #[default]
     Air,
@@ -33,7 +33,7 @@ pub enum Material {
 }
 
 /// Soil types for underground
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum SoilType {
     #[default]
     Loam,
@@ -47,7 +47,7 @@ pub enum SoilType {
 }
 
 /// Stone types for deeper underground
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum StoneType {
     #[default]
     Limestone,
@@ -61,7 +61,7 @@ pub enum StoneType {
 }
 
 /// Features that can be placed on local tiles
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum LocalFeature {
     /// No special feature
     #[default]
@@ -153,7 +153,7 @@ impl LocalFeature {
 }
 
 /// Terrain type at local scale
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum LocalTerrain {
     /// Empty space (sky, open cavern)
     #[default]
@@ -233,6 +233,10 @@ impl LocalTerrain {
             self,
             LocalTerrain::Soil { .. }
                 | LocalTerrain::Stone { .. }
+                | LocalTerrain::StoneWall
+                | LocalTerrain::BrickWall
+                | LocalTerrain::WoodWall
+                | LocalTerrain::CaveWall
                 | LocalTerrain::ConstructedWall { .. }
         )
     }
@@ -252,7 +256,7 @@ impl LocalTerrain {
 }
 
 /// A single tile at local scale with full geology
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct LocalTile {
     /// Terrain type
     pub terrain: LocalTerrain,
@@ -322,7 +326,7 @@ impl LocalTile {
 /// A local chunk representing an embark site (48×48 per world tile).
 ///
 /// Contains full z-level data from MIN_Z to MAX_Z.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct LocalChunk {
     /// World tile X coordinate (embark location)
     pub world_x: usize,
@@ -438,6 +442,210 @@ impl LocalChunk {
         z < self.surface_z
     }
 }
+
+// =============================================================================
+// BOUNDARY CONDITIONS FOR SEAMLESS CHUNK GENERATION
+// =============================================================================
+
+/// Full z-column data for one position along an edge.
+/// Contains all tiles from z_min to z_max to ensure complete height continuity.
+#[derive(Clone, Debug)]
+pub struct EdgeColumn {
+    /// All tiles in this column (from z_min to z_max)
+    pub tiles: Vec<LocalTile>,
+    /// The z_min value (to calculate indices)
+    pub z_min: i16,
+    /// The z_max value
+    pub z_max: i16,
+    /// Surface z-level at this position
+    pub surface_z: i16,
+}
+
+impl EdgeColumn {
+    /// Get a tile at a specific z-level
+    pub fn get(&self, z: i16) -> Option<&LocalTile> {
+        if z < self.z_min || z > self.z_max {
+            return None;
+        }
+        let idx = (z - self.z_min) as usize;
+        self.tiles.get(idx)
+    }
+}
+
+/// Edge data extracted from a neighboring chunk for boundary matching.
+/// Contains full z-columns for each position along the edge to ensure
+/// complete height and terrain continuity.
+#[derive(Clone, Debug)]
+pub struct ChunkEdge {
+    /// Full z-columns for each position along this edge (LOCAL_SIZE columns)
+    pub columns: Vec<EdgeColumn>,
+    /// Z-level range
+    pub z_min: i16,
+    pub z_max: i16,
+}
+
+impl ChunkEdge {
+    /// Create a new empty chunk edge
+    pub fn new(z_min: i16, z_max: i16) -> Self {
+        Self {
+            columns: Vec::with_capacity(LOCAL_SIZE),
+            z_min,
+            z_max,
+        }
+    }
+
+    /// Get the column at position along the edge
+    pub fn get_column(&self, pos: usize) -> Option<&EdgeColumn> {
+        self.columns.get(pos)
+    }
+
+    /// Get surface z at position along the edge
+    pub fn get_surface_z(&self, pos: usize) -> Option<i16> {
+        self.columns.get(pos).map(|c| c.surface_z)
+    }
+
+    /// Get a tile at position and z-level
+    pub fn get_tile(&self, pos: usize, z: i16) -> Option<&LocalTile> {
+        self.columns.get(pos).and_then(|c| c.get(z))
+    }
+}
+
+/// Direction enum for edge extraction
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EdgeDirection {
+    North,  // y = 0
+    South,  // y = LOCAL_SIZE - 1
+    West,   // x = 0
+    East,   // x = LOCAL_SIZE - 1
+}
+
+/// Boundary conditions from neighboring chunks.
+/// When generating a new chunk, these edges MUST be matched exactly.
+#[derive(Clone, Debug, Default)]
+pub struct BoundaryConditions {
+    /// Edge from the chunk to the north (their y=LOCAL_SIZE-1 becomes our y=0)
+    pub north: Option<ChunkEdge>,
+    /// Edge from the chunk to the south (their y=0 becomes our y=LOCAL_SIZE-1)
+    pub south: Option<ChunkEdge>,
+    /// Edge from the chunk to the west (their x=LOCAL_SIZE-1 becomes our x=0)
+    pub west: Option<ChunkEdge>,
+    /// Edge from the chunk to the east (their x=0 becomes our x=LOCAL_SIZE-1)
+    pub east: Option<ChunkEdge>,
+}
+
+impl BoundaryConditions {
+    /// Create empty boundary conditions (no neighbors)
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if any boundary conditions are set
+    pub fn has_any(&self) -> bool {
+        self.north.is_some() || self.south.is_some() ||
+        self.west.is_some() || self.east.is_some()
+    }
+
+    /// Get the boundary condition for a specific edge direction
+    pub fn get(&self, direction: EdgeDirection) -> Option<&ChunkEdge> {
+        match direction {
+            EdgeDirection::North => self.north.as_ref(),
+            EdgeDirection::South => self.south.as_ref(),
+            EdgeDirection::West => self.west.as_ref(),
+            EdgeDirection::East => self.east.as_ref(),
+        }
+    }
+}
+
+impl LocalChunk {
+    /// Extract the edge data from this chunk for use as boundary conditions.
+    /// Extracts FULL z-columns to ensure complete height continuity.
+    ///
+    /// - North edge (y=0): gives south boundary for chunk at (world_x, world_y-1)
+    /// - South edge (y=LOCAL_SIZE-1): gives north boundary for chunk at (world_x, world_y+1)
+    /// - West edge (x=0): gives east boundary for chunk at (world_x-1, world_y)
+    /// - East edge (x=LOCAL_SIZE-1): gives west boundary for chunk at (world_x+1, world_y)
+    pub fn extract_edge(&self, direction: EdgeDirection) -> ChunkEdge {
+        let mut edge = ChunkEdge::new(self.z_min, self.z_max);
+
+        match direction {
+            EdgeDirection::North => {
+                // y = 0 row - extract full z-column for each x
+                for x in 0..LOCAL_SIZE {
+                    edge.columns.push(self.extract_column(x, 0));
+                }
+            }
+            EdgeDirection::South => {
+                // y = LOCAL_SIZE - 1 row
+                let y = LOCAL_SIZE - 1;
+                for x in 0..LOCAL_SIZE {
+                    edge.columns.push(self.extract_column(x, y));
+                }
+            }
+            EdgeDirection::West => {
+                // x = 0 column
+                for y in 0..LOCAL_SIZE {
+                    edge.columns.push(self.extract_column(0, y));
+                }
+            }
+            EdgeDirection::East => {
+                // x = LOCAL_SIZE - 1 column
+                let x = LOCAL_SIZE - 1;
+                for y in 0..LOCAL_SIZE {
+                    edge.columns.push(self.extract_column(x, y));
+                }
+            }
+        }
+
+        edge
+    }
+
+    /// Extract a full z-column at a position
+    fn extract_column(&self, x: usize, y: usize) -> EdgeColumn {
+        let mut tiles = Vec::with_capacity(self.z_count());
+        let surface_z = self.find_surface_z_at(x, y);
+
+        // Copy all tiles from z_min to z_max
+        for z in self.z_min..=self.z_max {
+            tiles.push(self.get(x, y, z).clone());
+        }
+
+        EdgeColumn {
+            tiles,
+            z_min: self.z_min,
+            z_max: self.z_max,
+            surface_z,
+        }
+    }
+
+    /// Find the actual surface z-level at a position (highest non-air tile)
+    pub fn find_surface_z_at(&self, x: usize, y: usize) -> i16 {
+        // Start from expected surface and search up/down
+        let start_z = self.surface_z;
+
+        // Search upward first (in case of terrain variation)
+        for z in start_z..=self.z_max {
+            let tile = self.get(x, y, z);
+            if tile.terrain == LocalTerrain::Air && !tile.terrain.is_water() {
+                // Found air, the surface is z-1
+                return (z - 1).max(self.z_min);
+            }
+        }
+
+        // If no air found above, search downward
+        for z in (self.z_min..start_z).rev() {
+            let tile = self.get(x, y, z);
+            if tile.terrain != LocalTerrain::Air || tile.terrain.is_water() {
+                return z;
+            }
+        }
+
+        self.surface_z
+    }
+}
+
+// =============================================================================
+// END BOUNDARY CONDITIONS
+// =============================================================================
 
 /// Monster lair type for categorizing different lair features
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -626,14 +834,241 @@ fn detect_structure_type(world: &WorldData, world_x: usize, world_y: usize) -> (
     }
 }
 
-/// Generate a local chunk directly from world data.
+/// Apply boundary conditions to a chunk, overwriting edge columns with neighbor data.
 ///
-/// This is the main entry point for local map generation. It derives geology
-/// from the world tile and generates the full z-column for each (x, y) position.
+/// This ensures perfect matching between adjacent chunks by copying the FULL
+/// z-column from the neighbor's edge to this chunk's corresponding edge.
+/// This includes all underground layers, surface, and air above.
+fn apply_boundary_conditions(chunk: &mut LocalChunk, boundaries: &BoundaryConditions) {
+    // Apply north boundary (y = 0) - copy full z-columns
+    if let Some(ref north_edge) = boundaries.north {
+        for x in 0..LOCAL_SIZE {
+            if let Some(column) = north_edge.get_column(x) {
+                // Copy every tile in the z-column
+                for z in chunk.z_min..=chunk.z_max {
+                    if let Some(tile) = column.get(z) {
+                        chunk.set(x, 0, z, tile.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply south boundary (y = LOCAL_SIZE - 1)
+    if let Some(ref south_edge) = boundaries.south {
+        let y = LOCAL_SIZE - 1;
+        for x in 0..LOCAL_SIZE {
+            if let Some(column) = south_edge.get_column(x) {
+                for z in chunk.z_min..=chunk.z_max {
+                    if let Some(tile) = column.get(z) {
+                        chunk.set(x, y, z, tile.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply west boundary (x = 0)
+    if let Some(ref west_edge) = boundaries.west {
+        for y in 0..LOCAL_SIZE {
+            if let Some(column) = west_edge.get_column(y) {
+                for z in chunk.z_min..=chunk.z_max {
+                    if let Some(tile) = column.get(z) {
+                        chunk.set(0, y, z, tile.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply east boundary (x = LOCAL_SIZE - 1)
+    if let Some(ref east_edge) = boundaries.east {
+        let x = LOCAL_SIZE - 1;
+        for y in 0..LOCAL_SIZE {
+            if let Some(column) = east_edge.get_column(y) {
+                for z in chunk.z_min..=chunk.z_max {
+                    if let Some(tile) = column.get(z) {
+                        chunk.set(x, y, z, tile.clone());
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Interpolate interior tiles when boundary conditions are set.
+///
+/// For tiles not on edges, use bilinear interpolation from the boundaries
+/// to ensure smooth transitions. This creates a gradient effect from
+/// the fixed edges toward the center.
+fn interpolate_from_boundaries(
+    chunk: &mut LocalChunk,
+    boundaries: &BoundaryConditions,
+    _geology: &GeologyParams,
+) {
+    // Only interpolate if we have at least 2 opposing boundaries
+    let has_ns = boundaries.north.is_some() && boundaries.south.is_some();
+    let has_ew = boundaries.west.is_some() && boundaries.east.is_some();
+
+    if !has_ns && !has_ew {
+        return; // Need at least one pair for interpolation
+    }
+
+    // Interpolate surface z-levels for interior tiles
+    for y in 1..(LOCAL_SIZE - 1) {
+        for x in 1..(LOCAL_SIZE - 1) {
+            let mut sum_z = 0i32;
+            let mut count = 0;
+
+            // Interpolate from north-south
+            if has_ns {
+                if let (Some(north), Some(south)) = (&boundaries.north, &boundaries.south) {
+                    if let (Some(n_z), Some(s_z)) = (north.get_surface_z(x), south.get_surface_z(x)) {
+                        let t = y as f32 / (LOCAL_SIZE - 1) as f32;
+                        let interp_z = (n_z as f32 * (1.0 - t) + s_z as f32 * t) as i32;
+                        sum_z += interp_z;
+                        count += 1;
+                    }
+                }
+            }
+
+            // Interpolate from east-west
+            if has_ew {
+                if let (Some(west), Some(east)) = (&boundaries.west, &boundaries.east) {
+                    if let (Some(w_z), Some(e_z)) = (west.get_surface_z(y), east.get_surface_z(y)) {
+                        let t = x as f32 / (LOCAL_SIZE - 1) as f32;
+                        let interp_z = (w_z as f32 * (1.0 - t) + e_z as f32 * t) as i32;
+                        sum_z += interp_z;
+                        count += 1;
+                    }
+                }
+            }
+
+            if count > 0 {
+                let target_z = (sum_z / count) as i16;
+
+                // Adjust this column's surface to match interpolated height
+                // Find current surface
+                let current_z = chunk.find_surface_z_at(x, y);
+
+                if current_z != target_z {
+                    // Move the surface tile
+                    let tile = chunk.get(x, y, current_z).clone();
+                    chunk.set(x, y, target_z, tile);
+
+                    // Set air above new surface
+                    for z in (target_z + 1)..=chunk.z_max {
+                        chunk.set(x, y, z, LocalTile::air());
+                    }
+
+                    // Fill below new surface if needed
+                    if target_z > current_z {
+                        for z in (current_z + 1)..target_z {
+                            chunk.set(x, y, z, LocalTile::soil(SoilType::Loam));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Place ramps on terrain where there are elevation changes between adjacent tiles.
+/// This creates natural-looking slopes that allow z-level traversal.
+fn place_surface_ramps(chunk: &mut LocalChunk) {
+    // First, find the surface z for each column
+    let mut surface_z: [[Option<i16>; LOCAL_SIZE]; LOCAL_SIZE] = [[None; LOCAL_SIZE]; LOCAL_SIZE];
+
+    for y in 0..LOCAL_SIZE {
+        for x in 0..LOCAL_SIZE {
+            // Find highest non-air tile
+            for z in (chunk.z_min..=chunk.z_max).rev() {
+                let tile = chunk.get(x, y, z);
+                if tile.terrain != LocalTerrain::Air && !tile.terrain.is_water() {
+                    surface_z[x][y] = Some(z);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Check each tile for elevation differences with neighbors
+    for y in 0..LOCAL_SIZE {
+        for x in 0..LOCAL_SIZE {
+            let Some(current_z) = surface_z[x][y] else { continue };
+
+            // Skip if already has a feature
+            let current_tile = chunk.get(x, y, current_z);
+            if current_tile.feature != LocalFeature::None {
+                continue;
+            }
+
+            // Skip water tiles
+            if current_tile.terrain.is_water() {
+                continue;
+            }
+
+            // Check all 4 cardinal neighbors for elevation differences
+            let neighbors: [(i32, i32); 4] = [(0, -1), (0, 1), (-1, 0), (1, 0)];
+            let mut lower_neighbor = false;
+            let mut higher_neighbor = false;
+
+            for (dx, dy) in neighbors {
+                let nx = x as i32 + dx;
+                let ny = y as i32 + dy;
+
+                if nx >= 0 && nx < LOCAL_SIZE as i32 && ny >= 0 && ny < LOCAL_SIZE as i32 {
+                    if let Some(neighbor_z) = surface_z[nx as usize][ny as usize] {
+                        if neighbor_z < current_z {
+                            lower_neighbor = true;
+                        }
+                        if neighbor_z > current_z {
+                            higher_neighbor = true;
+                        }
+                    }
+                }
+            }
+
+            // Place ramps based on neighbor elevations
+            // RampDown = you can go DOWN from here (there's a lower neighbor)
+            // RampUp = you can go UP from here (there's a higher neighbor)
+            if lower_neighbor && higher_neighbor {
+                // On a slope between higher and lower - could go either way
+                // Use RampDown as the primary indicator
+                chunk.get_mut(x, y, current_z).feature = LocalFeature::RampDown;
+            } else if lower_neighbor {
+                // At top of a slope - can descend
+                chunk.get_mut(x, y, current_z).feature = LocalFeature::RampDown;
+            } else if higher_neighbor {
+                // At bottom of a slope - can ascend
+                chunk.get_mut(x, y, current_z).feature = LocalFeature::RampUp;
+            }
+        }
+    }
+}
+
+/// Generate a local chunk with optional boundary conditions from neighboring chunks.
+///
+/// If `boundaries` contains edges from already-generated neighbors, those edges
+/// will be used as hard constraints - the generated chunk's edges will exactly match.
 pub fn generate_local_chunk(
     world: &WorldData,
     world_x: usize,
     world_y: usize,
+) -> LocalChunk {
+    generate_local_chunk_with_boundaries(world, world_x, world_y, &BoundaryConditions::new())
+}
+
+/// Generate a local chunk using boundary conditions from neighboring chunks.
+///
+/// This is the core generation function that ensures seamless chunk boundaries.
+/// When a boundary condition is provided, the edge tiles are copied directly from
+/// the neighbor to ensure perfect matching.
+pub fn generate_local_chunk_with_boundaries(
+    world: &WorldData,
+    world_x: usize,
+    world_y: usize,
+    boundaries: &BoundaryConditions,
 ) -> LocalChunk {
     use super::biome_terrain::{get_biome_config, AdjacentBiomes, generate_blended_biome_surface, add_blended_biome_features};
 
@@ -647,9 +1082,17 @@ pub fn generate_local_chunk(
     // Detect structures at this world tile
     let (structure_type, structure_z) = detect_structure_type(world, world_x, world_y);
 
-    // Create noise generators for terrain variation
-    let surface_noise = Perlin::new(rng.gen());
-    let cave_noise = Perlin::new(rng.gen());
+    // Get corner heights for seamless surface interpolation across chunk boundaries
+    let corner_heights = get_corner_surface_heights(world, world_x, world_y);
+
+    // Get corner biomes for coastline blending
+    let corner_biomes = get_corner_biomes(world, world_x, world_y);
+
+    // Create noise generators for terrain variation using WORLD SEED (not chunk seed)
+    // This ensures noise patterns are continuous across chunk boundaries
+    let surface_noise = Perlin::new(world.seed as u32);
+    let cave_noise = Perlin::new((world.seed + 1) as u32);
+    let coastline_noise = Perlin::new((world.seed + 2) as u32);  // For organic coastline shapes
 
     // Get biome configuration for this tile
     let biome_config = get_biome_config(geology.biome);
@@ -658,7 +1101,33 @@ pub fn generate_local_chunk(
     let adjacent_biomes = AdjacentBiomes::from_world(&world.biomes, world_x, world_y);
 
     // Generate terrain using the biome-specific blended system
-    generate_blended_biome_surface(&mut chunk, &geology, &biome_config, &adjacent_biomes, &surface_noise, &mut rng);
+    // Pass feather map for smoother biome transitions when available
+    // Pass corner heights and world seed for seamless chunk boundaries
+    generate_blended_biome_surface(
+        &mut chunk,
+        &geology,
+        &biome_config,
+        &adjacent_biomes,
+        &surface_noise,
+        &coastline_noise,  // For organic coastline shapes
+        &mut rng,
+        world.biome_feather_map.as_ref(),
+        Some((world_x, world_y)),
+        &corner_heights,
+        &corner_biomes,
+        world.seed,
+    );
+
+    // Apply boundary conditions from neighboring chunks
+    // This overwrites edge tiles to ensure perfect matching with neighbors
+    if boundaries.has_any() {
+        apply_boundary_conditions(&mut chunk, boundaries);
+        // Interpolate interior tiles to create smooth gradients from edges
+        interpolate_from_boundaries(&mut chunk, boundaries, &geology);
+    }
+
+    // Place ramps on terrain slopes for natural z-level traversal
+    place_surface_ramps(&mut chunk);
 
     // Generate underground (caves, etc.) for each column
     for y in 0..LOCAL_SIZE {
@@ -672,6 +1141,20 @@ pub fn generate_local_chunk(
                 &cave_noise,
                 &mut rng,
             );
+        }
+    }
+
+    // Carve rivers into terrain (after terrain generation, before structures)
+    if let Some(ref river_network) = world.river_network {
+        // Quick check if any river passes through this or adjacent tiles
+        let has_nearby_river = world_tile_has_river(river_network, world_x, world_y)
+            || (world_x > 0 && world_tile_has_river(river_network, world_x - 1, world_y))
+            || (world_x + 1 < world.heightmap.width && world_tile_has_river(river_network, world_x + 1, world_y))
+            || (world_y > 0 && world_tile_has_river(river_network, world_x, world_y - 1))
+            || (world_y + 1 < world.heightmap.height && world_tile_has_river(river_network, world_x, world_y + 1));
+
+        if has_nearby_river {
+            carve_rivers(&mut chunk, river_network, world_x, world_y, &geology);
         }
     }
 
@@ -817,9 +1300,19 @@ pub fn generate_local_chunk(
     }
 
     // Add surface features (trees, boulders, etc.) only if no major structure
-    // Uses biome-specific blended features
+    // Uses biome-specific blended features with position-based placement for seamless boundaries
     if !has_major_structure {
-        add_blended_biome_features(&mut chunk, &geology, &biome_config, &adjacent_biomes, &mut rng);
+        add_blended_biome_features(
+            &mut chunk,
+            &geology,
+            &biome_config,
+            &adjacent_biomes,
+            &mut rng,
+            world.biome_feather_map.as_ref(),
+            Some((world_x, world_y)),
+            world.seed,
+            Some(&corner_biomes),
+        );
     }
 
     // Add cave features (stalactites, crystals, etc.)
@@ -829,7 +1322,8 @@ pub fn generate_local_chunk(
     chunk
 }
 
-/// Sample 3D cave noise for cave generation
+/// Sample 3D cave noise for cave generation.
+/// Uses world-coordinate noise for seamless caves across chunk boundaries.
 fn sample_3d_cave(
     cave_noise: &Perlin,
     x: usize,
@@ -838,12 +1332,127 @@ fn sample_3d_cave(
     world_x: usize,
     world_y: usize,
 ) -> f64 {
-    // Create a unique 3D coordinate that incorporates world position
-    let nx = (world_x as f64 * LOCAL_SIZE as f64 + x as f64) * 0.05;
-    let ny = (world_y as f64 * LOCAL_SIZE as f64 + y as f64) * 0.05;
-    let nz = z as f64 * 0.08;
-
+    // Use world-coordinate noise for continuous caves across chunk boundaries
+    let [nx, ny, nz] = world_noise_coord_3d(world_x, world_y, x, y, z, 0.05, 0.08);
     cave_noise.get([nx, ny, nz])
+}
+
+// =============================================================================
+// RIVER CARVING
+// =============================================================================
+
+use crate::erosion::river_geometry::RiverNetwork;
+
+/// Carve rivers into the terrain, creating flowing water channels.
+///
+/// This queries the Bezier curve river network and carves appropriate
+/// channels into the terrain, replacing solid tiles with flowing water.
+fn carve_rivers(
+    chunk: &mut LocalChunk,
+    river_network: &RiverNetwork,
+    world_x: usize,
+    world_y: usize,
+    geology: &GeologyParams,
+) {
+    let base_surface = geology.surface_z;
+
+    for y in 0..LOCAL_SIZE {
+        for x in 0..LOCAL_SIZE {
+            let river_info = query_river_at_local(
+                river_network,
+                world_x,
+                world_y,
+                x,
+                y,
+                LOCAL_SIZE,
+            );
+
+            if !river_info.is_river {
+                continue;
+            }
+
+            // Find current surface at this position
+            let mut surface_z = base_surface;
+            for z in (chunk.z_min..=chunk.z_max).rev() {
+                let tile = chunk.get(x, y, z);
+                if tile.terrain != LocalTerrain::Air {
+                    surface_z = z;
+                    break;
+                }
+            }
+
+            // Calculate river bed depth (center is deeper than edges)
+            let depth = river_info.depth;
+            let river_bottom = surface_z - depth;
+
+            // Carve the river channel
+            for z in river_bottom..=surface_z {
+                let tile = chunk.get_mut(x, y, z);
+
+                if z == river_bottom {
+                    // River bed - gravel/sand/mud depending on biome
+                    tile.terrain = LocalTerrain::FlowingWater;
+                    tile.material = river_bed_material(geology.biome);
+                    tile.feature = LocalFeature::None;
+                } else if z < surface_z {
+                    // Water column
+                    tile.terrain = LocalTerrain::FlowingWater;
+                    tile.material = Material::Water;
+                    tile.feature = LocalFeature::None;
+                } else {
+                    // Surface level - shallow water
+                    tile.terrain = LocalTerrain::ShallowWater;
+                    tile.material = Material::Water;
+                    tile.feature = LocalFeature::None;
+                }
+            }
+
+            // Add riverbank features on the edges
+            if river_info.distance_factor > 0.7 {
+                // Near edge - might have reeds, mud, etc.
+                let bank_z = surface_z + 1;
+                if bank_z <= chunk.z_max {
+                    let tile = chunk.get_mut(x, y, bank_z);
+                    if tile.terrain == LocalTerrain::Air {
+                        // Leave air but could add reed features
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Get the river bed material based on biome.
+fn river_bed_material(biome: ExtendedBiome) -> Material {
+    match biome {
+        // Rocky/mountain rivers have stone beds
+        ExtendedBiome::Foothills |
+        ExtendedBiome::AlpineTundra => Material::Stone,
+
+        // Desert rivers have sandy beds
+        ExtendedBiome::Desert |
+        ExtendedBiome::SingingDunes |
+        ExtendedBiome::SaltFlats => Material::Sand,
+
+        // Swamp/marsh rivers have muddy beds
+        ExtendedBiome::Swamp |
+        ExtendedBiome::Marsh |
+        ExtendedBiome::Bog |
+        ExtendedBiome::Shadowfen => Material::Mud,
+
+        // Cold rivers have stone beds (frozen gravel)
+        ExtendedBiome::Tundra |
+        ExtendedBiome::BorealForest |
+        ExtendedBiome::SnowyPeaks => Material::Stone,
+
+        // Forest/grassland rivers - dirt/mud beds
+        ExtendedBiome::TemperateForest |
+        ExtendedBiome::TemperateGrassland |
+        ExtendedBiome::Savanna => Material::Dirt,
+
+        // Default - dirt (most common river bed)
+        _ => Material::Dirt,
+    }
 }
 
 /// Generate underground portion of a column (caves, etc.)

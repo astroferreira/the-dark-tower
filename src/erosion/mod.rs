@@ -11,12 +11,14 @@ pub mod gpu;
 pub mod hydraulic;
 pub mod materials;
 pub mod params;
+pub mod river_geometry;
 pub mod rivers;
 pub mod utils;
 
 pub use materials::{RockType, generate_material_map, generate_hardness_map};
 pub use params::ErosionParams;
 pub use rivers::RiverErosionParams;
+pub use river_geometry::{RiverNetwork, RiverNetworkParams, trace_bezier_rivers};
 
 use crate::tilemap::Tilemap;
 use crate::plates::{Plate, PlateId};

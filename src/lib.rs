@@ -11,8 +11,10 @@
 //! - Multi-scale zoom system (world -> regional -> local)
 
 pub mod ascii;
+pub mod biome_feathering;
 pub mod biomes;
 pub mod climate;
+pub mod coastline;
 pub mod erosion;
 pub mod heightmap;
 pub mod history;

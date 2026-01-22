@@ -1,0 +1,261 @@
+=== LOCAL MAP DEBUG EXPORT ===
+Center world position: (256, 128)
+World seed: 42
+Local chunk size: 48x48
+
+=== WORLD TILE INFO (3x3 around center) ===
+
+World tile (255, 127):
+  Biome: TropicalForest
+  Height: 290.5m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: CoastalWater (water=true)
+    SE: TropicalForest (water=false)
+  Water corner count: 1/4
+
+World tile (256, 127):
+  Biome: TropicalForest
+  Height: 371.1m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: TropicalForest (water=false)
+  Water corner count: 0/4
+
+World tile (257, 127):
+  Biome: TropicalForest
+  Height: 342.4m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: TropicalForest (water=false)
+  Water corner count: 0/4
+
+World tile (255, 128):
+  Biome: CoastalWater
+  Height: -24.6m
+  Water body ID: WaterBodyId(703)
+  Corner biomes:
+    NW: CoastalWater (water=true)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: Ocean (water=true)
+  Water corner count: 2/4
+
+World tile (256, 128):
+  Biome: TropicalForest
+  Height: 304.8m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: Ocean (water=true)
+    SE: TropicalForest (water=false)
+  Water corner count: 1/4
+
+World tile (257, 128):
+  Biome: TropicalForest
+  Height: 193.2m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: CoastalWater (water=true)
+  Water corner count: 1/4
+
+World tile (255, 129):
+  Biome: TropicalForest
+  Height: 12.5m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: Ocean (water=true)
+    SW: CoastalWater (water=true)
+    SE: TropicalForest (water=false)
+  Water corner count: 2/4
+
+World tile (256, 129):
+  Biome: Ocean
+  Height: -180.8m
+  Water body ID: WaterBodyId(710)
+  Corner biomes:
+    NW: Ocean (water=true)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: Lagoon (water=true)
+  Water corner count: 2/4
+
+World tile (257, 129):
+  Biome: TropicalForest
+  Height: 43.9m
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: CoastalWater (water=true)
+    SW: Lagoon (water=true)
+    SE: Lagoon (water=true)
+  Water corner count: 3/4
+
+=== TERRAIN MAP (surface z=1) ===
+Legend: . = floor, ~ = water, # = wall/solid, ' ' = air
+Chunk boundaries marked with | and -
+
+     |012345678901|012345678901|012345678901|
+     +------------+------------+------------+
+c0y00|T,,,T,T,**,*|,T,T,,T*,,*,|,,,,,T,     |
+  y04|TT,**,,,*T*T|,*,,T,,,,,,*|,,,,,,      |
+  y08|,,,T*,,,,,,,|,T,,T,,,,,TT|,,T*,       |
+  y12|,TT,,*,,,,**|T*T,TT,,,,,T|,TT*        |
+  y16|    ,,T,,,,,|   ,,,,T,,T,|,T,         |
+  y20|     ,,,T,, |    ,,T,T,T*|*,          |
+  y24|      ,*,,  |     ,,,*,,,|T           |
+  y28|       ,,T  |      ,,T,* |            |
+  y32|        T,  |     ,,*,T  |            |
+  y36|        ,T  |    T*,,,   |            |
+  y40|         ,  |   ,T,,,    |            |
+  y44|         ,,*|  ,T,,,     |            |
+     +------------+------------+------------+
+c1y00|         ~~~|,,,,,,T     |         *, |
+  y04|          ~~|,,,,*       |        ,,,,|
+  y08|           .|,,*,        |       T*,T,|
+  y12|            |,           |       T,T,,|
+  y16|            |            |      ,,,T,,|
+  y20|            |            |      ,,,T,,|
+  y24|            |            |       ,,,,,|
+  y28|            |            |       ,T,, |
+  y32|            |            |        T   |
+  y36|            |            |            |
+  y40|            |            |            |
+  y44|            |            |            |
+     +------------+------------+------------+
+c2y00|*           |            |            |
+  y04|            |            |            |
+  y08|            |            |            |
+  y12|            |            |            |
+  y16|            |            |            |
+  y20|            |            |            |
+  y24|            |            |            |
+  y28|            |            |            |
+  y32|            |            |            |
+  y36|            |≈           |            |
+  y40|           ,|≈≈          |            |
+  y44|          ,,|≈≈≈         |            |
+     +------------+------------+------------+
+
+=== WATER FACTOR MAP (center chunk only) ===
+Values: 0=land, 9=water, shown for every 4th tile
+
+     0 4 8121620242832364044
+  0  0 0 0 0 0 0 0 0 0 0 0 0
+  4  0 0 0 0 0 0 0 0 0 0 0 0
+  8  0 0 0 0 0 0 0 0 0 0 0 0
+ 12  0 0 0 0 0 0 0 0 0 0 0 0
+ 16  0 0 0 0 0 0 0 0 0 0 0 0
+ 20  0 0 0 0 0 0 0 0 0 0 0 0
+ 24  1 0 0 0 0 0 0 0 0 0 0 0
+ 28  1 0 0 0 0 0 0 0 0 0 0 0
+ 32  1 0 0 0 0 0 0 0 0 0 0 0
+ 36  0 0 0 0 0 0 0 0 0 0 0 0
+ 40  0 0 0 0 0 0 0 0 0 0 0 0
+ 44  0 0 0 0 0 0 0 0 0 0 0 0
+
+=== DETAILED TILE INFO (corners and edges of center chunk) ===
+
+NW corner (0, 0):
+  Terrain: Grass
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+N edge center (24, 0):
+  Terrain: Grass
+  Feature: Tree { height: 4 }
+  Water factor: 0.000
+  Is water terrain: false
+
+NE corner (47, 0):
+  Terrain: Air
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+W edge center (0, 24):
+  Terrain: Air
+  Feature: None
+  Water factor: 0.071
+  Is water terrain: false
+
+Center (24, 24):
+  Terrain: Air
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+E edge center (47, 24):
+  Terrain: Air
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+SW corner (0, 47):
+  Terrain: Air
+  Feature: None
+  Water factor: 0.108
+  Is water terrain: false
+
+S edge center (24, 47):
+  Terrain: Air
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+SE corner (47, 47):
+  Terrain: Air
+  Feature: None
+  Water factor: 0.000
+  Is water terrain: false
+
+=== CHUNK BOUNDARY COMPARISON ===
+Comparing edges between adjacent chunks
+
+Center chunk EAST edge vs East chunk WEST edge:
+Y    Center(x=47)  East(x=0)    Match?
+  0                            OK
+  4                            OK
+  8                            OK
+ 12                            OK
+ 16                            OK
+ 20                            OK
+ 24                            OK
+ 28                            OK
+ 32                            OK
+ 36                            OK
+ 40                            OK
+ 44                            OK
+Total mismatches: 0/12
+
+Center chunk SOUTH edge vs South chunk NORTH edge:
+X    Center(y=47)  South(y=0)   Match?
+  0                            OK
+  4                            OK
+  8                            OK
+ 12                            OK
+ 16                            OK
+ 20                            OK
+ 24                            OK
+ 28                            OK
+ 32                            OK
+ 36                            OK
+ 40                            OK
+ 44                            OK
+Total mismatches: 0/12
+
+=== END DEBUG EXPORT ===

@@ -47,6 +47,361 @@ impl Default for TerrainParams {
 }
 
 // =============================================================================
+// LAYERED NOISE ARCHITECTURE (Phase 3b)
+// =============================================================================
+
+/// Blend mode for combining noise layers
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BlendMode {
+    /// Add layer values together
+    Add,
+    /// Multiply layers together
+    Multiply,
+    /// Take maximum of existing and layer value
+    Max,
+    /// Take minimum of existing and layer value
+    Min,
+    /// Linear interpolation with specified weight
+    Lerp(f32),
+}
+
+/// Mask type for selective layer application
+#[derive(Clone, Debug)]
+pub enum LayerMask {
+    /// Apply based on current elevation range
+    Elevation { min: f32, max: f32 },
+    /// Apply based on moisture range (requires moisture map)
+    Moisture { min: f32, max: f32 },
+    /// Apply everywhere (no masking)
+    None,
+}
+
+/// A single noise layer in the terrain stack
+#[derive(Clone, Debug)]
+pub struct NoiseLayer {
+    /// Descriptive name for debugging
+    pub name: &'static str,
+    /// Seed offset for this layer
+    pub seed_offset: u64,
+    /// Base frequency of the noise
+    pub frequency: f64,
+    /// Amplitude (max contribution in meters)
+    pub amplitude: f32,
+    /// Number of octaves for fBm
+    pub octaves: u32,
+    /// Amplitude decay per octave
+    pub persistence: f64,
+    /// Frequency multiplier per octave
+    pub lacunarity: f64,
+    /// How to combine with existing terrain
+    pub blend_mode: BlendMode,
+    /// Optional mask for selective application
+    pub mask: LayerMask,
+}
+
+impl Default for NoiseLayer {
+    fn default() -> Self {
+        Self {
+            name: "default",
+            seed_offset: 0,
+            frequency: 0.01,
+            amplitude: 50.0,
+            octaves: 4,
+            persistence: 0.5,
+            lacunarity: 2.0,
+            blend_mode: BlendMode::Add,
+            mask: LayerMask::None,
+        }
+    }
+}
+
+impl NoiseLayer {
+    /// Create a new noise layer with the given name
+    pub fn new(name: &'static str) -> Self {
+        Self { name, ..Default::default() }
+    }
+
+    /// Set frequency
+    pub fn with_frequency(mut self, freq: f64) -> Self {
+        self.frequency = freq;
+        self
+    }
+
+    /// Set amplitude
+    pub fn with_amplitude(mut self, amp: f32) -> Self {
+        self.amplitude = amp;
+        self
+    }
+
+    /// Set octaves
+    pub fn with_octaves(mut self, octaves: u32) -> Self {
+        self.octaves = octaves;
+        self
+    }
+
+    /// Set persistence
+    pub fn with_persistence(mut self, persistence: f64) -> Self {
+        self.persistence = persistence;
+        self
+    }
+
+    /// Set lacunarity
+    pub fn with_lacunarity(mut self, lacunarity: f64) -> Self {
+        self.lacunarity = lacunarity;
+        self
+    }
+
+    /// Set blend mode
+    pub fn with_blend_mode(mut self, mode: BlendMode) -> Self {
+        self.blend_mode = mode;
+        self
+    }
+
+    /// Set elevation mask
+    pub fn with_elevation_mask(mut self, min: f32, max: f32) -> Self {
+        self.mask = LayerMask::Elevation { min, max };
+        self
+    }
+
+    /// Set seed offset
+    pub fn with_seed_offset(mut self, offset: u64) -> Self {
+        self.seed_offset = offset;
+        self
+    }
+}
+
+/// A stack of noise layers for terrain generation
+#[derive(Clone, Debug)]
+pub struct TerrainNoiseStack {
+    /// Ordered layers (applied in sequence)
+    pub layers: Vec<NoiseLayer>,
+}
+
+impl TerrainNoiseStack {
+    /// Create an empty noise stack
+    pub fn new() -> Self {
+        Self { layers: Vec::new() }
+    }
+
+    /// Add a layer to the stack
+    pub fn add_layer(&mut self, layer: NoiseLayer) -> &mut Self {
+        self.layers.push(layer);
+        self
+    }
+
+    /// Evaluate all layers at a position
+    pub fn evaluate(
+        &self,
+        x: f64,
+        y: f64,
+        base_seed: u64,
+        current_elevation: f32,
+        moisture: Option<f32>,
+    ) -> f32 {
+        let mut result = current_elevation;
+
+        for layer in &self.layers {
+            // Check mask
+            let mask_weight = match &layer.mask {
+                LayerMask::None => 1.0,
+                LayerMask::Elevation { min, max } => {
+                    if result >= *min && result <= *max {
+                        // Smooth falloff at edges
+                        let range = max - min;
+                        let center = (min + max) / 2.0;
+                        let dist = (result - center).abs() / (range / 2.0);
+                        1.0 - dist.powi(2)
+                    } else {
+                        0.0
+                    }
+                }
+                LayerMask::Moisture { min, max } => {
+                    if let Some(m) = moisture {
+                        if m >= *min && m <= *max {
+                            let range = max - min;
+                            let center = (min + max) / 2.0;
+                            let dist = (m - center).abs() / (range / 2.0);
+                            1.0 - dist.powi(2)
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        1.0 // No moisture data, apply fully
+                    }
+                }
+            };
+
+            if mask_weight <= 0.0 {
+                continue;
+            }
+
+            // Create noise for this layer
+            let noise = Perlin::new(1).set_seed((base_seed + layer.seed_offset) as u32);
+
+            // Sample noise
+            let nx = x * layer.frequency;
+            let ny = y * layer.frequency;
+            let noise_val = fbm(
+                &noise,
+                nx, ny,
+                layer.octaves,
+                layer.persistence,
+                layer.lacunarity,
+            ) as f32;
+
+            // Scale by amplitude and mask
+            let layer_value = noise_val * layer.amplitude * mask_weight;
+
+            // Apply blend mode
+            result = match layer.blend_mode {
+                BlendMode::Add => result + layer_value,
+                BlendMode::Multiply => result * (1.0 + layer_value / layer.amplitude),
+                BlendMode::Max => result.max(result + layer_value),
+                BlendMode::Min => result.min(result + layer_value),
+                BlendMode::Lerp(weight) => {
+                    result * (1.0 - weight) + (result + layer_value) * weight
+                }
+            };
+        }
+
+        result
+    }
+}
+
+/// Predefined layer stacks for different terrain types
+pub mod layer_presets {
+    use super::*;
+
+    /// Forest terrain: rolling hills with fine detail
+    pub fn forest_layers() -> TerrainNoiseStack {
+        let mut stack = TerrainNoiseStack::new();
+        stack.add_layer(
+            NoiseLayer::new("forest_hills")
+                .with_frequency(0.02)
+                .with_amplitude(50.0)
+                .with_octaves(4)
+                .with_persistence(0.5)
+                .with_blend_mode(BlendMode::Add)
+                .with_seed_offset(100)
+        );
+        stack.add_layer(
+            NoiseLayer::new("forest_detail")
+                .with_frequency(0.08)
+                .with_amplitude(10.0)
+                .with_octaves(3)
+                .with_persistence(0.6)
+                .with_blend_mode(BlendMode::Add)
+                .with_seed_offset(101)
+        );
+        stack
+    }
+
+    /// Floodplain terrain: very flat with subtle variation
+    pub fn floodplain_layers() -> TerrainNoiseStack {
+        let mut stack = TerrainNoiseStack::new();
+        stack.add_layer(
+            NoiseLayer::new("floodplain_base")
+                .with_frequency(0.005)
+                .with_amplitude(5.0)
+                .with_octaves(2)
+                .with_persistence(0.3)
+                .with_blend_mode(BlendMode::Lerp(0.8))
+                .with_seed_offset(200)
+        );
+        stack
+    }
+
+    /// Mountain terrain: dramatic peaks with ridge noise
+    pub fn mountain_layers() -> TerrainNoiseStack {
+        let mut stack = TerrainNoiseStack::new();
+        stack.add_layer(
+            NoiseLayer::new("mountain_base")
+                .with_frequency(0.03)
+                .with_amplitude(200.0)
+                .with_octaves(5)
+                .with_persistence(0.55)
+                .with_blend_mode(BlendMode::Add)
+                .with_seed_offset(300)
+        );
+        stack.add_layer(
+            NoiseLayer::new("mountain_ridges")
+                .with_frequency(0.06)
+                .with_amplitude(80.0)
+                .with_octaves(3)
+                .with_persistence(0.45)
+                .with_blend_mode(BlendMode::Max)
+                .with_elevation_mask(500.0, 3000.0)
+                .with_seed_offset(301)
+        );
+        stack
+    }
+
+    /// Ocean terrain: gentle swells with current patterns
+    pub fn ocean_layers() -> TerrainNoiseStack {
+        let mut stack = TerrainNoiseStack::new();
+        stack.add_layer(
+            NoiseLayer::new("ocean_swells")
+                .with_frequency(0.01)
+                .with_amplitude(20.0)
+                .with_octaves(3)
+                .with_persistence(0.4)
+                .with_blend_mode(BlendMode::Add)
+                .with_elevation_mask(-6000.0, 0.0)
+                .with_seed_offset(400)
+        );
+        stack
+    }
+
+    /// Desert terrain: dunes with wind patterns
+    pub fn desert_layers() -> TerrainNoiseStack {
+        let mut stack = TerrainNoiseStack::new();
+        stack.add_layer(
+            NoiseLayer::new("desert_dunes")
+                .with_frequency(0.04)
+                .with_amplitude(30.0)
+                .with_octaves(3)
+                .with_persistence(0.5)
+                .with_blend_mode(BlendMode::Add)
+                .with_seed_offset(500)
+        );
+        stack.add_layer(
+            NoiseLayer::new("desert_detail")
+                .with_frequency(0.15)
+                .with_amplitude(8.0)
+                .with_octaves(2)
+                .with_persistence(0.4)
+                .with_blend_mode(BlendMode::Add)
+                .with_seed_offset(501)
+        );
+        stack
+    }
+}
+
+/// Apply a noise stack to enhance a heightmap
+pub fn apply_noise_stack(
+    heightmap: &mut Tilemap<f32>,
+    stack: &TerrainNoiseStack,
+    seed: u64,
+    moisture: Option<&Tilemap<f32>>,
+) {
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    for y in 0..height {
+        for x in 0..width {
+            let nx = x as f64 / width as f64;
+            let ny = y as f64 / height as f64;
+
+            let current = *heightmap.get(x, y);
+            let m = moisture.map(|m| *m.get(x, y));
+
+            let new_elevation = stack.evaluate(nx, ny, seed, current, m);
+            heightmap.set(x, y, new_elevation);
+        }
+    }
+}
+
+// =============================================================================
 // ELEVATION CONSTANTS
 // =============================================================================
 
@@ -1403,4 +1758,87 @@ pub fn print_height_histogram(heightmap: &Tilemap<f32>, num_bins: usize) {
     }
 
     println!("╚══════════════════════════════════════════════════════════════════════╝\n");
+}
+
+// =============================================================================
+// REGIONAL NOISE APPLICATION (Phase 2 Integration)
+// =============================================================================
+
+/// Apply region-based noise layers to enhance terrain variety.
+/// Different terrain types get different noise stacks:
+/// - Mountains (high stress): More rugged, dramatic peaks
+/// - Oceans (elevation < 0): Subtle swells and ridges
+/// - Floodplains (negative stress): Smooth, flat terrain
+/// - Default (forest/grassland): Gentle rolling hills
+pub fn apply_regional_noise_stacks(
+    heightmap: &mut Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    seed: u64,
+) {
+    use noise::{Perlin, Seedable};
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    // Create noise generators for each terrain type
+    let mountain_noise = Perlin::new(1).set_seed(seed as u32);
+    let ocean_noise = Perlin::new(1).set_seed((seed + 1) as u32);
+    let floodplain_noise = Perlin::new(1).set_seed((seed + 2) as u32);
+    let forest_noise = Perlin::new(1).set_seed((seed + 3) as u32);
+
+    // Define noise parameters per region type
+    // (frequency, amplitude, octaves)
+    let mountain_params = (0.08, 150.0, 4);
+    let ocean_params = (0.02, 50.0, 3);
+    let floodplain_params = (0.03, 20.0, 2);
+    let forest_params = (0.05, 40.0, 3);
+
+    for y in 0..height {
+        for x in 0..width {
+            let elevation = *heightmap.get(x, y);
+            let stress = *stress_map.get(x, y);
+
+            let nx = x as f64 / width as f64;
+            let ny = y as f64 / height as f64;
+
+            // Select noise based on region type
+            let noise_contribution = if stress > 0.1 {
+                // Mountain regions - more dramatic variation
+                let (freq, amp, octaves) = mountain_params;
+                fbm_simple(&mountain_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp * stress
+            } else if elevation < 0.0 {
+                // Ocean regions - subtle variation
+                let (freq, amp, octaves) = ocean_params;
+                fbm_simple(&ocean_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+            } else if stress < -0.05 {
+                // Floodplain/rift regions - very smooth
+                let (freq, amp, octaves) = floodplain_params;
+                fbm_simple(&floodplain_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+            } else {
+                // Default forest/grassland - gentle rolling
+                let (freq, amp, octaves) = forest_params;
+                fbm_simple(&forest_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+            };
+
+            heightmap.set(x, y, elevation + noise_contribution);
+        }
+    }
+}
+
+/// Simple fBm helper for regional noise
+fn fbm_simple(noise: &noise::Perlin, x: f64, y: f64, octaves: usize) -> f64 {
+    use noise::NoiseFn;
+    let mut total = 0.0;
+    let mut amplitude = 1.0;
+    let mut frequency = 1.0;
+    let mut max_val = 0.0;
+
+    for _ in 0..octaves {
+        total += amplitude * noise.get([x * frequency, y * frequency]);
+        max_val += amplitude;
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+
+    total / max_val
 }

@@ -6,7 +6,9 @@ use rand_chacha::ChaCha8Rng;
 use rand::SeedableRng;
 
 use crate::biomes::{self, ExtendedBiome};
+use crate::biome_feathering::{self, BiomeFeatherMap, FeatherConfig};
 use crate::climate;
+use crate::erosion::RiverNetwork;
 use crate::heightmap;
 use crate::history::{WorldHistory, generate_world_history};
 use crate::plates::{self, Plate, PlateId};
@@ -51,6 +53,10 @@ pub struct WorldData {
     pub surface_z: Tilemap<i32>,
     /// Historical world data (factions, events, settlements)
     pub history: Option<WorldHistory>,
+    /// Bezier curve river network (Phase 1)
+    pub river_network: Option<RiverNetwork>,
+    /// Biome feathering map for smooth transitions
+    pub biome_feather_map: Option<BiomeFeatherMap>,
 }
 
 impl WorldData {
@@ -71,6 +77,8 @@ impl WorldData {
         zlevels: Tilemap3D<ZTile>,
         surface_z: Tilemap<i32>,
         history: Option<WorldHistory>,
+        river_network: Option<RiverNetwork>,
+        biome_feather_map: Option<BiomeFeatherMap>,
     ) -> Self {
         let width = heightmap.width;
         let height = heightmap.height;
@@ -92,6 +100,8 @@ impl WorldData {
             zlevels,
             surface_z,
             history,
+            river_network,
+            biome_feather_map,
         }
     }
 
@@ -306,6 +316,14 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         seed,
     );
 
+    // Compute biome feathering map for smooth transitions
+    let feather_config = FeatherConfig::default();
+    let biome_feather_map = biome_feathering::compute_biome_feathering(
+        &extended_biomes,
+        &feather_config,
+        seed,
+    );
+
     // Generate Z-level data
     let (mut zlevels, surface_z) = zlevel::generate_zlevels(&heightmap);
 
@@ -352,6 +370,9 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         seed,
     );
 
+    // Generate Bezier river network (Phase 1)
+    let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seed);
+
     WorldData::new(
         seed,
         scale,
@@ -368,6 +389,8 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         zlevels,
         surface_z,
         Some(history),
+        Some(river_network),
+        Some(biome_feather_map),
     )
 }
 
@@ -427,5 +450,7 @@ pub fn generate_test_world() -> WorldData {
         zlevels,
         surface_z,
         history: None,
+        river_network: None,
+        biome_feather_map: None,
     }
 }

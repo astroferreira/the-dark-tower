@@ -141,6 +141,22 @@ impl Prefab {
     }
 }
 
+/// Unique identifier for a structure (mirrored from join_system for use without circular deps)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct StructureId(pub u32);
+
+/// A join point position for road/connection endpoints
+/// Simplified version that stores world coordinates directly
+#[derive(Clone, Debug)]
+pub struct JoinPointRef {
+    /// World X coordinate
+    pub world_x: usize,
+    /// World Y coordinate
+    pub world_y: usize,
+    /// Whether this join point is connected
+    pub connected: bool,
+}
+
 /// A placed structure in the world
 #[derive(Clone, Debug)]
 pub struct PlacedStructure {
@@ -157,6 +173,10 @@ pub struct PlacedStructure {
     pub structure_type: StructureType,
     /// Optional name
     pub name: Option<String>,
+    /// Join points for road/connection endpoints (Phase 3 integration)
+    pub join_points: Vec<JoinPointRef>,
+    /// IDs of structures this one is connected to
+    pub connections: Vec<StructureId>,
 }
 
 impl PlacedStructure {
@@ -168,6 +188,9 @@ impl PlacedStructure {
         height: usize,
         structure_type: StructureType,
     ) -> Self {
+        // Generate default join points based on structure type
+        let join_points = Self::generate_default_join_points(x, y, width, height, structure_type);
+
         Self {
             x,
             y,
@@ -176,6 +199,54 @@ impl PlacedStructure {
             height,
             structure_type,
             name: None,
+            join_points,
+            connections: Vec::new(),
+        }
+    }
+
+    /// Generate default join points based on structure type
+    fn generate_default_join_points(
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+        structure_type: StructureType,
+    ) -> Vec<JoinPointRef> {
+        let hw = width / 2;
+        let hh = height / 2;
+
+        match structure_type {
+            StructureType::Castle => {
+                // Castle has gates on all sides
+                vec![
+                    JoinPointRef { world_x: x + hw, world_y: y, connected: false }, // North gate
+                    JoinPointRef { world_x: x + hw, world_y: y + height, connected: false }, // South gate
+                    JoinPointRef { world_x: x, world_y: y + hh, connected: false }, // West gate
+                    JoinPointRef { world_x: x + width, world_y: y + hh, connected: false }, // East gate
+                ]
+            }
+            StructureType::City => {
+                // City has road connections on all sides
+                vec![
+                    JoinPointRef { world_x: x + hw, world_y: y, connected: false },
+                    JoinPointRef { world_x: x + hw, world_y: y + height, connected: false },
+                    JoinPointRef { world_x: x, world_y: y + hh, connected: false },
+                    JoinPointRef { world_x: x + width, world_y: y + hh, connected: false },
+                ]
+            }
+            StructureType::Village => {
+                // Village has fewer connections
+                vec![
+                    JoinPointRef { world_x: x + hw, world_y: y, connected: false },
+                    JoinPointRef { world_x: x + hw, world_y: y + height, connected: false },
+                ]
+            }
+            StructureType::CaveDwelling | StructureType::Dungeon => {
+                // Underground structures have entrances
+                vec![
+                    JoinPointRef { world_x: x + hw, world_y: y + height, connected: false },
+                ]
+            }
         }
     }
 

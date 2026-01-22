@@ -1,0 +1,469 @@
+=== LOCAL MAP DEBUG EXPORT ===
+Center world position: (255, 128)
+World seed: 42
+Local chunk size: 48x48
+
+=== WORLD TILE INFO (3x3 around center) ===
+Note: Grid position [gx,gy] where [1,1] is center
+
+World tile (254, 127) [grid 0, 0]:
+  Biome: TropicalForest
+  Height: 195.4m
+  World surface_z: 0
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: CoastalWater (water=true)
+  Water corner count: 1/4
+  Chunk surface_z: 0, z_range: -16..16
+  Corner heights: NW=0, NE=1, SW=0, SE=-1
+
+World tile (255, 127) [grid 1, 0]:
+  Biome: TropicalForest
+  Height: 290.5m
+  World surface_z: 1
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: CoastalWater (water=true)
+    SE: TropicalForest (water=false)
+  Water corner count: 1/4
+  Chunk surface_z: 1, z_range: -16..16
+  Corner heights: NW=1, NE=1, SW=-1, SE=1
+
+World tile (256, 127) [grid 2, 0]:
+  Biome: TropicalForest
+  Height: 371.1m
+  World surface_z: 1
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: TropicalForest (water=false)
+  Water corner count: 0/4
+  Chunk surface_z: 1, z_range: -16..16
+  Corner heights: NW=1, NE=1, SW=1, SE=0
+
+World tile (254, 128) [grid 0, 1]:
+  Biome: TropicalForest
+  Height: 233.7m
+  World surface_z: 0
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: CoastalWater (water=true)
+    SW: TropicalRainforest (water=false)
+    SE: TropicalForest (water=false)
+  Water corner count: 1/4
+  Chunk surface_z: 0, z_range: -16..16
+  Corner heights: NW=0, NE=-1, SW=0, SE=0
+
+World tile (255, 128) [grid 1, 1]:
+  Biome: CoastalWater
+  Height: -24.6m
+  World surface_z: -1
+  Water body ID: WaterBodyId(703)
+  Corner biomes:
+    NW: CoastalWater (water=true)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: Ocean (water=true)
+  Water corner count: 2/4
+  Chunk surface_z: -1, z_range: -16..16
+  Corner heights: NW=-1, NE=1, SW=0, SE=-1
+
+World tile (256, 128) [grid 2, 1]:
+  Biome: TropicalForest
+  Height: 304.8m
+  World surface_z: 1
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: TropicalForest (water=false)
+    SW: Ocean (water=true)
+    SE: TropicalForest (water=false)
+  Water corner count: 1/4
+  Chunk surface_z: 1, z_range: -16..16
+  Corner heights: NW=1, NE=0, SW=-1, SE=0
+
+World tile (254, 129) [grid 0, 2]:
+  Biome: TropicalRainforest
+  Height: 131.3m
+  World surface_z: 0
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalRainforest (water=false)
+    NE: TropicalForest (water=false)
+    SW: TropicalRainforest (water=false)
+    SE: CoastalWater (water=true)
+  Water corner count: 1/4
+  Chunk surface_z: 0, z_range: -16..16
+  Corner heights: NW=0, NE=0, SW=1, SE=-1
+
+World tile (255, 129) [grid 1, 2]:
+  Biome: TropicalForest
+  Height: 12.5m
+  World surface_z: 0
+  Water body ID: WaterBodyId(0)
+  Corner biomes:
+    NW: TropicalForest (water=false)
+    NE: Ocean (water=true)
+    SW: CoastalWater (water=true)
+    SE: TropicalForest (water=false)
+  Water corner count: 2/4
+  Chunk surface_z: 0, z_range: -16..16
+  Corner heights: NW=0, NE=-1, SW=-1, SE=1
+
+World tile (256, 129) [grid 2, 2]:
+  Biome: Ocean
+  Height: -180.8m
+  World surface_z: -1
+  Water body ID: WaterBodyId(710)
+  Corner biomes:
+    NW: Ocean (water=true)
+    NE: TropicalForest (water=false)
+    SW: TropicalForest (water=false)
+    SE: Lagoon (water=true)
+  Water corner count: 2/4
+  Chunk surface_z: -1, z_range: -16..16
+  Corner heights: NW=-1, NE=0, SW=1, SE=-1
+
+=== TERRAIN MAP (surface z=-1) ===
+Legend: . = floor, ~ = water, # = wall/solid, ' ' = air
+Chunk boundaries marked with | and -
+
+     |012345678901|012345678901|012345678901|
+     +------------+------------+------------+
+c0y00|############|############|############|
+  y04|############|############|############|
+  y08|############|############|############|
+  y12|############|######..####|############|
+  y16|############|######..####|############|
+  y20|############|############|############|
+  y24|############|############|############|
+  y28|############|############|############|
+  y32|############|############|############|
+  y36|############|≈###########|############|
+  y40|#########,.≈|~≈##########|############|
+  y44|#######,,,~≈|~≈~#########|############|
+     +------------+------------+------------+
+c1y00|######TT??~~|~≈≈#####.###|############|
+  y04|#######**,.≈|~≈≈#####..##|############|
+  y08|########?,.~|~~~########.|..##########|
+  y12|########T,~≈|~~≈#########|############|
+  y16|#########?≈≈|≈≈##########|############|
+  y20|###########≈|≈~##########|############|
+  y24|############|############|#######.####|
+  y28|############|############|############|
+  y32|############|############|############|
+  y36|############|###########.|*###########|
+  y40|############|########~.~.|,,,,########|
+  y44|..##########|#######~.,,,| ,,,,,######|
+     +------------+------------+------------+
+c2y00|############|######~~    |,,T,T,######|
+  y04|############|#######     |,T,,,,######|
+  y08|############|#######≈    |,,,,########|
+  y12|############|##.###~~~.≈#|############|
+  y16|############|#..##≈....≈#|############|
+  y20|??##########|#..#~~~..≈##|############|
+  y24|#,,#########|~#~~~≈≈.,,##|############|
+  y28|#,,≈#######T|~ ≈≈≈~~..###|###########,|
+  y32|##≈≈####### |   ~~~~.####|##########..|
+  y36|###≈######  |   ...*#####|####.#####~~|
+  y40|##########  |   ~.#######|#####.####≈~|
+  y44|.#########  |   #########|#########~~~|
+     +------------+------------+------------+
+
+=== TERRAIN MAP (z=-2, one BELOW surface) ===
+     |012345678901|012345678901|012345678901|
+     +------------+------------+------------+
+c0y00|############|############|############|
+  y04|############|############|############|
+  y08|############|############|############|
+  y12|############|######..####|############|
+  y16|############|#####...####|############|
+  y20|############|############|############|
+  y24|############|############|############|
+  y28|############|############|############|
+  y32|############|############|############|
+  y36|############|############|############|
+  y40|############|############|############|
+  y44|############|############|############|
+     +------------+------------+------------+
+c1y00|############|#######..###|############|
+  y04|############|#######...##|############|
+  y08|############|#######.###.|..##########|
+  y12|############|############|.###########|
+  y16|############|############|############|
+  y20|############|############|############|
+  y24|############|############|############|
+  y28|############|############|############|
+  y32|############|############|############|
+  y36|############|############|############|
+  y40|############|############|############|
+  y44|..##########|############|,###########|
+     +------------+------------+------------+
+c2y00|############|########.,,,|############|
+  y04|############|#######~T,,,|############|
+  y08|############|########~.,~|############|
+  y12|############|##.#########|############|
+  y16|############|#..#########|############|
+  y20|############|#...########|############|
+  y24|############|############|############|
+  y28|############|#~##########|##########.#|
+  y32|###########.|≈~~#########|############|
+  y36|##########≈~|~≈~#########|############|
+  y40|##########≈~|≈~≈#########|############|
+  y44|.#########~~|≈~≈#########|############|
+     +------------+------------+------------+
+
+=== TERRAIN MAP (z=0, one ABOVE surface) ===
+     |012345678901|012345678901|012345678901|
+     +------------+------------+------------+
+c0y00|,,,T,,######|############|############|
+  y04|,,T,,*,,####|############|############|
+  y08|T,,,T,,,T###|############|############|
+  y12|*,,,,,,,*T,T|,#####..####|############|
+  y16|,,,####T,,,,|,,,,##.#####|,,,#########|
+  y20|T,######*,*T|,,,,,######,|,T,,########|
+  y24|,#######T,*,|,,,,,,####,,|,,,,,#######|
+  y28|,#######,,,,|..*,,,,###,,|,,*T*~####*,|
+  y32|,#######,,,.|~~.,,,,,##,,|,T,*,####T,T|
+  y36|,,#####,TT,~| ~~*,T,T##TT|,,,,####,*,,|
+  y40|,,,####*,   |  ~.,,,,,#~,|,,,####,T,,,|
+  y44|TT,,,,T     |   ≈.,,,,###|,,#####,T,,,|
+     +------------+------------+------------+
+c1y00|,,*?,*      |   ~~≈~~,###|######T,,,,*|
+  y04|TT,T*,?     |   ≈≈≈~~*,##|#####,T,*,,,|
+  y08|,??,,?T?    |   ≈≈≈~≈≈,,.|.##,,T,,,,,,|
+  y12|,,,??,,?    |   ≈≈≈≈~~~≈≈|,,*,,,,,,,,,|
+  y16|T,,,,?,T,   |  ≈~≈~~~≈≈≈≈|,T,,,,,,,T,,|
+  y20|?????,,,,,~ |  ≈≈≈≈≈≈~~~≈|,**,,,,T,*,,|
+  y24|,,????T???.~|≈≈≈~≈≈~≈≈≈≈~|,,,T,*,,,,,,|
+  y28|T??,?T,,####|~≈≈~≈≈~≈~~~≈|,,,,,*,,,,,,|
+  y32|?????,######|≈≈~~~≈≈~~≈~~|,,,,,T,,,,,,|
+  y36|,T,?,#######|,T≈~~~~~≈≈≈ | ,,,*,,,,,,T|
+  y40|,???,#######|,TT~~~~~    |    T,,,,,*,|
+  y44|????*#######|,,,T.~~     |      ,,,*,,|
+     +------------+------------+------------+
+c2y00|???T?#######|#,,,,.      |      ,,,,,,|
+  y04|?????#######|T,,,,.~     |      ,,,,,,|
+  y08|,??T??#####,|,T,,.~~     |    ,,,,,,,,|
+  y12|?*????T###?,|,*..~~     ,|,,,,,,,,,,,,|
+  y16|??,?,,,T?T,,|TT,~≈      ,|,,,,,,,,,,.,|
+  y20|  ?T??,??,?,|.,T~      ,,|,,,,,,,,,,..|
+  y24|?  ????,,???| ~        ,,|,,,,,,,,,,,.|
+  y28|?   ???,??? |         .,,|,,,,,,,,,,, |
+  y32|??  ?T???T~ |        ~.,,|,,,,,,,,,,  |
+  y36|?,~ ??,?~~  |       T..,,|#,,,,,,,,~  |
+  y40|???????T≈~  |     ...,,,#|##,,,,,,~~  |
+  y44|??#??T?~≈≈  |   ~.~~..*##|###,,,,~~   |
+     +------------+------------+------------+
+
+=== WATER FACTOR MAP (center chunk only) ===
+Values: 0=land, 9=water, shown for every 4th tile
+
+     0 4 8121620242832364044
+  0  9 9 9 9 9 9 9 7 2 0 0 0
+  4  9 9 9 9 9 9 9 8 3 0 0 0
+  8  9 9 9 9 9 9 9 9 7 3 2 3
+ 12  9 9 9 9 9 9 9 9 9 8 7 6
+ 16  9 9 9 9 9 9 9 9 9 9 9 7
+ 20  9 9 9 9 9 9 9 9 9 9 9 8
+ 24  9 9 9 9 9 9 9 9 9 9 9 9
+ 28  9 9 9 9 9 9 9 9 9 9 9 9
+ 32  8 8 9 9 9 9 9 9 9 9 9 8
+ 36  3 4 7 9 9 9 9 9 9 9 8 5
+ 40  1 2 4 6 7 8 9 8 7 6 6 4
+ 44  0 0 1 2 3 6 8 6 3 2 2 2
+
+=== DETAILED TILE INFO (corners and edges of center chunk) ===
+Note: Checking ACTUAL surface (highest non-air z) at each position
+
+NW corner (0, 0):
+  Actual surface z: -1 (chunk surface_z=-1)
+  Terrain at actual surface: ShallowWater
+  Terrain at fixed z=-1: ShallowWater
+  Feature: None
+  Water factor: 1.000
+  Is water terrain (at actual surface): true
+  MISMATCH: no
+
+N edge center (24, 0):
+  Actual surface z: 0 (chunk surface_z=-1)
+  Terrain at actual surface: ShallowWater
+  Terrain at fixed z=-1: Soil { soil_type: Sand }
+  Feature: None
+  Water factor: 0.964
+  Is water terrain (at actual surface): true
+  MISMATCH: no
+
+NE corner (47, 0):
+  Actual surface z: 1 (chunk surface_z=-1)
+  Terrain at actual surface: Grass
+  Terrain at fixed z=-1: Stone { stone_type: Limestone }
+  Feature: None
+  Water factor: 0.000
+  Is water terrain (at actual surface): false
+  MISMATCH: no
+
+W edge center (0, 24):
+  Actual surface z: 0 (chunk surface_z=-1)
+  Terrain at actual surface: DeepWater
+  Terrain at fixed z=-1: Soil { soil_type: Sand }
+  Feature: None
+  Water factor: 1.000
+  Is water terrain (at actual surface): true
+  MISMATCH: no
+
+Center (24, 24):
+  Actual surface z: 0 (chunk surface_z=-1)
+  Terrain at actual surface: ShallowWater
+  Terrain at fixed z=-1: Soil { soil_type: Sand }
+  Feature: None
+  Water factor: 1.000
+  Is water terrain (at actual surface): true
+  MISMATCH: no
+
+E edge center (47, 24):
+  Actual surface z: 0 (chunk surface_z=-1)
+  Terrain at actual surface: ShallowWater
+  Terrain at fixed z=-1: Soil { soil_type: Sand }
+  Feature: None
+  Water factor: 0.732
+  Is water terrain (at actual surface): true
+  MISMATCH: no
+
+SW corner (0, 47):
+  Actual surface z: 0 (chunk surface_z=-1)
+  Terrain at actual surface: Grass
+  Terrain at fixed z=-1: Soil { soil_type: Sand }
+  Feature: None
+  Water factor: 0.000
+  Is water terrain (at actual surface): false
+  MISMATCH: no
+
+S edge center (24, 47):
+  Actual surface z: -1 (chunk surface_z=-1)
+  Terrain at actual surface: DeepWater
+  Terrain at fixed z=-1: DeepWater
+  Feature: None
+  Water factor: 0.672
+  Is water terrain (at actual surface): true
+  MISMATCH: no
+
+SE corner (47, 47):
+  Actual surface z: -1 (chunk surface_z=-1)
+  Terrain at actual surface: Grass
+  Terrain at fixed z=-1: Grass
+  Feature: None
+  Water factor: 0.185
+  Is water terrain (at actual surface): false
+  MISMATCH: no
+
+=== CHUNK BOUNDARY COMPARISON ===
+Comparing edges between adjacent chunks
+
+Center chunk EAST edge vs East chunk WEST edge:
+Y    Center(x=47)  East(x=0)    Match?
+  0  #            #            MISMATCH
+  4  #            #            MISMATCH
+  8  .            .            OK
+ 12  #            #            OK
+ 16  #            #            OK
+ 20  #            #            OK
+ 24  #            #            OK
+ 28  #            #            OK
+ 32  #            #            OK
+ 36  T            *            OK
+ 40  ,            ,            OK
+ 44  ,                         MISMATCH
+Total mismatches: 3/12
+
+Center chunk SOUTH edge vs South chunk NORTH edge:
+X    Center(y=47)  South(y=0)   Match?
+  0  #            #            OK
+  4  #            #            OK
+  8  #            #            OK
+ 12  #            #            OK
+ 16  #            #            OK
+ 20  #            #            OK
+ 24  ≈            ~            OK
+ 28  ~            ~            OK
+ 32  ,                         MISMATCH
+ 36  ,                         MISMATCH
+ 40  ,                         MISMATCH
+ 44  ,                         MISMATCH
+Total mismatches: 4/12
+
+=== END MAIN LOCATION ===
+
+============================================================
+=== RANDOM WALK TO SECOND LOCATION ===
+============================================================
+
+Walking from (255, 128) to (245, 141)
+Offset: (-10, 13)
+
+=== PATH WORLD TILES ===
+  Step  0: (255, 128) - CoastalWater, h=-25m, water_id=WaterBodyId(703)
+  Step  1: (254, 129) - TropicalRainforest, h=131m, water_id=WaterBodyId(0)
+  Step  2: (253, 130) - TowerKarst, h=293m, water_id=WaterBodyId(0)
+  Step  3: (253, 131) - TowerKarst, h=283m, water_id=WaterBodyId(0)
+  Step  4: (252, 132) - TropicalRainforest, h=95m, water_id=WaterBodyId(0)
+  Step  5: (251, 133) - SeagrassMeadow, h=-40m, water_id=WaterBodyId(1)
+  Step  6: (250, 134) - SeagrassMeadow, h=-19m, water_id=WaterBodyId(1)
+  Step  7: (250, 135) - SeagrassMeadow, h=-19m, water_id=WaterBodyId(1)
+  Step  8: (249, 136) - SeagrassMeadow, h=-21m, water_id=WaterBodyId(1)
+  Step  9: (248, 137) - CoastalWater, h=-63m, water_id=WaterBodyId(1)
+  Step 10: (247, 138) - Ocean, h=-178m, water_id=WaterBodyId(1)
+  Step 11: (247, 139) - Ocean, h=-182m, water_id=WaterBodyId(1)
+  Step 12: (246, 140) - Ocean, h=-350m, water_id=WaterBodyId(1)
+  Step 13: (245, 141) - Ocean, h=-562m, water_id=WaterBodyId(1)
+
+=== SECOND LOCATION (245, 141) WORLD TILE INFO ===
+  Biome: Ocean
+  Height: -562.2m
+  Water body ID: WaterBodyId(1)
+  Corner biomes:
+    NW: Ocean (water=true)
+    NE: Ocean (water=true)
+    SW: Ocean (water=true)
+    SE: Ocean (water=true)
+  Water corner count: 4/4
+
+=== SECOND LOCATION TERRAIN MAP (surface z=-3) ===
+    012345678901
+  0 ≈~≈≈~~######
+  4 ≈~≈≈≈~######
+  8 ~~≈≈≈~######
+ 12 ~≈≈≈≈~######
+ 16 ~~≈~≈~######
+ 20 ≈~~~~≈######
+ 24 ≈≈~≈≈~######
+ 28 ≈~≈~~≈######
+ 32 ≈≈~~≈~######
+ 36 ~≈≈~≈≈######
+ 40 ≈≈≈~≈~######
+ 44 ~~~~~~######
+
+=== SECOND LOCATION WATER FACTOR MAP ===
+    012345678901
+  0 999999999999
+  4 999999999999
+  8 999999999999
+ 12 999999999999
+ 16 999999999999
+ 20 999999999999
+ 24 999999999999
+ 28 999999999999
+ 32 999999999999
+ 36 999999999999
+ 40 999999999999
+ 44 999999999999
+
+=== END DEBUG EXPORT ===

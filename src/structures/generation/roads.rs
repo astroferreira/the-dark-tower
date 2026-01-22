@@ -465,3 +465,133 @@ fn bresenham_line(
 
     path
 }
+
+/// Generate road network using join points instead of structure centers
+///
+/// This is the Phase 3 integration - roads now connect at actual gate/door
+/// locations rather than structure centers, creating more realistic layouts.
+pub fn generate_road_network_from_join_points(
+    structures: &[PlacedStructure],
+    heightmap: &Tilemap<f32>,
+    water_bodies: &Tilemap<WaterBodyId>,
+    zlevels: &mut Tilemap3D<ZTile>,
+    surface_z: &Tilemap<i32>,
+    rng: &mut ChaCha8Rng,
+) -> Vec<RoadSegment> {
+    let mut road_segments = Vec::new();
+
+    if structures.len() < 2 {
+        return road_segments;
+    }
+
+    // Build MST of structures
+    let mst_edges = compute_structure_mst(structures);
+
+    // Generate roads for each MST edge, using join points
+    for (i, j) in mst_edges {
+        let struct_a = &structures[i];
+        let struct_b = &structures[j];
+
+        // Find best join points to connect (closest pair)
+        let (start_x, start_y) = find_best_join_point_pair(struct_a, struct_b);
+        let (end_x, end_y) = find_best_join_point_pair(struct_b, struct_a);
+
+        let road_type = determine_road_type(struct_a, struct_b);
+
+        if let Some(path) = find_road_path(
+            start_x, start_y, end_x, end_y,
+            heightmap,
+            water_bodies,
+            zlevels,
+            surface_z,
+        ) {
+            render_road(zlevels, surface_z, &path, road_type);
+
+            road_segments.push(RoadSegment {
+                start: (start_x, start_y),
+                end: (end_x, end_y),
+                road_type,
+                path,
+            });
+        }
+    }
+
+    // Add extra connections for variety
+    let extra_count = (structures.len() / 4).max(1).min(3);
+    for _ in 0..extra_count {
+        if structures.len() < 2 {
+            break;
+        }
+
+        let i = rng.gen_range(0..structures.len());
+        let mut j = rng.gen_range(0..structures.len());
+        while j == i {
+            j = rng.gen_range(0..structures.len());
+        }
+
+        let struct_a = &structures[i];
+        let struct_b = &structures[j];
+
+        let (start_x, start_y) = find_best_join_point_pair(struct_a, struct_b);
+        let (end_x, end_y) = find_best_join_point_pair(struct_b, struct_a);
+
+        // Only add if structures are somewhat close
+        let dist = ((start_x as f32 - end_x as f32).powi(2) +
+                    (start_y as f32 - end_y as f32).powi(2)).sqrt();
+        if dist > 150.0 {
+            continue;
+        }
+
+        let road_type = RoadType::Secondary;
+
+        if let Some(path) = find_road_path(
+            start_x, start_y, end_x, end_y,
+            heightmap,
+            water_bodies,
+            zlevels,
+            surface_z,
+        ) {
+            render_road(zlevels, surface_z, &path, road_type);
+
+            road_segments.push(RoadSegment {
+                start: (start_x, start_y),
+                end: (end_x, end_y),
+                road_type,
+                path,
+            });
+        }
+    }
+
+    road_segments
+}
+
+/// Find the best join point on struct_a for connecting to struct_b
+/// Returns the world coordinates of the join point
+fn find_best_join_point_pair(
+    struct_a: &PlacedStructure,
+    struct_b: &PlacedStructure,
+) -> (usize, usize) {
+    let (target_x, target_y) = struct_b.center();
+
+    // If struct_a has join points, find the closest one to struct_b's center
+    if !struct_a.join_points.is_empty() {
+        let mut best_point = (struct_a.join_points[0].world_x, struct_a.join_points[0].world_y);
+        let mut best_dist = f32::INFINITY;
+
+        for jp in &struct_a.join_points {
+            let dx = jp.world_x as f32 - target_x as f32;
+            let dy = jp.world_y as f32 - target_y as f32;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            if dist < best_dist {
+                best_dist = dist;
+                best_point = (jp.world_x, jp.world_y);
+            }
+        }
+
+        best_point
+    } else {
+        // Fallback to structure center if no join points
+        struct_a.center()
+    }
+}

@@ -21,6 +21,7 @@
 const WRITE_STRUCTURE_TILES: bool = false;
 
 pub mod generation;
+pub mod join_system;
 pub mod placement;
 pub mod prefabs;
 pub mod types;
@@ -38,8 +39,9 @@ use generation::{
     bsp::{generate_city_block, generate_dungeon_level},
     decay::{apply_decay, apply_overgrowth},
     lsystem::generate_complex_castle,
-    roads::{generate_road_network, generate_village_paths},
+    roads::{generate_village_paths, generate_road_network_from_join_points},
 };
+use join_system::{StructurePlacementQueue, PlacementCandidate};
 use placement::{
     compute_castle_desirability, compute_city_desirability, compute_village_desirability,
     place_structures_from_desirability,
@@ -123,10 +125,10 @@ pub fn generate_structures(
     println!("  Placed {} cities", cities.len());
     all_structures.extend(cities.clone());
 
-    // Phase 3: Generate road network (only if writing tiles)
+    // Phase 3: Generate initial road network using join points (only if writing tiles)
     if WRITE_STRUCTURE_TILES {
         println!("  Generating road network...");
-        let _road_segments = generate_road_network(
+        let _road_segments = generate_road_network_from_join_points(
             &all_structures,
             heightmap,
             water_bodies,
@@ -136,8 +138,35 @@ pub fn generate_structures(
         );
     }
 
-    // Phase 4: Place villages (occasional small settlements)
-    let village_count = ((rng.gen_range(0..=2) as f32 * scale_factor) as usize);
+    // Phase 4: Place villages using queue-based system for connectivity awareness
+    // Create placement queue and seed with village candidates from existing structures
+    let mut placement_queue = StructurePlacementQueue::new();
+
+    // Seed queue with village candidates near castles and cities
+    for structure in &all_structures {
+        // Generate candidates near each major structure's join points
+        for join_point in &structure.join_points {
+            if !join_point.connected {
+                // Add village candidate at join point location
+                let priority = match structure.structure_type {
+                    StructureType::Castle => 80.0,
+                    StructureType::City => 70.0,
+                    _ => 50.0,
+                } + rng.gen::<f32>() * 20.0;
+
+                placement_queue.add_candidate(PlacementCandidate {
+                    x: join_point.world_x,
+                    y: join_point.world_y,
+                    structure_type: StructureType::Village,
+                    priority,
+                    spawned_by: None, // We don't track structure IDs in PlacedStructure
+                });
+            }
+        }
+    }
+
+    // Also add candidates from desirability map for diversity
+    let village_count = (rng.gen_range(0..=2) as f32 * scale_factor) as usize;
     let mut village_desirability = compute_village_desirability(
         heightmap,
         moisture,
@@ -146,14 +175,32 @@ pub fn generate_structures(
         &all_structures,
     );
 
-    let villages = place_structures_from_desirability(
-        &mut village_desirability,
-        StructureType::Village,
-        village_count,
-        surface_z,
+    // Get top candidates from desirability
+    let desirability_candidates = village_desirability.find_top_n(village_count * 2);
+    for (x, y, score) in desirability_candidates {
+        if score > 0.0 {
+            placement_queue.add_candidate(PlacementCandidate {
+                x,
+                y,
+                structure_type: StructureType::Village,
+                priority: score * 100.0,
+                spawned_by: None,
+            });
+        }
+    }
+
+    // Process the queue
+    let max_villages = (village_count + 2).min(5);
+    let surface_z_ref = surface_z;
+    placement_queue.process(
+        max_villages,
+        |x, y| *surface_z_ref.get(x.min(width - 1), y.min(height - 1)),
+        &mut rng,
     );
 
-    println!("  Placed {} villages", villages.len());
+    // Convert queue results to PlacedStructures
+    let villages = placement_queue.to_placed_structures();
+    println!("  Placed {} villages (queue-based)", villages.len());
     all_structures.extend(villages.clone());
 
     // Phase 5: Generate structure interiors (only if writing tiles)

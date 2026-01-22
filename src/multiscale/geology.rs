@@ -11,7 +11,7 @@ use crate::water_bodies::WaterBodyType;
 use super::local::{Material, SoilType, StoneType};
 
 /// Parameters derived from world data for local chunk generation
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GeologyParams {
     /// Surface z-level (from world surface_z)
     pub surface_z: i16,
@@ -349,6 +349,653 @@ pub fn biome_soil_type(biome: ExtendedBiome, depth: i16, moisture: f32) -> SoilT
             }
         }
     }
+}
+
+// =============================================================================
+// SEAMLESS CHUNK BOUNDARY - SURFACE INTERPOLATION
+// =============================================================================
+
+/// Surface heights for 4 corner world tiles (2x2 grid).
+///
+/// Used for bilinear interpolation of surface_z across chunk boundaries.
+/// Layout: `corners[y][x]` where:
+/// - `[0][0]` = this tile (world_x, world_y)
+/// - `[0][1]` = east tile (world_x+1, world_y)
+/// - `[1][0]` = south tile (world_x, world_y+1)
+/// - `[1][1]` = southeast tile (world_x+1, world_y+1)
+pub type CornerHeights = [[i16; 2]; 2];
+
+/// Get surface_z for 4 corner world tiles (2x2 grid) for bilinear interpolation.
+///
+/// This fetches the surface heights from this tile and its east, south, and
+/// southeast neighbors. The result is used to smoothly interpolate surface
+/// elevation across chunk boundaries.
+///
+/// # Arguments
+/// * `world` - World data
+/// * `world_x` - World tile X coordinate
+/// * `world_y` - World tile Y coordinate
+///
+/// # Returns
+/// 2x2 array of surface heights for interpolation
+pub fn get_corner_surface_heights(
+    world: &WorldData,
+    world_x: usize,
+    world_y: usize,
+) -> CornerHeights {
+    let width = world.heightmap.width;
+    let height = world.heightmap.height;
+
+    // East wraps horizontally
+    let east_x = (world_x + 1) % width;
+    // South clamps at bottom edge
+    let south_y = (world_y + 1).min(height - 1);
+
+    [
+        [
+            *world.surface_z.get(world_x, world_y) as i16,
+            *world.surface_z.get(east_x, world_y) as i16,
+        ],
+        [
+            *world.surface_z.get(world_x, south_y) as i16,
+            *world.surface_z.get(east_x, south_y) as i16,
+        ],
+    ]
+}
+
+/// Bilinear interpolate surface_z at a local position within a chunk.
+///
+/// This creates smooth elevation transitions between adjacent world tiles
+/// by interpolating between the 4 corner heights based on local position.
+///
+/// # Arguments
+/// * `corners` - 2x2 array of corner heights from `get_corner_surface_heights()`
+/// * `local_x` - Local X position within chunk (0 to LOCAL_SIZE-1)
+/// * `local_y` - Local Y position within chunk (0 to LOCAL_SIZE-1)
+/// * `local_size` - Size of local chunk (typically 48)
+///
+/// # Returns
+/// Interpolated surface_z at this position
+pub fn interpolate_surface_z(
+    corners: &CornerHeights,
+    local_x: usize,
+    local_y: usize,
+    local_size: usize,
+) -> i16 {
+    // Normalize position to 0.0-1.0 range
+    // Use (local_size - 1) so that the edges reach exactly 0.0 and 1.0
+    // This ensures adjacent chunks share the same interpolated values at boundaries
+    let max_coord = (local_size - 1).max(1) as f32;
+    let u = local_x as f32 / max_coord;
+    let v = local_y as f32 / max_coord;
+
+    // Bilinear interpolation
+    let top = corners[0][0] as f32 * (1.0 - u) + corners[0][1] as f32 * u;
+    let bottom = corners[1][0] as f32 * (1.0 - u) + corners[1][1] as f32 * u;
+    (top * (1.0 - v) + bottom * v).round() as i16
+}
+
+/// Get biome weights for 4 corner world tiles for blending.
+///
+/// Returns the biome at each corner position, used for smooth biome
+/// transitions across chunk boundaries.
+pub fn get_corner_biomes(
+    world: &WorldData,
+    world_x: usize,
+    world_y: usize,
+) -> [[ExtendedBiome; 2]; 2] {
+    let width = world.biomes.width;
+    let height = world.biomes.height;
+
+    let east_x = (world_x + 1) % width;
+    let south_y = (world_y + 1).min(height - 1);
+
+    [
+        [
+            *world.biomes.get(world_x, world_y),
+            *world.biomes.get(east_x, world_y),
+        ],
+        [
+            *world.biomes.get(world_x, south_y),
+            *world.biomes.get(east_x, south_y),
+        ],
+    ]
+}
+
+/// Check if a biome is a water biome (ocean, lake, etc.)
+pub fn is_water_biome(biome: ExtendedBiome) -> bool {
+    matches!(biome,
+        ExtendedBiome::DeepOcean |
+        ExtendedBiome::Ocean |
+        ExtendedBiome::CoastalWater |
+        ExtendedBiome::OceanicTrench |
+        ExtendedBiome::MidOceanRidge |
+        ExtendedBiome::FrozenLake |
+        ExtendedBiome::SeagrassMeadow |
+        ExtendedBiome::KelpForest |
+        ExtendedBiome::CoralReef |
+        ExtendedBiome::BioluminescentWater |
+        ExtendedBiome::Cenote |
+        ExtendedBiome::Lagoon |
+        ExtendedBiome::AcidLake |
+        ExtendedBiome::LavaLake |
+        ExtendedBiome::AbyssalVents |
+        ExtendedBiome::Sargasso
+    )
+}
+
+/// Get the water factor for 4 corner biomes (0.0 = all land, 1.0 = all water)
+pub fn get_corner_water_factors(corner_biomes: &[[ExtendedBiome; 2]; 2]) -> [[f32; 2]; 2] {
+    [
+        [
+            if is_water_biome(corner_biomes[0][0]) { 1.0 } else { 0.0 },
+            if is_water_biome(corner_biomes[0][1]) { 1.0 } else { 0.0 },
+        ],
+        [
+            if is_water_biome(corner_biomes[1][0]) { 1.0 } else { 0.0 },
+            if is_water_biome(corner_biomes[1][1]) { 1.0 } else { 0.0 },
+        ],
+    ]
+}
+
+/// Calculate water factor using world-continuous noise instead of bilinear interpolation.
+///
+/// This creates organic coastline shapes by:
+/// 1. Using world-position noise as the primary driver
+/// 2. Biasing toward water/land based on nearby biome centers
+/// 3. Never interpolating binary values directly
+///
+/// # Arguments
+/// * `corner_biomes` - Biomes at the 4 corners (2x2 grid)
+/// * `world_x`, `world_y` - World tile coordinates
+/// * `local_x`, `local_y` - Local position within chunk (0..LOCAL_SIZE)
+/// * `local_size` - Size of local chunk (usually 48)
+/// * `coastline_noise` - World-seeded Perlin noise for coastline shapes
+///
+/// # Returns
+/// Water factor from 0.0 (land) to 1.0 (water) with organic, noise-driven boundaries
+pub fn calculate_noise_water_factor(
+    corner_biomes: &[[ExtendedBiome; 2]; 2],
+    world_x: usize,
+    world_y: usize,
+    local_x: usize,
+    local_y: usize,
+    local_size: usize,
+    coastline_noise: &noise::Perlin,
+) -> f32 {
+    use noise::NoiseFn;
+    use super::coords::world_noise_coord;
+
+    // Check how many corners are water
+    let water_count = corner_biomes.iter().flatten()
+        .filter(|&&b| is_water_biome(b)).count();
+
+    // Base: normalized position within chunk (0-1)
+    // Use (local_size - 1) so edges reach exactly 0.0 and 1.0 for boundary continuity
+    let max_coord = (local_size - 1).max(1) as f32;
+    let u = local_x as f32 / max_coord;
+    let v = local_y as f32 / max_coord;
+
+    // Distance to nearest chunk edge (0 at edges, 0.5 at center)
+    let edge_dist = u.min(1.0 - u).min(v).min(1.0 - v);
+
+    // World-continuous noise for coastline shapes
+    let [nx, ny] = world_noise_coord(world_x, world_y, local_x, local_y, 0.015);
+    let noise1 = coastline_noise.get([nx, ny]) as f32;
+    let noise2 = coastline_noise.get([nx * 2.3 + 100.0, ny * 2.3 + 100.0]) as f32 * 0.4;
+    let noise3 = coastline_noise.get([nx * 5.1 + 200.0, ny * 5.1 + 200.0]) as f32 * 0.2;
+    let combined_noise = noise1 + noise2 + noise3;  // Range roughly -1.6 to 1.6
+
+    // For pure land/water cases, allow noise to create variation near chunk edges
+    // This creates smooth blending with neighboring chunks that may have different biomes
+    if water_count == 0 {
+        // All land corners - but allow water to bleed in near edges via noise
+        // Edge blend zone is ~20% of chunk from each edge
+        let edge_blend = (0.2 - edge_dist).max(0.0) / 0.2;  // 1 at edge, 0 at 20% in
+        if edge_blend > 0.0 {
+            // Use noise to potentially show water near edges
+            // Noise threshold is higher (harder to become water) as we go further from edge
+            let threshold = 0.8 + (1.0 - edge_blend) * 0.8;  // 0.8 at edge, 1.6 at 20% in
+            if combined_noise > threshold {
+                // Smooth transition based on how much noise exceeds threshold
+                let excess = (combined_noise - threshold) / 0.8;
+                return excess.clamp(0.0, 1.0).min(edge_blend);
+            }
+        }
+        return 0.0;  // All land, not near edge or noise didn't trigger
+    }
+    if water_count == 4 {
+        // All water corners - but allow land to bleed in near edges via noise
+        let edge_blend = (0.2 - edge_dist).max(0.0) / 0.2;
+        if edge_blend > 0.0 {
+            let threshold = -0.8 - (1.0 - edge_blend) * 0.8;  // -0.8 at edge, -1.6 at 20% in
+            if combined_noise < threshold {
+                let excess = (threshold - combined_noise) / 0.8;
+                return 1.0 - excess.clamp(0.0, 1.0).min(edge_blend);
+            }
+        }
+        return 1.0;  // All water, not near edge or noise didn't trigger
+    }
+
+    // MIXED CASE: Full noise-based blending
+    // Calculate radial distance-based bias toward each corner
+    let nw_dist = (u * u + v * v).sqrt();
+    let ne_dist = ((1.0 - u) * (1.0 - u) + v * v).sqrt();
+    let sw_dist = (u * u + (1.0 - v) * (1.0 - v)).sqrt();
+    let se_dist = ((1.0 - u) * (1.0 - u) + (1.0 - v) * (1.0 - v)).sqrt();
+
+    // Invert and normalize distances (closer = higher weight)
+    let max_dist = 1.415; // sqrt(2)
+    let nw_w = 1.0 - nw_dist / max_dist;
+    let ne_w = 1.0 - ne_dist / max_dist;
+    let sw_w = 1.0 - sw_dist / max_dist;
+    let se_w = 1.0 - se_dist / max_dist;
+
+    // Weight by corner water status
+    let weighted_water =
+        nw_w * if is_water_biome(corner_biomes[0][0]) { 1.0 } else { 0.0 } +
+        ne_w * if is_water_biome(corner_biomes[0][1]) { 1.0 } else { 0.0 } +
+        sw_w * if is_water_biome(corner_biomes[1][0]) { 1.0 } else { 0.0 } +
+        se_w * if is_water_biome(corner_biomes[1][1]) { 1.0 } else { 0.0 };
+    let total_w = nw_w + ne_w + sw_w + se_w;
+    let base_water = weighted_water / total_w;
+
+    // Use noise to SHIFT the threshold
+    let noise_influence = 1.0 - (2.0 * (base_water - 0.5)).abs();
+    let threshold = 0.5 + combined_noise * 0.4 * noise_influence;
+
+    // Map distance from threshold to a 0-1 range with soft edges
+    let distance_from_threshold = base_water - threshold;
+    let soft_edge_width = 0.15;
+    let soft_factor = (distance_from_threshold / soft_edge_width).clamp(-1.0, 1.0);
+
+    // Smoothstep for soft transition
+    let t = (soft_factor + 1.0) / 2.0;
+    let smoothed = t * t * (3.0 - 2.0 * t);
+
+    smoothed
+}
+
+/// Interpolate water factor at a local position using bilinear interpolation.
+///
+/// Returns a value from 0.0 (land) to 1.0 (water) that smoothly transitions
+/// at boundaries between water and land biomes.
+pub fn interpolate_water_factor(
+    water_factors: &[[f32; 2]; 2],
+    local_x: usize,
+    local_y: usize,
+    local_size: usize,
+) -> f32 {
+    // Use (local_size - 1) so edges reach exactly 0.0 and 1.0 for boundary continuity
+    let max_coord = (local_size - 1).max(1) as f32;
+    let u = local_x as f32 / max_coord;
+    let v = local_y as f32 / max_coord;
+
+    let top = water_factors[0][0] * (1.0 - u) + water_factors[0][1] * u;
+    let bottom = water_factors[1][0] * (1.0 - u) + water_factors[1][1] * u;
+    top * (1.0 - v) + bottom * v
+}
+
+/// Information about coastline at a local position
+#[derive(Clone, Debug)]
+pub struct CoastlineInfo {
+    /// Water factor (0.0 = land, 1.0 = water, between = transition zone)
+    pub water_factor: f32,
+    /// Whether this is in a transition zone (water factor between 0 and 1)
+    pub is_transition: bool,
+    /// Suggested terrain type for transitions
+    pub terrain_hint: CoastlineTerrainHint,
+}
+
+/// Hint for what terrain to generate at coastline
+#[derive(Clone, Debug, PartialEq)]
+pub enum CoastlineTerrainHint {
+    /// Deep water (far from shore)
+    DeepWater,
+    /// Shallow water (near shore)
+    ShallowWater,
+    /// Beach/sand
+    Beach,
+    /// Land (above water line)
+    Land,
+}
+
+/// Calculate coastline information at a local position.
+///
+/// Uses interpolated water factor and elevation to determine coastline placement.
+/// For natural-looking coastlines, use `calculate_coastline_info_with_noise` which
+/// adds world-continuous noise to create organic coastline shapes.
+pub fn calculate_coastline_info(
+    corner_biomes: &[[ExtendedBiome; 2]; 2],
+    corner_heights: &CornerHeights,
+    local_x: usize,
+    local_y: usize,
+    local_size: usize,
+) -> CoastlineInfo {
+    let water_factors = get_corner_water_factors(corner_biomes);
+    let water_factor = interpolate_water_factor(&water_factors, local_x, local_y, local_size);
+
+    // Check if any corner differs (i.e., we're at a coastline)
+    let has_water = water_factors.iter().flatten().any(|&f| f > 0.5);
+    let has_land = water_factors.iter().flatten().any(|&f| f < 0.5);
+    let is_transition = has_water && has_land;
+
+    // Get interpolated surface height for this position
+    let surface_z = interpolate_surface_z(corner_heights, local_x, local_y, local_size);
+
+    // Determine terrain hint based on water factor and elevation
+    let terrain_hint = if water_factor > 0.7 {
+        // Mostly water - check depth
+        if surface_z < -2 {
+            CoastlineTerrainHint::DeepWater
+        } else {
+            CoastlineTerrainHint::ShallowWater
+        }
+    } else if water_factor > 0.3 {
+        // Transition zone - beach or shallow water based on elevation
+        if surface_z >= 0 {
+            CoastlineTerrainHint::Beach
+        } else {
+            CoastlineTerrainHint::ShallowWater
+        }
+    } else {
+        // Mostly land
+        CoastlineTerrainHint::Land
+    };
+
+    CoastlineInfo {
+        water_factor,
+        is_transition,
+        terrain_hint,
+    }
+}
+
+/// Calculate coastline information with noise for natural-looking shapes.
+///
+/// This version uses world-continuous noise-based water factor calculation
+/// that creates organic coastline curves without chunk-aligned diagonal artifacts.
+///
+/// # Arguments
+/// * `corner_biomes` - Biomes at the 4 corners (2x2 grid)
+/// * `corner_heights` - Surface heights at corners
+/// * `world_x`, `world_y` - World tile coordinates
+/// * `local_x`, `local_y` - Local position within chunk (0..LOCAL_SIZE)
+/// * `local_size` - Size of local chunk (usually 48)
+/// * `coastline_noise` - World-seeded Perlin noise for coastline shapes
+pub fn calculate_coastline_info_with_noise(
+    corner_biomes: &[[ExtendedBiome; 2]; 2],
+    corner_heights: &CornerHeights,
+    world_x: usize,
+    world_y: usize,
+    local_x: usize,
+    local_y: usize,
+    local_size: usize,
+    coastline_noise: &noise::Perlin,
+) -> CoastlineInfo {
+    // Use noise-based water factor to eliminate diagonal interpolation artifacts
+    let water_factor = calculate_noise_water_factor(
+        corner_biomes, world_x, world_y, local_x, local_y, local_size, coastline_noise
+    );
+
+    // Check if any corner differs (i.e., we're at a coastline transition zone)
+    let water_factors = get_corner_water_factors(corner_biomes);
+    let has_water = water_factors.iter().flatten().any(|&f| f > 0.5);
+    let has_land = water_factors.iter().flatten().any(|&f| f < 0.5);
+    let is_transition = has_water && has_land;
+
+    // Get interpolated surface height for this position
+    let surface_z = interpolate_surface_z(corner_heights, local_x, local_y, local_size);
+
+    // Determine terrain hint based on water factor and elevation
+    let terrain_hint = if water_factor > 0.7 {
+        // Mostly water - check depth
+        if surface_z < -2 {
+            CoastlineTerrainHint::DeepWater
+        } else {
+            CoastlineTerrainHint::ShallowWater
+        }
+    } else if water_factor > 0.3 {
+        // Transition zone - beach or shallow water based on elevation
+        if surface_z >= 0 {
+            CoastlineTerrainHint::Beach
+        } else {
+            CoastlineTerrainHint::ShallowWater
+        }
+    } else {
+        // Mostly land
+        CoastlineTerrainHint::Land
+    };
+
+    CoastlineInfo {
+        water_factor,
+        is_transition,
+        terrain_hint,
+    }
+}
+
+/// Get interpolated temperature at a local position.
+pub fn interpolate_temperature(
+    world: &WorldData,
+    world_x: usize,
+    world_y: usize,
+    local_x: usize,
+    local_y: usize,
+    local_size: usize,
+) -> f32 {
+    let width = world.temperature.width;
+    let height = world.temperature.height;
+
+    let east_x = (world_x + 1) % width;
+    let south_y = (world_y + 1).min(height - 1);
+
+    let corners = [
+        [
+            *world.temperature.get(world_x, world_y),
+            *world.temperature.get(east_x, world_y),
+        ],
+        [
+            *world.temperature.get(world_x, south_y),
+            *world.temperature.get(east_x, south_y),
+        ],
+    ];
+
+    // Use (local_size - 1) so edges reach exactly 0.0 and 1.0 for boundary continuity
+    let max_coord = (local_size - 1).max(1) as f32;
+    let u = local_x as f32 / max_coord;
+    let v = local_y as f32 / max_coord;
+
+    let top = corners[0][0] * (1.0 - u) + corners[0][1] * u;
+    let bottom = corners[1][0] * (1.0 - u) + corners[1][1] * u;
+    top * (1.0 - v) + bottom * v
+}
+
+/// Get interpolated moisture at a local position.
+pub fn interpolate_moisture(
+    world: &WorldData,
+    world_x: usize,
+    world_y: usize,
+    local_x: usize,
+    local_y: usize,
+    local_size: usize,
+) -> f32 {
+    let width = world.moisture.width;
+    let height = world.moisture.height;
+
+    let east_x = (world_x + 1) % width;
+    let south_y = (world_y + 1).min(height - 1);
+
+    let corners = [
+        [
+            *world.moisture.get(world_x, world_y),
+            *world.moisture.get(east_x, world_y),
+        ],
+        [
+            *world.moisture.get(world_x, south_y),
+            *world.moisture.get(east_x, south_y),
+        ],
+    ];
+
+    // Use (local_size - 1) so edges reach exactly 0.0 and 1.0 for boundary continuity
+    let max_coord = (local_size - 1).max(1) as f32;
+    let u = local_x as f32 / max_coord;
+    let v = local_y as f32 / max_coord;
+
+    let top = corners[0][0] * (1.0 - u) + corners[0][1] * u;
+    let bottom = corners[1][0] * (1.0 - u) + corners[1][1] * u;
+    top * (1.0 - v) + bottom * v
+}
+
+// =============================================================================
+// RIVER INTEGRATION
+// =============================================================================
+
+use crate::erosion::river_geometry::RiverNetwork;
+
+/// Information about a river at a local position
+#[derive(Clone, Debug)]
+pub struct RiverInfo {
+    /// Whether there's a river at this position
+    pub is_river: bool,
+    /// River width in world tiles (0 if no river)
+    pub width: f32,
+    /// Distance from river center (0.0 = center, 1.0 = edge)
+    pub distance_factor: f32,
+    /// Depth of river channel (how much to carve into terrain)
+    pub depth: i16,
+    /// Flow direction (normalized, for visual effects)
+    pub flow_dx: f32,
+    pub flow_dy: f32,
+}
+
+impl Default for RiverInfo {
+    fn default() -> Self {
+        Self {
+            is_river: false,
+            width: 0.0,
+            distance_factor: 1.0,
+            depth: 0,
+            flow_dx: 0.0,
+            flow_dy: 1.0,
+        }
+    }
+}
+
+/// Query river information at a local position.
+///
+/// Converts local chunk coordinates to world coordinates and queries the river network.
+///
+/// # Arguments
+/// * `river_network` - The world's river network
+/// * `world_x` - World tile X coordinate
+/// * `world_y` - World tile Y coordinate
+/// * `local_x` - Local tile X within chunk (0 to LOCAL_SIZE-1)
+/// * `local_y` - Local tile Y within chunk (0 to LOCAL_SIZE-1)
+/// * `local_size` - Size of local chunk (typically 48)
+///
+/// # Returns
+/// `RiverInfo` with river details if present
+pub fn query_river_at_local(
+    river_network: &RiverNetwork,
+    world_x: usize,
+    world_y: usize,
+    local_x: usize,
+    local_y: usize,
+    local_size: usize,
+) -> RiverInfo {
+    // Convert local position to world coordinates (fractional)
+    let wx = world_x as f32 + local_x as f32 / local_size as f32;
+    let wy = world_y as f32 + local_y as f32 / local_size as f32;
+
+    // Find distance to nearest river centerline and its properties
+    let mut min_dist = f32::MAX;
+    let mut river_width = 0.0f32;
+    let mut best_tangent = (0.0f32, 1.0f32);
+
+    for segment in &river_network.segments {
+        for i in 0..=20 {
+            let t = i as f32 / 20.0;
+            let pt = segment.evaluate(t);
+            let dx = pt.world_x - wx;
+            let dy = pt.world_y - wy;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            if dist < min_dist {
+                min_dist = dist;
+                river_width = pt.width;
+                best_tangent = segment.tangent(t);
+            }
+        }
+    }
+
+    // Check if we're within the river width
+    let half_width = river_width / 2.0;
+    if river_width <= 0.0 || min_dist > half_width + 0.1 {
+        return RiverInfo::default();
+    }
+
+    // Calculate distance factor (0 = center, 1 = edge)
+    let distance_factor = (min_dist / half_width).clamp(0.0, 1.0);
+
+    // Calculate river depth based on width and distance from center
+    // Center is deeper than edges (parabolic cross-section)
+    let center_factor = 1.0 - distance_factor * distance_factor;
+    let base_depth = (1.0 + river_width.log2().max(0.0) * 1.5).round() as i16;
+    let depth = ((base_depth as f32) * center_factor).round() as i16;
+
+    RiverInfo {
+        is_river: true,
+        width: river_width,
+        distance_factor,
+        depth: depth.max(1).min(6), // Clamp depth to 1-6
+        flow_dx: best_tangent.0,
+        flow_dy: best_tangent.1,
+    }
+}
+
+/// Check if any river passes through a world tile (for quick filtering).
+///
+/// This is faster than checking every local position - use it to skip
+/// river processing for chunks that have no rivers.
+pub fn world_tile_has_river(
+    river_network: &RiverNetwork,
+    world_x: usize,
+    world_y: usize,
+) -> bool {
+    // Check if any river segment is within 1 tile of this position
+    let wx = world_x as f32 + 0.5;
+    let wy = world_y as f32 + 0.5;
+
+    for segment in &river_network.segments {
+        // Check segment bounding box first (fast rejection)
+        let min_x = segment.p0.world_x.min(segment.p1.world_x)
+            .min(segment.p2.world_x).min(segment.p3.world_x) - segment.p0.width;
+        let max_x = segment.p0.world_x.max(segment.p1.world_x)
+            .max(segment.p2.world_x).max(segment.p3.world_x) + segment.p3.width;
+        let min_y = segment.p0.world_y.min(segment.p1.world_y)
+            .min(segment.p2.world_y).min(segment.p3.world_y) - segment.p0.width;
+        let max_y = segment.p0.world_y.max(segment.p1.world_y)
+            .max(segment.p2.world_y).max(segment.p3.world_y) + segment.p3.width;
+
+        // Skip if world tile is outside bounding box (with margin)
+        if wx < min_x - 1.0 || wx > max_x + 1.0 || wy < min_y - 1.0 || wy > max_y + 1.0 {
+            continue;
+        }
+
+        // Check a few points along the segment
+        for i in 0..=5 {
+            let t = i as f32 / 5.0;
+            let pt = segment.evaluate(t);
+            let dx = (pt.world_x - wx).abs();
+            let dy = (pt.world_y - wy).abs();
+
+            // River is within this tile if distance is less than 1 + half width
+            if dx < 1.0 + pt.width / 2.0 && dy < 1.0 + pt.width / 2.0 {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 /// Get the surface material for a biome

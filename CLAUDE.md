@@ -137,3 +137,19 @@ The generator creates a complete world with:
 - Water body map (oceans, lakes, rivers)
 
 All data is accessible through the `WorldData` struct for export or further processing.
+
+---
+
+## Development Workflow
+
+**IMPORTANT**: Always test changes before considering work complete:
+
+1. After making code changes, run `cargo build --release` to check for compilation errors
+2. Run the program with a known seed: `cargo run --release -- --seed 42`
+3. Navigate to relevant areas and visually verify the changes work correctly
+4. For local map changes, embark (Z/Enter) and test at multiple z-levels with `<` and `>`
+5. Only report completion after confirming the feature works as expected
+
+Debug tools:
+- `src/multiscale/debug_export.rs` - Export chunk data for analysis
+- Status bar shows `W:(x,y)` for world position to help locate issues
