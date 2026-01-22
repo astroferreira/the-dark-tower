@@ -3,6 +3,9 @@
 # Output directory for all generated files
 /output
 
+# Save files
+/saves
+
 # Generated files in root (in case someone runs without -o)
 *.png
 *_simulation.json
