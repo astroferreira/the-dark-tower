@@ -20,8 +20,32 @@ use ratatui::{
 
 use crate::ascii::{biome_char, height_color, temperature_color, moisture_color, stress_color};
 use crate::world::{WorldData, generate_world};
+use crate::weather_zones::ExtremeWeatherType;
+use crate::region::{RegionMap, RegionCache};
+use crate::underground_water::SpringType;
 
 use image::{ImageBuffer, Rgb};
+
+/// Create a darker background color from a foreground color for better contrast.
+/// The background is darkened significantly to make the foreground character pop.
+fn make_bg_color(r: u8, g: u8, b: u8) -> Color {
+    // Darken the color significantly for background (30-40% of original)
+    let factor = 0.35;
+    let br = (r as f32 * factor) as u8;
+    let bg = (g as f32 * factor) as u8;
+    let bb = (b as f32 * factor) as u8;
+    Color::Rgb(br, bg, bb)
+}
+
+/// Create a slightly lighter/brighter foreground for better visibility on dark backgrounds.
+fn make_fg_color(r: u8, g: u8, b: u8) -> Color {
+    // Brighten slightly for foreground to ensure contrast
+    let brighten = |c: u8| -> u8 {
+        let boosted = c as u16 + 40;
+        boosted.min(255) as u8
+    };
+    Color::Rgb(brighten(r), brighten(g), brighten(b))
+}
 
 /// Viewport for rendering a portion of the map
 struct Viewport {
@@ -35,6 +59,7 @@ struct Viewport {
 #[derive(Clone, Copy, PartialEq)]
 enum ViewMode {
     Biome,
+    BaseBiome,
     Height,
     Temperature,
     Moisture,
@@ -43,12 +68,16 @@ enum ViewMode {
     Rivers,
     BiomeBlend,
     Coastline,
+    WeatherZones,
+    Microclimate,
+    SeasonalTemp,
 }
 
 impl ViewMode {
     fn name(&self) -> &'static str {
         match self {
             ViewMode::Biome => "Biome",
+            ViewMode::BaseBiome => "Base",
             ViewMode::Height => "Height",
             ViewMode::Temperature => "Temperature",
             ViewMode::Moisture => "Moisture",
@@ -57,12 +86,16 @@ impl ViewMode {
             ViewMode::Rivers => "Rivers",
             ViewMode::BiomeBlend => "BiomeBlend",
             ViewMode::Coastline => "Coastline",
+            ViewMode::WeatherZones => "Weather",
+            ViewMode::Microclimate => "Micro",
+            ViewMode::SeasonalTemp => "Season",
         }
     }
 
     fn next(&self) -> ViewMode {
         match self {
-            ViewMode::Biome => ViewMode::Height,
+            ViewMode::Biome => ViewMode::BaseBiome,
+            ViewMode::BaseBiome => ViewMode::Height,
             ViewMode::Height => ViewMode::Temperature,
             ViewMode::Temperature => ViewMode::Moisture,
             ViewMode::Moisture => ViewMode::Plates,
@@ -70,7 +103,10 @@ impl ViewMode {
             ViewMode::Stress => ViewMode::Rivers,
             ViewMode::Rivers => ViewMode::BiomeBlend,
             ViewMode::BiomeBlend => ViewMode::Coastline,
-            ViewMode::Coastline => ViewMode::Biome,
+            ViewMode::Coastline => ViewMode::WeatherZones,
+            ViewMode::WeatherZones => ViewMode::Microclimate,
+            ViewMode::Microclimate => ViewMode::SeasonalTemp,
+            ViewMode::SeasonalTemp => ViewMode::Biome,
         }
     }
 }
@@ -82,16 +118,23 @@ struct Explorer {
     cursor_y: usize,
     view_mode: ViewMode,
     show_help: bool,
+    /// Show the tile info panel on the left
+    show_panel: bool,
     /// Zoom level: 1 = normal, 2 = 2x zoom out, 4 = 4x zoom out, etc.
     zoom: usize,
     /// Message to display temporarily
     message: Option<String>,
+    /// Show the region map overlay
+    show_region_map: bool,
+    /// Region cache for seamless multi-region generation
+    region_cache: RegionCache,
 }
 
 impl Explorer {
     fn new(world: WorldData) -> Self {
         let cursor_x = world.heightmap.width / 2;
         let cursor_y = world.heightmap.height / 2;
+        let seed = world.seed();
 
         Explorer {
             world,
@@ -99,8 +142,11 @@ impl Explorer {
             cursor_y,
             view_mode: ViewMode::Biome,
             show_help: false,
+            show_panel: true,  // Panel visible by default
             zoom: 1,
             message: None,
+            show_region_map: false,
+            region_cache: RegionCache::new(seed),
         }
     }
 
@@ -147,6 +193,18 @@ impl Explorer {
         self.zoom = 1;
 
         self.message = Some(format!("New world generated! Seed: {}", self.world.seed()));
+    }
+
+    /// Cycle to the next season
+    fn next_season(&mut self) {
+        self.world.next_season();
+        self.message = Some(format!("Season: {}", self.world.current_season.name()));
+    }
+
+    /// Cycle to the previous season
+    fn prev_season(&mut self) {
+        self.world.prev_season();
+        self.message = Some(format!("Season: {}", self.world.current_season.name()));
     }
 
     /// Move cursor with wrapping
@@ -247,37 +305,44 @@ impl Explorer {
             ViewMode::Biome => {
                 let ch = biome_char(&biome);
                 let (r, g, b) = biome.color();
-                (ch, Color::Rgb(r, g, b), Color::Reset)
+                (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
+            }
+            ViewMode::BaseBiome => {
+                // Show parent/base biome instead of extended biome
+                let parent = biome.parent_biome();
+                let ch = if height < 0.0 { '~' } else { '.' };
+                let (r, g, b) = parent.color();
+                (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Height => {
                 let ch = if height < 0.0 { '~' } else { '.' };
                 let (r, g, b) = height_color(height);
-                (ch, Color::Rgb(r, g, b), Color::Reset)
+                (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Temperature => {
                 let ch = if height < 0.0 { '~' } else { '.' };
                 let (r, g, b) = temperature_color(temp);
-                (ch, Color::Rgb(r, g, b), Color::Reset)
+                (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Moisture => {
                 let ch = if height < 0.0 { '~' } else { '.' };
                 let (r, g, b) = moisture_color(moisture);
-                (ch, Color::Rgb(r, g, b), Color::Reset)
+                (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Plates => {
                 let ch = if height < 0.0 { '~' } else { '.' };
                 let plate_idx = plate_id.0 as usize;
                 if plate_idx < self.world.plates.len() {
                     let [r, g, b] = self.world.plates[plate_idx].color;
-                    (ch, Color::Rgb(r, g, b), Color::Reset)
+                    (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
                 } else {
-                    (ch, Color::DarkGray, Color::Reset)
+                    (ch, Color::Gray, Color::Rgb(30, 30, 30))
                 }
             }
             ViewMode::Stress => {
                 let ch = if height < 0.0 { '~' } else { '.' };
                 let (r, g, b) = stress_color(stress);
-                (ch, Color::Rgb(r, g, b), Color::Reset)
+                (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Rivers => {
                 if height < 0.0 {
@@ -286,32 +351,32 @@ impl Explorer {
                         let width = river_network.get_width_at(x as f32, y as f32, 2.0);
                         if width > 0.0 {
                             let intensity = (width * 30.0).min(255.0) as u8;
-                            ('~', Color::Rgb(50, intensity, 255), Color::Rgb(0, 20, intensity / 2))
+                            ('~', Color::Rgb(100, intensity.saturating_add(50), 255), Color::Rgb(10, 30, intensity / 2 + 40))
                         } else {
-                            ('~', Color::Rgb(50, 100, 200), Color::Reset)
+                            ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
                         }
                     } else {
-                        ('~', Color::Rgb(50, 100, 200), Color::Reset)
+                        ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
                     }
                 } else {
                     // Land - check for rivers
                     if let Some(ref river_network) = self.world.river_network {
                         let width = river_network.get_width_at(x as f32, y as f32, 1.0);
                         if width > 0.0 {
-                            ('~', Color::Rgb(0, 200, 255), Color::Reset)
+                            ('~', Color::Rgb(60, 220, 255), Color::Rgb(0, 60, 100))
                         } else {
                             let (r, g, b) = height_color(height);
-                            ('.', Color::Rgb(r, g, b), Color::Reset)
+                            ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
                         }
                     } else {
                         let (r, g, b) = height_color(height);
-                        ('.', Color::Rgb(r, g, b), Color::Reset)
+                        ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
                     }
                 }
             }
             ViewMode::BiomeBlend => {
                 if height < 0.0 {
-                    ('~', Color::Rgb(50, 100, 200), Color::Reset)
+                    ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
                 } else {
                     // Check if any neighbor has different biome
                     let mut is_edge = false;
@@ -324,10 +389,10 @@ impl Explorer {
                         }
                     }
                     if is_edge {
-                        ('*', Color::Rgb(255, 165, 0), Color::Reset)
+                        ('*', Color::Rgb(255, 200, 80), Color::Rgb(100, 60, 20))
                     } else {
                         let (r, g, b) = biome.color();
-                        ('.', Color::Rgb(r, g, b), Color::Reset)
+                        ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
                     }
                 }
             }
@@ -338,9 +403,9 @@ impl Explorer {
                         *self.world.heightmap.get(nx, ny) >= 0.0
                     });
                     if is_coastal {
-                        ('~', Color::Rgb(0, 200, 200), Color::Rgb(0, 50, 50))
+                        ('~', Color::Rgb(80, 220, 220), Color::Rgb(0, 70, 70))
                     } else {
-                        ('~', Color::Rgb(50, 100, 200), Color::Reset)
+                        ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
                     }
                 } else {
                     // Land - check if coastal
@@ -348,14 +413,87 @@ impl Explorer {
                         *self.world.heightmap.get(nx, ny) < 0.0
                     });
                     if is_coastal {
-                        ('#', Color::Rgb(255, 255, 100), Color::Reset)
+                        ('#', Color::Rgb(255, 255, 140), Color::Rgb(100, 100, 40))
                     } else if height < 50.0 {
-                        ('.', Color::Rgb(200, 150, 100), Color::Reset)
+                        ('.', Color::Rgb(220, 180, 130), Color::Rgb(80, 55, 35))
                     } else {
                         let (r, g, b) = height_color(height);
-                        ('.', Color::Rgb(r, g, b), Color::Reset)
+                        ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
                     }
                 }
+            }
+            ViewMode::WeatherZones => {
+                if height < 0.0 {
+                    // Show hurricane risk in ocean
+                    if let Some(ref wz) = self.world.weather_zones {
+                        let zone = wz.get(x, y);
+                        if zone.has_risk() {
+                            let (r, g, b): (u8, u8, u8) = zone.primary.color();
+                            let intensity = (zone.risk_factor * 255.0) as u8;
+                            ('!', Color::Rgb(r.saturating_add(intensity/2), g, b), make_bg_color(r, g, b))
+                        } else {
+                            ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
+                        }
+                    } else {
+                        ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
+                    }
+                } else {
+                    // Show weather risk on land
+                    if let Some(ref wz) = self.world.weather_zones {
+                        let zone = wz.get(x, y);
+                        if zone.has_risk() {
+                            let ch = match zone.primary {
+                                ExtremeWeatherType::Monsoon => 'M',
+                                ExtremeWeatherType::Blizzard => 'B',
+                                ExtremeWeatherType::Tornado => 'T',
+                                ExtremeWeatherType::Sandstorm => 'S',
+                                _ => '!',
+                            };
+                            let (r, g, b) = zone.primary.color();
+                            (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
+                        } else {
+                            let (r, g, b) = height_color(height);
+                            ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                        }
+                    } else {
+                        let (r, g, b) = height_color(height);
+                        ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                    }
+                }
+            }
+            ViewMode::Microclimate => {
+                if height < 0.0 {
+                    ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
+                } else if let Some(ref mc) = self.world.microclimate {
+                    let modifiers = mc.get(x, y);
+                    // Color based on temperature modifier
+                    let temp_mod = modifiers.temperature_mod;
+                    if temp_mod > 1.0 {
+                        // Valley warmth - orange/red
+                        let intensity = ((temp_mod / 3.0).min(1.0) * 200.0) as u8;
+                        ('v', Color::Rgb(255, 200 - intensity/2, 100 - intensity/2), Color::Rgb(80, 40, 20))
+                    } else if temp_mod < -0.5 {
+                        // Ridge cooling - blue
+                        let intensity = (((-temp_mod) / 2.0).min(1.0) * 200.0) as u8;
+                        ('^', Color::Rgb(150 - intensity/2, 200, 255), Color::Rgb(30, 50, 80))
+                    } else if modifiers.moisture_mod > 0.05 {
+                        // Lake effect / forest moisture - green
+                        ('~', Color::Rgb(100, 200, 150), Color::Rgb(30, 60, 40))
+                    } else {
+                        let (r, g, b) = height_color(height);
+                        ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                    }
+                } else {
+                    let (r, g, b) = height_color(height);
+                    ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                }
+            }
+            ViewMode::SeasonalTemp => {
+                // Show seasonal temperature (uses current season from world)
+                let seasonal_temp = self.world.get_seasonal_temperature(x, y);
+                let ch = if height < 0.0 { '~' } else { '.' };
+                let (r, g, b) = temperature_color(seasonal_temp);
+                (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
         }
     }
@@ -371,14 +509,21 @@ impl Explorer {
             "  Home/End - Fast horizontal movement",
             "",
             "View Modes (V to cycle):",
-            "  Biome, Height, Temperature, Moisture,",
-            "  Plates, Stress, Rivers, BiomeBlend, Coastline",
+            "  Biome, Base, Height, Temperature,",
+            "  Moisture, Plates, Stress, Rivers,",
+            "  BiomeBlend, Coastline, Weather,",
+            "  Micro, Season",
+            "",
+            "Season (for Season view):",
+            "  [ / ] - Previous/Next season",
             "",
             "Zoom:",
             "  +/- - Zoom in/out",
             "  F - Fit map to screen",
             "",
             "Other:",
+            "  I / Tab - Toggle info panel",
+            "  M - Toggle region map panel",
             "  R - Regenerate world (new seed)",
             "  E - Export current view as PNG",
             "  T - Export top-down view as PNG",
@@ -411,6 +556,332 @@ impl Explorer {
                 break;
             }
             buf.set_string(inner.x, inner.y + i as u16, line, Style::default().fg(Color::White));
+        }
+    }
+
+    /// Render the tile information panel on the left side
+    fn render_tile_panel(&self, area: Rect, buf: &mut Buffer) {
+        use crate::water_bodies::WaterBodyType;
+
+        let x = self.cursor_x;
+        let y = self.cursor_y;
+
+        // Get tile data
+        let tile = self.world.get_tile_info(x, y);
+        let biome = *self.world.biomes.get(x, y);
+        let plate_id = *self.world.plate_map.get(x, y);
+
+        // Get plate info
+        let plate = self.world.plates.iter().find(|p| p.id == plate_id);
+        let plate_type_str = plate.map(|p| format!("{:?}", p.plate_type)).unwrap_or_else(|| "Unknown".to_string());
+
+        // Calculate latitude (0 = equator, ±90 = poles)
+        let lat_normalized = (y as f32 / self.world.height as f32 - 0.5) * 2.0;
+        let latitude = lat_normalized * 90.0;
+        let lat_dir = if latitude >= 0.0 { "S" } else { "N" };
+
+        // Calculate longitude (0-360 wrapping)
+        let longitude = (x as f32 / self.world.width as f32) * 360.0;
+
+        // Get seasonal temperature if available
+        let seasonal_temp = self.world.get_seasonal_temperature(x, y);
+
+        // Get weather zone info
+        let weather_str = if let Some(zone) = self.world.get_weather_zone(x, y) {
+            if zone.has_risk() {
+                format!("{} ({:.0}%)", zone.primary.display_name(), zone.risk_factor * 100.0)
+            } else {
+                "None".to_string()
+            }
+        } else {
+            "N/A".to_string()
+        };
+
+        // Get microclimate info
+        let micro_str = if let Some(ref micro_map) = self.world.microclimate {
+            let m = micro_map.get(x, y);
+            format!("{:+.1}°C", m.temperature_mod)
+        } else {
+            "N/A".to_string()
+        };
+
+        // Get water body info
+        let water_str = match tile.water_body_type {
+            WaterBodyType::None => "None".to_string(),
+            WaterBodyType::Ocean => "Ocean".to_string(),
+            WaterBodyType::Lake => format!("Lake ({} tiles)", tile.water_body_size.unwrap_or(0)),
+            WaterBodyType::River => "River".to_string(),
+        };
+
+        // Build the panel content
+        let mut lines: Vec<(String, Style)> = vec![];
+
+        // Header with biome color
+        let (br, bg, bb) = biome.color();
+        let biome_style = Style::default().fg(Color::Rgb(br, bg, bb)).add_modifier(Modifier::BOLD);
+        lines.push((format!(" {}", biome.display_name()), biome_style));
+
+        // Show parent biome if this is a special biome
+        if biome.is_special() {
+            let parent = biome.parent_biome();
+            let (pr, pg, pb) = parent.color();
+            let parent_style = Style::default().fg(Color::Rgb(pr, pg, pb));
+            lines.push((format!("  Base: {:?}", parent), parent_style));
+        }
+        lines.push(("".to_string(), Style::default()));
+
+        // Location section
+        lines.push((" Location".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        lines.push((format!("  Position: ({}, {})", x, y), Style::default().fg(Color::White)));
+        lines.push((format!("  Lat: {:.1}°{}", latitude.abs(), lat_dir), Style::default().fg(Color::White)));
+        lines.push((format!("  Lon: {:.1}°", longitude), Style::default().fg(Color::White)));
+        lines.push(("".to_string(), Style::default()));
+
+        // Terrain section
+        lines.push((" Terrain".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        let elev_str = if tile.elevation < 0.0 {
+            format!("  Elevation: {:.0}m (depth)", tile.elevation.abs())
+        } else {
+            format!("  Elevation: {:.0}m", tile.elevation)
+        };
+        lines.push((elev_str, Style::default().fg(Color::White)));
+        lines.push((format!("  Stress: {:.2}", tile.stress), Style::default().fg(Color::White)));
+        if let Some(h) = tile.hardness {
+            lines.push((format!("  Hardness: {:.2}", h), Style::default().fg(Color::White)));
+        }
+        lines.push(("".to_string(), Style::default()));
+
+        // Climate section
+        lines.push((" Climate".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        lines.push((format!("  Temperature: {:.1}°C", tile.temperature), Style::default().fg(Color::White)));
+        lines.push((format!("  Seasonal: {:.1}°C", seasonal_temp), Style::default().fg(Color::Gray)));
+        lines.push((format!("  Moisture: {:.0}%", tile.moisture * 100.0), Style::default().fg(Color::White)));
+        lines.push((format!("  Microclimate: {}", micro_str), Style::default().fg(Color::Gray)));
+        lines.push((format!("  Weather Risk: {}", weather_str), Style::default().fg(Color::White)));
+        lines.push(("".to_string(), Style::default()));
+
+        // Geology section
+        lines.push((" Geology".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        lines.push((format!("  Plate ID: {}", plate_id.0), Style::default().fg(Color::White)));
+        lines.push((format!("  Plate Type: {}", plate_type_str), Style::default().fg(Color::White)));
+        lines.push(("".to_string(), Style::default()));
+
+        // Water section
+        lines.push((" Water".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        lines.push((format!("  Body: {}", water_str), Style::default().fg(Color::White)));
+
+        // Underground water features
+        if tile.water_features.has_any() {
+            if tile.water_features.aquifer.is_present() {
+                let aq = &tile.water_features.aquifer;
+                lines.push((format!("  Aquifer: {}", aq.aquifer_type.display_name()), Style::default().fg(Color::Cyan)));
+                lines.push((format!("    Depth: {:.0}m", aq.depth), Style::default().fg(Color::Gray)));
+            }
+            if tile.water_features.spring.is_present() {
+                let sp = &tile.water_features.spring;
+                let temp_str = if sp.temperature_mod > 0.0 {
+                    format!(" (+{:.0}°C)", sp.temperature_mod)
+                } else {
+                    String::new()
+                };
+                lines.push((format!("  Spring: {}{}", sp.spring_type.display_name(), temp_str), Style::default().fg(Color::Blue)));
+            }
+            if tile.water_features.waterfall.is_present {
+                let wf = &tile.water_features.waterfall;
+                lines.push((format!("  Waterfall: {:.0}m drop", wf.drop_height), Style::default().fg(Color::LightBlue)));
+            }
+        }
+        lines.push(("".to_string(), Style::default()));
+
+        // Season indicator
+        lines.push((" Season".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        lines.push((format!("  {}", self.world.current_season.name()), Style::default().fg(Color::Cyan)));
+
+        // Draw the panel background and border
+        let block = Block::default()
+            .title(" Tile Info ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().bg(Color::Black));
+
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        // Render each line
+        for (i, (line, style)) in lines.iter().enumerate() {
+            if i as u16 >= inner.height {
+                break;
+            }
+            // Truncate line if too long
+            let display_line: String = line.chars().take(inner.width as usize).collect();
+            buf.set_string(inner.x, inner.y + i as u16, &display_line, *style);
+        }
+    }
+
+    /// Ensure the region map is cached for current cursor position
+    /// Uses RegionCache which generates this region and its neighbors together
+    /// for seamless stitching across tile boundaries
+    fn ensure_region_cached(&mut self) {
+        // The cache handles checking if the region exists and generating neighbors
+        // We just trigger it by calling get_region
+        self.region_cache.get_region(&self.world, self.cursor_x, self.cursor_y);
+    }
+
+    /// Render the region map as a panel
+    fn render_region_panel(&mut self, area: Rect, buf: &mut Buffer) {
+        // Get region from cache (generates if needed with neighbors for seamless stitching)
+        let region = self.region_cache.get_region(&self.world, self.cursor_x, self.cursor_y);
+
+        // Draw border block
+        let biome = self.world.biomes.get(self.cursor_x, self.cursor_y);
+        let title = format!(" Region - {:?} ", biome);
+        let block = Block::default()
+            .title(title.as_str())
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .style(Style::default().bg(Color::Black));
+
+        let inner = block.inner(area);
+        block.render(area, buf);
+
+        // Display dimensions - use full panel area
+        let display_width = inner.width.saturating_sub(0) as usize;
+        let display_height = inner.height.saturating_sub(2) as usize; // Leave room for info line
+
+        let scale_x = region.size as f32 / display_width as f32;
+        let scale_y = region.size as f32 / display_height as f32;
+
+        // Get biome colors for base terrain
+        let base_biome = *self.world.biomes.get(self.cursor_x, self.cursor_y);
+        let (biome_r, biome_g, biome_b) = base_biome.color();
+
+        for dy in 0..display_height {
+            for dx in 0..display_width {
+                let rx = ((dx as f32 * scale_x) as usize).min(region.size - 1);
+                let ry = ((dy as f32 * scale_y) as usize).min(region.size - 1);
+
+                let height = region.get_height(rx, ry);
+                let h_norm = region.get_height_normalized(rx, ry);
+                let river = region.get_river(rx, ry);
+                let vegetation = region.get_vegetation(rx, ry);
+                let rocks = region.get_rocks(rx, ry);
+                let slope = region.get_slope(rx, ry);
+                let spring = region.get_spring(rx, ry);
+                let waterfall = region.get_waterfall(rx, ry);
+
+                // Determine character and color based on terrain features
+                // Priority: waterfall > spring > river > other terrain
+                let (ch, fg, bg) = if waterfall.is_present {
+                    // Waterfall - dramatic cascading water
+                    let intensity = (waterfall.drop_height / 50.0).clamp(0.5, 1.0);
+                    ('▼', Color::Rgb(180, (200.0 + intensity * 55.0) as u8, 255),
+                     Color::Rgb(40, (80.0 + intensity * 40.0) as u8, 140))
+                } else if spring.spring_type.is_present() {
+                    // Spring - water emerging from ground
+                    use crate::underground_water::SpringType;
+                    match spring.spring_type {
+                        SpringType::Thermal => {
+                            // Hot spring - warm colors
+                            ('◎', Color::Rgb(255, 180, 100), Color::Rgb(120, 60, 30))
+                        }
+                        SpringType::Artesian => {
+                            // Pressurized spring - bright blue
+                            ('◉', Color::Rgb(100, 200, 255), Color::Rgb(30, 80, 120))
+                        }
+                        SpringType::Karst => {
+                            // Cave spring - darker blue-green
+                            ('○', Color::Rgb(80, 180, 200), Color::Rgb(20, 60, 80))
+                        }
+                        _ => {
+                            // Seepage spring - gentle blue
+                            ('●', Color::Rgb(120, 180, 220), Color::Rgb(30, 60, 90))
+                        }
+                    }
+                } else if river > 0.5 {
+                    // Strong river/water
+                    let depth = (river * 0.5 + 0.5).min(1.0);
+                    ('≈', Color::Rgb(80, (140.0 + depth * 60.0) as u8, 255),
+                     Color::Rgb(15, 35, (80.0 + depth * 40.0) as u8))
+                } else if river > 0.2 {
+                    // Stream/shallow water
+                    ('~', Color::Rgb(100, 180, 240), Color::Rgb(20, 50, 100))
+                } else if height < -50.0 {
+                    // Deep water
+                    ('≋', Color::Rgb(40, 80, 180), Color::Rgb(10, 20, 60))
+                } else if height < 0.0 {
+                    // Shallow water
+                    ('~', Color::Rgb(60, 120, 200), Color::Rgb(15, 35, 80))
+                } else if rocks > 0.5 {
+                    // Rocky terrain
+                    let shade = (h_norm * 60.0) as u8;
+                    ('▲', Color::Rgb(140 + shade, 130 + shade, 120 + shade),
+                     Color::Rgb(60 + shade/2, 55 + shade/2, 50 + shade/2))
+                } else if rocks > 0.3 {
+                    // Some rocks
+                    let shade = (h_norm * 50.0) as u8;
+                    ('∆', Color::Rgb(130 + shade, 125 + shade, 115 + shade),
+                     Color::Rgb(50 + shade/2, 48 + shade/2, 45 + shade/2))
+                } else if vegetation > 0.7 {
+                    // Dense forest - use biome color with tree character
+                    let shade = 1.0 + h_norm * 0.2 - (1.0 - vegetation) * 0.1;
+                    let r = ((biome_r as f32 * shade * 0.9) as u8).min(255);
+                    let g = ((biome_g as f32 * shade * 1.1) as u8).min(255);
+                    let b = ((biome_b as f32 * shade * 0.8) as u8).min(255);
+                    ('♣', Color::Rgb(r, g, b), Color::Rgb(r/3, g/3, b/3))
+                } else if vegetation > 0.5 {
+                    // Medium forest
+                    let shade = 1.0 + h_norm * 0.15;
+                    let r = ((biome_r as f32 * shade * 0.95) as u8).min(255);
+                    let g = ((biome_g as f32 * shade) as u8).min(255);
+                    let b = ((biome_b as f32 * shade * 0.85) as u8).min(255);
+                    ('↟', Color::Rgb(r, g, b), Color::Rgb(r/3, g/3, b/3))
+                } else if vegetation > 0.3 {
+                    // Light vegetation/shrubs
+                    let shade = 1.0 + h_norm * 0.1;
+                    let r = ((biome_r as f32 * shade) as u8).min(255);
+                    let g = ((biome_g as f32 * shade * 0.95) as u8).min(255);
+                    let b = ((biome_b as f32 * shade * 0.9) as u8).min(255);
+                    ('*', Color::Rgb(r, g, b), Color::Rgb(r/3, g/3, b/3))
+                } else if slope > 15.0 {
+                    // Steep bare slope
+                    let shade = (h_norm * 80.0) as u8;
+                    ('/', Color::Rgb(150 + shade/2, 140 + shade/2, 130 + shade/2),
+                     Color::Rgb(60 + shade/3, 55 + shade/3, 50 + shade/3))
+                } else {
+                    // Open terrain - use biome color with height shading
+                    let shade = 0.8 + h_norm * 0.4;
+                    let r = ((biome_r as f32 * shade) as u8).min(255);
+                    let g = ((biome_g as f32 * shade) as u8).min(255);
+                    let b = ((biome_b as f32 * shade) as u8).min(255);
+
+                    // Choose character based on vegetation hint
+                    let ch = if vegetation > 0.15 {
+                        '.'
+                    } else if vegetation > 0.05 {
+                        ','
+                    } else {
+                        ' '
+                    };
+                    (ch, Color::Rgb(r, g, b), Color::Rgb(r/3, g/3, b/3))
+                };
+
+                let style = Style::default().fg(fg).bg(bg);
+                buf.get_mut(inner.x + dx as u16, inner.y + dy as u16)
+                    .set_char(ch)
+                    .set_style(style);
+            }
+        }
+
+        // Info line at bottom (compact for panel)
+        let info_y = inner.y + display_height as u16;
+        if info_y < inner.y + inner.height {
+            let info = format!(
+                "{:.0}m-{:.0}m ≈River ●Spring ▼Fall ♣Forest",
+                region.height_min, region.height_max
+            );
+            // Truncate to fit panel width
+            let info_truncated: String = info.chars().take(inner.width as usize).collect();
+            buf.set_string(inner.x, info_y, &info_truncated, Style::default().fg(Color::DarkGray));
         }
     }
 }
@@ -489,6 +960,7 @@ pub fn export_map_image(
 
             let (r, g, b) = match view_mode {
                 ViewMode::Biome => biome.color(),
+                ViewMode::BaseBiome => biome.parent_biome().color(),
                 ViewMode::Height => height_color(h),
                 ViewMode::Temperature => temperature_color(temp),
                 ViewMode::Moisture => moisture_color(moisture),
@@ -513,6 +985,48 @@ pub fn export_map_image(
                     } else {
                         height_color(h)
                     }
+                }
+                ViewMode::WeatherZones => {
+                    if let Some(ref wz) = world.weather_zones {
+                        let zone = wz.get(x, y);
+                        if zone.has_risk() {
+                            zone.primary.color()
+                        } else if h < 0.0 {
+                            (50, 100, 200)
+                        } else {
+                            height_color(h)
+                        }
+                    } else if h < 0.0 {
+                        (50, 100, 200)
+                    } else {
+                        height_color(h)
+                    }
+                }
+                ViewMode::Microclimate => {
+                    if let Some(ref mc) = world.microclimate {
+                        let modifiers = mc.get(x, y);
+                        let temp_mod = modifiers.temperature_mod;
+                        if h < 0.0 {
+                            (50, 100, 200)
+                        } else if temp_mod > 1.0 {
+                            // Valley warmth - orange
+                            (255, 180, 100)
+                        } else if temp_mod < -0.5 {
+                            // Ridge cooling - blue
+                            (150, 200, 255)
+                        } else if modifiers.moisture_mod > 0.05 {
+                            // Lake/forest effect - green
+                            (100, 200, 150)
+                        } else {
+                            height_color(h)
+                        }
+                    } else {
+                        height_color(h)
+                    }
+                }
+                ViewMode::SeasonalTemp => {
+                    let seasonal_temp = world.get_seasonal_temperature(x, y);
+                    temperature_color(seasonal_temp)
                 }
             };
 
@@ -599,8 +1113,8 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
         terminal.draw(|f| {
             let size = f.area();
 
-            // Main layout: map area + status bar
-            let chunks = Layout::default()
+            // Main layout: content area + status bar
+            let main_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Min(1),
@@ -608,8 +1122,53 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                 ])
                 .split(size);
 
-            let map_area = chunks[0];
-            let status_area = chunks[1];
+            let content_area = main_chunks[0];
+            let status_area = main_chunks[1];
+
+            // Content layout: map + side panel on right (panel is optional)
+            // When region map is shown, make the panel wider to fit it
+            let panel_width = if explorer.show_region_map { 68 } else { 28 };
+
+            let map_area = if explorer.show_panel || explorer.show_region_map {
+                let content_chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([
+                        Constraint::Min(1),              // Map takes remaining space
+                        Constraint::Length(panel_width), // Panel width (wider when region shown)
+                    ])
+                    .split(content_area);
+
+                let panel_area = content_chunks[1];
+
+                // Split panel vertically if region map is shown
+                if explorer.show_region_map {
+                    // Ensure region is cached for current cursor position
+                    explorer.ensure_region_cached();
+
+                    let panel_chunks = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([
+                            Constraint::Length(14), // Tile info panel (compact)
+                            Constraint::Min(20),    // Region map takes rest
+                        ])
+                        .split(panel_area);
+
+                    // Render compact tile info panel at top
+                    if explorer.show_panel {
+                        explorer.render_tile_panel(panel_chunks[0], f.buffer_mut());
+                    }
+
+                    // Render region map panel below
+                    explorer.render_region_panel(panel_chunks[1], f.buffer_mut());
+                } else if explorer.show_panel {
+                    // Just render tile info panel (full height)
+                    explorer.render_tile_panel(panel_area, f.buffer_mut());
+                }
+
+                content_chunks[0]
+            } else {
+                content_area
+            };
 
             // Render map
             explorer.render_map(map_area, f.buffer_mut());
@@ -617,20 +1176,57 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
             // Render status bar
             let zoom_str = if explorer.zoom > 1 { format!(" | Zoom:{}x", explorer.zoom) } else { String::new() };
             let msg_str = explorer.message.as_ref().map(|m| format!(" | {}", m)).unwrap_or_default();
+
+            // Show season info for seasonal views
+            let season_str = if matches!(explorer.view_mode, ViewMode::SeasonalTemp | ViewMode::WeatherZones) {
+                format!(" | {}", explorer.world.current_season.name())
+            } else {
+                String::new()
+            };
+
+            // Show weather zone info at cursor
+            let weather_str = if explorer.view_mode == ViewMode::WeatherZones {
+                if let Some(zone) = explorer.world.get_weather_zone(explorer.cursor_x, explorer.cursor_y) {
+                    if zone.has_risk() {
+                        format!(" | {}: {:.0}%", zone.primary.display_name(), zone.risk_factor * 100.0)
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            // Build compact status when panel is shown, full info when hidden
+            let tile_str = if explorer.show_panel {
+                String::new()  // Panel shows detailed info
+            } else {
+                format!(" | {}", explorer.tile_info())
+            };
+
+            let panel_hint = if explorer.show_panel { "" } else { "  I:Panel" };
+            let region_hint = if explorer.show_region_map { " [M]" } else { "" };
+
             let status = format!(
-                " W:({},{}) | {} | {}{}{} | V:View  ?:Help  Q:Quit",
+                " ({},{}) | {}{}{}{}{}{}{} | V:View  M:Region  [/]:Season  ?:Help{}  Q:Quit",
                 explorer.cursor_x,
                 explorer.cursor_y,
                 explorer.view_mode.name(),
-                explorer.tile_info(),
+                region_hint,
+                tile_str,
                 zoom_str,
+                season_str,
+                weather_str,
                 msg_str,
+                panel_hint,
             );
             let status_para = Paragraph::new(status)
                 .style(Style::default().bg(Color::DarkGray).fg(Color::White));
             f.render_widget(status_para, status_area);
 
-            // Render help if active
+            // Render help if active (as overlay on map)
             if explorer.show_help {
                 explorer.render_help(map_area, f.buffer_mut());
             }
@@ -697,12 +1293,38 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                             explorer.regenerate();
                         }
 
+                        // Toggle info panel
+                        KeyCode::Tab | KeyCode::Char('i') | KeyCode::Char('I') => {
+                            explorer.show_panel = !explorer.show_panel;
+                            explorer.message = Some(if explorer.show_panel {
+                                "Panel: ON".to_string()
+                            } else {
+                                "Panel: OFF".to_string()
+                            });
+                        }
+
                         // Top-down aesthetic export
                         KeyCode::Char('t') | KeyCode::Char('T') => {
                             let filename = format!("world_topdown_{}.png", explorer.world.seed());
                             match export_topdown_image(&explorer.world, &filename) {
                                 Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
                                 Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
+                            }
+                        }
+
+                        // Season cycling
+                        KeyCode::Char('[') | KeyCode::Char('{') => {
+                            explorer.prev_season();
+                        }
+                        KeyCode::Char(']') | KeyCode::Char('}') => {
+                            explorer.next_season();
+                        }
+
+                        // Region map panel toggle
+                        KeyCode::Char('m') | KeyCode::Char('M') => {
+                            explorer.show_region_map = !explorer.show_region_map;
+                            if explorer.show_region_map {
+                                explorer.ensure_region_cached();
                             }
                         }
 

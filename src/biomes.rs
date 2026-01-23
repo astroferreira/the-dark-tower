@@ -24,10 +24,19 @@ pub enum ExtendedBiome {
     Savanna,
     TropicalForest,
     TropicalRainforest,
+    // Mountain zonation biomes
+    MontaneForest,      // Tropical montane, broadleaf (1000-2000m)
+    CloudForest,        // Misty, epiphyte-rich (2000-3000m)
+    Paramo,             // Tropical highland grassland (3000-4000m)
+    SubalpineForest,    // Conifer treeline forest (temperate high)
+    AlpineMeadow,       // High altitude grassland (temperate)
     AlpineTundra,
     SnowyPeaks,
-    Foothills,      // Rolling hills at mountain bases (transitional terrain)
-    Lagoon,         // Shallow protected waters behind barrier islands
+    // High-altitude lake biomes
+    HighlandLake,       // High-altitude lake in mountain valleys
+    CraterLake,         // Volcanic crater lake
+    Foothills,          // Rolling hills at mountain bases (transitional terrain)
+    Lagoon,             // Shallow protected waters behind barrier islands
 
     // Fantasy forests
     DeadForest,
@@ -186,8 +195,159 @@ impl ExtendedBiome {
             Biome::Savanna => ExtendedBiome::Savanna,
             Biome::TropicalForest => ExtendedBiome::TropicalForest,
             Biome::TropicalRainforest => ExtendedBiome::TropicalRainforest,
+            // Mountain zonation biomes
+            Biome::MontaneForest => ExtendedBiome::MontaneForest,
+            Biome::CloudForest => ExtendedBiome::CloudForest,
+            Biome::Paramo => ExtendedBiome::Paramo,
+            Biome::SubalpineForest => ExtendedBiome::SubalpineForest,
+            Biome::AlpineMeadow => ExtendedBiome::AlpineMeadow,
             Biome::AlpineTundra => ExtendedBiome::AlpineTundra,
             Biome::SnowyPeaks => ExtendedBiome::SnowyPeaks,
+        }
+    }
+
+    /// Get the parent/base biome for regional map generation.
+    /// Every special biome maps back to a core climate biome, ensuring
+    /// regional maps can use base terrain while preserving special features.
+    pub fn parent_biome(&self) -> Biome {
+        use ExtendedBiome::*;
+        match self {
+            // ===== Core biomes (map to themselves) =====
+            DeepOcean => Biome::DeepOcean,
+            Ocean => Biome::Ocean,
+            CoastalWater => Biome::CoastalWater,
+            Ice => Biome::Ice,
+            Tundra => Biome::Tundra,
+            BorealForest => Biome::BorealForest,
+            TemperateGrassland => Biome::TemperateGrassland,
+            TemperateForest => Biome::TemperateForest,
+            TemperateRainforest => Biome::TemperateRainforest,
+            Desert => Biome::Desert,
+            Savanna => Biome::Savanna,
+            TropicalForest => Biome::TropicalForest,
+            TropicalRainforest => Biome::TropicalRainforest,
+
+            // ===== Mountain zonation biomes =====
+            MontaneForest => Biome::MontaneForest,
+            CloudForest => Biome::CloudForest,
+            Paramo => Biome::Paramo,
+            SubalpineForest => Biome::SubalpineForest,
+            AlpineMeadow => Biome::AlpineMeadow,
+            AlpineTundra => Biome::AlpineTundra,
+            SnowyPeaks => Biome::SnowyPeaks,
+
+            // ===== High-altitude lakes & transitional =====
+            HighlandLake | CraterLake => Biome::CoastalWater,
+            Foothills => Biome::TemperateGrassland,
+            Lagoon => Biome::CoastalWater,
+
+            // ===== Fantasy forests =====
+            DeadForest => Biome::BorealForest,
+            CrystalForest => Biome::BorealForest,
+            BioluminescentForest => Biome::TropicalRainforest,
+            MushroomForest => Biome::TemperateForest,
+            PetrifiedForest => Biome::Desert,
+
+            // ===== Fantasy waters =====
+            AcidLake | LavaLake | FrozenLake | BioluminescentWater => Biome::CoastalWater,
+
+            // ===== Wastelands =====
+            VolcanicWasteland | SaltFlats | Ashlands | CrystalWasteland => Biome::Desert,
+
+            // ===== Wetlands =====
+            Swamp => Biome::TropicalForest,
+            Marsh => Biome::TemperateGrassland,
+            Bog => Biome::Tundra,
+            MangroveSaltmarsh => Biome::TropicalForest,
+
+            // ===== Ultra-rare - Ancient/Primeval =====
+            AncientGrove => Biome::TemperateForest,
+            TitanBones => Biome::Savanna,
+            CoralPlateau => Biome::CoastalWater,
+
+            // ===== Ultra-rare - Geothermal/Volcanic =====
+            ObsidianFields => Biome::Desert,
+            Geysers => Biome::Tundra,
+            TarPits => Biome::Savanna,
+
+            // ===== Ultra-rare - Magical/Anomalous =====
+            FloatingStones => Biome::AlpineTundra,
+            Shadowfen => Biome::TropicalForest,
+            PrismaticPools => Biome::CoastalWater,
+            AuroraWastes => Biome::Tundra,
+
+            // ===== Ultra-rare - Desert variants =====
+            SingingDunes | GlassDesert => Biome::Desert,
+            Oasis => Biome::Savanna,
+
+            // ===== Ultra-rare - Aquatic =====
+            AbyssalVents => Biome::DeepOcean,
+            Sargasso => Biome::Ocean,
+
+            // ===== Mystical / Supernatural =====
+            EtherealMist => Biome::TemperateForest,
+            StarfallCrater => Biome::Desert,
+            LeyNexus => Biome::TemperateGrassland,
+            WhisperingStones => Biome::Tundra,
+            SpiritMarsh => Biome::TropicalForest,
+
+            // ===== Extreme Geological =====
+            SulfurVents => Biome::Desert,
+            BasaltColumns => Biome::AlpineTundra,
+            PaintedHills => Biome::Desert,
+            RazorPeaks => Biome::AlpineTundra,
+            SinkholeLakes => Biome::CoastalWater,
+
+            // ===== Biological Wonders =====
+            ColossalHive => Biome::Savanna,
+            BoneFields => Biome::Desert,
+            CarnivorousBog => Biome::TropicalForest,
+            FungalBloom => Biome::TemperateForest,
+            KelpTowers => Biome::CoastalWater,
+
+            // ===== Exotic Waters =====
+            BrinePools | HotSprings | MirrorLake | PhosphorShallows => Biome::CoastalWater,
+            InkSea => Biome::DeepOcean,
+
+            // ===== Alien / Corrupted =====
+            VoidScar => Biome::Desert,
+            SiliconGrove => Biome::BorealForest,
+            SporeWastes | BleedingStone => Biome::Desert,
+            HollowEarth => Biome::AlpineTundra,
+
+            // ===== Ancient Ruins =====
+            SunkenCity => Biome::Ocean,
+            CyclopeanRuins | BuriedTemple => Biome::Desert,
+            OvergrownCitadel => Biome::TemperateForest,
+            DarkTower => Biome::AlpineTundra,
+
+            // ===== Realistic Ocean - Shallow/Coastal =====
+            CoralReef | KelpForest | SeagrassMeadow => Biome::CoastalWater,
+
+            // ===== Realistic Ocean - Mid-depth =====
+            ContinentalShelf | Seamount => Biome::Ocean,
+
+            // ===== Realistic Ocean - Deep =====
+            OceanicTrench | AbyssalPlain | MidOceanRidge |
+            ColdSeep | BrinePool => Biome::DeepOcean,
+
+            // ===== Fantasy Ocean =====
+            CrystalDepths | LeviathanGraveyard | VoidMaw |
+            FrozenAbyss | ThermalVents => Biome::DeepOcean,
+            DrownedCitadel => Biome::Ocean,
+            PearlGardens | SirenShallows => Biome::CoastalWater,
+
+            // ===== Karst & Cave Biomes =====
+            KarstPlains | Sinkhole | CaveEntrance => Biome::TemperateGrassland,
+            TowerKarst | CockpitKarst => Biome::TropicalForest,
+            Cenote => Biome::CoastalWater,
+
+            // ===== Volcanic Biomes =====
+            Caldera | VolcanicCone => Biome::AlpineTundra,
+            ShieldVolcano => Biome::Savanna,
+            LavaField | HotSpot => Biome::Desert,
+            FumaroleField => Biome::Tundra,
+            VolcanicBeach => Biome::CoastalWater,
         }
     }
 
@@ -208,10 +368,19 @@ impl ExtendedBiome {
             ExtendedBiome::Savanna => (170, 160, 80),
             ExtendedBiome::TropicalForest => (30, 120, 30),
             ExtendedBiome::TropicalRainforest => (20, 90, 40),
+            // Mountain zonation biomes
+            ExtendedBiome::MontaneForest => (45, 90, 55),      // Dark green
+            ExtendedBiome::CloudForest => (60, 110, 80),       // Misty green
+            ExtendedBiome::Paramo => (160, 155, 120),          // Tan-green highland
+            ExtendedBiome::SubalpineForest => (40, 70, 45),    // Dark conifer green
+            ExtendedBiome::AlpineMeadow => (130, 160, 100),    // Bright alpine grass
             ExtendedBiome::AlpineTundra => (140, 140, 130),
             ExtendedBiome::SnowyPeaks => (255, 255, 255),
-            ExtendedBiome::Foothills => (120, 145, 85),     // Darker olive green (rolling hills)
-            ExtendedBiome::Lagoon => (90, 175, 195),        // Light turquoise (protected shallow water)
+            // High-altitude lakes
+            ExtendedBiome::HighlandLake => (70, 130, 170),     // Mountain lake blue
+            ExtendedBiome::CraterLake => (50, 100, 150),       // Deep crater blue
+            ExtendedBiome::Foothills => (120, 145, 85),        // Darker olive green (rolling hills)
+            ExtendedBiome::Lagoon => (90, 175, 195),           // Light turquoise (protected shallow water)
 
             // Fantasy forests
             ExtendedBiome::DeadForest => (80, 70, 60),
@@ -368,8 +537,17 @@ impl ExtendedBiome {
             ExtendedBiome::Savanna => "Savanna",
             ExtendedBiome::TropicalForest => "Tropical Forest",
             ExtendedBiome::TropicalRainforest => "Tropical Rainforest",
+            // Mountain zonation biomes
+            ExtendedBiome::MontaneForest => "Montane Forest",
+            ExtendedBiome::CloudForest => "Cloud Forest",
+            ExtendedBiome::Paramo => "Páramo",
+            ExtendedBiome::SubalpineForest => "Subalpine Forest",
+            ExtendedBiome::AlpineMeadow => "Alpine Meadow",
             ExtendedBiome::AlpineTundra => "Alpine Tundra",
             ExtendedBiome::SnowyPeaks => "Snowy Peaks",
+            // High-altitude lakes
+            ExtendedBiome::HighlandLake => "Highland Lake",
+            ExtendedBiome::CraterLake => "Crater Lake",
             ExtendedBiome::Foothills => "Foothills",
             ExtendedBiome::Lagoon => "Lagoon",
             ExtendedBiome::DeadForest => "Dead Forest",
@@ -722,6 +900,31 @@ impl ExtendedBiome {
         ]
     }
 
+    /// Check if this is a highland/mountain biome (for lake placement)
+    pub fn is_highland(&self) -> bool {
+        matches!(self,
+            ExtendedBiome::MontaneForest |
+            ExtendedBiome::CloudForest |
+            ExtendedBiome::Paramo |
+            ExtendedBiome::SubalpineForest |
+            ExtendedBiome::AlpineMeadow |
+            ExtendedBiome::AlpineTundra |
+            ExtendedBiome::SnowyPeaks |
+            ExtendedBiome::Foothills
+        )
+    }
+
+    /// Check if this is a "special" biome (different from its parent biome).
+    /// Special biomes have unique features that should be preserved in regional maps
+    /// while the parent biome provides the base terrain/climate characteristics.
+    pub fn is_special(&self) -> bool {
+        // A biome is special if converting it to ExtendedBiome and back
+        // to Biome gives a different result than from_base(parent_biome())
+        let parent = self.parent_biome();
+        let reconstructed = ExtendedBiome::from_base(parent);
+        *self != reconstructed
+    }
+
     /// Check if this is a unique biome (exactly one per map, guaranteed)
     pub fn is_unique(&self) -> bool {
         matches!(self, ExtendedBiome::DarkTower)
@@ -1040,15 +1243,35 @@ pub fn classify_extended(
     let base = Biome::classify(elevation, temperature, moisture);
     let base_extended = ExtendedBiome::from_base(base);
 
+    // Sample noise for this position (used for both highland lakes and fantasy biomes)
+    let nx = x as f64 / width as f64 * 10.0;
+    let ny = y as f64 / height as f64 * 10.0;
+    let noise_val = (noise.get([nx, ny]) as f32 + 1.0) * 0.5; // Normalize to 0-1
+
+    // High-altitude lake detection (applies regardless of fantasy intensity)
+    // These are realistic features of mountain environments
+    if elevation > 3000.0 && base_extended.is_highland() {
+        // Use noise to simulate local depressions (lake basins)
+        // Higher noise values indicate potential depression areas
+        let depression_noise = noise.get([nx * 3.0, ny * 3.0, 2.0]) as f32;
+
+        // Crater Lake: volcanic areas (high stress) with depression
+        // High tectonic stress indicates volcanic activity
+        if stress > 0.4 && depression_noise > 0.3 && noise_val > 0.7 {
+            return ExtendedBiome::CraterLake;
+        }
+
+        // Highland Lake: wet highland valleys with depression
+        // High moisture + depression = mountain lake
+        if moisture > 0.5 && depression_noise > 0.4 && noise_val > 0.65 {
+            return ExtendedBiome::HighlandLake;
+        }
+    }
+
     // If fantasy intensity is 0, just return base biome
     if config.fantasy_intensity <= 0.0 {
         return base_extended;
     }
-
-    // Sample noise for this position
-    let nx = x as f64 / width as f64 * 10.0;
-    let ny = y as f64 / height as f64 * 10.0;
-    let noise_val = (noise.get([nx, ny]) as f32 + 1.0) * 0.5; // Normalize to 0-1
 
     // Try to convert to fantasy biome based on conditions
     maybe_convert_to_fantasy(

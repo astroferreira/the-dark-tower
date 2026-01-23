@@ -16,7 +16,7 @@ pub mod rivers;
 pub mod utils;
 
 pub use materials::{RockType, generate_material_map, generate_hardness_map};
-pub use params::ErosionParams;
+pub use params::{ErosionParams, ErosionPreset};
 pub use rivers::RiverErosionParams;
 pub use river_geometry::{RiverNetwork, RiverNetworkParams, trace_bezier_rivers};
 

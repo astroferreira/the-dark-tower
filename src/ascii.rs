@@ -77,11 +77,19 @@ pub fn biome_char(biome: &ExtendedBiome) -> char {
         ExtendedBiome::TropicalForest => 't',
         ExtendedBiome::TropicalRainforest => 'r',
 
-        // Mountain biomes
+        // Mountain biomes (altitudinal zones)
+        ExtendedBiome::MontaneForest => 'ᵐ',    // m for montane
+        ExtendedBiome::CloudForest => 'ᶜ',       // c for cloud
+        ExtendedBiome::Paramo => 'ᵖ',            // p for paramo
+        ExtendedBiome::SubalpineForest => 'ˢ',   // s for subalpine
+        ExtendedBiome::AlpineMeadow => 'ᵃ',      // a for alpine meadow
         ExtendedBiome::AlpineTundra => '^',
         ExtendedBiome::SnowyPeaks => 'A',
-        ExtendedBiome::Foothills => 'n',    // n for rolling hills shape
-        ExtendedBiome::Lagoon => '=',       // = for calm protected water
+        // High-altitude lakes
+        ExtendedBiome::HighlandLake => '◊',      // diamond for mountain lake
+        ExtendedBiome::CraterLake => '⊙',        // bullseye for crater
+        ExtendedBiome::Foothills => 'n',         // n for rolling hills shape
+        ExtendedBiome::Lagoon => '=',            // = for calm protected water
 
         // Fantasy forests
         ExtendedBiome::DeadForest => 'X',

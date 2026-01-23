@@ -1,5 +1,49 @@
 //! Erosion simulation parameters and configuration
 
+/// Erosion intensity preset
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ErosionPreset {
+    /// No erosion - raw terrain
+    None,
+    /// Minimal erosion - subtle smoothing
+    Minimal,
+    /// Normal erosion - balanced
+    #[default]
+    Normal,
+    /// Dramatic erosion - deep valleys and canyons
+    Dramatic,
+    /// Realistic erosion - high iteration count
+    Realistic,
+}
+
+impl ErosionPreset {
+    pub fn all() -> &'static [Self] {
+        &[Self::None, Self::Minimal, Self::Normal, Self::Dramatic, Self::Realistic]
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::None => "No erosion (raw terrain)",
+            Self::Minimal => "Subtle smoothing",
+            Self::Normal => "Balanced erosion",
+            Self::Dramatic => "Deep valleys and canyons",
+            Self::Realistic => "High-quality simulation",
+        }
+    }
+}
+
+impl std::fmt::Display for ErosionPreset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Minimal => write!(f, "minimal"),
+            Self::Normal => write!(f, "normal"),
+            Self::Dramatic => write!(f, "dramatic"),
+            Self::Realistic => write!(f, "realistic"),
+        }
+    }
+}
+
 /// Global erosion simulation parameters
 #[derive(Clone, Debug, PartialEq)]
 pub struct ErosionParams {
@@ -226,5 +270,45 @@ impl ErosionParams {
     /// Compute ice density * gravity (commonly used in SIA)
     pub fn rho_g(&self) -> f32 {
         self.ice_density * self.gravity
+    }
+
+    /// Create parameters from a preset
+    pub fn from_preset(preset: ErosionPreset) -> Self {
+        match preset {
+            ErosionPreset::None => Self {
+                enable_hydraulic: false,
+                enable_glacial: false,
+                enable_rivers: false,
+                ..Default::default()
+            },
+            ErosionPreset::Minimal => Self {
+                hydraulic_iterations: 50_000,
+                glacial_timesteps: 100,
+                droplet_erosion_rate: 0.02,
+                river_max_erosion: 50.0,
+                ..Default::default()
+            },
+            ErosionPreset::Normal => Self::default(),
+            ErosionPreset::Dramatic => Self {
+                hydraulic_iterations: 750_000,
+                glacial_timesteps: 750,
+                droplet_erosion_rate: 0.1,
+                droplet_capacity_factor: 15.0,
+                river_max_erosion: 250.0,
+                river_erosion_rate: 1.5,
+                erosion_coefficient: 2e-4,
+                ..Default::default()
+            },
+            ErosionPreset::Realistic => Self {
+                hydraulic_iterations: 1_000_000,
+                glacial_timesteps: 1000,
+                droplet_erosion_rate: 0.03,
+                droplet_deposit_rate: 0.15,
+                droplet_evaporation: 0.001,
+                droplet_max_steps: 3000,
+                river_source_min_accumulation: 5.0,
+                ..Default::default()
+            },
+        }
     }
 }

@@ -295,7 +295,8 @@ fn biome_compatibility(a: ExtendedBiome, b: ExtendedBiome) -> f32 {
     );
 
     let is_cold = |b: ExtendedBiome| matches!(b,
-        Ice | Tundra | AlpineTundra | SnowyPeaks | FrozenLake | AuroraWastes
+        Ice | Tundra | AlpineTundra | SnowyPeaks | FrozenLake | AuroraWastes |
+        AlpineMeadow | SubalpineForest
     );
 
     let is_hot = |b: ExtendedBiome| matches!(b,
@@ -307,6 +308,12 @@ fn biome_compatibility(a: ExtendedBiome, b: ExtendedBiome) -> f32 {
         Swamp | Marsh | Bog | MangroveSaltmarsh | SpiritMarsh | Shadowfen
     );
 
+    // Mountain biomes (altitudinal zones) - smooth vertical transitions
+    let is_mountain = |b: ExtendedBiome| matches!(b,
+        MontaneForest | CloudForest | Paramo | SubalpineForest |
+        AlpineMeadow | AlpineTundra | SnowyPeaks | HighlandLake | CraterLake | Foothills
+    );
+
     // Water-to-water transitions are smooth
     if is_water(a) && is_water(b) {
         return 0.9;
@@ -315,6 +322,11 @@ fn biome_compatibility(a: ExtendedBiome, b: ExtendedBiome) -> f32 {
     // Forest-to-forest transitions are smooth
     if is_forest(a) && is_forest(b) {
         return 0.85;
+    }
+
+    // Mountain-to-mountain transitions (altitudinal bands)
+    if is_mountain(a) && is_mountain(b) {
+        return 0.9; // Very smooth - these are natural elevation gradients
     }
 
     // Cold-to-cold transitions

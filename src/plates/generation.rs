@@ -7,7 +7,7 @@ use rand_chacha::ChaCha8Rng;
 
 use crate::tilemap::Tilemap;
 
-use super::types::{Plate, PlateId};
+use super::types::{Plate, PlateId, WorldStyle};
 
 /// Entry in the priority queue for plate expansion.
 #[derive(Clone)]
@@ -97,10 +97,19 @@ enum PlateSizeMode {
 /// Uses fBm and domain warping for realistic, self-similar coastlines.
 /// Includes 4 border plates (oceanic) at map edges to create natural coastlines.
 /// Randomly varies plate sizes for natural variety.
+///
+/// The `world_style` parameter controls land/ocean distribution:
+/// - Earthlike: ~35% land, standard Earth-like distribution
+/// - Archipelago: ~18% land, many small islands scattered everywhere
+/// - Islands: ~25% land, island chains and small continents
+/// - Pangaea: ~40% land, one supercontinent
+/// - Continental: ~50% land, multiple large continents
+/// - Waterworld: ~8% land, sparse tiny islands
 pub fn generate_plates(
     width: usize,
     height: usize,
     num_plates: Option<usize>,
+    world_style: WorldStyle,
     rng: &mut ChaCha8Rng,
 ) -> (Tilemap<PlateId>, Vec<Plate>) {
     // Border margin for edge plates
@@ -108,15 +117,38 @@ pub fn generate_plates(
 
     // 4 border plates (always oceanic) + interior plates
     let num_border_plates: usize = 4;
-    let num_interior_plates: usize = num_plates.unwrap_or_else(|| rng.gen_range(6..=15));
+    let (min_plates, max_plates) = world_style.suggested_plate_count();
+    let num_interior_plates: usize = num_plates.unwrap_or_else(|| rng.gen_range(min_plates..=max_plates));
     let total_plates = num_border_plates + num_interior_plates;
 
-    // Randomly select a size distribution mode
-    let size_mode = match rng.gen_range(0..100) {
-        0..=20 => PlateSizeMode::Supercontinent,  // 20% chance
-        21..=45 => PlateSizeMode::MajorMinor,     // 25% chance
-        46..=70 => PlateSizeMode::Chaotic,        // 25% chance
-        _ => PlateSizeMode::Balanced,             // 30% chance
+    // Select size distribution mode based on world style
+    let size_mode = match world_style {
+        WorldStyle::Pangaea => PlateSizeMode::Supercontinent,
+        WorldStyle::Continental => {
+            // Prefer MajorMinor for large continents
+            if rng.gen_bool(0.7) { PlateSizeMode::MajorMinor } else { PlateSizeMode::Balanced }
+        }
+        WorldStyle::Archipelago | WorldStyle::Waterworld => {
+            // Force balanced or chaotic for even island distribution
+            if rng.gen_bool(0.6) { PlateSizeMode::Balanced } else { PlateSizeMode::Chaotic }
+        }
+        WorldStyle::Islands => {
+            // Mix of sizes for variety in island chains
+            match rng.gen_range(0..3) {
+                0 => PlateSizeMode::MajorMinor,
+                1 => PlateSizeMode::Chaotic,
+                _ => PlateSizeMode::Balanced,
+            }
+        }
+        WorldStyle::Earthlike => {
+            // Original random selection
+            match rng.gen_range(0..100) {
+                0..=20 => PlateSizeMode::Supercontinent,
+                21..=45 => PlateSizeMode::MajorMinor,
+                46..=70 => PlateSizeMode::Chaotic,
+                _ => PlateSizeMode::Balanced,
+            }
+        }
     };
 
     // Boundary noise for fBm - creates fractal coastlines
@@ -316,37 +348,75 @@ pub fn generate_plates(
         }
     }
 
-    // Target land percentage (~35% like Earth + margin for erosion/sea level)
+    // Target land percentage based on world style
     let total_cells = width * height;
-    let target_land_fraction = 0.35;
+    let target_land_fraction = world_style.target_land_fraction();
     let target_land_cells = (total_cells as f64 * target_land_fraction) as usize;
+    let max_plate_fraction = world_style.max_continental_plate_fraction();
+    let max_plate_cells = if max_plate_fraction > 0.0 {
+        (total_cells as f64 * max_plate_fraction) as usize
+    } else {
+        usize::MAX
+    };
+    let min_continental = world_style.min_continental_plates();
 
-    // Sort interior plates by actual area (largest first)
+    // Sort interior plates by actual area
+    // For archipelago/waterworld, sort smallest first to prefer many small islands
     let mut interior_areas: Vec<(usize, usize)> = (0..num_interior_plates)
         .map(|i| {
             let global_idx = num_border_plates + i;
             (global_idx, plate_areas[global_idx])
         })
         .collect();
-    interior_areas.sort_by(|a, b| b.1.cmp(&a.1));
+
+    if world_style.force_many_plates() {
+        // Sort smallest first for archipelago-style worlds
+        interior_areas.sort_by(|a, b| a.1.cmp(&b.1));
+    } else {
+        // Sort largest first (original behavior)
+        interior_areas.sort_by(|a, b| b.1.cmp(&a.1));
+    }
 
     // Select plates to be continental, trying to match target land coverage
     let mut continental_set: std::collections::HashSet<usize> = std::collections::HashSet::new();
     let mut current_land = 0usize;
 
     for (plate_idx, area) in &interior_areas {
+        // Skip plates that are too large for this world style
+        if *area > max_plate_cells {
+            continue;
+        }
+
         // Calculate how far from target we'd be with vs without this plate
         let distance_without = (target_land_cells as i64 - current_land as i64).abs();
         let distance_with = (target_land_cells as i64 - (current_land + area) as i64).abs();
 
-        // Add if it gets us closer to target
-        if distance_with <= distance_without {
+        // Add if it gets us closer to target, or if we need more continental plates
+        let need_more = continental_set.len() < min_continental;
+        if distance_with <= distance_without || need_more {
             continental_set.insert(*plate_idx);
             current_land += area;
         }
     }
 
-    // Ensure at least one continental plate for landmass
+    // Ensure at least minimum continental plates for landmass
+    // If we couldn't meet the minimum due to size constraints, add smallest eligible plates
+    if continental_set.len() < min_continental && !interior_areas.is_empty() {
+        // Sort by size (smallest first) for this fallback
+        let mut sorted_by_size: Vec<_> = interior_areas.iter()
+            .filter(|(idx, _)| !continental_set.contains(idx))
+            .collect();
+        sorted_by_size.sort_by(|a, b| a.1.cmp(&b.1));
+
+        for (plate_idx, _) in sorted_by_size {
+            if continental_set.len() >= min_continental {
+                break;
+            }
+            continental_set.insert(*plate_idx);
+        }
+    }
+
+    // Final fallback: ensure at least one continental plate
     if continental_set.is_empty() && !interior_areas.is_empty() {
         continental_set.insert(interior_areas[0].0);
     }

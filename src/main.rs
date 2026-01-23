@@ -9,14 +9,22 @@ mod climate;
 mod coastline;
 mod erosion;
 mod explorer;
+mod grid_export;
 mod heightmap;
+mod menu;
+mod microclimate;
 mod plates;
+mod region;
 mod scale;
+mod seasons;
 mod seeds;
 mod tilemap;
+mod underground_water;
 mod water_bodies;
+mod weather_zones;
 mod world;
 
+use menu::{MenuResult, WorldConfig};
 use seeds::WorldSeeds;
 
 #[derive(Parser, Debug)]
@@ -35,9 +43,14 @@ struct Args {
     #[arg(short, long)]
     seed: Option<u64>,
 
-    /// Number of tectonic plates (random 6-15 if not specified)
+    /// Number of tectonic plates (random based on world style if not specified)
     #[arg(short = 'p', long)]
     plates: Option<usize>,
+
+    /// World style preset controlling land/ocean distribution
+    /// Options: earthlike, archipelago, islands, pangaea, continental, waterworld
+    #[arg(short = 'w', long, default_value = "earthlike")]
+    world_style: String,
 
     // === Individual seed overrides ===
 
@@ -76,13 +89,150 @@ struct Args {
     /// Show all seed values used
     #[arg(long)]
     show_seeds: bool,
+
+    /// Export comparison grid of erosion presets
+    #[arg(long)]
+    export_erosion_grid: bool,
+
+    /// Export comparison grid of climate modes
+    #[arg(long)]
+    export_climate_grid: bool,
+
+    /// Export comparison grid of rainfall levels
+    #[arg(long)]
+    export_rainfall_grid: bool,
+
+    /// Export full comparison grid (erosion x climate)
+    #[arg(long)]
+    export_full_grid: bool,
+
+    /// Export all comparison grids
+    #[arg(long)]
+    export_all_grids: bool,
+
+    /// Output filename prefix for grid exports
+    #[arg(long, default_value = "comparison")]
+    grid_prefix: String,
 }
 
 fn main() {
     let args = Args::parse();
 
+    // Handle grid export commands
+    if args.export_erosion_grid || args.export_climate_grid || args.export_rainfall_grid
+        || args.export_full_grid || args.export_all_grids
+    {
+        let grid_config = grid_export::GridExportConfig {
+            width: args.width.min(512),  // Cap size for grid exports
+            height: args.height.min(256),
+            seed: args.seed.unwrap_or(42),
+            world_style: plates::WorldStyle::from_str(&args.world_style).unwrap_or_default(),
+            plates: args.plates,
+            ..Default::default()
+        };
+
+        if args.export_all_grids {
+            if let Err(e) = grid_export::export_all_grids(&grid_config, &args.grid_prefix) {
+                eprintln!("Grid export error: {}", e);
+                std::process::exit(1);
+            }
+            return;
+        }
+
+        if args.export_erosion_grid {
+            let filename = format!("{}_erosion.png", args.grid_prefix);
+            if let Err(e) = grid_export::export_erosion_grid(&grid_config, &filename) {
+                eprintln!("Grid export error: {}", e);
+                std::process::exit(1);
+            }
+        }
+
+        if args.export_climate_grid {
+            let filename = format!("{}_climate.png", args.grid_prefix);
+            if let Err(e) = grid_export::export_climate_grid(&grid_config, &filename) {
+                eprintln!("Grid export error: {}", e);
+                std::process::exit(1);
+            }
+        }
+
+        if args.export_rainfall_grid {
+            let filename = format!("{}_rainfall.png", args.grid_prefix);
+            if let Err(e) = grid_export::export_rainfall_grid(&grid_config, &filename) {
+                eprintln!("Grid export error: {}", e);
+                std::process::exit(1);
+            }
+        }
+
+        if args.export_full_grid {
+            let filename = format!("{}_full.png", args.grid_prefix);
+            if let Err(e) = grid_export::export_full_grid(&grid_config, &filename) {
+                eprintln!("Grid export error: {}", e);
+                std::process::exit(1);
+            }
+        }
+
+        return;
+    }
+
+    // Determine configuration: use menu if no seed provided (interactive mode),
+    // otherwise use CLI args directly (batch mode)
+    let (width, height, master_seed, plates_count, world_style, erosion_preset, climate_config) = if args.seed.is_some() {
+        // Batch mode: use CLI args directly (use defaults for new options)
+        let world_style = plates::WorldStyle::from_str(&args.world_style).unwrap_or_else(|| {
+            eprintln!("Unknown world style '{}'. Available options:", args.world_style);
+            for style in plates::WorldStyle::all() {
+                eprintln!("  {}: {}", style, style.description());
+            }
+            std::process::exit(1);
+        });
+        (
+            args.width,
+            args.height,
+            args.seed.unwrap(),
+            args.plates,
+            world_style,
+            erosion::ErosionPreset::Normal,
+            climate::ClimateConfig::default(),
+        )
+    } else {
+        // Interactive mode: show menu
+        let initial_config = WorldConfig {
+            width: args.width,
+            height: args.height,
+            seed: None,
+            plates: args.plates,
+            world_style: plates::WorldStyle::from_str(&args.world_style).unwrap_or_default(),
+            ..Default::default()
+        };
+
+        match menu::run_menu(initial_config) {
+            Ok(MenuResult::Generate(config)) => {
+                let seed = config.seed.unwrap_or_else(|| rand::random());
+                let climate_config = climate::ClimateConfig {
+                    mode: config.climate_mode,
+                    rainfall: config.rainfall,
+                };
+                (
+                    config.width,
+                    config.height,
+                    seed,
+                    config.plates,
+                    config.world_style,
+                    config.erosion_preset,
+                    climate_config,
+                )
+            }
+            Ok(MenuResult::Quit) => {
+                return;
+            }
+            Err(e) => {
+                eprintln!("Menu error: {}", e);
+                std::process::exit(1);
+            }
+        }
+    };
+
     // Build seeds from master seed with optional overrides
-    let master_seed = args.seed.unwrap_or_else(|| rand::random());
     let mut builder = WorldSeeds::builder(master_seed);
 
     if let Some(s) = args.seed_tectonics { builder = builder.tectonics(s); }
@@ -97,7 +247,8 @@ fn main() {
     let seeds = builder.build();
 
     println!("Generating planet with master seed: {}", seeds.master);
-    println!("Map size: {}x{}", args.width, args.height);
+    println!("World style: {} ({})", world_style, world_style.description());
+    println!("Map size: {}x{}", width, height);
 
     if args.show_seeds {
         println!("Seeds:");
@@ -116,7 +267,7 @@ fn main() {
 
     // Generate tectonic plates
     println!("Generating tectonic plates...");
-    let (plate_map, plates) = plates::generate_plates(args.width, args.height, args.plates, &mut tectonic_rng);
+    let (plate_map, plates) = plates::generate_plates(width, height, plates_count, world_style, &mut tectonic_rng);
     let continental_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Continental).count();
     let oceanic_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Oceanic).count();
     println!("Created {} plates ({} continental, {} oceanic)", plates.len(), continental_count, oceanic_count);
@@ -128,9 +279,9 @@ fn main() {
     // Generate heightmap
     println!("Generating heightmap...");
     let land_mask = heightmap::generate_land_mask(&plate_map, &plates, seeds.heightmap);
-    let land_count = (0..args.height).flat_map(|y| (0..args.width).map(move |x| (x, y)))
+    let land_count = (0..height).flat_map(|y| (0..width).map(move |x| (x, y)))
         .filter(|&(x, y)| *land_mask.get(x, y)).count();
-    println!("Land mask: {} cells are land ({:.1}%)", land_count, 100.0 * land_count as f64 / (args.width * args.height) as f64);
+    println!("Land mask: {} cells are land ({:.1}%)", land_count, 100.0 * land_count as f64 / (width * height) as f64);
     let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
     let mut min_h = f32::MAX;
     let mut max_h = f32::MIN;
@@ -138,15 +289,15 @@ fn main() {
         if h < min_h { min_h = h; }
         if h > max_h { max_h = h; }
     }
-    let above_sea = (0..args.height).flat_map(|y| (0..args.width).map(move |x| (x, y)))
+    let above_sea = (0..height).flat_map(|y| (0..width).map(move |x| (x, y)))
         .filter(|&(x, y)| *heightmap.get(x, y) > 0.0).count();
     println!("Heightmap range: {:.1}m to {:.1}m ({:.1}% above sea level)", min_h, max_h,
-        100.0 * above_sea as f64 / (args.width * args.height) as f64);
+        100.0 * above_sea as f64 / (width * height) as f64);
 
     // Generate climate
-    println!("Generating climate...");
-    let temperature = climate::generate_temperature(&heightmap, args.width, args.height);
-    let moisture = climate::generate_moisture(&heightmap, args.width, args.height);
+    println!("Generating climate (mode: {}, rainfall: {})...", climate_config.mode, climate_config.rainfall);
+    let temperature = climate::generate_temperature_with_config(&heightmap, width, height, climate_config.mode);
+    let moisture = climate::generate_moisture_with_config(&heightmap, width, height, &climate_config);
 
     // Report climate stats
     let mut min_temp = f32::MAX;
@@ -158,8 +309,8 @@ fn main() {
     println!("Temperature range: {:.1}°C to {:.1}°C", min_temp, max_temp);
 
     // Apply erosion
-    println!("Simulating erosion...");
-    let erosion_params = erosion::ErosionParams::default();
+    println!("Simulating erosion (preset: {})...", erosion_preset);
+    let erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
     let mut erosion_rng = ChaCha8Rng::seed_from_u64(seeds.erosion);
 
     let (stats, hardness_map) = erosion::simulate_erosion(
@@ -267,7 +418,48 @@ fn main() {
     // Generate Bezier river network
     let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seeds.rivers);
 
-    let world_data = world::WorldData::new(
+    // Calculate region handshakes for hierarchical zoom
+    println!("Calculating region handshakes...");
+    let handshake_input = region::HandshakeInput {
+        heightmap: &heightmap,
+        moisture: &moisture,
+        temperature: &temperature,
+        stress_map: &stress_map,
+        biomes: &extended_biomes,
+        hardness_map: Some(&hardness_map),
+    };
+    let mut world_handshakes = region::calculate_world_handshakes_full(&handshake_input);
+    region::rivers::calculate_river_crossings(&mut world_handshakes.handshakes, &river_network);
+
+    // Generate underground water features (aquifers, springs, waterfalls)
+    println!("Generating underground water features...");
+    let underground_water_params = underground_water::UndergroundWaterParams::default();
+    let underground_water_features = underground_water::UndergroundWater::generate(
+        &heightmap,
+        &moisture,
+        &stress_map,
+        Some(&hardness_map),
+        &underground_water_params,
+    );
+
+    // Log underground water statistics
+    let uw_stats = underground_water_features.stats();
+    println!("Underground water: {} aquifer tiles ({} unconfined, {} confined, {} perched)",
+             uw_stats.aquifer_tiles,
+             uw_stats.unconfined_aquifers,
+             uw_stats.confined_aquifers,
+             uw_stats.perched_aquifers);
+    println!("Springs: {} total ({} seepage, {} artesian, {} thermal, {} karst)",
+             uw_stats.spring_count,
+             uw_stats.seepage_springs,
+             uw_stats.artesian_springs,
+             uw_stats.thermal_springs,
+             uw_stats.karst_springs);
+    if uw_stats.waterfall_count > 0 {
+        println!("Waterfalls: {} (max height: {:.0}m)", uw_stats.waterfall_count, uw_stats.max_waterfall_height);
+    }
+
+    let mut world_data = world::WorldData::new(
         seeds.clone(),
         map_scale,
         heightmap,
@@ -283,6 +475,8 @@ fn main() {
         Some(river_network),
         Some(biome_feather_map),
     );
+    world_data.handshakes = Some(world_handshakes);
+    world_data.underground_water = Some(underground_water_features);
 
     if let Err(e) = explorer::run_explorer(world_data) {
         eprintln!("Explorer error: {}", e);

@@ -6,6 +6,9 @@
 //! - Climate modeling (temperature, moisture)
 //! - Climate-based biome types
 //! - Water body detection (oceans, lakes, rivers)
+//! - Microclimate effects (valleys, ridges, lake proximity)
+//! - Seasonal climate variation
+//! - Extreme weather zone detection
 
 pub mod ascii;
 pub mod biome_feathering;
@@ -14,9 +17,14 @@ pub mod climate;
 pub mod coastline;
 pub mod erosion;
 pub mod heightmap;
+pub mod microclimate;
 pub mod plates;
+pub mod region;
 pub mod scale;
+pub mod seasons;
 pub mod seeds;
 pub mod tilemap;
+pub mod underground_water;
 pub mod water_bodies;
+pub mod weather_zones;
 pub mod world;

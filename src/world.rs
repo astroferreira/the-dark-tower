@@ -10,11 +10,16 @@ use crate::biome_feathering::{self, BiomeFeatherMap, FeatherConfig};
 use crate::climate;
 use crate::erosion::RiverNetwork;
 use crate::heightmap;
+use crate::microclimate::{self, MicroclimateModifiers, MicroclimateConfig};
 use crate::plates::{self, Plate, PlateId};
+use crate::region::{self, WorldHandshakes};
 use crate::scale::MapScale;
+use crate::seasons::{self, SeasonalClimate, Season};
 use crate::seeds::WorldSeeds;
 use crate::tilemap::Tilemap;
+use crate::underground_water::{self, UndergroundWater, UndergroundWaterParams, TileWaterFeatures};
 use crate::water_bodies::{self, WaterBody, WaterBodyId, WaterBodyType};
+use crate::weather_zones::{self, WeatherZone};
 
 /// All generated world data bundled together
 pub struct WorldData {
@@ -50,6 +55,18 @@ pub struct WorldData {
     pub river_network: Option<RiverNetwork>,
     /// Biome feathering map for smooth transitions
     pub biome_feather_map: Option<BiomeFeatherMap>,
+    /// Microclimate modifiers (valley warmth, ridge cooling, etc.)
+    pub microclimate: Option<Tilemap<MicroclimateModifiers>>,
+    /// Seasonal climate data (temperature/moisture by season)
+    pub seasonal_climate: Option<SeasonalClimate>,
+    /// Extreme weather zones (hurricane, monsoon, etc.)
+    pub weather_zones: Option<Tilemap<WeatherZone>>,
+    /// Region handshake data for hierarchical zoom
+    pub handshakes: Option<WorldHandshakes>,
+    /// Current season for display (can be cycled in explorer)
+    pub current_season: Season,
+    /// Underground water features (aquifers, springs, waterfalls)
+    pub underground_water: Option<UndergroundWater>,
 }
 
 impl WorldData {
@@ -94,6 +111,61 @@ impl WorldData {
             water_bodies,
             river_network,
             biome_feather_map,
+            microclimate: None,
+            seasonal_climate: None,
+            weather_zones: None,
+            handshakes: None,
+            current_season: Season::Summer,
+            underground_water: None,
+        }
+    }
+
+    /// Create a new WorldData with all climate features
+    pub fn new_with_climate(
+        seeds: WorldSeeds,
+        scale: MapScale,
+        heightmap: Tilemap<f32>,
+        temperature: Tilemap<f32>,
+        moisture: Tilemap<f32>,
+        biomes: Tilemap<ExtendedBiome>,
+        stress_map: Tilemap<f32>,
+        plate_map: Tilemap<PlateId>,
+        plates: Vec<Plate>,
+        hardness_map: Option<Tilemap<f32>>,
+        water_body_map: Tilemap<WaterBodyId>,
+        water_bodies: Vec<WaterBody>,
+        river_network: Option<RiverNetwork>,
+        biome_feather_map: Option<BiomeFeatherMap>,
+        microclimate: Option<Tilemap<MicroclimateModifiers>>,
+        seasonal_climate: Option<SeasonalClimate>,
+        weather_zones: Option<Tilemap<WeatherZone>>,
+        underground_water: Option<UndergroundWater>,
+    ) -> Self {
+        let width = heightmap.width;
+        let height = heightmap.height;
+        Self {
+            seeds,
+            width,
+            height,
+            scale,
+            heightmap,
+            temperature,
+            moisture,
+            biomes,
+            stress_map,
+            plate_map,
+            plates,
+            hardness_map,
+            water_body_map,
+            water_bodies,
+            river_network,
+            biome_feather_map,
+            microclimate,
+            seasonal_climate,
+            weather_zones,
+            handshakes: None,
+            current_season: Season::Summer,
+            underground_water,
         }
     }
 
@@ -101,6 +173,12 @@ impl WorldData {
     pub fn get_tile_info(&self, x: usize, y: usize) -> TileInfo {
         let water_body_id = *self.water_body_map.get(x, y);
         let water_body = self.water_bodies.iter().find(|wb| wb.id == water_body_id);
+
+        // Get underground water features if available
+        let water_features = self.underground_water
+            .as_ref()
+            .map(|uw: &UndergroundWater| uw.get_tile_features(x, y))
+            .unwrap_or_default();
 
         TileInfo {
             x,
@@ -115,6 +193,7 @@ impl WorldData {
             water_body_id,
             water_body_type: water_body.map(|wb| wb.body_type).unwrap_or(WaterBodyType::None),
             water_body_size: water_body.map(|wb| wb.tile_count),
+            water_features,
         }
     }
 
@@ -157,6 +236,51 @@ impl WorldData {
 
         false
     }
+
+    /// Check if a tile is in the northern hemisphere
+    pub fn is_northern_hemisphere(&self, y: usize) -> bool {
+        y < self.height / 2
+    }
+
+    /// Get seasonal temperature at a tile (if seasonal data is available)
+    pub fn get_seasonal_temperature(&self, x: usize, y: usize) -> f32 {
+        if let Some(ref seasonal) = self.seasonal_climate {
+            let is_north = self.is_northern_hemisphere(y);
+            seasonal.get_temperature(x, y, self.current_season, is_north)
+        } else {
+            *self.temperature.get(x, y)
+        }
+    }
+
+    /// Get seasonal moisture at a tile (if seasonal data is available)
+    pub fn get_seasonal_moisture(&self, x: usize, y: usize) -> f32 {
+        if let Some(ref seasonal) = self.seasonal_climate {
+            let is_north = self.is_northern_hemisphere(y);
+            seasonal.get_moisture(x, y, self.current_season, is_north)
+        } else {
+            *self.moisture.get(x, y)
+        }
+    }
+
+    /// Get weather zone at a tile (if weather data is available)
+    pub fn get_weather_zone(&self, x: usize, y: usize) -> Option<&WeatherZone> {
+        self.weather_zones.as_ref().map(|wz: &Tilemap<WeatherZone>| wz.get(x, y))
+    }
+
+    /// Get microclimate modifiers at a tile
+    pub fn get_microclimate(&self, x: usize, y: usize) -> Option<&MicroclimateModifiers> {
+        self.microclimate.as_ref().map(|mc: &Tilemap<MicroclimateModifiers>| mc.get(x, y))
+    }
+
+    /// Cycle to the next season
+    pub fn next_season(&mut self) {
+        self.current_season = self.current_season.next();
+    }
+
+    /// Cycle to the previous season
+    pub fn prev_season(&mut self) {
+        self.current_season = self.current_season.prev();
+    }
 }
 
 /// Information about a single tile
@@ -174,6 +298,8 @@ pub struct TileInfo {
     pub water_body_id: WaterBodyId,
     pub water_body_type: WaterBodyType,
     pub water_body_size: Option<usize>,
+    /// Underground water features (aquifers, springs, waterfalls)
+    pub water_features: TileWaterFeatures,
 }
 
 impl TileInfo {
@@ -238,6 +364,23 @@ impl TileInfo {
             WaterBodyType::River => "River".to_string(),
         }
     }
+
+    /// Format underground water features as string
+    pub fn water_features_str(&self) -> String {
+        self.water_features.to_string()
+    }
+
+    /// Check if tile has any underground water features
+    pub fn has_water_features(&self) -> bool {
+        self.water_features.has_any()
+    }
+}
+
+impl WorldData {
+    /// Get underground water statistics if available
+    pub fn underground_water_stats(&self) -> Option<underground_water::UndergroundWaterStats> {
+        self.underground_water.as_ref().map(|uw: &UndergroundWater| uw.stats())
+    }
 }
 
 /// Generate a complete world with the given parameters.
@@ -246,6 +389,11 @@ impl TileInfo {
 /// Note: This version skips erosion for faster generation (useful for exploration/preview).
 /// For full quality with erosion, use the main generation pipeline.
 pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
+    generate_world_with_style(width, height, seed, plates::WorldStyle::default())
+}
+
+/// Generate a complete world with a specific world style.
+pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_style: plates::WorldStyle) -> WorldData {
     // Special seed 666: Generate a minimal test world (4x4) for debugging
     if seed == 666 {
         return generate_test_world();
@@ -256,7 +404,7 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
     let scale = MapScale::default();
 
     // Generate tectonic plates
-    let (plate_map, plates) = plates::generate_plates(width, height, None, &mut rng);
+    let (plate_map, plates) = plates::generate_plates(width, height, None, world_style, &mut rng);
 
     // Calculate stress at plate boundaries
     let stress_map = plates::calculate_stress(&plate_map, &plates);
@@ -320,7 +468,72 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
     // Generate Bezier river network
     let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seeds.rivers);
 
-    WorldData::new(
+    // Calculate region handshakes for hierarchical zoom
+    let handshake_input = region::HandshakeInput {
+        heightmap: &heightmap,
+        moisture: &moisture,
+        temperature: &temperature,
+        stress_map: &stress_map,
+        biomes: &extended_biomes,
+        hardness_map: None,
+    };
+    let mut world_handshakes = region::calculate_world_handshakes_full(&handshake_input);
+    // Add river crossings to handshakes
+    region::rivers::calculate_river_crossings(&mut world_handshakes.handshakes, &river_network);
+
+    // Generate microclimate modifiers
+    let microclimate_config = MicroclimateConfig::default();
+    let microclimate_map = microclimate::generate_microclimates(
+        &heightmap,
+        &extended_biomes,
+        &water_body_map,
+        &water_bodies_list,
+        &microclimate_config,
+    );
+
+    // Generate seasonal climate data
+    let seasonal_climate = seasons::generate_seasonal_climate(
+        &temperature,
+        &moisture,
+        &heightmap,
+    );
+
+    // Generate weather zones
+    let weather_zone_map = weather_zones::generate_weather_zones(
+        &heightmap,
+        &temperature,
+        &moisture,
+    );
+
+    // Generate underground water features (aquifers, springs, waterfalls)
+    println!("Generating underground water features...");
+    let underground_water_params = UndergroundWaterParams::default();
+    let underground_water_features = UndergroundWater::generate(
+        &heightmap,
+        &moisture,
+        &stress_map,
+        None, // No hardness map without erosion
+        &underground_water_params,
+    );
+
+    // Log underground water statistics
+    let uw_stats = underground_water_features.stats();
+    println!("Underground water: {} aquifer tiles ({} unconfined, {} confined, {} perched)",
+             uw_stats.aquifer_tiles,
+             uw_stats.unconfined_aquifers,
+             uw_stats.confined_aquifers,
+             uw_stats.perched_aquifers);
+    println!("Springs: {} total ({} seepage, {} artesian, {} thermal, {} karst)",
+             uw_stats.spring_count,
+             uw_stats.seepage_springs,
+             uw_stats.artesian_springs,
+             uw_stats.thermal_springs,
+             uw_stats.karst_springs);
+    if uw_stats.waterfall_count > 0 {
+        println!("Waterfalls: {} (max height: {:.0}m)", uw_stats.waterfall_count, uw_stats.max_waterfall_height);
+    }
+
+    let mut world = WorldData::new_with_climate(
         seeds,
         scale,
         heightmap,
@@ -335,7 +548,16 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         water_bodies_list,
         Some(river_network),
         Some(biome_feather_map),
-    )
+        Some(microclimate_map),
+        Some(seasonal_climate),
+        Some(weather_zone_map),
+        Some(underground_water_features),
+    );
+
+    // Attach region handshakes
+    world.handshakes = Some(world_handshakes);
+
+    world
 }
 
 /// Generate a minimal test world (4x4) for debugging colonist behavior.
@@ -390,5 +612,11 @@ pub fn generate_test_world() -> WorldData {
         water_bodies,
         river_network: None,
         biome_feather_map: None,
+        microclimate: None,
+        seasonal_climate: None,
+        weather_zones: None,
+        handshakes: None,
+        current_season: Season::Summer,
+        underground_water: None,
     }
 }

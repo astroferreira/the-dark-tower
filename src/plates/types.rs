@@ -1,6 +1,129 @@
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 
+/// World generation style presets that control land/ocean distribution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum WorldStyle {
+    /// Earth-like distribution: ~35% land, mixed continent sizes
+    #[default]
+    Earthlike,
+    /// Archipelago world: ~15-20% land, many small islands scattered everywhere
+    Archipelago,
+    /// Island chains: ~25% land, volcanic island arcs and small continents
+    Islands,
+    /// Pangaea-style: ~40% land concentrated in one supercontinent
+    Pangaea,
+    /// Continental: ~50% land, multiple large continents
+    Continental,
+    /// Water world: ~5-10% land, very sparse tiny islands
+    Waterworld,
+}
+
+impl WorldStyle {
+    /// Parse from string (for CLI)
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "earthlike" | "earth" | "default" => Some(Self::Earthlike),
+            "archipelago" | "arch" => Some(Self::Archipelago),
+            "islands" | "island" => Some(Self::Islands),
+            "pangaea" | "supercontinent" => Some(Self::Pangaea),
+            "continental" | "continents" => Some(Self::Continental),
+            "waterworld" | "water" | "ocean" => Some(Self::Waterworld),
+            _ => None,
+        }
+    }
+
+    /// Target land fraction for this world style
+    pub fn target_land_fraction(&self) -> f64 {
+        match self {
+            Self::Earthlike => 0.35,
+            Self::Archipelago => 0.18,
+            Self::Islands => 0.25,
+            Self::Pangaea => 0.40,
+            Self::Continental => 0.50,
+            Self::Waterworld => 0.08,
+        }
+    }
+
+    /// Minimum number of continental plates
+    pub fn min_continental_plates(&self) -> usize {
+        match self {
+            Self::Earthlike => 1,
+            Self::Archipelago => 4,  // Many small ones
+            Self::Islands => 3,
+            Self::Pangaea => 1,
+            Self::Continental => 2,
+            Self::Waterworld => 1,
+        }
+    }
+
+    /// Maximum continental plate size as fraction of total area (0.0 = no limit)
+    pub fn max_continental_plate_fraction(&self) -> f64 {
+        match self {
+            Self::Earthlike => 0.0,      // No limit
+            Self::Archipelago => 0.08,   // Small islands only
+            Self::Islands => 0.15,       // Medium islands max
+            Self::Pangaea => 0.0,        // No limit, encourage big
+            Self::Continental => 0.30,   // Large but not dominant
+            Self::Waterworld => 0.03,    // Tiny islands only
+        }
+    }
+
+    /// Whether to force many small plates
+    pub fn force_many_plates(&self) -> bool {
+        matches!(self, Self::Archipelago | Self::Waterworld)
+    }
+
+    /// Suggested plate count range (min, max)
+    pub fn suggested_plate_count(&self) -> (usize, usize) {
+        match self {
+            Self::Earthlike => (6, 15),
+            Self::Archipelago => (12, 20),  // More plates = more potential islands
+            Self::Islands => (10, 18),
+            Self::Pangaea => (5, 10),       // Fewer plates
+            Self::Continental => (6, 12),
+            Self::Waterworld => (15, 25),   // Many tiny plates
+        }
+    }
+
+    /// All available world styles
+    pub fn all() -> &'static [Self] {
+        &[
+            Self::Earthlike,
+            Self::Archipelago,
+            Self::Islands,
+            Self::Pangaea,
+            Self::Continental,
+            Self::Waterworld,
+        ]
+    }
+
+    /// Description of this world style
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::Earthlike => "Earth-like (~35% land, mixed sizes)",
+            Self::Archipelago => "Archipelago (~18% land, many tiny islands)",
+            Self::Islands => "Island chains (~25% land, volcanic arcs)",
+            Self::Pangaea => "Pangaea (~40% land, one supercontinent)",
+            Self::Continental => "Continental (~50% land, large continents)",
+            Self::Waterworld => "Waterworld (~8% land, sparse tiny islands)",
+        }
+    }
+}
+
+impl std::fmt::Display for WorldStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Earthlike => write!(f, "earthlike"),
+            Self::Archipelago => write!(f, "archipelago"),
+            Self::Islands => write!(f, "islands"),
+            Self::Pangaea => write!(f, "pangaea"),
+            Self::Continental => write!(f, "continental"),
+            Self::Waterworld => write!(f, "waterworld"),
+        }
+    }
+}
+
 /// Unique identifier for a tectonic plate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct PlateId(pub u8);
