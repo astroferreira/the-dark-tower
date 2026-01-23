@@ -146,7 +146,7 @@ impl Explorer {
         self.cursor_y = height / 2;
         self.zoom = 1;
 
-        self.message = Some(format!("New world generated! Seed: {}", new_seed));
+        self.message = Some(format!("New world generated! Seed: {}", self.world.seed()));
     }
 
     /// Move cursor with wrapping
@@ -685,7 +685,7 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
 
                         // Export image
                         KeyCode::Char('e') | KeyCode::Char('E') => {
-                            let filename = format!("world_{}.png", explorer.world.seed);
+                            let filename = format!("world_{}.png", explorer.world.seed());
                             match export_map_image(&explorer.world, explorer.view_mode, &filename) {
                                 Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
                                 Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
@@ -699,7 +699,7 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
 
                         // Top-down aesthetic export
                         KeyCode::Char('t') | KeyCode::Char('T') => {
-                            let filename = format!("world_topdown_{}.png", explorer.world.seed);
+                            let filename = format!("world_topdown_{}.png", explorer.world.seed());
                             match export_topdown_image(&explorer.world, &filename) {
                                 Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
                                 Err(e) => explorer.message = Some(format!("Export failed: {}", e)),

@@ -12,13 +12,14 @@ use crate::erosion::RiverNetwork;
 use crate::heightmap;
 use crate::plates::{self, Plate, PlateId};
 use crate::scale::MapScale;
+use crate::seeds::WorldSeeds;
 use crate::tilemap::Tilemap;
 use crate::water_bodies::{self, WaterBody, WaterBodyId, WaterBodyType};
 
 /// All generated world data bundled together
 pub struct WorldData {
-    /// Random seed used for generation
-    pub seed: u64,
+    /// Seeds used for generation (allows recreation)
+    pub seeds: WorldSeeds,
     /// Map width in tiles
     pub width: usize,
     /// Map height in tiles
@@ -52,9 +53,14 @@ pub struct WorldData {
 }
 
 impl WorldData {
+    /// Convenience accessor for master seed
+    pub fn seed(&self) -> u64 {
+        self.seeds.master
+    }
+
     /// Create a new WorldData from generation outputs
     pub fn new(
-        seed: u64,
+        seeds: WorldSeeds,
         scale: MapScale,
         heightmap: Tilemap<f32>,
         temperature: Tilemap<f32>,
@@ -72,7 +78,7 @@ impl WorldData {
         let width = heightmap.width;
         let height = heightmap.height;
         Self {
-            seed,
+            seeds,
             width,
             height,
             scale,
@@ -245,7 +251,8 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         return generate_test_world();
     }
 
-    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let seeds = WorldSeeds::from_master(seed);
+    let mut rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
     let scale = MapScale::default();
 
     // Generate tectonic plates
@@ -255,7 +262,7 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
     let stress_map = plates::calculate_stress(&plate_map, &plates);
 
     // Generate heightmap
-    let heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seed);
+    let heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
 
     // Generate climate
     let temperature = climate::generate_temperature(&heightmap, width, height);
@@ -269,7 +276,7 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         &moisture,
         &stress_map,
         &biome_config,
-        seed,
+        seeds.biomes,
     );
 
     // Detect water bodies
@@ -282,7 +289,7 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         &temperature,
         &moisture,
         &stress_map,
-        seed,
+        seeds.biomes,
     );
 
     // Apply fantasy lake conversions
@@ -292,14 +299,14 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         &water_body_map,
         &temperature,
         &stress_map,
-        seed,
+        seeds.biomes,
     );
 
     // Place unique biomes
     biomes::place_unique_biomes(
         &mut extended_biomes,
         &heightmap,
-        seed,
+        seeds.biomes,
     );
 
     // Compute biome feathering map for smooth transitions
@@ -307,14 +314,14 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
     let biome_feather_map = biome_feathering::compute_biome_feathering(
         &extended_biomes,
         &feather_config,
-        seed,
+        seeds.biomes,
     );
 
     // Generate Bezier river network
-    let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seed);
+    let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seeds.rivers);
 
     WorldData::new(
-        seed,
+        seeds,
         scale,
         heightmap,
         temperature,
@@ -367,7 +374,7 @@ pub fn generate_test_world() -> WorldData {
     let water_bodies = vec![];
 
     WorldData {
-        seed: 666,
+        seeds: WorldSeeds::from_master(666),
         width: SIZE,
         height: SIZE,
         scale: MapScale::default(),

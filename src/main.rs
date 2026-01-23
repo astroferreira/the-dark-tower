@@ -12,9 +12,12 @@ mod explorer;
 mod heightmap;
 mod plates;
 mod scale;
+mod seeds;
 mod tilemap;
 mod water_bodies;
 mod world;
+
+use seeds::WorldSeeds;
 
 #[derive(Parser, Debug)]
 #[command(name = "planet_generator")]
@@ -28,28 +31,92 @@ struct Args {
     #[arg(short = 'H', long, default_value = "256")]
     height: usize,
 
-    /// Random seed (uses random seed if not specified)
+    /// Master seed (derives all other seeds if not overridden)
     #[arg(short, long)]
     seed: Option<u64>,
 
     /// Number of tectonic plates (random 6-15 if not specified)
     #[arg(short = 'p', long)]
     plates: Option<usize>,
+
+    // === Individual seed overrides ===
+
+    /// Seed for tectonic plate generation
+    #[arg(long)]
+    seed_tectonics: Option<u64>,
+
+    /// Seed for heightmap/terrain generation
+    #[arg(long)]
+    seed_heightmap: Option<u64>,
+
+    /// Seed for erosion simulation
+    #[arg(long)]
+    seed_erosion: Option<u64>,
+
+    /// Seed for climate patterns
+    #[arg(long)]
+    seed_climate: Option<u64>,
+
+    /// Seed for biome generation
+    #[arg(long)]
+    seed_biomes: Option<u64>,
+
+    /// Seed for coastline jittering
+    #[arg(long)]
+    seed_coastline: Option<u64>,
+
+    /// Seed for river network
+    #[arg(long)]
+    seed_rivers: Option<u64>,
+
+    /// Seed for rock materials
+    #[arg(long)]
+    seed_materials: Option<u64>,
+
+    /// Show all seed values used
+    #[arg(long)]
+    show_seeds: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
-    // Initialize RNG
-    let seed = args.seed.unwrap_or_else(|| rand::random());
-    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    // Build seeds from master seed with optional overrides
+    let master_seed = args.seed.unwrap_or_else(|| rand::random());
+    let mut builder = WorldSeeds::builder(master_seed);
 
-    println!("Generating planet with seed: {}", seed);
+    if let Some(s) = args.seed_tectonics { builder = builder.tectonics(s); }
+    if let Some(s) = args.seed_heightmap { builder = builder.heightmap(s); }
+    if let Some(s) = args.seed_erosion { builder = builder.erosion(s); }
+    if let Some(s) = args.seed_climate { builder = builder.climate(s); }
+    if let Some(s) = args.seed_biomes { builder = builder.biomes(s); }
+    if let Some(s) = args.seed_coastline { builder = builder.coastline(s); }
+    if let Some(s) = args.seed_rivers { builder = builder.rivers(s); }
+    if let Some(s) = args.seed_materials { builder = builder.materials(s); }
+
+    let seeds = builder.build();
+
+    println!("Generating planet with master seed: {}", seeds.master);
     println!("Map size: {}x{}", args.width, args.height);
+
+    if args.show_seeds {
+        println!("Seeds:");
+        println!("  Tectonics: {}", seeds.tectonics);
+        println!("  Heightmap: {}", seeds.heightmap);
+        println!("  Erosion:   {}", seeds.erosion);
+        println!("  Climate:   {}", seeds.climate);
+        println!("  Biomes:    {}", seeds.biomes);
+        println!("  Coastline: {}", seeds.coastline);
+        println!("  Rivers:    {}", seeds.rivers);
+        println!("  Materials: {}", seeds.materials);
+    }
+
+    // Initialize RNG for tectonics (plates need RNG)
+    let mut tectonic_rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
 
     // Generate tectonic plates
     println!("Generating tectonic plates...");
-    let (plate_map, plates) = plates::generate_plates(args.width, args.height, args.plates, &mut rng);
+    let (plate_map, plates) = plates::generate_plates(args.width, args.height, args.plates, &mut tectonic_rng);
     let continental_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Continental).count();
     let oceanic_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Oceanic).count();
     println!("Created {} plates ({} continental, {} oceanic)", plates.len(), continental_count, oceanic_count);
@@ -60,11 +127,11 @@ fn main() {
 
     // Generate heightmap
     println!("Generating heightmap...");
-    let land_mask = heightmap::generate_land_mask(&plate_map, &plates, seed);
+    let land_mask = heightmap::generate_land_mask(&plate_map, &plates, seeds.heightmap);
     let land_count = (0..args.height).flat_map(|y| (0..args.width).map(move |x| (x, y)))
         .filter(|&(x, y)| *land_mask.get(x, y)).count();
     println!("Land mask: {} cells are land ({:.1}%)", land_count, 100.0 * land_count as f64 / (args.width * args.height) as f64);
-    let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seed);
+    let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
     let mut min_h = f32::MAX;
     let mut max_h = f32::MIN;
     for (_, _, &h) in heightmap.iter() {
@@ -76,7 +143,7 @@ fn main() {
     println!("Heightmap range: {:.1}m to {:.1}m ({:.1}% above sea level)", min_h, max_h,
         100.0 * above_sea as f64 / (args.width * args.height) as f64);
 
-    // Generate climate (needed for glacial erosion temperature zones)
+    // Generate climate
     println!("Generating climate...");
     let temperature = climate::generate_temperature(&heightmap, args.width, args.height);
     let moisture = climate::generate_moisture(&heightmap, args.width, args.height);
@@ -90,12 +157,10 @@ fn main() {
     }
     println!("Temperature range: {:.1}°C to {:.1}°C", min_temp, max_temp);
 
-    // Hardness map (defaults to 0.5 if erosion is disabled/not run)
-    let hardness_map = tilemap::Tilemap::new_with(args.width, args.height, 0.5f32);
-
     // Apply erosion
     println!("Simulating erosion...");
     let erosion_params = erosion::ErosionParams::default();
+    let mut erosion_rng = ChaCha8Rng::seed_from_u64(seeds.erosion);
 
     let (stats, hardness_map) = erosion::simulate_erosion(
         &mut heightmap,
@@ -104,8 +169,8 @@ fn main() {
         &stress_map,
         &temperature,
         &erosion_params,
-        &mut rng,
-        seed,
+        &mut erosion_rng,
+        seeds.erosion,
     );
 
     println!("Erosion complete:");
@@ -126,12 +191,12 @@ fn main() {
     // Apply coastline jittering for more organic shorelines
     println!("Applying coastline jittering...");
     let coastline_params = coastline::CoastlineParams::default();
-    let coastline_network = coastline::generate_coastline_network(&heightmap, &coastline_params, seed);
+    let coastline_network = coastline::generate_coastline_network(&heightmap, &coastline_params, seeds.coastline);
     coastline::apply_coastline_to_heightmap(&coastline_network, &mut heightmap, coastline_params.blend_width);
 
     // Apply terrain noise layers based on region type
     println!("Applying terrain noise layers...");
-    heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seed);
+    heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
 
     // Detect water bodies (lakes, rivers, ocean)
     println!("Detecting water bodies...");
@@ -149,7 +214,7 @@ fn main() {
         &moisture,
         &stress_map,
         &biome_config,
-        seed,
+        seeds.biomes,
     );
 
     // Apply biome replacement rules (rare biomes replace common ones)
@@ -160,7 +225,7 @@ fn main() {
         &temperature,
         &moisture,
         &stress_map,
-        seed,
+        seeds.biomes,
     );
     println!("Created {} rare biome clusters", rare_biome_clusters);
 
@@ -171,7 +236,7 @@ fn main() {
         &water_body_map,
         &temperature,
         &stress_map,
-        seed,
+        seeds.biomes,
     );
     if fantasy_lakes_converted > 0 {
         println!("Converted {} lakes to fantasy biomes", fantasy_lakes_converted);
@@ -181,7 +246,7 @@ fn main() {
     let unique_biomes_placed = biomes::place_unique_biomes(
         &mut extended_biomes,
         &heightmap,
-        seed,
+        seeds.biomes,
     );
     if unique_biomes_placed > 0 {
         println!("Placed {} unique biomes", unique_biomes_placed);
@@ -193,17 +258,17 @@ fn main() {
     let biome_feather_map = biome_feathering::compute_biome_feathering(
         &extended_biomes,
         &feather_config,
-        seed,
+        seeds.biomes,
     );
 
     // Launch explorer
     println!("Launching terminal explorer...");
     let map_scale = scale::MapScale::default();
     // Generate Bezier river network
-    let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seed);
+    let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seeds.rivers);
 
     let world_data = world::WorldData::new(
-        seed,
+        seeds.clone(),
         map_scale,
         heightmap,
         temperature,

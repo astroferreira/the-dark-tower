@@ -16,6 +16,7 @@ pub mod erosion;
 pub mod heightmap;
 pub mod plates;
 pub mod scale;
+pub mod seeds;
 pub mod tilemap;
 pub mod water_bodies;
 pub mod world;
