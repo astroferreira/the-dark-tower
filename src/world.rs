@@ -10,12 +10,10 @@ use crate::biome_feathering::{self, BiomeFeatherMap, FeatherConfig};
 use crate::climate;
 use crate::erosion::RiverNetwork;
 use crate::heightmap;
-use crate::history::{WorldHistory, generate_world_history};
 use crate::plates::{self, Plate, PlateId};
 use crate::scale::MapScale;
 use crate::tilemap::Tilemap;
 use crate::water_bodies::{self, WaterBody, WaterBodyId, WaterBodyType};
-use crate::zlevel::{self, Tilemap3D, ZTile};
 
 /// All generated world data bundled together
 pub struct WorldData {
@@ -47,12 +45,6 @@ pub struct WorldData {
     pub water_body_map: Tilemap<WaterBodyId>,
     /// List of water bodies with metadata
     pub water_bodies: Vec<WaterBody>,
-    /// 3D Z-level map (voxel-like terrain data)
-    pub zlevels: Tilemap3D<ZTile>,
-    /// Surface Z-level at each (x, y) position
-    pub surface_z: Tilemap<i32>,
-    /// Historical world data (factions, events, settlements)
-    pub history: Option<WorldHistory>,
     /// Bezier curve river network (Phase 1)
     pub river_network: Option<RiverNetwork>,
     /// Biome feathering map for smooth transitions
@@ -74,9 +66,6 @@ impl WorldData {
         hardness_map: Option<Tilemap<f32>>,
         water_body_map: Tilemap<WaterBodyId>,
         water_bodies: Vec<WaterBody>,
-        zlevels: Tilemap3D<ZTile>,
-        surface_z: Tilemap<i32>,
-        history: Option<WorldHistory>,
         river_network: Option<RiverNetwork>,
         biome_feather_map: Option<BiomeFeatherMap>,
     ) -> Self {
@@ -97,9 +86,6 @@ impl WorldData {
             hardness_map,
             water_body_map,
             water_bodies,
-            zlevels,
-            surface_z,
-            history,
             river_network,
             biome_feather_map,
         }
@@ -324,53 +310,7 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         seed,
     );
 
-    // Generate Z-level data
-    let (mut zlevels, surface_z) = zlevel::generate_zlevels(&heightmap);
-
-    // Generate underground water
-    zlevel::generate_underground_water(
-        &mut zlevels,
-        &surface_z,
-        &heightmap,
-        &moisture,
-        seed,
-    );
-
-    // Generate cave system
-    zlevel::generate_caves(
-        &mut zlevels,
-        &surface_z,
-        &heightmap,
-        &moisture,
-        &stress_map,
-        seed,
-    );
-
-    // Generate structures (castles, cities, villages, mines, roads)
-    crate::structures::generate_structures(
-        &mut zlevels,
-        &surface_z,
-        &heightmap,
-        &moisture,
-        &temperature,
-        &extended_biomes,
-        &stress_map,
-        &water_body_map,
-        seed,
-    );
-
-    // Generate world history (factions, events, settlements, monsters, trade)
-    let history = generate_world_history(
-        &mut zlevels,
-        &surface_z,
-        &heightmap,
-        &extended_biomes,
-        &water_body_map,
-        &stress_map,
-        seed,
-    );
-
-    // Generate Bezier river network (Phase 1)
+    // Generate Bezier river network
     let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seed);
 
     WorldData::new(
@@ -386,9 +326,6 @@ pub fn generate_world(width: usize, height: usize, seed: u64) -> WorldData {
         None, // No hardness map without erosion
         water_body_map,
         water_bodies_list,
-        zlevels,
-        surface_z,
-        Some(history),
         Some(river_network),
         Some(biome_feather_map),
     )
@@ -429,9 +366,6 @@ pub fn generate_test_world() -> WorldData {
     let water_body_map = Tilemap::new_with(SIZE, SIZE, WaterBodyId::NONE);
     let water_bodies = vec![];
 
-    // Generate Z-level data
-    let (zlevels, surface_z) = zlevel::generate_zlevels(&heightmap);
-
     WorldData {
         seed: 666,
         width: SIZE,
@@ -447,9 +381,6 @@ pub fn generate_test_world() -> WorldData {
         hardness_map: None,
         water_body_map,
         water_bodies,
-        zlevels,
-        surface_z,
-        history: None,
         river_network: None,
         biome_feather_map: None,
     }

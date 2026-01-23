@@ -10,15 +10,11 @@ mod coastline;
 mod erosion;
 mod explorer;
 mod heightmap;
-mod history;
-mod multiscale;
 mod plates;
 mod scale;
-mod structures;
 mod tilemap;
 mod water_bodies;
 mod world;
-mod zlevel;
 
 #[derive(Parser, Debug)]
 #[command(name = "planet_generator")]
@@ -39,46 +35,6 @@ struct Args {
     /// Number of tectonic plates (random 6-15 if not specified)
     #[arg(short = 'p', long)]
     plates: Option<usize>,
-
-    /// Export timeline to a text file (e.g., "chronicle.txt")
-    #[arg(long)]
-    export_timeline: Option<String>,
-
-    /// Export local maps to PNG (specify output path)
-    #[arg(long)]
-    export_local: Option<String>,
-
-    /// Center X coordinate for local export (default: center of map)
-    #[arg(long)]
-    export_local_x: Option<usize>,
-
-    /// Center Y coordinate for local export (default: center of map)
-    #[arg(long)]
-    export_local_y: Option<usize>,
-
-    /// Radius in chunks for local export (default: 5)
-    #[arg(long, default_value = "5")]
-    export_local_radius: usize,
-
-    /// Scale factor for local export (1-4, default: 1)
-    #[arg(long, default_value = "1")]
-    export_local_scale: u32,
-
-    /// Show chunk grid in local export
-    #[arg(long)]
-    export_local_grid: bool,
-
-    /// Export debug info for local maps (text file for analysis)
-    #[arg(long)]
-    debug_local: Option<String>,
-
-    /// X coordinate for debug export (default: center of map)
-    #[arg(long)]
-    debug_local_x: Option<usize>,
-
-    /// Y coordinate for debug export (default: center of map)
-    #[arg(long)]
-    debug_local_y: Option<usize>,
 }
 
 fn main() {
@@ -135,13 +91,13 @@ fn main() {
     println!("Temperature range: {:.1}°C to {:.1}°C", min_temp, max_temp);
 
     // Hardness map (defaults to 0.5 if erosion is disabled/not run)
-    let mut hardness_map = tilemap::Tilemap::new_with(args.width, args.height, 0.5f32);
+    let hardness_map = tilemap::Tilemap::new_with(args.width, args.height, 0.5f32);
 
     // Apply erosion
     println!("Simulating erosion...");
     let erosion_params = erosion::ErosionParams::default();
 
-    let (stats, h_map) = erosion::simulate_erosion(
+    let (stats, hardness_map) = erosion::simulate_erosion(
         &mut heightmap,
         &plate_map,
         &plates,
@@ -151,7 +107,6 @@ fn main() {
         &mut rng,
         seed,
     );
-    hardness_map = h_map;
 
     println!("Erosion complete:");
     println!("  Total eroded: {:.1} units", stats.total_eroded);
@@ -241,69 +196,10 @@ fn main() {
         seed,
     );
 
-    // Generate Z-level data
-    println!("Generating Z-level data...");
-    let (mut zlevels, surface_z) = zlevel::generate_zlevels(&heightmap);
-    println!("Z-levels: {} to {} ({} levels)", zlevel::MIN_Z, zlevel::MAX_Z, zlevel::Z_LEVEL_COUNT);
-
-    // Generate underground water system
-    println!("Generating underground water...");
-    zlevel::generate_underground_water(
-        &mut zlevels,
-        &surface_z,
-        &heightmap,
-        &moisture,
-        seed,
-    );
-
-    // Generate Dwarf Fortress-style cave system
-    println!("Generating cave system...");
-    zlevel::generate_caves(
-        &mut zlevels,
-        &surface_z,
-        &heightmap,
-        &moisture,
-        &stress_map,
-        seed,
-    );
-
-    // Generate human-made structures (castles, cities, villages, roads)
-    println!("Generating structures...");
-    let _placed_structures = structures::generate_structures(
-        &mut zlevels,
-        &surface_z,
-        &heightmap,
-        &moisture,
-        &temperature,
-        &extended_biomes,
-        &stress_map,
-        &water_body_map,
-        seed,
-    );
-
-    // Generate world history (factions, events, settlements, monsters, trade)
-    println!("Generating world history...");
-    let world_history = history::generate_world_history(
-        &mut zlevels,
-        &surface_z,
-        &heightmap,
-        &extended_biomes,
-        &water_body_map,
-        &stress_map,
-        seed,
-    );
-
-    // Export timeline if requested
-    if let Some(ref filename) = args.export_timeline {
-        if let Err(e) = world_history.export_timeline(filename) {
-            eprintln!("Failed to export timeline: {}", e);
-        }
-    }
-
     // Launch explorer
     println!("Launching terminal explorer...");
     let map_scale = scale::MapScale::default();
-    // Generate Bezier river network (Phase 1)
+    // Generate Bezier river network
     let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seed);
 
     let world_data = world::WorldData::new(
@@ -319,72 +215,9 @@ fn main() {
         Some(hardness_map),
         water_body_map,
         water_bodies_list,
-        zlevels,
-        surface_z,
-        Some(world_history),
         Some(river_network),
         Some(biome_feather_map),
     );
-
-    // Export local maps if requested
-    if let Some(ref export_path) = args.export_local {
-        use multiscale::{export_local_area, ExportOptions};
-
-        let center_x = args.export_local_x.unwrap_or(args.width / 2);
-        let center_y = args.export_local_y.unwrap_or(args.height / 2);
-        let radius = args.export_local_radius;
-
-        println!("Exporting local maps...");
-        println!("  Center: ({}, {})", center_x, center_y);
-        println!("  Radius: {} chunks", radius);
-        println!("  Scale: {}x", args.export_local_scale);
-
-        let options = ExportOptions {
-            z_level: None,
-            auto_surface: true,
-            show_features: true,
-            scale: args.export_local_scale.clamp(1, 4),
-            show_chunk_grid: args.export_local_grid,
-        };
-
-        match export_local_area(&world_data, center_x, center_y, radius, export_path, &options) {
-            Ok((width, height)) => {
-                println!("Exported local maps to: {}", export_path);
-                println!("  Image size: {}x{} pixels", width, height);
-            }
-            Err(e) => {
-                eprintln!("Failed to export local maps: {}", e);
-            }
-        }
-    }
-
-    // Export debug info for local maps if requested
-    if let Some(ref debug_path) = args.debug_local {
-        use multiscale::export_debug_local_maps;
-
-        let center_x = args.debug_local_x.unwrap_or(args.width / 2);
-        let center_y = args.debug_local_y.unwrap_or(args.height / 2);
-
-        println!("Exporting debug local map info...");
-        println!("  Center: ({}, {})", center_x, center_y);
-
-        match export_debug_local_maps(&world_data, center_x, center_y, debug_path) {
-            Ok(()) => {
-                println!("Debug export saved to: {}", debug_path);
-            }
-            Err(e) => {
-                eprintln!("Failed to export debug info: {}", e);
-            }
-        }
-
-        // Exit without launching explorer when debug exporting
-        return;
-    }
-
-    // Export local maps exits early too
-    if args.export_local.is_some() {
-        return;
-    }
 
     if let Err(e) = explorer::run_explorer(world_data) {
         eprintln!("Explorer error: {}", e);
