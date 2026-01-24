@@ -76,18 +76,24 @@ impl Default for RiverErosionParams {
             source_min_accumulation: 100.0,  // Need decent upstream area
             source_min_elevation: 50.0,      // Start above coast
             capacity_factor: 10.0,           // Sediment capacity multiplier
-            erosion_rate: 0.3,               // How fast to erode
+            erosion_rate: 0.2,               // How fast to erode (gentler)
             deposition_rate: 0.3,            // How fast to deposit
-            max_erosion: 50.0,               // Max erosion per cell
-            max_deposition: 30.0,            // Max deposition per cell
+            max_erosion: 12.0,               // Max erosion per cell (was 50, prevents canyons)
+            max_deposition: 15.0,            // Max deposition per cell
             channel_width: 2,                // River channel half-width
-            passes: 5,                       // Multiple passes for deep carving
+            passes: 3,                       // Fewer passes (was 5)
         }
     }
 }
 
 /// Compute flow direction for each cell using D8 algorithm.
+/// NOTE: This uses raw heightmap. For pit-free routing, use compute_flow_direction_filled().
 pub fn compute_flow_direction(heightmap: &Tilemap<f32>) -> Tilemap<u8> {
+    compute_flow_direction_internal(heightmap)
+}
+
+/// Internal D8 flow direction computation
+fn compute_flow_direction_internal(heightmap: &Tilemap<f32>) -> Tilemap<u8> {
     let width = heightmap.width;
     let height = heightmap.height;
     let mut flow_dir = Tilemap::new_with(width, height, NO_FLOW);
@@ -127,6 +133,25 @@ pub fn compute_flow_direction(heightmap: &Tilemap<f32>) -> Tilemap<u8> {
     }
 
     flow_dir
+}
+
+/// Compute flow direction using a depression-filled heightmap.
+/// This ensures ALL cells can flow to the ocean - no pits/puddles.
+/// Returns (flow_direction, filled_heightmap) so accumulation can use the filled map.
+pub fn compute_flow_direction_filled(heightmap: &Tilemap<f32>) -> (Tilemap<u8>, Tilemap<f32>) {
+    // Fill depressions so water can overflow pits
+    let filled = fill_depressions(heightmap);
+    // Compute flow on the filled map - guarantees connectivity
+    let flow_dir = compute_flow_direction_internal(&filled);
+    (flow_dir, filled)
+}
+
+/// Compute flow accumulation using a depression-filled heightmap.
+/// This is the recommended method for river routing as it ensures connectivity.
+pub fn compute_flow_with_filled_routing(heightmap: &Tilemap<f32>) -> (Tilemap<u8>, Tilemap<f32>, Tilemap<f32>) {
+    let (flow_dir, filled) = compute_flow_direction_filled(heightmap);
+    let flow_acc = compute_flow_accumulation(&filled, &flow_dir);
+    (flow_dir, flow_acc, filled)
 }
 
 /// Compute flow accumulation for each cell.
@@ -340,16 +365,19 @@ fn trace_river(
 
         // ENFORCE MONOTONIC DESCENT (Stream Carving)
         // Ensure the next cell is strictly lower than the current cell.
-        // This cuts a channel through flat "filled" areas, ensuring connectivity and visibility.
-        let min_drop = 0.05; // Minimum drop per cell (controls river steepness on flats)
-        let current_h_after = *heightmap.get(x, y); // Height after erosion
+        // This cuts a channel through flat "filled" areas AND barriers, ensuring connectivity.
+        let min_drop = 0.5; // Minimum drop per cell - more aggressive for visible channels
+        let current_h_after = *heightmap.get(x, y);
         let next_h = *heightmap.get(nx, ny);
-        
-        if next_h >= current_h_after - min_drop {
-            // Lower the next cell to preserve flow
-             let new_h = current_h_after - min_drop;
-             heightmap.set(nx, ny, new_h);
-             // Note: We don't update sediment here, we just carve the path geometry.
+
+        // If downstream is at or above current, carve through it
+        // This is critical for breaching barriers that block river flow
+        if next_h >= current_h_after - min_drop && next_h > 0.1 {
+            // Carve to ensure monotonic descent, but don't go below sea level
+            let new_h = (current_h_after - min_drop).max(0.1);
+            if new_h < next_h {
+                heightmap.set(nx, ny, new_h);
+            }
         }
 
         // Note: We used to break here if visited, to avoid re-tracing main rivers.
@@ -400,6 +428,10 @@ fn apply_erosion(
     // Get perpendicular direction for channel cross-section
     let (perp_dx, perp_dy) = get_perpendicular(flow_dir);
 
+    // Minimum allowed height - don't erode below sea level
+    // Leave a small epsilon (0.1m) so rivers stay as "land" for water detection
+    const MIN_RIVER_HEIGHT: f32 = 0.1;
+
     // Apply V-shaped profile across channel
     for i in -(half_width as i32)..=(half_width as i32) {
         let nx = (x as i32 + perp_dx * i).rem_euclid(width as i32) as usize;
@@ -411,7 +443,12 @@ fn apply_erosion(
         let local_erosion = amount * falloff * falloff; // Squared for V-shape
 
         let current = *heightmap.get(nx, ny);
-        heightmap.set(nx, ny, current - local_erosion);
+
+        // Clamp erosion to not dig below sea level
+        let max_possible_erosion = (current - MIN_RIVER_HEIGHT).max(0.0);
+        let actual_erosion = local_erosion.min(max_possible_erosion);
+
+        heightmap.set(nx, ny, current - actual_erosion);
     }
 }
 
@@ -566,12 +603,13 @@ pub fn apply_meander_erosion(
             let erosion_side = if n > 0.0 { 1 } else { -1 };
             let erosion_amount = meander_strength * flatness * n.abs();
 
-            // Erode outer bank
+            // Erode outer bank (but don't dig below sea level)
+            const MIN_RIVER_HEIGHT: f32 = 0.1;
             let ex = (x as i32 + perp_dx * erosion_side).rem_euclid(width as i32) as usize;
             let ey = (y as i32 + perp_dy * erosion_side).clamp(0, height as i32 - 1) as usize;
             let eh = *heightmap.get(ex, ey);
-            if eh > 0.0 {
-                heightmap.set(ex, ey, (eh - erosion_amount).max(0.0));
+            if eh > MIN_RIVER_HEIGHT {
+                heightmap.set(ex, ey, (eh - erosion_amount).max(MIN_RIVER_HEIGHT));
             }
 
             // Deposit on inner bank (point bar)
@@ -612,21 +650,19 @@ pub fn erode_rivers(
 
     let mut stats = ErosionStats::default();
 
-    // 1. Fill depressions for flow routing only (don't modify actual heightmap)
-    // This lets us compute where rivers WOULD flow if there were no pits
+    // 1. Fill depressions for flow routing
     let filled_map = fill_depressions(heightmap);
-    
-    // HYDRO-CONDITIONING: Apply the filled heights to the actual heightmap
-    // This physically fills lakes/pits so rivers can flow over them.
+
+    // HYDRO-CONDITIONING: Apply filled heights to create spillover surfaces
     for y in 0..height {
         for x in 0..width {
             heightmap.set(x, y, *filled_map.get(x, y));
         }
     }
 
-    // 2. Compute flow direction using the filled map (ensures connectivity)
+    // 2. Compute flow direction using filled map (ensures connectivity)
     let flow_dir = compute_flow_direction(&filled_map);
-    
+
     // DEBUG: Verify filled_map has no pits
     let mut pit_count = 0;
     for y in 0..height {
@@ -637,31 +673,32 @@ pub fn erode_rivers(
         }
     }
     if pit_count > 0 {
-        println!("WARNING: filled_map still has {} pits! Pit filling failed or epsilon too small.", pit_count);
-    } else {
-        println!("filled_map is valid (0 pits).");
+        println!("WARNING: filled_map still has {} pits!", pit_count);
     }
 
     let flow_acc = compute_flow_accumulation(&filled_map, &flow_dir);
 
-    // 3. Find river sources (using filled map stats)
-    // We use filled_map for accumulation and original heightmap for elevation checks
+    // 3. BREACH ALL BARRIERS before tracing rivers
+    // This ensures every river path is physically carved through barriers
+    println!("  Breaching barriers along river paths...");
+    breach_river_barriers(heightmap, &flow_dir, &flow_acc, params.source_min_accumulation);
+
+    // 4. Find river sources
     let sources = find_river_sources(heightmap, &flow_acc, params);
 
-    // Track visited cells to handle river confluences
+    // Track visited cells
     let mut visited = Tilemap::new_with(width, height, false);
-    
-    // Run erosion in multiple passes to allow progressive deepening
+
+    // Run erosion in multiple passes
     stats.iterations = params.passes;
     for _ in 0..params.passes {
-        // Trace each river from source to sea
         visited.fill(false);
-        
+
         for (sx, sy) in &sources {
             if !*visited.get(*sx, *sy) {
                 trace_river(
                     heightmap,
-                    &flow_dir, // Uses filled directions (always has a path)
+                    &flow_dir,
                     &flow_acc,
                     hardness,
                     *sx, *sy,
@@ -674,6 +711,72 @@ pub fn erode_rivers(
     }
 
     stats
+}
+
+/// Breach barriers along all river paths to ensure connectivity.
+/// This traces from each river cell to the ocean, carving through any barriers.
+fn breach_river_barriers(
+    heightmap: &mut Tilemap<f32>,
+    flow_dir: &Tilemap<u8>,
+    flow_acc: &Tilemap<f32>,
+    threshold: f32,
+) {
+    let width = heightmap.width;
+    let height = heightmap.height;
+    const MIN_HEIGHT: f32 = 0.1;
+    const MAX_PASSES: usize = 50;
+
+    // Collect all river cells (high flow accumulation)
+    let mut river_cells: Vec<(usize, usize, f32)> = Vec::new();
+    for y in 0..height {
+        for x in 0..width {
+            let acc = *flow_acc.get(x, y);
+            let h = *heightmap.get(x, y);
+            if acc >= threshold && h > 0.0 {
+                river_cells.push((x, y, h));
+            }
+        }
+    }
+
+    // Sort by elevation (highest first) - process from sources downstream
+    river_cells.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Multiple passes to propagate breaching downstream
+    for pass in 0..MAX_PASSES {
+        let mut any_changed = false;
+
+        for &(x, y, _) in &river_cells {
+            let h = *heightmap.get(x, y);
+            if h < 0.0 { continue; } // Ocean
+
+            let dir = *flow_dir.get(x, y);
+            if dir >= 8 { continue; } // No flow
+
+            let nx = (x as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+            let ny = y as i32 + DY[dir as usize];
+            if ny < 0 || ny >= height as i32 { continue; }
+            let ny = ny as usize;
+
+            let nh = *heightmap.get(nx, ny);
+
+            // If downstream is at or above current (barrier), breach it
+            if nh >= h && nh > MIN_HEIGHT {
+                // Set downstream to slightly below current
+                let new_h = (h - 0.5).max(MIN_HEIGHT);
+                if new_h < nh {
+                    heightmap.set(nx, ny, new_h);
+                    any_changed = true;
+                }
+            }
+        }
+
+        if !any_changed {
+            if pass > 0 {
+                println!("    Barrier breaching complete after {} passes", pass + 1);
+            }
+            break;
+        }
+    }
 }
 
 /// Fill depressions using a simplified Planchon-Darboux algorithm.

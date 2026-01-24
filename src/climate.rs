@@ -148,7 +148,7 @@ pub fn generate_temperature(
     width: usize,
     height: usize,
 ) -> Tilemap<f32> {
-    generate_temperature_with_config(heightmap, width, height, ClimateMode::Globe)
+    generate_temperature_with_seed(heightmap, width, height, ClimateMode::Globe, 0)
 }
 
 /// Generate temperature map with configurable climate mode
@@ -158,18 +158,50 @@ pub fn generate_temperature_with_config(
     height: usize,
     mode: ClimateMode,
 ) -> Tilemap<f32> {
+    generate_temperature_with_seed(heightmap, width, height, mode, 0)
+}
+
+/// Generate temperature map with domain warping to break horizontal bands
+pub fn generate_temperature_with_seed(
+    heightmap: &Tilemap<f32>,
+    width: usize,
+    height: usize,
+    mode: ClimateMode,
+    seed: u64,
+) -> Tilemap<f32> {
     let mut temperature = Tilemap::new_with(width, height, 0.0f32);
+
+    // Domain warping noise - distorts latitude lines for organic climate zones
+    let warp_noise = Perlin::new(1).set_seed(seed as u32);
+    let detail_noise = Perlin::new(1).set_seed(seed as u32 + 100);
+
+    // Warp strength: how much the latitude lines deviate (in normalized units)
+    // 0.15 means up to ~15% of map height deviation
+    const WARP_STRENGTH: f32 = 0.12;
+    const WARP_SCALE: f64 = 3.0;  // Frequency of the warping (lower = larger blobs)
 
     for y in 0..height {
         for x in 0..width {
             let elevation = *heightmap.get(x, y);
 
+            // Normalized coordinates for noise sampling
+            let nx = x as f64 / width as f64;
+            let ny = y as f64 / height as f64;
+
             // Base temperature depends on climate mode
             let base_temp = match mode {
                 ClimateMode::Globe => {
+                    // DOMAIN WARPING: Distort the Y-coordinate using noise
+                    // This creates wavy, organic climate zone boundaries
+                    let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32;
+                    let detail = detail_noise.get([nx * WARP_SCALE * 2.0, ny * WARP_SCALE * 2.0]) as f32 * 0.3;
+                    let total_warp = (warp + detail) * WARP_STRENGTH;
+
+                    // Warped Y position for latitude calculation
+                    let warped_y = (y as f32 / height as f32) + total_warp;
+
                     // Latitude factor: 0 at equator, 1 at poles
-                    // Map y to latitude: y=0 is north pole, y=height/2 is equator, y=height is south pole
-                    let latitude_normalized = (y as f32 / height as f32 - 0.5).abs() * 2.0;
+                    let latitude_normalized = (warped_y - 0.5).abs().clamp(0.0, 0.5) * 2.0;
                     let lat_factor = latitude_normalized.powf(1.5);
                     EQUATOR_TEMP - (EQUATOR_TEMP - POLE_TEMP) * lat_factor
                 }
@@ -179,13 +211,15 @@ pub fn generate_temperature_with_config(
                 }
                 ClimateMode::TemperateBand => {
                     // Simulates ~45° latitude band with slight variation
-                    let y_factor = (y as f32 / height as f32 - 0.5).abs();
-                    12.0 + y_factor * 8.0 // 12-16°C range
+                    let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32 * 0.05;
+                    let y_factor = ((y as f32 / height as f32 - 0.5) + warp).abs();
+                    12.0 + y_factor * 8.0
                 }
                 ClimateMode::TropicalBand => {
                     // Simulates equatorial region with minimal variation
-                    let y_factor = (y as f32 / height as f32 - 0.5).abs();
-                    28.0 - y_factor * 6.0 // 25-28°C range
+                    let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32 * 0.05;
+                    let y_factor = ((y as f32 / height as f32 - 0.5) + warp).abs();
+                    28.0 - y_factor * 6.0
                 }
             };
 

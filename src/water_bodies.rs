@@ -125,104 +125,150 @@ impl WaterBody {
 }
 
 /// Threshold for flow accumulation to be considered a river
+/// Higher = only major rivers, lower = includes small streams
 const RIVER_FLOW_THRESHOLD: f32 = 50.0;
+
+/// Sea level (0.0 by convention)
+const SEA_LEVEL: f32 = 0.0;
+
+/// Epsilon for floating point comparisons
+const WATER_EPSILON: f32 = 1e-4;
 
 /// Detect and classify all water bodies in the world.
 ///
 /// Algorithm:
-/// 1. Mark all water tiles (elevation <= 0)
-/// 2. Flood-fill from map edges (y=0 or y=height-1) to identify ocean
-/// 3. Connected component analysis on remaining water to identify lakes
-/// 4. Use flow accumulation to detect rivers on land
+/// 1. Use water_level map to find submerged tiles (water_level > terrain)
+/// 2. Flood-fill from map edges to identify ocean (below sea level + connected)
+/// 3. Remaining submerged tiles are lakes (including alpine lakes)
+/// 4. Use flow accumulation to detect rivers on DRY land
 ///
-/// Returns a tilemap of water body IDs and a list of water body info.
+/// Returns a tilemap of water body IDs, a list of water body info, and the water depth map.
 pub fn detect_water_bodies(
     heightmap: &Tilemap<f32>,
-) -> (Tilemap<WaterBodyId>, Vec<WaterBody>) {
+) -> (Tilemap<WaterBodyId>, Vec<WaterBody>, Tilemap<f32>) {
+    // Compute water level (fills depressions to find lake surfaces)
+    let water_level = compute_water_level(heightmap);
     // Compute flow for river detection
     let flow_dir = compute_flow_direction(heightmap);
     let flow_acc = compute_flow_accumulation(heightmap, &flow_dir);
-    detect_water_bodies_with_flow(heightmap, Some(&flow_acc))
+    detect_water_bodies_full(heightmap, &water_level, &flow_acc)
 }
 
-/// Detect water bodies with optional pre-computed flow accumulation.
-pub fn detect_water_bodies_with_flow(
+/// Compute water surface level using depression filling.
+/// Returns a map where water_level >= terrain_height everywhere.
+/// If water_level > terrain_height, the tile is submerged (lake/ocean).
+fn compute_water_level(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
+    use crate::erosion::rivers::fill_depressions_public;
+    fill_depressions_public(heightmap)
+}
+
+/// Check if a tile is submerged (water surface above terrain)
+fn is_submerged(terrain_h: f32, water_h: f32) -> bool {
+    water_h > terrain_h + WATER_EPSILON
+}
+
+/// Check if a tile is below sea level
+fn is_below_sea_level(terrain_h: f32) -> bool {
+    terrain_h <= SEA_LEVEL
+}
+
+/// Detect water bodies with pre-computed water level and flow accumulation.
+pub fn detect_water_bodies_full(
     heightmap: &Tilemap<f32>,
-    flow_acc: Option<&Tilemap<f32>>,
-) -> (Tilemap<WaterBodyId>, Vec<WaterBody>) {
+    water_level: &Tilemap<f32>,
+    flow_acc: &Tilemap<f32>,
+) -> (Tilemap<WaterBodyId>, Vec<WaterBody>, Tilemap<f32>) {
     let width = heightmap.width;
     let height = heightmap.height;
 
-    // Create water mask
-    let mut is_water = Tilemap::new_with(width, height, false);
+    // Create water body ID map and water depth map
+    let mut water_map = Tilemap::new_with(width, height, WaterBodyId::NONE);
+    let mut water_depth = Tilemap::new_with(width, height, 0.0f32);
+    let mut water_bodies = Vec::new();
+
+    // Calculate water depth everywhere (water_level - terrain)
+    // Positive = submerged, Zero = dry land
     for y in 0..height {
         for x in 0..width {
-            let elev = *heightmap.get(x, y);
-            if elev <= 0.0 {
-                is_water.set(x, y, true);
+            let terrain_h = *heightmap.get(x, y);
+            let water_h = *water_level.get(x, y);
+            let depth = (water_h - terrain_h).max(0.0);
+            water_depth.set(x, y, depth);
+        }
+    }
+
+    // Track which tiles are water candidates (submerged or below sea level)
+    let mut is_water_candidate = Tilemap::new_with(width, height, false);
+    let mut next_id = 2u16; // 1 is reserved for ocean
+
+    // Step 1: Identify all water candidates (submerged OR below sea level)
+    for y in 0..height {
+        for x in 0..width {
+            let terrain_h = *heightmap.get(x, y);
+            let water_h = *water_level.get(x, y);
+
+            // Water if: submerged (alpine lake) OR below sea level (ocean/coastal)
+            if is_submerged(terrain_h, water_h) || is_below_sea_level(terrain_h) {
+                is_water_candidate.set(x, y, true);
             }
         }
     }
 
-    // Create water body ID map
-    let mut water_map = Tilemap::new_with(width, height, WaterBodyId::NONE);
-    let mut water_bodies = Vec::new();
-
-    // Step 1: Ocean detection - flood fill from top and bottom edges
+    // Step 2: Ocean detection - flood fill from polar edges (top/bottom of map)
+    // Only below-sea-level tiles connected to edges become ocean
     let mut visited = Tilemap::new_with(width, height, false);
     let mut ocean = WaterBody::new(WaterBodyId::OCEAN, WaterBodyType::Ocean);
-
-    // Start BFS from all water tiles on top and bottom edges
     let mut queue = VecDeque::new();
 
-    // Add top edge water tiles
+    // Seed from top edge (below sea level tiles only)
     for x in 0..width {
-        if *is_water.get(x, 0) {
+        let terrain_h = *heightmap.get(x, 0);
+        if is_below_sea_level(terrain_h) {
             queue.push_back((x, 0));
             visited.set(x, 0, true);
         }
     }
 
-    // Add bottom edge water tiles
+    // Seed from bottom edge (below sea level tiles only)
     for x in 0..width {
-        if *is_water.get(x, height - 1) {
+        let terrain_h = *heightmap.get(x, height - 1);
+        if is_below_sea_level(terrain_h) {
             queue.push_back((x, height - 1));
             visited.set(x, height - 1, true);
         }
     }
 
-    // BFS to find all ocean-connected water
+    // BFS to find all ocean-connected water (only below sea level can be ocean)
     while let Some((x, y)) = queue.pop_front() {
         water_map.set(x, y, WaterBodyId::OCEAN);
         ocean.add_tile(x, y, *heightmap.get(x, y), height);
 
-        // Check neighbors (using 4-connectivity from tilemap)
         for (nx, ny) in heightmap.neighbors(x, y) {
-            if *is_water.get(nx, ny) && !*visited.get(nx, ny) {
+            let neighbor_h = *heightmap.get(nx, ny);
+            // Ocean can only spread to below-sea-level tiles
+            if is_below_sea_level(neighbor_h) && !*visited.get(nx, ny) {
                 visited.set(nx, ny, true);
                 queue.push_back((nx, ny));
             }
         }
     }
 
-    // Only add ocean if it has tiles
     if ocean.tile_count > 0 {
         water_bodies.push(ocean);
     }
 
-    // Step 2: Lake detection - find remaining unvisited water tiles
-    let mut next_lake_id = 2u16; // Start at 2 (1 is ocean)
-
+    // Step 3: Lake detection - find water candidates NOT connected to ocean
+    // This includes alpine lakes (above sea level) and inland seas (below sea level)
     for y in 0..height {
         for x in 0..width {
-            // Skip if not water or already visited
-            if !*is_water.get(x, y) || *visited.get(x, y) {
+            // Skip if already visited (ocean) or not a water candidate
+            if *visited.get(x, y) || !*is_water_candidate.get(x, y) {
                 continue;
             }
 
-            // Found a new lake - flood fill to find all tiles
-            let lake_id = WaterBodyId(next_lake_id);
-            next_lake_id += 1;
+            // Found a new lake - flood fill to find all connected tiles
+            let lake_id = WaterBodyId(next_id);
+            next_id += 1;
 
             let mut lake = WaterBody::new(lake_id, WaterBodyType::Lake);
             let mut lake_queue = VecDeque::new();
@@ -235,31 +281,31 @@ pub fn detect_water_bodies_with_flow(
                 lake.add_tile(lx, ly, *heightmap.get(lx, ly), height);
 
                 for (nx, ny) in heightmap.neighbors(lx, ly) {
-                    if *is_water.get(nx, ny) && !*visited.get(nx, ny) {
+                    // Lakes can spread to any water candidate tile
+                    if *is_water_candidate.get(nx, ny) && !*visited.get(nx, ny) {
                         visited.set(nx, ny, true);
                         lake_queue.push_back((nx, ny));
                     }
                 }
             }
 
-            // If lake touches an edge, it should actually be ocean
-            // This handles edge cases where water touches edge but wasn't found in initial pass
-            if lake.touches_north_edge || lake.touches_south_edge {
-                // Reclassify this lake as ocean and merge with ocean body
+            // If lake touches an edge AND is below sea level, it's actually ocean
+            let is_below_sea = lake.min_elevation <= SEA_LEVEL;
+            if (lake.touches_north_edge || lake.touches_south_edge) && is_below_sea {
+                // Reclassify this lake as ocean
                 for ly in lake.bounds.1..=lake.bounds.3 {
                     for lx in lake.bounds.0..=lake.bounds.2 {
-                        if water_map.get(lx, ly).0 == lake_id.0 {
+                        if lx < width && ly < height && water_map.get(lx, ly).0 == lake_id.0 {
                             water_map.set(lx, ly, WaterBodyId::OCEAN);
                         }
                     }
                 }
 
-                // Merge with ocean body (or create if doesn't exist)
+                // Merge with ocean body
                 if let Some(ocean_body) = water_bodies.iter_mut().find(|wb| wb.id == WaterBodyId::OCEAN) {
                     ocean_body.tile_count += lake.tile_count;
                     ocean_body.min_elevation = ocean_body.min_elevation.min(lake.min_elevation);
                     ocean_body.max_elevation = ocean_body.max_elevation.max(lake.max_elevation);
-                    // Approximate new average
                     let total = ocean_body.tile_count as f32;
                     let old = (total - lake.tile_count as f32) / total;
                     let new = lake.tile_count as f32 / total;
@@ -268,55 +314,44 @@ pub fn detect_water_bodies_with_flow(
                     ocean_body.bounds.1 = ocean_body.bounds.1.min(lake.bounds.1);
                     ocean_body.bounds.2 = ocean_body.bounds.2.max(lake.bounds.2);
                     ocean_body.bounds.3 = ocean_body.bounds.3.max(lake.bounds.3);
-                    ocean_body.touches_north_edge |= lake.touches_north_edge;
-                    ocean_body.touches_south_edge |= lake.touches_south_edge;
                 } else {
                     lake.body_type = WaterBodyType::Ocean;
                     lake.id = WaterBodyId::OCEAN;
                     water_bodies.push(lake);
                 }
-
-                // Decrement ID since we didn't use this lake
-                next_lake_id -= 1;
+                next_id -= 1;
             } else {
-                // It's a real lake
+                // It's a real lake (including alpine lakes above sea level)
                 water_bodies.push(lake);
             }
         }
     }
 
-    // Step 3: River detection using flow accumulation
-    // Rivers are land tiles with high flow accumulation
-    if let Some(flow) = flow_acc {
-        let mut river_tiles = Vec::new();
+    // Step 4: River detection - DRY LAND tiles with high flow accumulation
+    // Rivers are NOT submerged - they flow on the surface
+    let river_id = WaterBodyId(next_id);
+    let mut river = WaterBody::new(river_id, WaterBodyType::River);
 
-        for y in 0..height {
-            for x in 0..width {
-                let elev = *heightmap.get(x, y);
-                let flow_val = *flow.get(x, y);
-
-                // River: land tile (above water) with high flow accumulation
-                if elev > 0.0 && flow_val >= RIVER_FLOW_THRESHOLD {
-                    river_tiles.push((x, y, flow_val));
+    for y in 0..height {
+        for x in 0..width {
+            // Only mark as river if:
+            // 1. Not already water (lake/ocean)
+            // 2. High flow accumulation
+            if water_map.get(x, y).is_none() {
+                let flow = *flow_acc.get(x, y);
+                if flow >= RIVER_FLOW_THRESHOLD {
+                    water_map.set(x, y, river_id);
+                    river.add_tile(x, y, *heightmap.get(x, y), height);
                 }
             }
         }
-
-        // Create river water body if we found river tiles
-        if !river_tiles.is_empty() {
-            let river_id = WaterBodyId(next_lake_id);
-            let mut river = WaterBody::new(river_id, WaterBodyType::River);
-
-            for (rx, ry, _) in &river_tiles {
-                water_map.set(*rx, *ry, river_id);
-                river.add_tile(*rx, *ry, *heightmap.get(*rx, *ry), height);
-            }
-
-            water_bodies.push(river);
-        }
     }
 
-    (water_map, water_bodies)
+    if river.tile_count > 0 {
+        water_bodies.push(river);
+    }
+
+    (water_map, water_bodies, water_depth)
 }
 
 /// Get all tiles belonging to a specific water body.

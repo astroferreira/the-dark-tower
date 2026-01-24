@@ -292,6 +292,15 @@ impl Explorer {
         }
     }
 
+    /// Check if a tile is submerged (water body: ocean, lake, or flooded area)
+    /// This correctly identifies alpine lakes which have height > 0 but water_depth > 0
+    fn is_submerged(&self, x: usize, y: usize) -> bool {
+        let height = *self.world.heightmap.get(x, y);
+        let water_depth = *self.world.water_depth.get(x, y);
+        // Submerged if: below sea level OR has water depth (alpine lakes)
+        height < 0.0 || water_depth > 0.5  // 0.5m threshold to avoid float noise
+    }
+
     /// Get display character and colors for a tile
     fn get_tile_display(&self, x: usize, y: usize) -> (char, Color, Color) {
         let biome = *self.world.biomes.get(x, y);
@@ -300,37 +309,70 @@ impl Explorer {
         let moisture = *self.world.moisture.get(x, y);
         let stress = *self.world.stress_map.get(x, y);
         let plate_id = *self.world.plate_map.get(x, y);
+        let water_depth = *self.world.water_depth.get(x, y);
+        let is_water = height < 0.0 || water_depth > 0.5;
 
         match self.view_mode {
             ViewMode::Biome => {
-                let ch = biome_char(&biome);
-                let (r, g, b) = biome.color();
-                (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
+                // Check for river using precomputed flow_accumulation (O(1) lookup)
+                let flow_acc = self.world.flow_accumulation.as_ref()
+                    .map(|fa| *fa.get(x, y))
+                    .unwrap_or(0.0);
+                let has_river = flow_acc > 50.0;
+
+                // Use elevation as source of truth for water type
+                if height < 0.0 {
+                    // OCEAN (below sea level)
+                    if has_river && height > -100.0 {
+                        // River mouth in shallow coastal water
+                        ('≈', Color::Rgb(80, 180, 255), Color::Rgb(20, 60, 120))
+                    } else {
+                        // Deep ocean
+                        let depth_factor = ((-height) / 500.0).min(1.0);
+                        let blue = (120.0 + depth_factor * 80.0) as u8;
+                        ('~', Color::Rgb(60, 100, blue + 50), Color::Rgb(20, 40, blue))
+                    }
+                } else {
+                    // ABOVE SEA LEVEL (land, lake, or river - never ocean)
+                    if has_river {
+                        // River on land
+                        let (r, g, b) = biome.color();
+                        ('~', Color::Rgb(100, 180, 255), make_bg_color(r, g, b))
+                    } else if water_depth > 0.5 {
+                        // Lake (alpine lake, etc.)
+                        ('~', Color::Rgb(80, 150, 220), Color::Rgb(30, 70, 140))
+                    } else {
+                        // Land biome
+                        let ch = biome_char(&biome);
+                        let (r, g, b) = biome.color();
+                        (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
+                    }
+                }
             }
             ViewMode::BaseBiome => {
                 // Show parent/base biome instead of extended biome
                 let parent = biome.parent_biome();
-                let ch = if height < 0.0 { '~' } else { '.' };
+                let ch = if is_water { '~' } else { '.' };
                 let (r, g, b) = parent.color();
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Height => {
-                let ch = if height < 0.0 { '~' } else { '.' };
+                let ch = if is_water { '~' } else { '.' };
                 let (r, g, b) = height_color(height);
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Temperature => {
-                let ch = if height < 0.0 { '~' } else { '.' };
+                let ch = if is_water { '~' } else { '.' };
                 let (r, g, b) = temperature_color(temp);
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Moisture => {
-                let ch = if height < 0.0 { '~' } else { '.' };
+                let ch = if is_water { '~' } else { '.' };
                 let (r, g, b) = moisture_color(moisture);
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Plates => {
-                let ch = if height < 0.0 { '~' } else { '.' };
+                let ch = if is_water { '~' } else { '.' };
                 let plate_idx = plate_id.0 as usize;
                 if plate_idx < self.world.plates.len() {
                     let [r, g, b] = self.world.plates[plate_idx].color;
@@ -340,42 +382,51 @@ impl Explorer {
                 }
             }
             ViewMode::Stress => {
-                let ch = if height < 0.0 { '~' } else { '.' };
+                let ch = if is_water { '~' } else { '.' };
                 let (r, g, b) = stress_color(stress);
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Rivers => {
+                // Get flow accumulation for this tile (precomputed O(1) lookup)
+                let flow_acc = self.world.flow_accumulation.as_ref()
+                    .map(|fa| *fa.get(x, y))
+                    .unwrap_or(0.0);
+                const RIVER_THRESHOLD: f32 = 50.0;
+
+                // Use elevation as source of truth
                 if height < 0.0 {
-                    // Water
-                    if let Some(ref river_network) = self.world.river_network {
-                        let width = river_network.get_width_at(x as f32, y as f32, 2.0);
-                        if width > 0.0 {
-                            let intensity = (width * 30.0).min(255.0) as u8;
-                            ('~', Color::Rgb(100, intensity.saturating_add(50), 255), Color::Rgb(10, 30, intensity / 2 + 40))
-                        } else {
-                            ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
-                        }
+                    // OCEAN (below sea level)
+                    if height < -100.0 {
+                        // Deep ocean - no rivers visible
+                        let depth_factor = ((-height) / 500.0).min(1.0);
+                        let blue = (100.0 + depth_factor * 100.0) as u8;
+                        ('~', Color::Rgb(20, 40, blue), Color::Rgb(10, 20, 40 + (depth_factor * 40.0) as u8))
+                    } else if flow_acc > RIVER_THRESHOLD {
+                        // River mouth in shallow coastal water
+                        let intensity = (flow_acc.log2() * 20.0).min(200.0) as u8;
+                        ('≈', Color::Rgb(80, 180, 255), Color::Rgb(20, 60 + intensity / 4, 120))
                     } else {
-                        ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
+                        // Shallow coastal water
+                        ('~', Color::Rgb(60, 120, 180), Color::Rgb(20, 50, 100))
                     }
                 } else {
-                    // Land - check for rivers
-                    if let Some(ref river_network) = self.world.river_network {
-                        let width = river_network.get_width_at(x as f32, y as f32, 1.0);
-                        if width > 0.0 {
-                            ('~', Color::Rgb(60, 220, 255), Color::Rgb(0, 60, 100))
-                        } else {
-                            let (r, g, b) = height_color(height);
-                            ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
-                        }
+                    // ABOVE SEA LEVEL (land, lake, river - never ocean)
+                    if flow_acc > RIVER_THRESHOLD {
+                        // River on land
+                        let intensity = (flow_acc.log2() * 15.0).min(200.0) as u8;
+                        ('~', Color::Rgb(60, 150 + intensity / 2, 255), Color::Rgb(0, 40 + intensity / 4, 100))
+                    } else if water_depth > 0.5 {
+                        // Lake
+                        ('~', Color::Rgb(80, 150, 220), Color::Rgb(20, 60, 120))
                     } else {
+                        // Land
                         let (r, g, b) = height_color(height);
                         ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
                     }
                 }
             }
             ViewMode::BiomeBlend => {
-                if height < 0.0 {
+                if is_water {
                     ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
                 } else {
                     // Check if any neighbor has different biome
@@ -397,10 +448,12 @@ impl Explorer {
                 }
             }
             ViewMode::Coastline => {
-                if height < 0.0 {
-                    // Water - check if coastal
+                if is_water {
+                    // Water - check if coastal (near dry land)
                     let is_coastal = self.world.heightmap.neighbors_8(x, y).into_iter().any(|(nx, ny)| {
-                        *self.world.heightmap.get(nx, ny) >= 0.0
+                        let nh = *self.world.heightmap.get(nx, ny);
+                        let nwd = *self.world.water_depth.get(nx, ny);
+                        nh >= 0.0 && nwd < 0.5  // Neighbor is dry land
                     });
                     if is_coastal {
                         ('~', Color::Rgb(80, 220, 220), Color::Rgb(0, 70, 70))
@@ -408,9 +461,11 @@ impl Explorer {
                         ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
                     }
                 } else {
-                    // Land - check if coastal
+                    // Land - check if coastal (near water)
                     let is_coastal = self.world.heightmap.neighbors_8(x, y).into_iter().any(|(nx, ny)| {
-                        *self.world.heightmap.get(nx, ny) < 0.0
+                        let nh = *self.world.heightmap.get(nx, ny);
+                        let nwd = *self.world.water_depth.get(nx, ny);
+                        nh < 0.0 || nwd > 0.5  // Neighbor is water
                     });
                     if is_coastal {
                         ('#', Color::Rgb(255, 255, 140), Color::Rgb(100, 100, 40))
@@ -423,8 +478,8 @@ impl Explorer {
                 }
             }
             ViewMode::WeatherZones => {
-                if height < 0.0 {
-                    // Show hurricane risk in ocean
+                if is_water {
+                    // Show hurricane risk in water
                     if let Some(ref wz) = self.world.weather_zones {
                         let zone = wz.get(x, y);
                         if zone.has_risk() {
@@ -462,7 +517,7 @@ impl Explorer {
                 }
             }
             ViewMode::Microclimate => {
-                if height < 0.0 {
+                if is_water {
                     ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
                 } else if let Some(ref mc) = self.world.microclimate {
                     let modifiers = mc.get(x, y);
@@ -491,7 +546,7 @@ impl Explorer {
             ViewMode::SeasonalTemp => {
                 // Show seasonal temperature (uses current season from world)
                 let seasonal_temp = self.world.get_seasonal_temperature(x, y);
-                let ch = if height < 0.0 { '~' } else { '.' };
+                let ch = if is_water { '~' } else { '.' };
                 let (r, g, b) = temperature_color(seasonal_temp);
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
@@ -527,6 +582,8 @@ impl Explorer {
             "  R - Regenerate world (new seed)",
             "  E - Export current view as PNG",
             "  T - Export top-down view as PNG",
+            "  w - Export water network (rivers+lakes)",
+            "  W - Export freshwater only (no ocean)",
             "  ? - Toggle this help",
             "  Q / Esc - Quit",
             "",
@@ -639,12 +696,14 @@ impl Explorer {
 
         // Terrain section
         lines.push((" Terrain".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
-        let elev_str = if tile.elevation < 0.0 {
-            format!("  Elevation: {:.0}m (depth)", tile.elevation.abs())
-        } else {
-            format!("  Elevation: {:.0}m", tile.elevation)
-        };
+        // Always show terrain elevation relative to sea level
+        let elev_str = format!("  Elevation: {:.0}m", tile.elevation);
         lines.push((elev_str, Style::default().fg(Color::White)));
+        // Show water depth if tile is submerged (water_depth > 0)
+        if tile.water_depth > 0.0 {
+            let depth_str = format!("  Water Depth: {:.0}m", tile.water_depth);
+            lines.push((depth_str, Style::default().fg(Color::Cyan)));
+        }
         lines.push((format!("  Stress: {:.2}", tile.stress), Style::default().fg(Color::White)));
         if let Some(h) = tile.hardness {
             lines.push((format!("  Hardness: {:.2}", h), Style::default().fg(Color::White)));
@@ -957,6 +1016,9 @@ pub fn export_map_image(
             let moisture = *world.moisture.get(x, y);
             let stress = *world.stress_map.get(x, y);
             let plate_id = *world.plate_map.get(x, y);
+            let water_depth = *world.water_depth.get(x, y);
+            // Submerged = below sea level OR alpine lake (water_depth > 0)
+            let is_water = h < 0.0 || water_depth > 0.5;
 
             let (r, g, b) = match view_mode {
                 ViewMode::Biome => biome.color(),
@@ -970,16 +1032,19 @@ pub fn export_map_image(
                     hsv_to_rgb(hue, 0.7, 0.8)
                 }
                 ViewMode::Rivers => {
-                    if h < 0.0 {
-                        (50, 100, 200)
+                    if is_water {
+                        // Water body - darker blue for deeper water
+                        let depth_factor = (water_depth / 100.0).min(1.0);
+                        let blue = (100.0 + depth_factor * 100.0) as u8;
+                        (50, (80.0 + depth_factor * 40.0) as u8, blue)
                     } else {
                         height_color(h)
                     }
                 }
                 ViewMode::BiomeBlend => biome.color(),
                 ViewMode::Coastline => {
-                    if h < 0.0 {
-                        if h > -50.0 { (0, 200, 200) } else { (50, 100, 200) }
+                    if is_water {
+                        if water_depth < 50.0 { (0, 200, 200) } else { (50, 100, 200) }
                     } else if h < 50.0 {
                         (255, 255, 100)
                     } else {
@@ -991,12 +1056,12 @@ pub fn export_map_image(
                         let zone = wz.get(x, y);
                         if zone.has_risk() {
                             zone.primary.color()
-                        } else if h < 0.0 {
+                        } else if is_water {
                             (50, 100, 200)
                         } else {
                             height_color(h)
                         }
-                    } else if h < 0.0 {
+                    } else if is_water {
                         (50, 100, 200)
                     } else {
                         height_color(h)
@@ -1006,7 +1071,7 @@ pub fn export_map_image(
                     if let Some(ref mc) = world.microclimate {
                         let modifiers = mc.get(x, y);
                         let temp_mod = modifiers.temperature_mod;
-                        if h < 0.0 {
+                        if is_water {
                             (50, 100, 200)
                         } else if temp_mod > 1.0 {
                             // Valley warmth - orange
@@ -1094,6 +1159,205 @@ pub fn export_topdown_image(
 
     img.save(filename)?;
     println!("Exported top-down view to {}", filename);
+    Ok(())
+}
+
+/// Export only rivers and lakes on a black background
+/// - Rivers (from flow_accumulation OR river_network): Cyan, intensity based on flow
+/// - Lakes (water_depth > 0): Blue, intensity based on depth
+/// - Ocean (height < 0): Dark blue
+/// - Everything else: Black
+pub fn export_water_network_image(
+    world: &WorldData,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let width = world.heightmap.width;
+    let height = world.heightmap.height;
+    const RIVER_THRESHOLD: f32 = 50.0;
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let h = *world.heightmap.get(x, y);
+            let water_depth = *world.water_depth.get(x, y);
+
+            // Get flow accumulation (primary river detection)
+            let flow_acc = world.flow_accumulation.as_ref()
+                .map(|fa| *fa.get(x, y))
+                .unwrap_or(0.0);
+
+            // Check Bezier river network as fallback
+            let river_width = if let Some(ref river_network) = world.river_network {
+                river_network.get_width_at(x as f32, y as f32, 1.0)
+            } else {
+                0.0
+            };
+
+            let is_river = flow_acc > RIVER_THRESHOLD || river_width > 0.0;
+
+            let (r, g, b) = if is_river && h >= 0.0 {
+                // River on land - bright cyan, intensity based on flow
+                let intensity = (flow_acc.log2().max(0.0) * 20.0).min(255.0) as u8;
+                (0, intensity.saturating_add(100), 255)
+            } else if water_depth > 0.5 {
+                // Lake (alpine or otherwise) - blue, intensity based on depth
+                let depth_factor = (water_depth / 50.0).min(1.0);
+                let blue = (150.0 + depth_factor * 105.0) as u8;
+                let green = (80.0 + depth_factor * 40.0) as u8;
+                (30, green, blue)
+            } else if h < 0.0 {
+                // Ocean - dark blue (rivers in ocean show as brighter)
+                if is_river {
+                    let intensity = (flow_acc.log2().max(0.0) * 15.0).min(100.0) as u8;
+                    (20, 50 + intensity, 150 + intensity)
+                } else {
+                    let depth_factor = ((-h) / 2000.0).min(1.0);
+                    let blue = (80.0 + depth_factor * 80.0) as u8;
+                    (10, 30, blue)
+                }
+            } else {
+                // Land - black
+                (0, 0, 0)
+            };
+
+            img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
+        }
+    }
+
+    img.save(filename)?;
+    println!("Exported water network to {}", filename);
+    Ok(())
+}
+
+/// Export only rivers and lakes on a black background (no ocean)
+/// - Rivers (from flow_accumulation OR river_network on land): Cyan
+/// - Lakes (water_depth > 0 AND height >= 0): Blue
+/// - Everything else (including ocean): Black
+pub fn export_freshwater_network_image(
+    world: &WorldData,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let width = world.heightmap.width;
+    let height = world.heightmap.height;
+    const RIVER_THRESHOLD: f32 = 50.0;
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let h = *world.heightmap.get(x, y);
+            let water_depth = *world.water_depth.get(x, y);
+
+            // Only process land tiles (h >= 0)
+            if h < 0.0 {
+                img.put_pixel(x as u32, y as u32, Rgb([0, 0, 0]));
+                continue;
+            }
+
+            // Get flow accumulation (primary river detection)
+            let flow_acc = world.flow_accumulation.as_ref()
+                .map(|fa| *fa.get(x, y))
+                .unwrap_or(0.0);
+
+            // Check Bezier river network as fallback
+            let river_width = if let Some(ref river_network) = world.river_network {
+                river_network.get_width_at(x as f32, y as f32, 1.0)
+            } else {
+                0.0
+            };
+
+            let is_river = flow_acc > RIVER_THRESHOLD || river_width > 0.0;
+
+            let (r, g, b) = if is_river {
+                // River on land - bright cyan, intensity based on flow
+                let intensity = (flow_acc.log2().max(0.0) * 20.0).min(255.0) as u8;
+                (0, intensity.saturating_add(120), 255)
+            } else if water_depth > 0.5 {
+                // Alpine lake (above sea level) - bright blue
+                let depth_factor = (water_depth / 30.0).min(1.0);
+                let blue = (180.0 + depth_factor * 75.0) as u8;
+                let green = (100.0 + depth_factor * 50.0) as u8;
+                (40, green, blue)
+            } else {
+                // Dry land - black
+                (0, 0, 0)
+            };
+
+            img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
+        }
+    }
+
+    img.save(filename)?;
+    println!("Exported freshwater network to {}", filename);
+    Ok(())
+}
+
+/// Export a clean base map: flat biome colors + rivers, no shading or effects
+/// Uses elevation as source of truth: h < 0 = ocean, h >= 0 = land/lake/river
+pub fn export_base_map_image(
+    world: &WorldData,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let width = world.heightmap.width;
+    let height = world.heightmap.height;
+    const RIVER_THRESHOLD: f32 = 50.0;
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let biome = *world.biomes.get(x, y);
+            let h = *world.heightmap.get(x, y);
+            let water_depth = *world.water_depth.get(x, y);
+
+            // Check for river
+            let flow_acc = world.flow_accumulation.as_ref()
+                .map(|fa| *fa.get(x, y))
+                .unwrap_or(0.0);
+            let is_river = flow_acc > RIVER_THRESHOLD;
+
+            // Elevation is the source of truth for water type:
+            // h < 0 = ocean (below sea level)
+            // h >= 0 = land, lake, or river (above sea level)
+            let (r, g, b) = if h < 0.0 {
+                // OCEAN - below sea level
+                if is_river && h >= -100.0 {
+                    // River mouth in shallow coastal water
+                    (60, 140, 220)
+                } else {
+                    // Ocean depth gradient
+                    let depth_factor = ((-h) / 500.0).min(1.0);
+                    let blue = (120.0 + depth_factor * 80.0) as u8;
+                    (20, (40.0 + depth_factor * 40.0) as u8, blue)
+                }
+            } else {
+                // ABOVE SEA LEVEL - can only be land, lake, or river (never ocean)
+                if is_river {
+                    // River on land
+                    (60, 140, 220)
+                } else if water_depth > 0.5 {
+                    // Lake (alpine lake, crater lake, etc.)
+                    (70, 130, 200)
+                } else {
+                    // Land - use biome color, but override if biome is incorrectly ocean
+                    let (br, bg, bb) = biome.color();
+                    // If biome color looks like ocean (dark blue), use a land fallback
+                    if br < 80 && bg < 120 && bb > 100 {
+                        // This is a water biome color on land - use grassland green
+                        (120, 160, 80)
+                    } else {
+                        (br, bg, bb)
+                    }
+                }
+            };
+
+            img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
+        }
+    }
+
+    img.save(filename)?;
+    println!("Exported base map to {}", filename);
     Ok(())
 }
 
@@ -1288,6 +1552,24 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                             }
                         }
 
+                        // Export water network (rivers + lakes on black)
+                        KeyCode::Char('w') => {
+                            let filename = format!("water_network_{}.png", explorer.world.seed());
+                            match export_water_network_image(&explorer.world, &filename) {
+                                Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
+                                Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
+                            }
+                        }
+
+                        // Export freshwater only (rivers + alpine lakes, no ocean)
+                        KeyCode::Char('W') => {
+                            let filename = format!("freshwater_{}.png", explorer.world.seed());
+                            match export_freshwater_network_image(&explorer.world, &filename) {
+                                Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
+                                Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
+                            }
+                        }
+
                         // Regenerate world with new seed
                         KeyCode::Char('r') | KeyCode::Char('R') => {
                             explorer.regenerate();
@@ -1307,6 +1589,15 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                         KeyCode::Char('t') | KeyCode::Char('T') => {
                             let filename = format!("world_topdown_{}.png", explorer.world.seed());
                             match export_topdown_image(&explorer.world, &filename) {
+                                Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
+                                Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
+                            }
+                        }
+
+                        // Base map export (flat colors, no shading)
+                        KeyCode::Char('b') | KeyCode::Char('B') => {
+                            let filename = format!("world_base_{}.png", explorer.world.seed());
+                            match export_base_map_image(&explorer.world, &filename) {
                                 Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
                                 Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
                             }

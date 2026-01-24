@@ -831,6 +831,35 @@ impl Tilemap<f32> {
         result
     }
 
+    /// Max-pooling downscale: always preserves highest values.
+    /// Use this for flow accumulation to preserve river paths (high flow = river).
+    pub fn downscale_max_pool(&self, factor: usize) -> Self {
+        if factor <= 1 {
+            return self.clone();
+        }
+
+        let new_width = self.width / factor;
+        let new_height = self.height / factor;
+        let mut result = Tilemap::new_with(new_width, new_height, 0.0f32);
+
+        for new_y in 0..new_height {
+            for new_x in 0..new_width {
+                let mut max_val = f32::MIN;
+                for dy in 0..factor {
+                    for dx in 0..factor {
+                        let sx = new_x * factor + dx;
+                        let sy = new_y * factor + dy;
+                        if sx < self.width && sy < self.height {
+                            max_val = max_val.max(*self.get(sx, sy));
+                        }
+                    }
+                }
+                result.set(new_x, new_y, max_val);
+            }
+        }
+        result
+    }
+
     /// Simple average downscale (for comparison).
     pub fn downscale_average(&self, factor: usize) -> Self {
         if factor <= 1 {

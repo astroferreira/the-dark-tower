@@ -227,14 +227,14 @@ impl Default for ErosionParams {
             gravity: 9.81,  // m/s^2
             erosion_exponent: 1.0,  // Linear erosion law
 
-            // River erosion defaults - very dense capillary network
+            // River erosion defaults - balanced for visible rivers that don't dig below sea level
             enable_rivers: true,
-            river_source_min_accumulation: 15.0,   // Baseline threshold
+            river_source_min_accumulation: 20.0,   // Higher threshold for better hierarchy (was 15.0)
             river_source_min_elevation: 100.0,     // Start higher up for longer rivers
-            river_capacity_factor: 20.0,           // High capacity = more erosion
-            river_erosion_rate: 1.0,               // Maximum erosion rate
-            river_deposition_rate: 0.5,            // Disable deposition
-            river_max_erosion: 150.0,              // Deep channels
+            river_capacity_factor: 20.0,           // Moderate capacity
+            river_erosion_rate: 0.5,               // Reduced erosion rate (was 1.0)
+            river_deposition_rate: 0.5,            // Balanced deposition
+            river_max_erosion: 30.0,               // Reduced max erosion (was 150.0) - prevents digging below sea level
             river_max_deposition: 0.0,             // No deposition
             river_channel_width: 2,                // Wide channels for visibility
 

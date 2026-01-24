@@ -117,6 +117,10 @@ struct Args {
     /// Disable high-resolution erosion simulation (faster but lower quality rivers)
     #[arg(long)]
     no_hires: bool,
+
+    /// Export freshwater network image (rivers + lakes only) before launching explorer
+    #[arg(long)]
+    export_rivers: bool,
 }
 
 fn main() {
@@ -298,9 +302,9 @@ fn main() {
     println!("Heightmap range: {:.1}m to {:.1}m ({:.1}% above sea level)", min_h, max_h,
         100.0 * above_sea as f64 / (width * height) as f64);
 
-    // Generate climate
+    // Generate climate with domain warping for organic zone boundaries
     println!("Generating climate (mode: {}, rainfall: {})...", climate_config.mode, climate_config.rainfall);
-    let temperature = climate::generate_temperature_with_config(&heightmap, width, height, climate_config.mode);
+    let temperature = climate::generate_temperature_with_seed(&heightmap, width, height, climate_config.mode, seeds.climate);
     let moisture = climate::generate_moisture_with_config(&heightmap, width, height, &climate_config);
 
     // Report climate stats
@@ -324,7 +328,7 @@ fn main() {
 
     let mut erosion_rng = ChaCha8Rng::seed_from_u64(seeds.erosion);
 
-    let (stats, hardness_map) = erosion::simulate_erosion(
+    let (stats, hardness_map, flow_accumulation) = erosion::simulate_erosion(
         &mut heightmap,
         &plate_map,
         &plates,
@@ -360,13 +364,23 @@ fn main() {
     println!("Applying terrain noise layers...");
     heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
 
-    // Detect water bodies (lakes, rivers, ocean)
+    // CRITICAL: Final depression fill to ensure river connectivity
+    // Post-processing steps (coastline, noise) may have created new pits
+    println!("Final depression fill for river connectivity...");
+    let filled = erosion::rivers::fill_depressions_public(&heightmap);
+    for y in 0..height {
+        for x in 0..width {
+            heightmap.set(x, y, *filled.get(x, y));
+        }
+    }
+
+    // Detect water bodies (lakes, rivers, ocean) with water depth
     println!("Detecting water bodies...");
-    let (water_body_map, water_bodies_list) = water_bodies::detect_water_bodies(&heightmap);
+    let (water_body_map, water_bodies_list, water_depth) = water_bodies::detect_water_bodies(&heightmap);
     let lake_count = water_bodies::count_lakes(&water_bodies_list);
-    let stats = water_bodies::water_body_stats(&water_bodies_list);
+    let wb_stats = water_bodies::water_body_stats(&water_bodies_list);
     println!("Found {} lakes, {} river tiles, {} ocean tiles",
-        lake_count, stats.river_tiles, stats.ocean_tiles);
+        lake_count, wb_stats.river_tiles, wb_stats.ocean_tiles);
 
     // Generate extended biomes for explorer
     let biome_config = biomes::WorldBiomeConfig::default();
@@ -483,11 +497,21 @@ fn main() {
         Some(hardness_map),
         water_body_map,
         water_bodies_list,
+        water_depth,
         Some(river_network),
         Some(biome_feather_map),
     );
     world_data.handshakes = Some(world_handshakes);
     world_data.underground_water = Some(underground_water_features);
+    world_data.set_flow_accumulation(flow_accumulation);
+
+    // Export freshwater network if requested
+    if args.export_rivers {
+        let filename = format!("freshwater_{}.png", master_seed);
+        if let Err(e) = explorer::export_freshwater_network_image(&world_data, &filename) {
+            eprintln!("Failed to export freshwater network: {}", e);
+        }
+    }
 
     if let Err(e) = explorer::run_explorer(world_data) {
         eprintln!("Explorer error: {}", e);

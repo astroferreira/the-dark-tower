@@ -51,6 +51,11 @@ pub struct WorldData {
     pub water_body_map: Tilemap<WaterBodyId>,
     /// List of water bodies with metadata
     pub water_bodies: Vec<WaterBody>,
+    /// Water depth map (water_surface - terrain, 0 = dry land)
+    pub water_depth: Tilemap<f32>,
+    /// Flow accumulation map (D8 drainage area, higher = more upstream catchment)
+    /// Used to identify rivers: cells with flow_accumulation > threshold are rivers
+    pub flow_accumulation: Option<Tilemap<f32>>,
     /// Bezier curve river network (Phase 1)
     pub river_network: Option<RiverNetwork>,
     /// Biome feathering map for smooth transitions
@@ -89,6 +94,7 @@ impl WorldData {
         hardness_map: Option<Tilemap<f32>>,
         water_body_map: Tilemap<WaterBodyId>,
         water_bodies: Vec<WaterBody>,
+        water_depth: Tilemap<f32>,
         river_network: Option<RiverNetwork>,
         biome_feather_map: Option<BiomeFeatherMap>,
     ) -> Self {
@@ -109,6 +115,8 @@ impl WorldData {
             hardness_map,
             water_body_map,
             water_bodies,
+            water_depth,
+            flow_accumulation: None,
             river_network,
             biome_feather_map,
             microclimate: None,
@@ -134,6 +142,7 @@ impl WorldData {
         hardness_map: Option<Tilemap<f32>>,
         water_body_map: Tilemap<WaterBodyId>,
         water_bodies: Vec<WaterBody>,
+        water_depth: Tilemap<f32>,
         river_network: Option<RiverNetwork>,
         biome_feather_map: Option<BiomeFeatherMap>,
         microclimate: Option<Tilemap<MicroclimateModifiers>>,
@@ -158,6 +167,8 @@ impl WorldData {
             hardness_map,
             water_body_map,
             water_bodies,
+            water_depth,
+            flow_accumulation: None,
             river_network,
             biome_feather_map,
             microclimate,
@@ -167,6 +178,11 @@ impl WorldData {
             current_season: Season::Summer,
             underground_water,
         }
+    }
+
+    /// Set flow accumulation map (computed after erosion)
+    pub fn set_flow_accumulation(&mut self, flow_acc: Tilemap<f32>) {
+        self.flow_accumulation = Some(flow_acc);
     }
 
     /// Get tile info at coordinates
@@ -193,6 +209,7 @@ impl WorldData {
             water_body_id,
             water_body_type: water_body.map(|wb| wb.body_type).unwrap_or(WaterBodyType::None),
             water_body_size: water_body.map(|wb| wb.tile_count),
+            water_depth: *self.water_depth.get(x, y),
             water_features,
         }
     }
@@ -298,6 +315,8 @@ pub struct TileInfo {
     pub water_body_id: WaterBodyId,
     pub water_body_type: WaterBodyType,
     pub water_body_size: Option<usize>,
+    /// Water depth at this tile (water_surface - terrain, 0 = dry land)
+    pub water_depth: f32,
     /// Underground water features (aquifers, springs, waterfalls)
     pub water_features: TileWaterFeatures,
 }
@@ -412,8 +431,10 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
     // Generate heightmap
     let heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
 
-    // Generate climate
-    let temperature = climate::generate_temperature(&heightmap, width, height);
+    // Generate climate with domain warping for organic zone boundaries
+    let temperature = climate::generate_temperature_with_seed(
+        &heightmap, width, height, climate::ClimateMode::Globe, seeds.climate
+    );
     let moisture = climate::generate_moisture(&heightmap, width, height);
 
     // Generate extended biomes
@@ -427,8 +448,8 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
         seeds.biomes,
     );
 
-    // Detect water bodies
-    let (water_body_map, water_bodies_list) = water_bodies::detect_water_bodies(&heightmap);
+    // Detect water bodies with water depth
+    let (water_body_map, water_bodies_list, water_depth) = water_bodies::detect_water_bodies(&heightmap);
 
     // Apply rare biome replacements
     biomes::apply_biome_replacements(
@@ -546,6 +567,7 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
         None, // No hardness map without erosion
         water_body_map,
         water_bodies_list,
+        water_depth,
         Some(river_network),
         Some(biome_feather_map),
         Some(microclimate_map),
@@ -594,6 +616,7 @@ pub fn generate_test_world() -> WorldData {
     // No water bodies in test world
     let water_body_map = Tilemap::new_with(SIZE, SIZE, WaterBodyId::NONE);
     let water_bodies = vec![];
+    let water_depth = Tilemap::new_with(SIZE, SIZE, 0.0f32);
 
     WorldData {
         seeds: WorldSeeds::from_master(666),
@@ -610,6 +633,8 @@ pub fn generate_test_world() -> WorldData {
         hardness_map: None,
         water_body_map,
         water_bodies,
+        water_depth,
+        flow_accumulation: None,
         river_network: None,
         biome_feather_map: None,
         microclimate: None,

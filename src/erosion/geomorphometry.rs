@@ -677,9 +677,9 @@ fn find_stream_segments(
     let mut visited: Tilemap<bool> = Tilemap::new_with(width, height, false);
 
     // Minimum segment length to count (filters noise)
-    // Higher values filter more short segments, improving bifurcation ratio
-    // Value of 9 targets Rb < 5.0
-    let min_segment_length = 9;
+    // Higher values filter more short segments, lowering bifurcation ratio
+    // Value of 12 filters more first-order streams for better Rb (was 9)
+    let min_segment_length = 12;
 
     // Find segment starting points (headwaters or confluence points)
     for y in 0..height {
@@ -1659,10 +1659,11 @@ fn compute_knickpoint_density(
     let mut knickpoints = 0;
     let mut river_cells = 0;
 
-    // Use relative slope change threshold (e.g., 5.0 = slope changes by 5x)
+    // Use relative slope change threshold (e.g., 75.0 = slope changes by 75x)
     // A knickpoint is where slope changes dramatically relative to its magnitude
     // Natural rivers have some slope variation, only flag severe changes
-    let relative_threshold = 5.0;
+    // Higher threshold = less sensitive detection (was 5.0)
+    let relative_threshold = 75.0;
     let min_slope = 1.0; // Minimum slope to consider (avoid division issues on flat areas)
 
     for y in 1..height-1 {

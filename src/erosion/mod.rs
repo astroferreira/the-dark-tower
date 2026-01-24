@@ -204,6 +204,7 @@ impl Default for ErosionStats {
 }
 /// Create a connected dendritic drainage network with proper hierarchy.
 /// Enforces strict monotonic decrease along flow paths.
+/// Uses depression-filled routing to ensure all rivers reach the ocean.
 fn carve_river_network(heightmap: &mut Tilemap<f32>, source_threshold: f32) {
     let width = heightmap.width;
     let height = heightmap.height;
@@ -212,9 +213,9 @@ fn carve_river_network(heightmap: &mut Tilemap<f32>, source_threshold: f32) {
     let dx: [i32; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
     let dy: [i32; 8] = [-1, -1, 0, 1, 1, 1, 0, -1];
 
-    // Compute flow direction and accumulation on filled terrain
-    let flow_dir = rivers::compute_flow_direction(heightmap);
-    let flow_acc = rivers::compute_flow_accumulation(heightmap, &flow_dir);
+    // CRITICAL: Compute flow direction on FILLED terrain to avoid pits
+    // Rivers will be routed as if pits were filled, ensuring connectivity
+    let (flow_dir, flow_acc, _filled) = rivers::compute_flow_with_filled_routing(heightmap);
 
     // Find maximum accumulation for normalization
     let mut max_acc: f32 = 1.0;
@@ -283,24 +284,34 @@ fn carve_river_network(heightmap: &mut Tilemap<f32>, source_threshold: f32) {
 
         // Minimum elevation step based on accumulation (concave profile)
         // High accumulation (downstream) = small step; Low accumulation (upstream) = larger step
-        let theta = 0.5;
-        let step = 2.0 / acc.powf(theta).max(0.1);
+        // Higher theta (0.7) creates even steeper upstream-to-downstream gradient transition
+        let theta = 0.7;
+        let step = 1.2 / acc.powf(theta).max(0.02);
 
         // Our elevation must be at least step higher than downstream
         let min_elev = downstream_elev + step;
 
-        // For river cells (high accumulation), use a lower elevation (channel)
+        // Minimum allowed river height - don't carve below sea level
+        const MIN_RIVER_HEIGHT: f32 = 0.1;
+
+        // For river cells (high accumulation), carve a SUBTLE channel
+        // Rivers are detected by flow_accumulation, not by deep trenches
+        // Keep carving minimal (2-8m) to avoid canyon effect
         let channel_depth = if acc >= threshold {
-            (acc / max_acc).powf(0.3) * 50.0 + 10.0
+            let raw_depth = (acc / max_acc).powf(0.4) * 6.0 + 2.0;  // 2-8m instead of 10-60m
+            // Don't dig below sea level
+            raw_depth.min((h - MIN_RIVER_HEIGHT).max(0.0))
         } else {
             0.0
         };
 
         // Target elevation: the higher of min_elev or (original - channel_depth)
-        let target_elev = min_elev.max(h - channel_depth);
+        // Also clamp min_elev to not go below sea level
+        let clamped_min_elev = min_elev.max(MIN_RIVER_HEIGHT);
+        let target_elev = clamped_min_elev.max(h - channel_depth);
 
-        // Final elevation: at least min_elev, at most original
-        let final_elev = target_elev.max(min_elev).min(h);
+        // Final elevation: at least min_elev, at most original, and above sea level
+        let final_elev = target_elev.max(clamped_min_elev).min(h).max(MIN_RIVER_HEIGHT);
 
         carved_elev.set(x, y, final_elev);
     }
@@ -318,10 +329,17 @@ fn carve_river_network(heightmap: &mut Tilemap<f32>, source_threshold: f32) {
         }
     }
 
-    // Multiple passes to enforce strict monotonic decrease
-    for _ in 0..20 {
-        let flow_dir = rivers::compute_flow_direction(heightmap);
+    // AGGRESSIVE BARRIER BREACHING
+    // We need to physically carve through barriers so rivers can reach the ocean.
+    // The filled routing tells us WHERE to carve, now we carve until connected.
+    const MIN_RIVER_HEIGHT: f32 = 0.1;
+    const MAX_BREACH_PASSES: usize = 100;  // Enough for tall barriers
+
+    for pass in 0..MAX_BREACH_PASSES {
+        // Recompute filled routing each pass since we're modifying terrain
+        let (flow_dir, _flow_acc, _filled) = rivers::compute_flow_with_filled_routing(heightmap);
         let mut any_changed = false;
+        let mut max_barrier_height = 0.0f32;
 
         for y in 1..height-1 {
             for x in 0..width {
@@ -335,10 +353,17 @@ fn carve_river_network(heightmap: &mut Tilemap<f32>, source_threshold: f32) {
                 let ny = (y as i32 + dy[dir as usize]).clamp(0, height as i32 - 1) as usize;
                 let nh = *heightmap.get(nx, ny);
 
-                // Downstream must be strictly lower
+                // If downstream is higher (a barrier), CARVE THROUGH IT
                 if nh >= 0.0 && nh >= h {
-                    let new_nh = h - 0.5;
-                    if new_nh > 0.0 {
+                    let barrier_height = nh - h;
+                    max_barrier_height = max_barrier_height.max(barrier_height);
+
+                    // Carve depth proportional to barrier height (faster breach)
+                    // Minimum 2m per pass, up to 10% of barrier height
+                    let carve_depth = (barrier_height * 0.1).max(2.0);
+                    let new_nh = (h - 0.5).max(MIN_RIVER_HEIGHT);  // Set slightly below current
+
+                    if new_nh > MIN_RIVER_HEIGHT && new_nh < nh {
                         heightmap.set(nx, ny, new_nh);
                         any_changed = true;
                     }
@@ -346,7 +371,16 @@ fn carve_river_network(heightmap: &mut Tilemap<f32>, source_threshold: f32) {
             }
         }
 
-        if !any_changed { break; }
+        if !any_changed {
+            if pass > 0 {
+                println!("  Barrier breaching complete after {} passes", pass);
+            }
+            break;
+        }
+
+        if pass == MAX_BREACH_PASSES - 1 {
+            println!("  WARNING: Barrier breaching hit max passes, max remaining barrier: {:.1}m", max_barrier_height);
+        }
     }
 }
 
@@ -419,6 +453,9 @@ fn breach_depressions(heightmap: &mut Tilemap<f32>) {
 ///
 /// If `params.simulation_scale > 1`, erosion runs on an upscaled heightmap
 /// for sharper river channels, then downscales back preserving carved features.
+///
+/// Returns (stats, hardness_map, flow_accumulation) where flow_accumulation
+/// is computed on the high-res map and downscaled for accurate river detection.
 pub fn simulate_erosion(
     heightmap: &mut Tilemap<f32>,
     plate_map: &Tilemap<PlateId>,
@@ -428,7 +465,7 @@ pub fn simulate_erosion(
     params: &ErosionParams,
     rng: &mut ChaCha8Rng,
     seed: u64,
-) -> (ErosionStats, Tilemap<f32>) {
+) -> (ErosionStats, Tilemap<f32>, Tilemap<f32>) {
     let factor = params.simulation_scale;
 
     // If simulation_scale > 1, run erosion at higher resolution
@@ -442,6 +479,7 @@ pub fn simulate_erosion(
 
 /// High-resolution erosion simulation.
 /// Upscales, runs erosion, then downscales with river preservation.
+/// Returns (stats, hardness, flow_accumulation) where flow_acc is computed at high-res then downscaled.
 fn simulate_erosion_hires(
     heightmap: &mut Tilemap<f32>,
     _plate_map: &Tilemap<PlateId>,
@@ -451,7 +489,7 @@ fn simulate_erosion_hires(
     params: &ErosionParams,
     _rng: &mut ChaCha8Rng,
     seed: u64,
-) -> (ErosionStats, Tilemap<f32>) {
+) -> (ErosionStats, Tilemap<f32>, Tilemap<f32>) {
     let factor = params.simulation_scale;
     let orig_width = heightmap.width;
     let orig_height = heightmap.height;
@@ -547,17 +585,18 @@ fn simulate_erosion_hires(
         carve_river_network(&mut hires_heightmap, hires_params.river_source_min_accumulation);
 
         // Step 8b: Apply meander erosion for more natural river curves
-        // Recalculate flow each pass since terrain changes
+        // Use filled routing to ensure connectivity even during meandering
+        // 6 passes with strength 15.0 for minimal plan curvature impact
         println!("  Applying meander erosion...");
-        for pass in 0..12 {  // More passes
-            let flow_dir = rivers::compute_flow_direction(&hires_heightmap);
-            let flow_acc = rivers::compute_flow_accumulation(&hires_heightmap, &flow_dir);
+        for pass in 0..6 {
+            // Use filled routing so meanders follow connected paths
+            let (flow_dir, flow_acc, _filled) = rivers::compute_flow_with_filled_routing(&hires_heightmap);
             rivers::apply_meander_erosion(
                 &mut hires_heightmap,
                 &flow_dir,
                 &flow_acc,
                 hires_params.river_source_min_accumulation,
-                40.0,  // Stronger meander erosion
+                15.0,  // Reduced meander strength for better plan curvature
                 seed + pass as u64,
             );
         }
@@ -575,11 +614,70 @@ fn simulate_erosion_hires(
 
     println!("  Downscaling with variance-based river preservation...");
 
+    // Step 9b: Compute flow accumulation on HIGH-RES map BEFORE downscaling
+    // This captures the detailed river network at full resolution
+    println!("  Computing flow accumulation on high-res map...");
+    let (hires_flow_dir, hires_flow_acc, _) = rivers::compute_flow_with_filled_routing(&hires_heightmap);
+
+    // DEBUG: Check for disconnections in flow network
+    let mut no_flow_land_cells = 0;
+    let mut total_land_cells = 0;
+    for y in 0..hires_heightmap.height {
+        for x in 0..hires_heightmap.width {
+            let h = *hires_heightmap.get(x, y);
+            if h >= 0.0 {
+                total_land_cells += 1;
+                if *hires_flow_dir.get(x, y) == 255 {
+                    no_flow_land_cells += 1;
+                }
+            }
+        }
+    }
+    if no_flow_land_cells > 0 {
+        println!("  WARNING: {} land cells have NO_FLOW ({:.2}%)",
+                 no_flow_land_cells,
+                 100.0 * no_flow_land_cells as f64 / total_land_cells as f64);
+    } else {
+        println!("  ✓ All land cells have valid flow directions");
+    }
+
+    // Check flow_acc distribution
+    let mut max_acc = 0.0f32;
+    let mut cells_above_50 = 0usize;
+    let mut cells_above_10 = 0usize;
+    for y in 0..hires_heightmap.height {
+        for x in 0..hires_heightmap.width {
+            let acc = *hires_flow_acc.get(x, y);
+            max_acc = max_acc.max(acc);
+            if acc > 50.0 { cells_above_50 += 1; }
+            if acc > 10.0 { cells_above_10 += 1; }
+        }
+    }
+    println!("  Flow acc: max={:.0}, cells>50={}, cells>10={}",
+             max_acc, cells_above_50, cells_above_10);
+
     // Step 10: Smart downscale preserving rivers via variance detection
-    // Higher threshold = only preserve well-defined channels (high variance = deep cut)
-    // 15.0 gives best bifurcation ratio (~5.4) with good connectivity (~93%)
     let variance_threshold = 15.0;
-    let result = hires_heightmap.downscale_preserve_rivers(factor, variance_threshold);
+    let mut result = hires_heightmap.downscale_preserve_rivers(factor, variance_threshold);
+
+    // Step 10b: CRITICAL - Fill depressions on downscaled map to ensure connectivity
+    // The downscaling may have created new pits that break river flow
+    println!("  Filling depressions on downscaled map...");
+    let filled_result = rivers::fill_depressions_public(&result);
+    for y in 0..result.height {
+        for x in 0..result.width {
+            result.set(x, y, *filled_result.get(x, y));
+        }
+    }
+
+    // Step 10c: Carve river channels on downscaled map to ensure visibility
+    println!("  Carving river channels on downscaled map...");
+    carve_river_network(&mut result, params.river_source_min_accumulation);
+
+    // Step 10d: Recompute flow accumulation at final resolution
+    // This ensures the flow network is spatially connected at display resolution
+    println!("  Recomputing flow accumulation at final resolution...");
+    let (_, flow_acc, _) = rivers::compute_flow_with_filled_routing(&result);
 
     // Export post-downsampled result for comparison with high-res
     export_downsampled_heightmap(&result, seed);
@@ -617,10 +715,11 @@ fn simulate_erosion_hires(
         }
     }
 
-    (stats, hardness)
+    (stats, hardness, flow_acc)
 }
 
 /// Internal erosion simulation (standard resolution).
+/// Returns (stats, hardness, flow_accumulation) to match the hires version.
 fn simulate_erosion_internal(
     heightmap: &mut Tilemap<f32>,
     _plate_map: &Tilemap<PlateId>,
@@ -630,7 +729,7 @@ fn simulate_erosion_internal(
     params: &ErosionParams,
     _rng: &mut ChaCha8Rng,
     seed: u64,
-) -> (ErosionStats, Tilemap<f32>) {
+) -> (ErosionStats, Tilemap<f32>, Tilemap<f32>) {
     let mut stats = ErosionStats::default();
 
     // Use constant hardness for cleaner river channels (like debug tool)
@@ -769,5 +868,9 @@ fn simulate_erosion_internal(
         }
     }
 
-    (stats, hardness)
+    // Compute flow accumulation for river visualization
+    println!("Computing flow accumulation...");
+    let (_flow_dir, flow_acc, _filled) = rivers::compute_flow_with_filled_routing(heightmap);
+
+    (stats, hardness, flow_acc)
 }

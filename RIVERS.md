@@ -13,12 +13,13 @@ Comprehensive documentation of the procedural world generator's hydrological sys
 5. [Channel Geometry](#channel-geometry)
 6. [Delta Formation](#delta-formation)
 7. [Depression Filling](#depression-filling)
-8. [Lake Detection](#lake-detection)
-9. [Bezier River Geometry](#bezier-river-geometry)
-10. [Hydraulic Erosion](#hydraulic-erosion)
-11. [Glacial Erosion](#glacial-erosion)
-12. [System Interactions](#system-interactions)
-13. [Module Reference](#module-reference)
+8. [Water Body Detection](#water-body-detection)
+9. [Water Depth Tracking](#water-depth-tracking)
+10. [Bezier River Geometry](#bezier-river-geometry)
+11. [Hydraulic Erosion](#hydraulic-erosion)
+12. [Glacial Erosion](#glacial-erosion)
+13. [System Interactions](#system-interactions)
+14. [Module Reference](#module-reference)
 
 ---
 
@@ -29,10 +30,11 @@ The river system uses physically-based algorithms to create realistic drainage n
 - **D8 Flow Direction**: Determines where water flows from each cell
 - **Flow Accumulation**: Calculates drainage area (proxy for discharge)
 - **Sediment Transport**: Rivers erode uplands and deposit in lowlands
-- **Depression Filling**: Ensures all water reaches the ocean
+- **Depression Filling**: Computes water surface level for lake detection
+- **Water Level Detection**: Identifies alpine lakes using filled terrain comparison
 - **Multi-scale Erosion**: Hydraulic droplets + glacial ice sheets
 
-The result is dendritic river networks with proper tributaries, widening downstream, floodplains, and deltas.
+The result is dendritic river networks with proper tributaries, widening downstream, floodplains, deltas, and realistic alpine lakes.
 
 ---
 
@@ -175,8 +177,8 @@ fn find_river_sources(
 ```
 
 Default thresholds:
-- `source_min_elevation`: 50m
-- `source_min_accumulation`: 100.0
+- `source_min_elevation`: 100m
+- `source_min_accumulation`: 15.0 (scaled by simulation_scale)
 
 ### Erosion vs Deposition
 
@@ -213,19 +215,46 @@ let hardness_factor = (1.0 - rock_hardness).max(0.1);
 // Sediment (0.1 hardness) → factor 0.9 → erodes easily
 ```
 
+### Sea Level Constraint
+
+Rivers must not erode below sea level. All erosion functions clamp to a minimum height:
+
+```rust
+const MIN_RIVER_HEIGHT: f32 = 0.1;  // Just above sea level
+
+fn apply_erosion(heightmap, x, y, erosion, ...) {
+    let current = *heightmap.get(x, y);
+
+    // Clamp erosion to not dig below sea level
+    let max_possible_erosion = (current - MIN_RIVER_HEIGHT).max(0.0);
+    let actual_erosion = erosion.min(max_possible_erosion);
+
+    heightmap.set(x, y, current - actual_erosion);
+}
+```
+
+This constraint is applied in:
+- `apply_erosion()` - V-shaped channel carving
+- `apply_meander_erosion()` - Outer bank erosion
+- `carve_river_network()` - Channel depth calculation
+- `enforce_monotonic_descent()` - Downstream lowering
+
 ### Monotonic Descent Enforcement
 
 Critical for river connectivity:
 
 ```rust
+const MIN_RIVER_HEIGHT: f32 = 0.1;
 let min_drop = 0.05;
+
 if next_height >= current_height - min_drop {
-    // Force downstream cell to be strictly lower
-    heightmap.set(nx, ny, current_height - min_drop);
+    // Force downstream cell to be strictly lower, but not below sea level
+    let new_height = (current_height - min_drop).max(MIN_RIVER_HEIGHT);
+    heightmap.set(nx, ny, new_height);
 }
 ```
 
-This prevents pits and ensures continuous flow to the ocean.
+This prevents pits and ensures continuous flow to the ocean while keeping rivers above sea level.
 
 ---
 
@@ -331,16 +360,35 @@ fn apply_delta_deposition(heightmap, x, y, sediment, flow_dir) {
 
 ---
 
+## Key River Parameters
+
+**File**: `src/erosion/params.rs`
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `river_source_min_accumulation` | 15.0 | Flow threshold for river sources |
+| `river_source_min_elevation` | 100m | Minimum source elevation |
+| `river_capacity_factor` | 20.0 | Sediment carrying capacity |
+| `river_erosion_rate` | 0.5 | Erosion speed (reduced from 1.0) |
+| `river_deposition_rate` | 0.5 | Deposition speed |
+| `river_max_erosion` | 30.0 | Maximum erosion per cell (reduced from 150.0) |
+| `river_max_deposition` | 0.0 | Maximum deposition per cell |
+| `river_channel_width` | 2 | Base half-width in cells |
+
+**Sea Level Protection**: All erosion functions enforce `MIN_RIVER_HEIGHT = 0.1m` to prevent rivers from digging below sea level. This prevents river channels from being misclassified as ocean.
+
+---
+
 ## Depression Filling
 
 **File**: `src/erosion/rivers.rs`
 
-The **Planchon-Darboux algorithm** fills pits to ensure all water reaches the ocean.
+The **Planchon-Darboux algorithm** computes water surface levels by filling depressions. This is critical for detecting alpine lakes.
 
 ### Algorithm
 
 ```rust
-fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
+pub fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
     let epsilon = 1e-4;  // Tiny drop to ensure flow
     let mut water = Tilemap::new(width, height);
 
@@ -388,48 +436,102 @@ fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
 
 **Why epsilon?** The tiny drop (0.0001) ensures water can flow over flat filled areas.
 
+### Water Level vs Terrain
+
+The key insight: comparing `water_level` to `terrain_height` reveals submerged areas:
+
+```
+water_level > terrain_height  →  Submerged (lake or ocean)
+water_level == terrain_height →  Dry land
+```
+
+This correctly identifies:
+- **Ocean floor**: Below sea level + connected to map edges
+- **Alpine lakes**: Above sea level but trapped in depressions
+- **Inland seas**: Below sea level but not connected to ocean
+
 ---
 
-## Lake Detection
+## Water Body Detection
 
 **File**: `src/water_bodies.rs`
 
-### Three-Step Process
+The water body detection system uses the filled terrain (water_level) to identify all water bodies, including alpine lakes at high elevations.
 
-**Step 1: Mark Water Tiles**
+### Algorithm Overview
+
 ```rust
+pub fn detect_water_bodies(
+    heightmap: &Tilemap<f32>,
+) -> (Tilemap<WaterBodyId>, Vec<WaterBody>, Tilemap<f32>) {
+    // Step 1: Compute water surface level (fills depressions)
+    let water_level = compute_water_level(heightmap);  // Planchon-Darboux
+
+    // Step 2: Compute flow for river detection
+    let flow_dir = compute_flow_direction(heightmap);
+    let flow_acc = compute_flow_accumulation(heightmap, &flow_dir);
+
+    // Step 3: Detect all water bodies
+    detect_water_bodies_full(heightmap, &water_level, &flow_acc)
+}
+```
+
+### Step-by-Step Detection
+
+**Step 1: Identify Water Candidates**
+
+A tile is a water candidate if:
+- **Submerged**: `water_level > terrain_height` (alpine lakes)
+- **Below sea level**: `terrain_height <= 0.0` (ocean/coastal)
+
+```rust
+fn is_submerged(terrain_h: f32, water_h: f32) -> bool {
+    water_h > terrain_h + WATER_EPSILON  // 1e-4
+}
+
 for (x, y) in all_cells {
-    if *heightmap.get(x, y) <= 0.0 {
-        is_water.set(x, y, true);
+    let terrain_h = *heightmap.get(x, y);
+    let water_h = *water_level.get(x, y);
+
+    if is_submerged(terrain_h, water_h) || is_below_sea_level(terrain_h) {
+        is_water_candidate.set(x, y, true);
     }
 }
 ```
 
 **Step 2: Ocean Detection (BFS from edges)**
+
+Ocean = below-sea-level tiles connected to map edges:
+
 ```rust
-// Start from water tiles on north/south edges
-let mut queue = VecDeque::new();
+// Seed from top/bottom edges (polar regions)
 for x in 0..width {
-    if *is_water.get(x, 0) { queue.push_back((x, 0)); }
-    if *is_water.get(x, height-1) { queue.push_back((x, height-1)); }
+    if is_below_sea_level(heightmap.get(x, 0)) {
+        queue.push_back((x, 0));
+    }
+    if is_below_sea_level(heightmap.get(x, height-1)) {
+        queue.push_back((x, height-1));
+    }
 }
 
-// BFS flood-fill marks all connected water as ocean
+// BFS flood-fill (only follows below-sea-level tiles)
 while let Some((x, y)) = queue.pop_front() {
     water_map.set(x, y, WaterBodyId::OCEAN);
 
-    for (nx, ny) in neighbors_4(x, y) {
-        if is_water.get(nx, ny) && !visited.get(nx, ny) {
-            visited.set(nx, ny, true);
+    for (nx, ny) in neighbors(x, y) {
+        if is_below_sea_level(heightmap.get(nx, ny)) && !visited.get(nx, ny) {
             queue.push_back((nx, ny));
         }
     }
 }
 ```
 
-**Step 3: Lake Detection (remaining water)**
+**Step 3: Lake Detection (remaining water candidates)**
+
+Lakes = water candidates NOT connected to ocean:
+
 ```rust
-for (x, y) in unvisited_water_cells {
+for (x, y) in unvisited_water_candidates {
     let lake_id = WaterBodyId(next_id);
     next_id += 1;
 
@@ -437,22 +539,32 @@ for (x, y) in unvisited_water_cells {
     let mut lake = WaterBody::new(lake_id, WaterBodyType::Lake);
     flood_fill_lake(&mut lake, x, y);
 
-    water_bodies.push(lake);
+    // Reclassify as ocean if touches edge AND below sea level
+    if (lake.touches_north_edge || lake.touches_south_edge)
+        && lake.min_elevation <= SEA_LEVEL {
+        reclassify_as_ocean(lake);
+    } else {
+        water_bodies.push(lake);
+    }
 }
 ```
 
-### River Detection
+**Step 4: River Detection (dry land with high flow)**
+
+Rivers are NOT submerged - they flow on the surface:
 
 ```rust
 const RIVER_FLOW_THRESHOLD: f32 = 50.0;
 
 for (x, y) in all_cells {
-    let elevation = *heightmap.get(x, y);
-    let flow = *flow_accumulation.get(x, y);
-
-    // River: LAND tile with high flow accumulation
-    if elevation > 0.0 && flow >= RIVER_FLOW_THRESHOLD {
-        river_tiles.push((x, y, flow));
+    // Only mark as river if:
+    // 1. Not already water (lake/ocean)
+    // 2. High flow accumulation
+    if water_map.get(x, y).is_none() {
+        let flow = *flow_acc.get(x, y);
+        if flow >= RIVER_FLOW_THRESHOLD {
+            water_map.set(x, y, river_id);
+        }
     }
 }
 ```
@@ -467,36 +579,74 @@ pub struct WaterBody {
     pub min_elevation: f32,
     pub max_elevation: f32,
     pub avg_elevation: f32,
+    pub touches_north_edge: bool,
+    pub touches_south_edge: bool,
     pub bounds: (usize, usize, usize, usize),  // min_x, min_y, max_x, max_y
 }
 ```
 
-### Fantasy Lake Conversions
+### Alpine Lake Example
 
-Special biomes based on conditions:
+A mountain valley at 3000m elevation with a depression:
+- Terrain: 3000m at edges, 2900m at center
+- Water level (filled): 3000m everywhere
+- Center is submerged: water_level (3000m) > terrain (2900m)
+- Result: Alpine lake at 2900-3000m elevation with 100m depth
+
+---
+
+## Water Depth Tracking
+
+**File**: `src/water_bodies.rs`, `src/world.rs`
+
+Water depth is calculated as the difference between water surface and terrain:
 
 ```rust
-pub fn determine_lake_fantasy_biome(
-    water_body: &WaterBody,
-    avg_temp: f32,
-    avg_stress: f32,
-    rng_value: f32,
-) -> Option<ExtendedBiome> {
-    if avg_temp < -5.0 && rng_value < 0.7 {
-        return Some(ExtendedBiome::FrozenLake);
-    }
-    if avg_stress > 0.4 && rng_value < 0.5 {
-        return Some(ExtendedBiome::LavaLake);
-    }
-    if avg_stress > 0.2 && avg_temp < 10.0 && rng_value < 0.3 {
-        return Some(ExtendedBiome::AcidLake);
-    }
-    if avg_temp > 20.0 && water_body.tile_count > 10 && rng_value < 0.2 {
-        return Some(ExtendedBiome::BioluminescentWater);
-    }
-    None
+// Calculate water depth everywhere
+for (x, y) in all_cells {
+    let terrain_h = *heightmap.get(x, y);
+    let water_h = *water_level.get(x, y);
+    let depth = (water_h - terrain_h).max(0.0);  // Positive = submerged
+    water_depth.set(x, y, depth);
 }
 ```
+
+### TileInfo Structure
+
+```rust
+pub struct TileInfo {
+    pub elevation: f32,      // Terrain height relative to sea level
+    pub water_depth: f32,    // Water depth above terrain (0 = dry)
+    pub water_body_type: WaterBodyType,
+    // ... other fields
+}
+```
+
+### Explorer Display
+
+The explorer shows both elevation and water depth:
+
+```rust
+// Always show terrain elevation relative to sea level
+let elev_str = format!("  Elevation: {:.0}m", tile.elevation);
+lines.push((elev_str, Style::default().fg(Color::White)));
+
+// Show water depth if tile is submerged
+if tile.water_depth > 0.0 {
+    let depth_str = format!("  Water Depth: {:.0}m", tile.water_depth);
+    lines.push((depth_str, Style::default().fg(Color::Cyan)));
+}
+```
+
+### Interpretation
+
+| Tile Type | Elevation | Water Depth |
+|-----------|-----------|-------------|
+| Mountain Peak | 4000m | 0m |
+| Alpine Lake Bed | 2900m | 100m |
+| Ocean Floor | -5000m | 5000m |
+| Coastal Beach | 5m | 0m |
+| River Bed | 200m | 0m (rivers are surface flow) |
 
 ---
 
@@ -546,37 +696,6 @@ pub fn evaluate(&self, t: f32) -> RiverControlPoint {
 }
 ```
 
-### Meandering with Perlin Noise
-
-```rust
-fn apply_meander(points: &[RiverControlPoint], noise: &Perlin) -> Vec<RiverControlPoint> {
-    for (i, pt) in points.iter().enumerate() {
-        if i == 0 || i == points.len() - 1 {
-            result.push(pt.clone());  // Keep endpoints fixed
-            continue;
-        }
-
-        // Calculate perpendicular direction
-        let tangent = (next.pos - prev.pos).normalize();
-        let perpendicular = (-tangent.y, tangent.x);
-
-        // Sample noise for offset
-        let noise_val = noise.get([
-            pt.world_x * meander_frequency,
-            pt.world_y * meander_frequency,
-        ]) as f32;
-
-        let offset = noise_val * meander_amplitude * pt.width * 2.0;
-
-        result.push(RiverControlPoint {
-            world_x: pt.world_x + perpendicular.0 * offset,
-            world_y: pt.world_y + perpendicular.1 * offset,
-            ..pt.clone()
-        });
-    }
-}
-```
-
 ### Width from Hydraulic Geometry
 
 ```rust
@@ -595,84 +714,17 @@ fn calculate_river_width(flow_acc: f32, params: &RiverNetworkParams) -> f32 {
 
 **File**: `src/erosion/hydraulic.rs`
 
-Particle-based water droplet simulation for fine detail.
+Particle-based water droplet simulation for fine detail. See [EROSION.md](EROSION.md) for complete details.
 
-### Water Droplet
+### Key Parameters ("POLISHED" Config)
 
-```rust
-struct WaterDroplet {
-    x: f32, y: f32,          // Floating-point position
-    dir_x: f32, dir_y: f32,  // Normalized direction
-    velocity: f32,
-    water: f32,              // Volume
-    sediment: f32,           // Carried material
-}
-```
-
-### Droplet Simulation Loop
-
-```rust
-for step in 0..params.droplet_max_steps {
-    // 1. Calculate terrain gradient
-    let (grad_x, grad_y) = gradient_at(heightmap, droplet.x, droplet.y);
-
-    // 2. Update direction with inertia
-    droplet.dir_x = droplet.dir_x * inertia - grad_x * (1.0 - inertia);
-    droplet.dir_y = droplet.dir_y * inertia - grad_y * (1.0 - inertia);
-    normalize(&mut droplet.dir_x, &mut droplet.dir_y);
-
-    // 3. Move droplet
-    let old_height = height_at(droplet.x, droplet.y);
-    droplet.x += droplet.dir_x;
-    droplet.y += droplet.dir_y;
-    let new_height = height_at(droplet.x, droplet.y);
-    let delta_height = new_height - old_height;
-
-    // 4. Calculate sediment capacity
-    let slope = (-delta_height).clamp(0.0, 50.0);
-    let capacity = slope * droplet.velocity * droplet.water * capacity_factor;
-
-    // 5. Erode or deposit
-    if droplet.sediment > capacity {
-        let deposit = (droplet.sediment - capacity) * deposit_rate;
-        apply_deposit(...);
-        droplet.sediment -= deposit;
-    } else {
-        let erode = (capacity - droplet.sediment) * erosion_rate;
-        apply_erosion(...);
-        droplet.sediment += erode;
-    }
-
-    // 6. Update velocity (accelerate downhill)
-    droplet.velocity = sqrt(velocity² + delta_height * gravity);
-
-    // 7. Evaporate
-    droplet.water *= (1.0 - evaporation);
-
-    if droplet.water < min_volume { break; }
-}
-```
-
-### High Elevation Spawning Preference
-
-```rust
-fn spawn_droplet(heightmap, rng) -> (f32, f32) {
-    for _ in 0..10 {
-        let (x, y) = random_position();
-        let h = height_at(x, y);
-
-        if h < sea_level { continue; }
-
-        // Higher elevation = higher spawn probability
-        let normalized_h = (h - min_h) / height_range;
-        let probability = normalized_h * normalized_h;  // Squared
-
-        if rng.gen::<f32>() < probability.max(0.1) {
-            return (x, y);
-        }
-    }
-}
-```
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `hydraulic_iterations` | 750,000 | Number of droplets |
+| `droplet_inertia` | 0.3 | Low inertia - meanders naturally |
+| `droplet_deposit_rate` | 0.2 | Moderate - forces river merging |
+| `droplet_erosion_radius` | 3 | Medium brush - breaks parallel streams |
+| `droplet_evaporation` | 0.001 | Low - long-lived droplets |
 
 ---
 
@@ -680,134 +732,25 @@ fn spawn_droplet(heightmap, rng) -> (f32, f32) {
 
 **File**: `src/erosion/glacial.rs`
 
-Uses the **Shallow Ice Approximation (SIA)** to simulate glacier flow and U-shaped valley carving.
-
-### Glacial State
-
-```rust
-struct GlacialState {
-    bedrock: Tilemap<f32>,          // Eroded by glaciers
-    ice_thickness: Tilemap<f32>,
-    flux_x: Tilemap<f32>,           // Ice flow (x)
-    flux_y: Tilemap<f32>,           // Ice flow (y)
-    sliding_velocity: Tilemap<f32>, // Basal sliding
-}
-```
-
-### Mass Balance
-
-```rust
-fn calculate_mass_balance(state, temperature, params) -> Tilemap<f32> {
-    let ela = estimate_equilibrium_line_altitude(temperature, heightmap);
-
-    for (x, y) in all_cells {
-        let surface = state.bedrock.get(x, y) + state.ice_thickness.get(x, y);
-        let temp = *temperature.get(x, y);
-
-        if temp > params.glaciation_temperature {
-            // Too warm - melt
-            mass_balance.set(x, y, -params.mass_balance_gradient * 10.0);
-        } else {
-            // Above ELA = accumulation, below = ablation
-            let elevation_above_ela = surface - ela;
-            let balance = elevation_above_ela * params.mass_balance_gradient;
-            mass_balance.set(x, y, balance.clamp(-5.0, 5.0));
-        }
-    }
-}
-```
-
-### Shallow Ice Approximation
-
-```rust
-// SIA: q = -[(2A/(n+2)) * (ρg)^n * h^(n+2) * |∇s|^(n-1) + u_b*h] * ∇s
-
-fn calculate_ice_flux(state, params) {
-    let n = params.glen_exponent;  // Typically 3.0
-    let A = params.ice_deform_coeff;
-    let u_b = params.ice_sliding_coeff;
-
-    for (x, y) in all_cells {
-        let h = *state.ice_thickness.get(x, y);
-        if h <= 0.1 { continue; }
-
-        let (grad_x, grad_y) = surface_gradient(state, x, y);
-        let grad_mag = sqrt(grad_x² + grad_y²);
-
-        // Deformation term (Glen's flow law)
-        let deform = (2*A)/(n+2) * (rho_g)^n * h^(n+2) * grad_mag^(n-1);
-
-        // Sliding term
-        let sliding = u_b * h;
-
-        // Total flux (downslope)
-        let flux_mag = -(deform + sliding);
-        state.flux_x.set(x, y, flux_mag * grad_x);
-        state.flux_y.set(x, y, flux_mag * grad_y);
-
-        // Record sliding velocity for erosion
-        state.sliding_velocity.set(x, y, u_b * h * grad_mag);
-    }
-}
-```
-
-### Ice Thickness Evolution
-
-```rust
-// Continuity equation: ∂h/∂t = ȧ - ∇·q
-
-fn update_ice_thickness(state, mass_balance, params) {
-    for (x, y) in all_cells {
-        let h = *state.ice_thickness.get(x, y);
-        let m = *mass_balance.get(x, y);
-        let div_q = flux_divergence(state, x, y);
-
-        let dh = params.dt * (m - div_q);
-        state.ice_thickness.set(x, y, (h + dh).max(0.0));
-    }
-}
-```
-
-### Glacial Erosion Law
-
-```rust
-// ė = K * |u_b|^exp * (1 - hardness)
-
-fn apply_glacial_erosion(state, hardness, params) {
-    for (x, y) in all_cells {
-        let u_b = *state.sliding_velocity.get(x, y);
-        let h = *state.ice_thickness.get(x, y);
-
-        if u_b <= 0.0 || h < 10.0 { continue; }
-
-        // Erosion rate from sliding
-        let ice_factor = (h / 200.0).clamp(0.1, 1.5);
-        let erosion_rate = params.erosion_coeff * u_b.powf(params.erosion_exp) * ice_factor;
-
-        // Modulate by rock hardness
-        let hardness_factor = 1.0 - *hardness.get(x, y);
-        let erosion = erosion_rate * hardness_factor * params.dt;
-
-        state.bedrock.set(x, y, *state.bedrock.get(x, y) - erosion);
-    }
-}
-```
+Uses the **Shallow Ice Approximation (SIA)** to simulate glacier flow and U-shaped valley carving. See [EROSION.md](EROSION.md) for complete details.
 
 ---
 
 ## System Interactions
 
-### River → Hydraulic
-
-- Rivers create **large-scale** drainage structure
-- Hydraulic droplets add **fine detail** around those channels
-- Together: realistic dendritic networks with varied texture
-
 ### Erosion → Water Bodies
 
-- Erosion shapes the topography
-- Water detection uses the final eroded heightmap
-- Result: lakes and rivers positioned realistically
+1. Erosion shapes the topography
+2. Depression filling computes water surface levels
+3. Water detection compares water_level vs terrain
+4. Result: lakes positioned realistically at any elevation
+
+### River → Lake Interaction
+
+- Rivers carve channels into terrain
+- Depression filling identifies where water pools
+- Alpine lakes form in high-elevation depressions
+- Rivers drain from lakes, not into them (monotonic descent)
 
 ### Rock Hardness → All Erosion
 
@@ -821,30 +764,20 @@ Sandstone      0.30       0.70
 Sediment       0.10       0.90 (easily eroded)
 ```
 
-Different rock types create varied terrain:
-- Hard granite maintains steep slopes
-- Soft sedimentary lowlands get heavily carved
-
-### Temperature → Glacial Extent
-
-- Cold regions form glaciers
-- Glaciers carve U-shaped valleys
-- Creates alpine features: cirques, arêtes, fjords
-
 ---
 
 ## Module Reference
 
 | File | Purpose |
 |------|---------|
-| `src/erosion/rivers.rs` | D8 routing, flow accumulation, river tracing, sediment transport |
+| `src/erosion/rivers.rs` | D8 routing, flow accumulation, river tracing, sediment transport, meander erosion |
 | `src/erosion/river_geometry.rs` | Bezier curves, meandering, confluences |
 | `src/erosion/hydraulic.rs` | Water droplet particle simulation |
 | `src/erosion/glacial.rs` | Shallow Ice Approximation, U-valleys |
 | `src/erosion/materials.rs` | Rock hardness values |
 | `src/erosion/params.rs` | All tunable parameters |
 | `src/erosion/geomorphometry.rs` | Validation metrics (Horton's law, etc.) |
-| `src/water_bodies.rs` | Ocean/lake/river detection, fantasy biomes |
+| `src/water_bodies.rs` | Water level detection, ocean/lake/river classification, water depth |
 
 ---
 
@@ -852,12 +785,16 @@ Different rock types create varied terrain:
 
 From `src/erosion/mod.rs`:
 
-1. **River erosion** - Creates main drainage channels
-2. **Hydraulic erosion** - Adds detailed erosion patterns
-3. **Glacial erosion** - U-shaped valleys and fjords
-4. **Depression filling** - Ensures connectivity
-5. **River carving** - Enforces monotonic descent
-6. **Final depression fill** - Connectivity check
+1. **Upscale heightmap** - 4x resolution with terrain roughness
+2. **Pre-erosion blur** - Gaussian blur to melt sharp ridges
+3. **River erosion** - Creates main drainage channels
+4. **Hydraulic erosion** - Adds detailed erosion patterns
+5. **Glacial erosion** - U-shaped valleys and fjords
+6. **Depression filling** - Ensures connectivity
+7. **River carving** - Enforces monotonic descent
+8. **Meander erosion** - 12 passes for natural curves
+9. **Final depression fill** - Connectivity check
+10. **Smart downscale** - Variance-based river preservation
 
 ---
 
@@ -886,3 +823,16 @@ The system validates against real-world hydrological laws:
 7. **Delta**: Reaches sea level, fans out sediment
 
 Result: Realistic river with tributaries, widening downstream, and delta at mouth.
+
+---
+
+## Example: Alpine Lake Formation
+
+1. **Terrain**: Mountain range at 3500m with glacial cirque
+2. **Depression**: Bowl-shaped valley at 3200m surrounded by 3500m ridges
+3. **Erosion**: Glacial erosion deepens the cirque
+4. **Water Level**: Depression filling computes water surface at 3500m (rim height)
+5. **Detection**: `water_level (3500m) > terrain (3200m)` = submerged
+6. **Result**: Alpine lake at 3200m elevation with 300m maximum depth
+
+The lake is correctly detected even though it's 3000+ meters above sea level.
