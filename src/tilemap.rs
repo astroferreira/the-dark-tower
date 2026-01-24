@@ -214,6 +214,96 @@ impl Tilemap<f32> {
         result
     }
 
+    /// Upscale specifically for erosion simulation.
+    /// Adds roughness ONLY in flat, low-elevation areas (river valleys/plains).
+    /// Mountains, hills, and coastlines remain clean.
+    pub fn upscale_for_erosion(
+        &self,
+        factor: usize,
+        roughness_strength: f32,  // Try 15.0-30.0 for river valleys
+        _warp_strength: f32,      // Deprecated
+        seed: u64,
+    ) -> Self {
+        use noise::{NoiseFn, Perlin, Seedable};
+
+        if factor <= 1 {
+            return self.clone();
+        }
+
+        let new_width = self.width * factor;
+        let new_height = self.height * factor;
+        let mut result = Tilemap::new_with(new_width, new_height, 0.0f32);
+
+        // Find elevation range for targeting low areas
+        let mut max_land_h = 0.0f32;
+        for (_, _, &h) in self.iter() {
+            if h > 0.0 && h > max_land_h {
+                max_land_h = h;
+            }
+        }
+
+        // Noise for terrain roughness
+        let noise_roughness = Perlin::new(1).set_seed(seed as u32);
+
+        for new_y in 0..new_height {
+            for new_x in 0..new_width {
+                // Source coordinates (no warping - preserve terrain shape)
+                let src_x = new_x as f32 / factor as f32;
+                let src_y = new_y as f32 / factor as f32;
+
+                // Bicubic interpolated base value
+                let base_value = self.sample_bicubic(src_x, src_y);
+
+                // Skip ocean
+                if base_value <= 0.0 {
+                    result.set(new_x, new_y, base_value);
+                    continue;
+                }
+
+                // === Targeted Roughness ===
+                // Only add roughness where rivers actually flow:
+                // 1. Flat areas (low gradient) - rivers meander on plains
+                // 2. Low elevation - valley floors, not mountain tops
+
+                let local_gradient = self.get_local_gradient(src_x, src_y);
+
+                // Flatness factor: 1.0 = flat, 0.0 = steep
+                let flatness = (1.0 - (local_gradient / 100.0).min(1.0)).max(0.0);
+
+                // Lowness factor: 1.0 = near sea level, 0.0 = high elevation
+                // Rivers flow in low areas, so add roughness there
+                let elevation_ratio = base_value / max_land_h.max(1.0);
+                let lowness = (1.0 - elevation_ratio.powf(0.5)).max(0.0);
+
+                // Combined factor: only apply roughness in flat AND low areas
+                let river_zone_factor = flatness * lowness;
+
+                // Skip if not in a river-prone zone
+                if river_zone_factor < 0.2 {
+                    result.set(new_x, new_y, base_value);
+                    continue;
+                }
+
+                // Tuned frequency noise for meander-scale undulations
+                let n1 = noise_roughness.get([
+                    new_x as f64 * 0.008,  // Low freq - main meander scale
+                    new_y as f64 * 0.008,
+                ]) as f32;
+                let n2 = noise_roughness.get([
+                    new_x as f64 * 0.018 + 50.0,  // Medium freq - secondary bends
+                    new_y as f64 * 0.018 + 50.0,
+                ]) as f32;
+
+                let roughness = n1 * 0.65 + n2 * 0.35;
+                let roughness_amount = roughness * roughness_strength * river_zone_factor;
+
+                result.set(new_x, new_y, base_value + roughness_amount);
+            }
+        }
+
+        result
+    }
+
     /// Sample the tilemap at fractional coordinates using bicubic interpolation.
     fn sample_bicubic(&self, x: f32, y: f32) -> f32 {
         let x0 = x.floor() as i32;
@@ -275,6 +365,62 @@ impl Tilemap<f32> {
         let gy = (hy_plus - hy_minus) / (2.0 * delta);
 
         (gx * gx + gy * gy).sqrt()
+    }
+
+    /// Apply Gaussian blur to smooth microscopic ridges.
+    /// Helps parallel streams merge by creating smooth gradients.
+    pub fn gaussian_blur(&self, radius: usize) -> Self {
+        if radius == 0 {
+            return self.clone();
+        }
+
+        // Build 1D Gaussian kernel
+        let sigma = radius as f32 / 2.0;
+        let kernel_size = radius * 2 + 1;
+        let mut kernel = vec![0.0f32; kernel_size];
+        let mut sum = 0.0;
+
+        for i in 0..kernel_size {
+            let x = i as f32 - radius as f32;
+            let g = (-x * x / (2.0 * sigma * sigma)).exp();
+            kernel[i] = g;
+            sum += g;
+        }
+
+        // Normalize kernel
+        for k in &mut kernel {
+            *k /= sum;
+        }
+
+        // Horizontal pass
+        let mut temp = Tilemap::new_with(self.width, self.height, 0.0f32);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut val = 0.0;
+                for i in 0..kernel_size {
+                    let sx = (x as i32 + i as i32 - radius as i32)
+                        .rem_euclid(self.width as i32) as usize;
+                    val += *self.get(sx, y) * kernel[i];
+                }
+                temp.set(x, y, val);
+            }
+        }
+
+        // Vertical pass
+        let mut result = Tilemap::new_with(self.width, self.height, 0.0f32);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut val = 0.0;
+                for i in 0..kernel_size {
+                    let sy = (y as i32 + i as i32 - radius as i32)
+                        .clamp(0, self.height as i32 - 1) as usize;
+                    val += *temp.get(x, sy) * kernel[i];
+                }
+                result.set(x, y, val);
+            }
+        }
+
+        result
     }
 }
 
@@ -543,6 +689,180 @@ impl Tilemap<f32> {
         let neighbor_avg = self.neighbor_average(x, y);
         let total_weight = center_weight + 1.0;
         (center * center_weight + neighbor_avg) / total_weight
+    }
+}
+
+// =============================================================================
+// DOWNSCALING METHODS (Phase 3 - Smart Downsampler)
+// =============================================================================
+
+impl Tilemap<f32> {
+    /// Min-pooling downscale: always preserves lowest values (valleys/rivers).
+    /// Use this when you want to ensure carved river channels are preserved.
+    pub fn downscale_min_pool(&self, factor: usize) -> Self {
+        if factor <= 1 {
+            return self.clone();
+        }
+
+        let new_width = self.width / factor;
+        let new_height = self.height / factor;
+        let mut result = Tilemap::new_with(new_width, new_height, 0.0f32);
+
+        for new_y in 0..new_height {
+            for new_x in 0..new_width {
+                let mut min_val = f32::MAX;
+                for dy in 0..factor {
+                    for dx in 0..factor {
+                        let sx = new_x * factor + dx;
+                        let sy = new_y * factor + dy;
+                        if sx < self.width && sy < self.height {
+                            min_val = min_val.min(*self.get(sx, sy));
+                        }
+                    }
+                }
+                result.set(new_x, new_y, min_val);
+            }
+        }
+        result
+    }
+
+    /// Variance-aware downscale: min-pool for high variance (rivers), average for flat areas.
+    /// This preserves sharp river channels while smoothing flat terrain.
+    /// `variance_threshold` controls when to switch from average to min (lower = more aggressive).
+    pub fn downscale_preserve_rivers(&self, factor: usize, variance_threshold: f32) -> Self {
+        if factor <= 1 {
+            return self.clone();
+        }
+
+        let new_width = self.width / factor;
+        let new_height = self.height / factor;
+        let mut result = Tilemap::new_with(new_width, new_height, 0.0f32);
+
+        for new_y in 0..new_height {
+            for new_x in 0..new_width {
+                let mut values = Vec::with_capacity(factor * factor);
+                let mut sum = 0.0f32;
+
+                for dy in 0..factor {
+                    for dx in 0..factor {
+                        let sx = new_x * factor + dx;
+                        let sy = new_y * factor + dy;
+                        if sx < self.width && sy < self.height {
+                            let v = *self.get(sx, sy);
+                            values.push(v);
+                            sum += v;
+                        }
+                    }
+                }
+
+                if values.is_empty() {
+                    continue;
+                }
+
+                let mean = sum / values.len() as f32;
+                let variance: f32 = values.iter()
+                    .map(|v| (v - mean).powi(2))
+                    .sum::<f32>() / values.len() as f32;
+
+                let final_value = if variance > variance_threshold {
+                    // High variance = river channel, use min to preserve the carved depth
+                    values.iter().cloned().fold(f32::MAX, f32::min)
+                } else {
+                    mean
+                };
+
+                result.set(new_x, new_y, final_value);
+            }
+        }
+        result
+    }
+
+    /// Flow-aware downscale: uses flow accumulation to identify river cells.
+    /// River cells snap to their exact height; other cells use average.
+    pub fn downscale_with_flow(
+        &self,
+        flow_map: &Tilemap<f32>,
+        factor: usize,
+        river_threshold: f32,
+    ) -> Self {
+        if factor <= 1 {
+            return self.clone();
+        }
+
+        let new_width = self.width / factor;
+        let new_height = self.height / factor;
+        let mut result = Tilemap::new_with(new_width, new_height, 0.0f32);
+
+        for new_y in 0..new_height {
+            for new_x in 0..new_width {
+                let mut heights = Vec::new();
+                let mut river_height: Option<f32> = None;
+                let mut max_flow = 0.0f32;
+
+                for dy in 0..factor {
+                    for dx in 0..factor {
+                        let sx = new_x * factor + dx;
+                        let sy = new_y * factor + dy;
+                        if sx < self.width && sy < self.height {
+                            let h = *self.get(sx, sy);
+                            let f = *flow_map.get(sx, sy);
+                            heights.push(h);
+
+                            // Track the highest-flow river cell for snapping
+                            if f > river_threshold && f > max_flow {
+                                max_flow = f;
+                                river_height = Some(h);
+                            }
+                        }
+                    }
+                }
+
+                let final_value = river_height.unwrap_or_else(|| {
+                    if heights.is_empty() {
+                        0.0
+                    } else {
+                        heights.iter().sum::<f32>() / heights.len() as f32
+                    }
+                });
+
+                result.set(new_x, new_y, final_value);
+            }
+        }
+        result
+    }
+
+    /// Simple average downscale (for comparison).
+    pub fn downscale_average(&self, factor: usize) -> Self {
+        if factor <= 1 {
+            return self.clone();
+        }
+
+        let new_width = self.width / factor;
+        let new_height = self.height / factor;
+        let mut result = Tilemap::new_with(new_width, new_height, 0.0f32);
+
+        for new_y in 0..new_height {
+            for new_x in 0..new_width {
+                let mut sum = 0.0f32;
+                let mut count = 0;
+
+                for dy in 0..factor {
+                    for dx in 0..factor {
+                        let sx = new_x * factor + dx;
+                        let sy = new_y * factor + dy;
+                        if sx < self.width && sy < self.height {
+                            sum += *self.get(sx, sy);
+                            count += 1;
+                        }
+                    }
+                }
+
+                if count > 0 {
+                    result.set(new_x, new_y, sum / count as f32);
+                }
+            }
+        }
+        result
     }
 }
 

@@ -113,6 +113,10 @@ struct Args {
     /// Output filename prefix for grid exports
     #[arg(long, default_value = "comparison")]
     grid_prefix: String,
+
+    /// Disable high-resolution erosion simulation (faster but lower quality rivers)
+    #[arg(long)]
+    no_hires: bool,
 }
 
 fn main() {
@@ -310,7 +314,14 @@ fn main() {
 
     // Apply erosion
     println!("Simulating erosion (preset: {})...", erosion_preset);
-    let erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
+    let mut erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
+
+    // Override simulation_scale if --no-hires flag is set
+    if args.no_hires {
+        erosion_params.simulation_scale = 1;
+        println!("  High-resolution erosion disabled (--no-hires)");
+    }
+
     let mut erosion_rng = ChaCha8Rng::seed_from_u64(seeds.erosion);
 
     let (stats, hardness_map) = erosion::simulate_erosion(

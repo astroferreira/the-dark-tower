@@ -130,7 +130,13 @@ pub fn surface_gradient_at_cell(
 
 /// Create a circular erosion brush with Gaussian-like falloff.
 /// Returns weights for cells within the radius, normalized to sum to 1.
+/// Special case: radius=0 returns a single point brush for sharp erosion.
 pub fn create_erosion_brush(radius: usize) -> Vec<(i32, i32, f32)> {
+    // Special case: point erosion for sharp, narrow channels
+    if radius == 0 {
+        return vec![(0, 0, 1.0)];
+    }
+
     let mut brush = Vec::new();
     let r = radius as i32;
     let r_sq = (r * r) as f32;

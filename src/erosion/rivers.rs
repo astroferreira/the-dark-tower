@@ -511,6 +511,80 @@ fn apply_delta_deposition(
     }
 }
 
+/// Apply meander enhancement by lateral erosion.
+/// Rivers in flat areas curve because water erodes the outer bank of bends.
+pub fn apply_meander_erosion(
+    heightmap: &mut Tilemap<f32>,
+    flow_dir: &Tilemap<u8>,
+    flow_acc: &Tilemap<f32>,
+    threshold: f32,
+    meander_strength: f32,  // Try 5.0-20.0
+    seed: u64,
+) {
+    use noise::{NoiseFn, Perlin, Seedable};
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+    let noise = Perlin::new(1).set_seed(seed as u32);
+
+    // Find river cells and apply lateral erosion
+    for y in 1..height - 1 {
+        for x in 0..width {
+            let acc = *flow_acc.get(x, y);
+            let h = *heightmap.get(x, y);
+
+            // Only process river cells on land
+            if acc < threshold || h < 0.0 {
+                continue;
+            }
+
+            let dir = *flow_dir.get(x, y);
+            if dir == NO_FLOW {
+                continue;
+            }
+
+            // Calculate local slope
+            let nx = (x as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+            let ny = (y as i32 + DY[dir as usize]).clamp(0, height as i32 - 1) as usize;
+            let slope = (h - *heightmap.get(nx, ny)).max(0.0);
+
+            // Meander more in flat areas (low slope)
+            let flatness = (1.0 - (slope / 50.0).min(1.0)).max(0.0);
+
+            if flatness < 0.3 {
+                continue; // Don't meander on steep terrain
+            }
+
+            // Use noise to determine which side to erode
+            // Tuned frequency for visible meanders (~1.2-1.3 sinuosity)
+            let n = noise.get([x as f64 * 0.07, y as f64 * 0.07]) as f32;
+
+            // Get perpendicular direction
+            let (perp_dx, perp_dy) = get_perpendicular(dir);
+
+            // Erode one side, deposit on the other (lateral migration)
+            let erosion_side = if n > 0.0 { 1 } else { -1 };
+            let erosion_amount = meander_strength * flatness * n.abs();
+
+            // Erode outer bank
+            let ex = (x as i32 + perp_dx * erosion_side).rem_euclid(width as i32) as usize;
+            let ey = (y as i32 + perp_dy * erosion_side).clamp(0, height as i32 - 1) as usize;
+            let eh = *heightmap.get(ex, ey);
+            if eh > 0.0 {
+                heightmap.set(ex, ey, (eh - erosion_amount).max(0.0));
+            }
+
+            // Deposit on inner bank (point bar)
+            let dx = (x as i32 - perp_dx * erosion_side).rem_euclid(width as i32) as usize;
+            let dy = (y as i32 - perp_dy * erosion_side).clamp(0, height as i32 - 1) as usize;
+            let dh = *heightmap.get(dx, dy);
+            if dh > 0.0 {
+                heightmap.set(dx, dy, dh + erosion_amount * 0.5);
+            }
+        }
+    }
+}
+
 /// Get perpendicular direction for channel cross-section.
 fn get_perpendicular(flow_dir: u8) -> (i32, i32) {
     // Perpendicular is 90 degrees clockwise (or counterclockwise)
@@ -783,6 +857,246 @@ pub fn analyze_river_network(
     }
 
     stats
+}
+
+// =============================================================================
+// RIVER VALIDATION (Phase 4)
+// =============================================================================
+
+/// Statistics about measured river channel widths.
+#[derive(Debug, Default, Clone)]
+pub struct RiverWidthStats {
+    pub mean: f32,
+    pub max: f32,
+    pub min: f32,
+    pub count: usize,
+}
+
+/// Statistics about river connectivity to the ocean.
+#[derive(Debug, Default, Clone)]
+pub struct ConnectivityStats {
+    pub total: usize,
+    pub reaching_ocean: usize,
+    pub ending_in_pit: usize,
+    pub ocean_ratio: f32,
+}
+
+/// Measure actual carved river channel widths.
+/// Scans perpendicular to flow direction to find where terrain rises.
+pub fn measure_river_widths(
+    heightmap: &Tilemap<f32>,
+    flow_acc: &Tilemap<f32>,
+    threshold: f32,
+) -> RiverWidthStats {
+    let width = heightmap.width;
+    let height = heightmap.height;
+    let flow_dir = compute_flow_direction(heightmap);
+
+    let mut widths = Vec::new();
+
+    for y in 1..height - 1 {
+        for x in 0..width {
+            // Only measure at river cells
+            if *flow_acc.get(x, y) < threshold {
+                continue;
+            }
+
+            // Get flow direction for perpendicular measurement
+            let dir = *flow_dir.get(x, y);
+            if dir == NO_FLOW {
+                continue;
+            }
+
+            let channel_width = measure_channel_width_at(heightmap, x, y, dir);
+            if channel_width > 0.0 {
+                widths.push(channel_width);
+            }
+        }
+    }
+
+    if widths.is_empty() {
+        return RiverWidthStats::default();
+    }
+
+    RiverWidthStats {
+        mean: widths.iter().sum::<f32>() / widths.len() as f32,
+        max: widths.iter().cloned().fold(0.0f32, f32::max),
+        min: widths.iter().cloned().fold(f32::MAX, f32::min),
+        count: widths.len(),
+    }
+}
+
+/// Measure channel width at a specific point by scanning perpendicular to flow.
+fn measure_channel_width_at(heightmap: &Tilemap<f32>, x: usize, y: usize, flow_dir: u8) -> f32 {
+    let width = heightmap.width;
+    let height = heightmap.height;
+    let center_height = *heightmap.get(x, y);
+
+    // Get perpendicular direction
+    let (perp_dx, perp_dy) = get_perpendicular(flow_dir);
+
+    // Scan in both perpendicular directions until terrain rises significantly
+    let rise_threshold = 2.0; // Height rise that marks channel edge
+    let max_scan = 10; // Maximum scan distance
+
+    let mut left_width = 0;
+    let mut right_width = 0;
+
+    // Scan left (negative perpendicular)
+    for i in 1..=max_scan {
+        let nx = (x as i32 - perp_dx * i).rem_euclid(width as i32) as usize;
+        let ny = (y as i32 - perp_dy * i).clamp(0, height as i32 - 1) as usize;
+        let nh = *heightmap.get(nx, ny);
+
+        if nh - center_height > rise_threshold {
+            break;
+        }
+        left_width = i;
+    }
+
+    // Scan right (positive perpendicular)
+    for i in 1..=max_scan {
+        let nx = (x as i32 + perp_dx * i).rem_euclid(width as i32) as usize;
+        let ny = (y as i32 + perp_dy * i).clamp(0, height as i32 - 1) as usize;
+        let nh = *heightmap.get(nx, ny);
+
+        if nh - center_height > rise_threshold {
+            break;
+        }
+        right_width = i;
+    }
+
+    (left_width + right_width + 1) as f32 // +1 for center cell
+}
+
+/// Check river connectivity to ocean.
+/// Traces each river source to see if it reaches the ocean.
+pub fn check_river_connectivity(
+    heightmap: &Tilemap<f32>,
+    params: &RiverErosionParams,
+) -> ConnectivityStats {
+    let flow_dir = compute_flow_direction(heightmap);
+    let flow_acc = compute_flow_accumulation(heightmap, &flow_dir);
+    let sources = find_river_sources_public(heightmap, &flow_acc, params);
+
+    let mut reaching_ocean = 0;
+    let mut ending_in_pit = 0;
+
+    for (sx, sy) in &sources {
+        if trace_to_ocean(heightmap, &flow_dir, *sx, *sy) {
+            reaching_ocean += 1;
+        } else {
+            ending_in_pit += 1;
+        }
+    }
+
+    let total = sources.len();
+    ConnectivityStats {
+        total,
+        reaching_ocean,
+        ending_in_pit,
+        ocean_ratio: if total > 0 {
+            reaching_ocean as f32 / total as f32
+        } else {
+            0.0
+        },
+    }
+}
+
+/// Find river sources (public wrapper for validation).
+fn find_river_sources_public(
+    heightmap: &Tilemap<f32>,
+    flow_acc: &Tilemap<f32>,
+    params: &RiverErosionParams,
+) -> Vec<(usize, usize)> {
+    find_river_sources(heightmap, flow_acc, params)
+}
+
+/// Trace a river from source to see if it reaches the ocean.
+fn trace_to_ocean(
+    heightmap: &Tilemap<f32>,
+    flow_dir: &Tilemap<u8>,
+    start_x: usize,
+    start_y: usize,
+) -> bool {
+    let width = heightmap.width;
+    let height = heightmap.height;
+    let max_steps = width * height;
+
+    let mut x = start_x;
+    let mut y = start_y;
+    let mut visited = std::collections::HashSet::new();
+
+    for _ in 0..max_steps {
+        if visited.contains(&(x, y)) {
+            return false; // Loop detected
+        }
+        visited.insert((x, y));
+
+        // Check if we've reached the ocean
+        if *heightmap.get(x, y) < 0.0 {
+            return true;
+        }
+
+        let dir = *flow_dir.get(x, y);
+        if dir == NO_FLOW {
+            return false; // Pit
+        }
+
+        let nx = (x as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+        let ny = y as i32 + DY[dir as usize];
+
+        if ny < 0 || ny >= height as i32 {
+            return true; // Edge of map counts as reaching ocean
+        }
+
+        x = nx;
+        y = ny as usize;
+    }
+
+    false
+}
+
+/// Print river validation summary.
+pub fn print_river_validation(heightmap: &Tilemap<f32>, params: &RiverErosionParams) {
+    let flow_dir = compute_flow_direction(heightmap);
+    let flow_acc = compute_flow_accumulation(heightmap, &flow_dir);
+
+    // Measure river widths
+    let width_stats = measure_river_widths(heightmap, &flow_acc, params.source_min_accumulation);
+
+    // Check connectivity
+    let connectivity = check_river_connectivity(heightmap, params);
+
+    println!("\n=== River Validation ===");
+    if width_stats.count > 0 {
+        println!("Channel Width: mean={:.1}, min={:.1}, max={:.1} (pixels)",
+                 width_stats.mean, width_stats.min, width_stats.max);
+        if width_stats.mean < 3.0 {
+            println!("  ✓ Sharp channels (target: <3 pixels)");
+        } else {
+            println!("  ⚠ Wide channels - consider reducing erosion radius");
+        }
+    }
+
+    println!("Connectivity: {}/{} rivers reach ocean ({:.1}%)",
+             connectivity.reaching_ocean, connectivity.total, connectivity.ocean_ratio * 100.0);
+    if connectivity.ocean_ratio > 0.95 {
+        println!("  ✓ Good connectivity (target: >95%)");
+    } else {
+        println!("  ⚠ Low connectivity - {} rivers ending in pits", connectivity.ending_in_pit);
+    }
+
+    // Count pits
+    let mut pit_count = 0;
+    for y in 0..heightmap.height {
+        for x in 0..heightmap.width {
+            if *heightmap.get(x, y) >= 0.0 && *flow_dir.get(x, y) == NO_FLOW {
+                pit_count += 1;
+            }
+        }
+    }
+    println!("Pit count: {} (target: 0)", pit_count);
 }
 
 #[cfg(test)]

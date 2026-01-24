@@ -179,21 +179,36 @@ pub struct ErosionParams {
 
     /// Use GPU acceleration for hydraulic erosion (if available)
     pub use_gpu: bool,
+
+    /// Simulation scale factor for high-resolution erosion.
+    /// 4 = 4x upscale (default), 1 = no upscaling (faster but lower quality).
+    /// Higher values produce sharper river channels but use more memory and time.
+    pub simulation_scale: usize,
+
+    /// Roughness strength for high-res erosion "crumple" effect.
+    /// Higher values create more terrain variation, encouraging river meandering.
+    /// Try 15.0-30.0. Only applies when simulation_scale > 1.
+    pub hires_roughness: f32,
+
+    /// Domain warp strength for high-res erosion.
+    /// Creates organic, non-linear flow paths. Try 5.0-15.0.
+    /// Only applies when simulation_scale > 1.
+    pub hires_warp: f32,
 }
 
 impl Default for ErosionParams {
     fn default() -> Self {
         Self {
-            // Hydraulic erosion defaults - tuned for smoother, less noisy terrain with natural meandering
-            hydraulic_iterations: 500_000,  // More droplets for comprehensive network formation
-            droplet_inertia: 0.3,           // Increased inertia (was 0.15) to help droplets coast over pits
-            droplet_capacity_factor: 10.0,  // High capacity = more erosion along path
-            droplet_erosion_rate: 0.05,     // Reduced erosion (was 0.1) to prevent deep cratering
-            droplet_deposit_rate: 0.1,      // Increased deposition (was 0.05) to fill pits/potholes
-            droplet_evaporation: 0.002,     // Low evaporation = long rivers reaching the ocean
+            // Hydraulic erosion defaults - "POLISHED" config: sharp rivers that still merge
+            hydraulic_iterations: 750_000,
+            droplet_inertia: 0.3,           // Low inertia - water turns easily, meanders naturally
+            droplet_capacity_factor: 10.0,
+            droplet_erosion_rate: 0.05,     // Slow digging - prevents trench lock
+            droplet_deposit_rate: 0.2,      // Moderate deposition - forces merging without blobby rivers
+            droplet_evaporation: 0.001,     // Low evaporation - long-lived droplets find merges
             droplet_min_volume: 0.01,
-            droplet_max_steps: 2000,        // Allow droplets to traverse the entire map
-            droplet_erosion_radius: 2,      // Intermediate radius (was 1/3)
+            droplet_max_steps: 3000,
+            droplet_erosion_radius: 3,      // Medium brush - sharp valleys, still breaks parallel streams
             droplet_initial_water: 1.0,
             droplet_initial_velocity: 1.0,
             droplet_gravity: 8.0,
@@ -212,9 +227,9 @@ impl Default for ErosionParams {
             gravity: 9.81,  // m/s^2
             erosion_exponent: 1.0,  // Linear erosion law
 
-            // River erosion defaults - panel 6 settings (dense rivers, strong erosion)
+            // River erosion defaults - very dense capillary network
             enable_rivers: true,
-            river_source_min_accumulation: 10.0,   // Low threshold = dense river network
+            river_source_min_accumulation: 15.0,   // Baseline threshold
             river_source_min_elevation: 100.0,     // Start higher up for longer rivers
             river_capacity_factor: 20.0,           // High capacity = more erosion
             river_erosion_rate: 1.0,               // Maximum erosion rate
@@ -226,8 +241,11 @@ impl Default for ErosionParams {
             // General
             enable_hydraulic: true,       // Enabled (was false)
             enable_glacial: true,         // Enabled for fjords and glacial valleys
-            enable_analysis: false,       // Disabled by default (use --analyze to enable)
+            enable_analysis: true,        // Enabled for testing
             use_gpu: true,                // Use GPU if available
+            simulation_scale: 4,          // 4x upscale for high-quality river channels
+            hires_roughness: 20.0,        // Roughness for river meandering
+            hires_warp: 0.0,              // Disabled - meandering via targeted roughness + meander erosion
         }
     }
 }

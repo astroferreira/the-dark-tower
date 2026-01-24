@@ -17,12 +17,158 @@ pub mod utils;
 
 pub use materials::{RockType, generate_material_map, generate_hardness_map};
 pub use params::{ErosionParams, ErosionPreset};
-pub use rivers::RiverErosionParams;
+pub use rivers::{RiverErosionParams, RiverWidthStats, ConnectivityStats,
+                 measure_river_widths, check_river_connectivity, print_river_validation};
 pub use river_geometry::{RiverNetwork, RiverNetworkParams, trace_bezier_rivers};
 
 use crate::tilemap::Tilemap;
 use crate::plates::{Plate, PlateId};
 use rand_chacha::ChaCha8Rng;
+
+/// Export high-resolution heightmap as PNG for debugging.
+fn export_hires_heightmap(heightmap: &Tilemap<f32>, seed: u64) {
+    use image::{ImageBuffer, Rgb};
+
+    let width = heightmap.width as u32;
+    let height = heightmap.height as u32;
+
+    // Find min/max for normalization
+    let mut min_h = f32::MAX;
+    let mut max_h = f32::MIN;
+    for (_, _, &h) in heightmap.iter() {
+        if h < min_h { min_h = h; }
+        if h > max_h { max_h = h; }
+    }
+
+    // Create image
+    let img = ImageBuffer::from_fn(width, height, |x, y| {
+        let h = *heightmap.get(x as usize, y as usize);
+
+        if h < 0.0 {
+            // Ocean: blue gradient
+            let depth_ratio = (h - min_h) / (-min_h).max(1.0);
+            let blue = (100.0 + 155.0 * depth_ratio) as u8;
+            Rgb([20u8, 50, blue])
+        } else {
+            // Land: green to brown to white
+            let elev_ratio = h / max_h.max(1.0);
+            if elev_ratio < 0.3 {
+                // Low: green
+                Rgb([
+                    (50.0 + 100.0 * elev_ratio) as u8,
+                    (120.0 + 80.0 * elev_ratio) as u8,
+                    50,
+                ])
+            } else if elev_ratio < 0.7 {
+                // Mid: brown
+                let t = (elev_ratio - 0.3) / 0.4;
+                Rgb([
+                    (80.0 + 80.0 * t) as u8,
+                    (150.0 - 50.0 * t) as u8,
+                    (50.0 + 30.0 * t) as u8,
+                ])
+            } else {
+                // High: gray/white (mountains)
+                let t = (elev_ratio - 0.7) / 0.3;
+                Rgb([
+                    (160.0 + 95.0 * t) as u8,
+                    (100.0 + 155.0 * t) as u8,
+                    (80.0 + 175.0 * t) as u8,
+                ])
+            }
+        }
+    });
+
+    // Save as PNG
+    let filename = format!("hires_erosion_{}x{}_{}.png", width, height, seed);
+    if img.save(&filename).is_ok() {
+        println!("  Saved high-res map: {}", filename);
+    }
+}
+
+/// Export downsampled heightmap as PNG for comparison (shows FINAL result after filtering).
+fn export_downsampled_heightmap(heightmap: &Tilemap<f32>, seed: u64) {
+    use image::{ImageBuffer, Rgb};
+
+    let width = heightmap.width as u32;
+    let height = heightmap.height as u32;
+
+    // Find min/max for normalization
+    let mut min_h = f32::MAX;
+    let mut max_h = f32::MIN;
+    for (_, _, &h) in heightmap.iter() {
+        if h < min_h { min_h = h; }
+        if h > max_h { max_h = h; }
+    }
+
+    // Create image (same color scheme as hires)
+    let img = ImageBuffer::from_fn(width, height, |x, y| {
+        let h = *heightmap.get(x as usize, y as usize);
+
+        if h < 0.0 {
+            // Ocean: blue gradient
+            let depth_ratio = (h - min_h) / (-min_h).max(1.0);
+            let blue = (100.0 + 155.0 * depth_ratio) as u8;
+            Rgb([20u8, 50, blue])
+        } else {
+            // Land: green to brown to white
+            let elev_ratio = h / max_h.max(1.0);
+            if elev_ratio < 0.3 {
+                Rgb([
+                    (50.0 + 100.0 * elev_ratio) as u8,
+                    (120.0 + 80.0 * elev_ratio) as u8,
+                    50,
+                ])
+            } else if elev_ratio < 0.7 {
+                let t = (elev_ratio - 0.3) / 0.4;
+                Rgb([
+                    (80.0 + 80.0 * t) as u8,
+                    (150.0 - 50.0 * t) as u8,
+                    (50.0 + 30.0 * t) as u8,
+                ])
+            } else {
+                let t = (elev_ratio - 0.7) / 0.3;
+                Rgb([
+                    (160.0 + 95.0 * t) as u8,
+                    (100.0 + 155.0 * t) as u8,
+                    (80.0 + 175.0 * t) as u8,
+                ])
+            }
+        }
+    });
+
+    // Save as PNG
+    let filename = format!("final_erosion_{}x{}_{}.png", width, height, seed);
+    if img.save(&filename).is_ok() {
+        println!("  Saved final (downsampled) map: {}", filename);
+    }
+}
+
+/// Scale erosion parameters for higher resolution simulation.
+/// Flow thresholds scale by area (factor^2), step counts scale by factor.
+fn scale_params_for_resolution(params: &ErosionParams, factor: usize) -> ErosionParams {
+    let mut scaled = params.clone();
+    let area_scale = (factor * factor) as f32;
+
+    // Scale flow thresholds by area, but use 0.25x multiplier for dense capillary network
+    // Lower threshold = more small tributaries visible
+    scaled.river_source_min_accumulation *= area_scale * 0.25;
+
+    // Scale max steps for larger map traversal
+    scaled.droplet_max_steps *= factor;
+
+    // Keep erosion radius small for sharp channels (max 1 at high res)
+    scaled.droplet_erosion_radius = scaled.droplet_erosion_radius.min(1);
+
+    // Don't scale again - we're already at high res
+    scaled.simulation_scale = 1;
+
+    // Copy hires params
+    scaled.hires_roughness = params.hires_roughness;
+    scaled.hires_warp = params.hires_warp;
+
+    scaled
+}
 
 /// Statistics from erosion simulation
 #[derive(Debug)]
@@ -270,6 +416,9 @@ fn breach_depressions(heightmap: &mut Tilemap<f32>) {
 }
 
 /// Run the complete erosion simulation pipeline
+///
+/// If `params.simulation_scale > 1`, erosion runs on an upscaled heightmap
+/// for sharper river channels, then downscales back preserving carved features.
 pub fn simulate_erosion(
     heightmap: &mut Tilemap<f32>,
     plate_map: &Tilemap<PlateId>,
@@ -278,6 +427,208 @@ pub fn simulate_erosion(
     temperature: &Tilemap<f32>,
     params: &ErosionParams,
     rng: &mut ChaCha8Rng,
+    seed: u64,
+) -> (ErosionStats, Tilemap<f32>) {
+    let factor = params.simulation_scale;
+
+    // If simulation_scale > 1, run erosion at higher resolution
+    if factor > 1 {
+        return simulate_erosion_hires(heightmap, plate_map, plates, stress_map, temperature, params, rng, seed);
+    }
+
+    // Standard resolution erosion
+    simulate_erosion_internal(heightmap, plate_map, plates, stress_map, temperature, params, rng, seed)
+}
+
+/// High-resolution erosion simulation.
+/// Upscales, runs erosion, then downscales with river preservation.
+fn simulate_erosion_hires(
+    heightmap: &mut Tilemap<f32>,
+    _plate_map: &Tilemap<PlateId>,
+    _plates: &[Plate],
+    _stress_map: &Tilemap<f32>,
+    temperature: &Tilemap<f32>,
+    params: &ErosionParams,
+    _rng: &mut ChaCha8Rng,
+    seed: u64,
+) -> (ErosionStats, Tilemap<f32>) {
+    let factor = params.simulation_scale;
+    let orig_width = heightmap.width;
+    let orig_height = heightmap.height;
+
+    println!("High-resolution erosion: {}x upscale ({} → {}x{})",
+             factor,
+             format!("{}x{}", orig_width, orig_height),
+             orig_width * factor, orig_height * factor);
+
+    // Step 1: Upscale heightmap with "crumple" effect for meandering rivers
+    // Uses domain warping + roughness noise that's stronger in flat areas
+    let mut hires_heightmap = heightmap.upscale_for_erosion(
+        factor,
+        params.hires_roughness,  // Terrain roughness for meandering (default 12.0)
+        params.hires_warp,       // Domain warping for organic curves (default 0.0)
+        seed,
+    );
+
+    // Step 1b: FUNNEL BLUR - melts sharp ridges between parallel noise lines
+    // Radius 3 on 2048 map gently smooths without losing terrain features
+    println!("  Applying pre-erosion blur (radius 3)...");
+    hires_heightmap = hires_heightmap.gaussian_blur(3);
+
+    // Step 2: Upscale temperature for glacial erosion
+    let hires_temperature = temperature.upscale(factor);
+
+    // Step 3: Scale parameters for higher resolution
+    let hires_params = scale_params_for_resolution(params, factor);
+
+    // Step 4: Create hardness map for high-res (constant for clean channels)
+    let hires_hardness = Tilemap::new_with(hires_heightmap.width, hires_heightmap.height, 0.3f32);
+
+    println!("  Running river erosion on high-res map...");
+
+    // Step 5: Run river erosion (creates major drainage channels)
+    let mut stats = ErosionStats::default();
+    if hires_params.enable_rivers {
+        let river_params = RiverErosionParams {
+            source_min_accumulation: hires_params.river_source_min_accumulation,
+            source_min_elevation: hires_params.river_source_min_elevation,
+            capacity_factor: hires_params.river_capacity_factor,
+            erosion_rate: hires_params.river_erosion_rate,
+            deposition_rate: hires_params.river_deposition_rate,
+            max_erosion: hires_params.river_max_erosion,
+            max_deposition: hires_params.river_max_deposition,
+            channel_width: hires_params.river_channel_width,
+            passes: 1,
+        };
+        let river_stats = rivers::erode_rivers(&mut hires_heightmap, &hires_hardness, &river_params);
+        stats.total_eroded += river_stats.total_eroded;
+        stats.total_deposited += river_stats.total_deposited;
+        stats.steps_taken += river_stats.steps_taken;
+        stats.iterations += river_stats.iterations;
+        stats.max_erosion = stats.max_erosion.max(river_stats.max_erosion);
+        stats.max_deposition = stats.max_deposition.max(river_stats.max_deposition);
+        stats.river_lengths.extend(river_stats.river_lengths);
+    }
+
+    println!("  Running hydraulic erosion on high-res map...");
+
+    // Step 6: Run hydraulic erosion (adds detail)
+    if hires_params.enable_hydraulic {
+        let hydraulic_stats = if hires_params.use_gpu {
+            gpu::simulate_gpu_or_cpu(&mut hires_heightmap, &hires_hardness, &hires_params, seed)
+        } else {
+            hydraulic::simulate_parallel(&mut hires_heightmap, &hires_hardness, &hires_params, seed)
+        };
+        stats.total_eroded += hydraulic_stats.total_eroded;
+        stats.total_deposited += hydraulic_stats.total_deposited;
+        stats.iterations += hydraulic_stats.iterations;
+        stats.max_erosion = stats.max_erosion.max(hydraulic_stats.max_erosion);
+        stats.max_deposition = stats.max_deposition.max(hydraulic_stats.max_deposition);
+    }
+
+    // Step 7: Run glacial erosion
+    if hires_params.enable_glacial {
+        let glacial_stats = glacial::simulate(&mut hires_heightmap, &hires_temperature, &hires_hardness, &hires_params);
+        stats.total_eroded += glacial_stats.total_eroded;
+        stats.total_deposited += glacial_stats.total_deposited;
+        stats.iterations += glacial_stats.iterations;
+        stats.max_erosion = stats.max_erosion.max(glacial_stats.max_erosion);
+        stats.max_deposition = stats.max_deposition.max(glacial_stats.max_deposition);
+    }
+
+    // Step 8: Post-erosion pit filling and river carving on high-res map
+    if hires_params.enable_rivers {
+        let filled = rivers::fill_depressions_public(&hires_heightmap);
+        for y in 0..hires_heightmap.height {
+            for x in 0..hires_heightmap.width {
+                hires_heightmap.set(x, y, *filled.get(x, y));
+            }
+        }
+        carve_river_network(&mut hires_heightmap, hires_params.river_source_min_accumulation);
+
+        // Step 8b: Apply meander erosion for more natural river curves
+        // Recalculate flow each pass since terrain changes
+        println!("  Applying meander erosion...");
+        for pass in 0..12 {  // More passes
+            let flow_dir = rivers::compute_flow_direction(&hires_heightmap);
+            let flow_acc = rivers::compute_flow_accumulation(&hires_heightmap, &flow_dir);
+            rivers::apply_meander_erosion(
+                &mut hires_heightmap,
+                &flow_dir,
+                &flow_acc,
+                hires_params.river_source_min_accumulation,
+                40.0,  // Stronger meander erosion
+                seed + pass as u64,
+            );
+        }
+
+        let refilled = rivers::fill_depressions_public(&hires_heightmap);
+        for y in 0..hires_heightmap.height {
+            for x in 0..hires_heightmap.width {
+                hires_heightmap.set(x, y, *refilled.get(x, y));
+            }
+        }
+    }
+
+    // Step 9: Export high-res map for debugging (optional)
+    export_hires_heightmap(&hires_heightmap, seed);
+
+    println!("  Downscaling with variance-based river preservation...");
+
+    // Step 10: Smart downscale preserving rivers via variance detection
+    // Higher threshold = only preserve well-defined channels (high variance = deep cut)
+    // 15.0 gives best bifurcation ratio (~5.4) with good connectivity (~93%)
+    let variance_threshold = 15.0;
+    let result = hires_heightmap.downscale_preserve_rivers(factor, variance_threshold);
+
+    // Export post-downsampled result for comparison with high-res
+    export_downsampled_heightmap(&result, seed);
+
+    // Copy result back to original heightmap
+    for y in 0..orig_height {
+        for x in 0..orig_width {
+            heightmap.set(x, y, *result.get(x, y));
+        }
+    }
+
+    // Create hardness map at original resolution
+    let hardness = Tilemap::new_with(orig_width, orig_height, 0.3f32);
+
+    // Print validation
+    if hires_params.enable_rivers {
+        let validation_params = RiverErosionParams {
+            source_min_accumulation: params.river_source_min_accumulation,
+            ..Default::default()
+        };
+        rivers::print_river_validation(heightmap, &validation_params);
+    }
+
+    // Run geomorphometry analysis if enabled
+    if params.enable_analysis {
+        let analysis_threshold = 5.0;
+        let geo_results = geomorphometry::analyze(heightmap, analysis_threshold);
+        geo_results.print_summary();
+
+        let score = geo_results.realism_score();
+        println!("Overall Realism Score: {:.1}/100", score);
+
+        if !geo_results.longitudinal_profile.is_empty() {
+            println!("\n{}", geomorphometry::plot_profile_ascii(&geo_results.longitudinal_profile, 60, 15));
+        }
+    }
+
+    (stats, hardness)
+}
+
+/// Internal erosion simulation (standard resolution).
+fn simulate_erosion_internal(
+    heightmap: &mut Tilemap<f32>,
+    _plate_map: &Tilemap<PlateId>,
+    _plates: &[Plate],
+    _stress_map: &Tilemap<f32>,
+    temperature: &Tilemap<f32>,
+    params: &ErosionParams,
+    _rng: &mut ChaCha8Rng,
     seed: u64,
 ) -> (ErosionStats, Tilemap<f32>) {
     let mut stats = ErosionStats::default();
