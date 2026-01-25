@@ -1,3 +1,9 @@
+// Suppress warnings for unused code - many utilities are kept for future use
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(unreachable_patterns)]
+
 use clap::Parser;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -121,6 +127,14 @@ struct Args {
     /// Export freshwater network image (rivers + lakes only) before launching explorer
     #[arg(long)]
     export_rivers: bool,
+
+    /// Export base map image (flat biome colors + rivers) before launching explorer
+    #[arg(long)]
+    export_base_map: bool,
+
+    /// Skip launching the explorer (for batch/headless export)
+    #[arg(long)]
+    headless: bool,
 }
 
 fn main() {
@@ -305,7 +319,7 @@ fn main() {
     // Generate climate with domain warping for organic zone boundaries
     println!("Generating climate (mode: {}, rainfall: {})...", climate_config.mode, climate_config.rainfall);
     let temperature = climate::generate_temperature_with_seed(&heightmap, width, height, climate_config.mode, seeds.climate);
-    let moisture = climate::generate_moisture_with_config(&heightmap, width, height, &climate_config);
+    let moisture = climate::generate_moisture_with_config_and_seed(&heightmap, width, height, &climate_config, seeds.climate);
 
     // Report climate stats
     let mut min_temp = f32::MAX;
@@ -511,6 +525,19 @@ fn main() {
         if let Err(e) = explorer::export_freshwater_network_image(&world_data, &filename) {
             eprintln!("Failed to export freshwater network: {}", e);
         }
+    }
+
+    // Export base map if requested
+    if args.export_base_map {
+        let filename = format!("world_base_{}.png", master_seed);
+        if let Err(e) = explorer::export_base_map_image(&world_data, &filename) {
+            eprintln!("Failed to export base map: {}", e);
+        }
+    }
+
+    // Skip explorer in headless mode
+    if args.headless {
+        return;
     }
 
     if let Err(e) = explorer::run_explorer(world_data) {

@@ -204,7 +204,7 @@ impl Default for ErosionParams {
             droplet_inertia: 0.3,           // Low inertia - water turns easily, meanders naturally
             droplet_capacity_factor: 10.0,
             droplet_erosion_rate: 0.05,     // Slow digging - prevents trench lock
-            droplet_deposit_rate: 0.2,      // Moderate deposition - forces merging without blobby rivers
+            droplet_deposit_rate: 0.4,      // Higher deposition - creates smooth floodplains in lowlands
             droplet_evaporation: 0.001,     // Low evaporation - long-lived droplets find merges
             droplet_min_volume: 0.01,
             droplet_max_steps: 3000,
@@ -233,9 +233,9 @@ impl Default for ErosionParams {
             river_source_min_elevation: 100.0,     // Start higher up for longer rivers
             river_capacity_factor: 20.0,           // Moderate capacity
             river_erosion_rate: 0.5,               // Reduced erosion rate (was 1.0)
-            river_deposition_rate: 0.5,            // Balanced deposition
+            river_deposition_rate: 0.6,            // Higher deposition for floodplains
             river_max_erosion: 30.0,               // Reduced max erosion (was 150.0) - prevents digging below sea level
-            river_max_deposition: 0.0,             // No deposition
+            river_max_deposition: 15.0,            // Enable deposition for smooth floodplains near coasts
             river_channel_width: 2,                // Wide channels for visibility
 
             // General

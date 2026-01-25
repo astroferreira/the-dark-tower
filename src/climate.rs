@@ -333,6 +333,18 @@ pub fn generate_moisture_with_config(
     generate_moisture_full(heightmap, width, height, &map_scale, config)
 }
 
+/// Generate moisture map with full climate configuration and explicit seed
+pub fn generate_moisture_with_config_and_seed(
+    heightmap: &Tilemap<f32>,
+    width: usize,
+    height: usize,
+    config: &ClimateConfig,
+    seed: u64,
+) -> Tilemap<f32> {
+    let map_scale = crate::scale::MapScale::default();
+    generate_moisture_full_with_seed(heightmap, width, height, &map_scale, config, seed)
+}
+
 /// Generate moisture map with explicit scale parameter
 pub fn generate_moisture_scaled(
     heightmap: &Tilemap<f32>,
@@ -341,6 +353,11 @@ pub fn generate_moisture_scaled(
     map_scale: &MapScale,
 ) -> Tilemap<f32> {
     use std::collections::VecDeque;
+
+    // Continental moisture noise - creates large wet/dry patches independent of latitude
+    // This breaks the "layer cake" horizontal banding effect
+    let continental_noise = Perlin::new(1).set_seed(42);
+    let regional_noise = Perlin::new(1).set_seed(142);
 
     // First pass: compute distance from ocean
     let mut ocean_distance = Tilemap::new_with(width, height, f32::MAX);
@@ -396,8 +413,21 @@ pub fn generate_moisture_scaled(
                 continue;
             }
 
+            // Normalized coordinates for noise sampling
+            let nx = x as f64 / width as f64;
+            let ny = y as f64 / height as f64;
+
             // Latitude factor (0 = equator, 1 = pole)
             let latitude_normalized = (y as f32 / height as f32 - 0.5).abs() * 2.0;
+
+            // CONTINENTAL MOISTURE PATCHES - breaks horizontal banding
+            // Large-scale noise creates "wet continent" vs "dry continent" areas
+            // Strong enough to override latitude effects and create patchy biomes
+            let continental_wet = continental_noise.get([nx * 2.0, ny * 2.0]) as f32;
+            let regional_wet = regional_noise.get([nx * 4.0, ny * 4.0]) as f32;
+            // Combined patch value: positive = wetter, negative = drier
+            // Increased strength to effectively break horizontal bands
+            let moisture_patch = continental_wet * 0.5 + regional_wet * 0.25;
 
             // BASE MOISTURE: Very conservative - only areas near ocean get moisture
             // Exponential decay from coastline
@@ -420,16 +450,20 @@ pub fn generate_moisture_scaled(
                 0.0
             };
 
-            // Subtropical DRY belt (Hadley cell) - MAJOR drying at 15-45° latitude
-            // This is where real-world deserts form (Sahara, Arabian, Sonoran, etc.)
-            let subtropical_penalty = if latitude_normalized > 0.15 && latitude_normalized < 0.55 {
+            // Subtropical DRY belt (Hadley cell) - drying at 15-45° latitude
+            // NOW MODULATED BY NOISE: deserts form in patches, not bands
+            // Where moisture_patch is positive (wet patch), the penalty is reduced
+            let subtropical_base = if latitude_normalized > 0.15 && latitude_normalized < 0.55 {
                 let belt_center = 0.35;
                 let dist_from_center = (latitude_normalized - belt_center).abs();
-                // Strong penalty with wide coverage
-                0.5 * (1.0 - (dist_from_center / 0.20).min(1.0))
+                0.35 * (1.0 - (dist_from_center / 0.20).min(1.0))
             } else {
                 0.0
             };
+            // Reduce penalty in wet patches, increase in dry patches
+            // Multiplier of 2.0 ensures wet patches can fully eliminate the penalty
+            let subtropical_penalty = (subtropical_base * (1.0 - moisture_patch.max(0.0) * 2.0))
+                .max(0.0);
 
             // Mid-latitude westerlies (40-65°) - some moisture from polar fronts
             let midlat_bonus = if latitude_normalized > 0.5 && latitude_normalized < 0.8 {
@@ -528,8 +562,10 @@ pub fn generate_moisture_scaled(
             };
 
             // Combine all factors
+            // moisture_patch adds wet patches even in normally dry areas
+            let patch_bonus = moisture_patch.max(0.0) * 0.5;  // Strong enough to create forests in desert latitudes
             let final_moisture = (base_moisture
-                + equatorial_bonus + midlat_bonus + orographic_bonus
+                + equatorial_bonus + midlat_bonus + orographic_bonus + patch_bonus
                 - subtropical_penalty - polar_penalty - altitude_penalty - rain_shadow)
                 .clamp(0.02, 1.0);
 
@@ -565,6 +601,11 @@ pub fn generate_moisture_full_with_seed(
 
     // Create Perlin noise for longitude variation
     let longitude_noise = Perlin::new(1).set_seed(seed as u32);
+
+    // Continental moisture noise - creates large wet/dry patches independent of latitude
+    // This breaks the "layer cake" horizontal banding effect
+    let continental_noise = Perlin::new(1).set_seed(seed as u32 + 200);
+    let regional_noise = Perlin::new(1).set_seed(seed as u32 + 300);
 
     // First pass: compute distance from ocean
     let mut ocean_distance = Tilemap::new_with(width, height, f32::MAX);
@@ -630,12 +671,26 @@ pub fn generate_moisture_full_with_seed(
                 0.02
             };
 
+            // Normalized coordinates for noise sampling
+            let nx_coord = x as f64 / width as f64;
+            let ny_coord = y as f64 / height as f64;
+
+            // CONTINENTAL MOISTURE PATCHES - breaks horizontal banding
+            // Large-scale noise creates "wet continent" vs "dry continent" areas
+            // Strong enough to override latitude effects and create patchy biomes
+            let continental_wet = continental_noise.get([nx_coord * 2.0, ny_coord * 2.0]) as f32;
+            let regional_wet = regional_noise.get([nx_coord * 4.0, ny_coord * 4.0]) as f32;
+            // Combined patch value: positive = wetter, negative = drier
+            // Increased strength to effectively break horizontal bands
+            let moisture_patch = continental_wet * 0.5 + regional_wet * 0.25;
+
             // Longitude variation to break vertical bands
             let longitude_variation = get_longitude_moisture_variation(
                 x, y, width, height, &longitude_noise, latitude_normalized
             );
 
             // Latitude-based modifiers (only for Globe mode)
+            // NOW MODULATED BY MOISTURE PATCHES to create patchy deserts instead of bands
             let (equatorial_bonus, subtropical_penalty, midlat_bonus, polar_penalty) = match config.mode {
                 ClimateMode::Globe => {
                     let eq_bonus = if latitude_normalized < 0.2 {
@@ -644,13 +699,19 @@ pub fn generate_moisture_full_with_seed(
                         0.0
                     };
 
-                    let subtr_penalty = if latitude_normalized > 0.15 && latitude_normalized < 0.55 {
+                    // Subtropical penalty is now modulated by moisture patches
+                    // Wet patches reduce the penalty, allowing forests in subtropical zones
+                    let subtr_base = if latitude_normalized > 0.15 && latitude_normalized < 0.55 {
                         let belt_center = 0.35;
                         let dist_from_center = (latitude_normalized - belt_center).abs();
-                        0.5 * (1.0 - (dist_from_center / 0.20).min(1.0))
+                        0.35 * (1.0 - (dist_from_center / 0.20).min(1.0))
                     } else {
                         0.0
                     };
+                    // Reduce penalty in wet patches, creating patchy deserts
+                    // Multiplier of 2.0 ensures wet patches can fully eliminate the penalty
+                    let subtr_penalty = (subtr_base * (1.0 - moisture_patch.max(0.0) * 2.0))
+                        .max(0.0);
 
                     let mid_bonus = if latitude_normalized > 0.5 && latitude_normalized < 0.8 {
                         0.15 * (1.0 - ((latitude_normalized - 0.65) / 0.15).abs().min(1.0))
@@ -699,8 +760,10 @@ pub fn generate_moisture_full_with_seed(
             };
 
             // Combine factors including longitude variation and apply rainfall multiplier
+            // moisture_patch adds wet patches even in normally dry areas
+            let patch_bonus = moisture_patch.max(0.0) * 0.5;  // Strong enough to create forests in desert latitudes
             let raw_moisture = base_moisture
-                + equatorial_bonus + midlat_bonus + orographic_bonus + longitude_variation
+                + equatorial_bonus + midlat_bonus + orographic_bonus + longitude_variation + patch_bonus
                 - subtropical_penalty - polar_penalty - altitude_penalty;
 
             let final_moisture = (raw_moisture * moisture_mult)

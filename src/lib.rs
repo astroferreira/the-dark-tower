@@ -10,6 +10,11 @@
 //! - Seasonal climate variation
 //! - Extreme weather zone detection
 
+// Suppress warnings for unused code - many utilities are kept for future use
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+
 pub mod ascii;
 pub mod biome_feathering;
 pub mod biomes;

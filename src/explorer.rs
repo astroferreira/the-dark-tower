@@ -57,7 +57,7 @@ struct Viewport {
 
 /// View mode for the map display
 #[derive(Clone, Copy, PartialEq)]
-enum ViewMode {
+pub enum ViewMode {
     Biome,
     BaseBiome,
     Height,
@@ -128,6 +128,10 @@ struct Explorer {
     show_region_map: bool,
     /// Region cache for seamless multi-region generation
     region_cache: RegionCache,
+    /// Last frame render time in milliseconds
+    frame_time_ms: f32,
+    /// Rolling average frame time in milliseconds
+    avg_frame_time: f32,
 }
 
 impl Explorer {
@@ -147,6 +151,8 @@ impl Explorer {
             message: None,
             show_region_map: false,
             region_cache: RegionCache::new(seed),
+            frame_time_ms: 0.0,
+            avg_frame_time: 0.0,
         }
     }
 
@@ -287,7 +293,7 @@ impl Explorer {
                     Style::default().fg(fg).bg(bg)
                 };
 
-                buf.get_mut(screen_x, screen_y).set_char(ch).set_style(style);
+                buf[(screen_x, screen_y)].set_char(ch).set_style(style);
             }
         }
     }
@@ -925,7 +931,7 @@ impl Explorer {
                 };
 
                 let style = Style::default().fg(fg).bg(bg);
-                buf.get_mut(inner.x + dx as u16, inner.y + dy as u16)
+                buf[(inner.x + dx as u16, inner.y + dy as u16)]
                     .set_char(ch)
                     .set_style(style);
             }
@@ -1293,8 +1299,9 @@ pub fn export_freshwater_network_image(
     Ok(())
 }
 
-/// Export a clean base map: flat biome colors + rivers, no shading or effects
+/// Export a clean base map: biome colors + rivers with hillshading for 3D effect
 /// Uses elevation as source of truth: h < 0 = ocean, h >= 0 = land/lake/river
+/// Light source is positioned at top-left corner
 pub fn export_base_map_image(
     world: &WorldData,
     filename: &str,
@@ -1302,6 +1309,58 @@ pub fn export_base_map_image(
     let width = world.heightmap.width;
     let height = world.heightmap.height;
     const RIVER_THRESHOLD: f32 = 50.0;
+
+    // Light direction from top-left at low angle (normalized)
+    // x: -1 (from left), y: -1 (from top), z: lower = more dramatic shadows
+    let light_dir = (-0.7_f32, -0.7_f32, 0.25_f32);
+    let light_len = (light_dir.0 * light_dir.0 + light_dir.1 * light_dir.1 + light_dir.2 * light_dir.2).sqrt();
+    let light_dir = (light_dir.0 / light_len, light_dir.1 / light_len, light_dir.2 / light_len);
+
+    // Precompute hillshade values (only for land, h >= 0)
+    let mut hillshade: Vec<f32> = vec![1.0; width * height];
+
+    for y in 1..height - 1 {
+        for x in 1..width - 1 {
+            let h = *world.heightmap.get(x, y);
+
+            // Skip underwater terrain - no shading
+            if h < 0.0 {
+                continue;
+            }
+
+            // Get heights of neighbors for gradient calculation
+            let h_left = *world.heightmap.get(x.wrapping_sub(1), y);
+            let h_right = *world.heightmap.get(x + 1, y);
+            let h_up = *world.heightmap.get(x, y.wrapping_sub(1));
+            let h_down = *world.heightmap.get(x, y + 1);
+
+            // Calculate gradient (slope)
+            let dzdx = (h_right - h_left) / 2.0;
+            let dzdy = (h_down - h_up) / 2.0;
+
+            // Scale factor for height exaggeration (bigger = more dramatic shadows)
+            let z_factor = 0.035;
+            let dzdx = dzdx * z_factor;
+            let dzdy = dzdy * z_factor;
+
+            // Surface normal: (-dzdx, -dzdy, 1) normalized
+            let nx = -dzdx;
+            let ny = -dzdy;
+            let nz = 1.0_f32;
+            let n_len = (nx * nx + ny * ny + nz * nz).sqrt();
+            let nx = nx / n_len;
+            let ny = ny / n_len;
+            let nz = nz / n_len;
+
+            // Dot product with light direction
+            let shade = nx * light_dir.0 + ny * light_dir.1 + nz * light_dir.2;
+
+            // Map to brightness range with stronger contrast
+            // shade ranges roughly from -1 to 1
+            let brightness = 0.8 + shade * 0.6;
+            hillshade[y * width + x] = brightness.clamp(0.3, 1.5);
+        }
+    }
 
     let mut img = ImageBuffer::new(width as u32, height as u32);
 
@@ -1316,6 +1375,10 @@ pub fn export_base_map_image(
                 .map(|fa| *fa.get(x, y))
                 .unwrap_or(0.0);
             let is_river = flow_acc > RIVER_THRESHOLD;
+
+            // Get hillshade factor (no shading for water)
+            let is_water = h < 0.0 || is_river || water_depth > 0.5;
+            let shade = if is_water { 1.0 } else { hillshade[y * width + x] };
 
             // Elevation is the source of truth for water type:
             // h < 0 = ocean (below sea level)
@@ -1352,6 +1415,11 @@ pub fn export_base_map_image(
                 }
             };
 
+            // Apply hillshading
+            let r = ((r as f32) * shade).clamp(0.0, 255.0) as u8;
+            let g = ((g as f32) * shade).clamp(0.0, 255.0) as u8;
+            let b = ((b as f32) * shade).clamp(0.0, 255.0) as u8;
+
             img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
         }
     }
@@ -1373,6 +1441,9 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
     let mut explorer = Explorer::new(world);
 
     loop {
+        // Measure frame render time
+        let frame_start = std::time::Instant::now();
+
         // Render
         terminal.draw(|f| {
             let size = f.area();
@@ -1474,7 +1545,7 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
             let region_hint = if explorer.show_region_map { " [M]" } else { "" };
 
             let status = format!(
-                " ({},{}) | {}{}{}{}{}{}{} | V:View  M:Region  [/]:Season  ?:Help{}  Q:Quit",
+                " ({},{}) | {}{}{}{}{}{}{} | V:View  M:Region  [/]:Season  ?:Help{}  Q:Quit | {:.1}ms (avg:{:.1})",
                 explorer.cursor_x,
                 explorer.cursor_y,
                 explorer.view_mode.name(),
@@ -1485,6 +1556,8 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                 weather_str,
                 msg_str,
                 panel_hint,
+                explorer.frame_time_ms,
+                explorer.avg_frame_time,
             );
             let status_para = Paragraph::new(status)
                 .style(Style::default().bg(Color::DarkGray).fg(Color::White));
@@ -1495,6 +1568,10 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                 explorer.render_help(map_area, f.buffer_mut());
             }
         })?;
+
+        // Update frame timing
+        explorer.frame_time_ms = frame_start.elapsed().as_secs_f32() * 1000.0;
+        explorer.avg_frame_time = explorer.avg_frame_time * 0.9 + explorer.frame_time_ms * 0.1;
 
         // Clear message after display
         explorer.message = None;

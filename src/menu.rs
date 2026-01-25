@@ -311,7 +311,7 @@ impl Menu {
         // Separator line
         let sep_y = y;
         for x in box_area.x + 1..box_area.x + box_width - 1 {
-            frame.buffer_mut().get_mut(x, sep_y).set_char('─').set_fg(Color::Cyan);
+            frame.buffer_mut()[(x, sep_y)].set_char('─').set_fg(Color::Cyan);
         }
         y += 1;
 

@@ -636,16 +636,39 @@ fn generate_continental_elevation(
     // Normalize fBm to 0-1 range
     let base_terrain = (base_fbm + 1.0) * 0.5;
 
-    // Procedural ridges for internal mountain ranges - NOT limited by coast
-    // Use squared ridge for sharper peaks
-    let ridge = generate_ridges_scaled(x, y, ridge_noise, params.ridge_power, map_scale) as f32;
-    let ridge_squared = ridge * ridge; // Sharper peaks
+    // PURE ISOLATED PEAKS - no ridged noise at all
+    // Completely eliminates "wormy" continuous ridge patterns
+    // Mountains are formed ONLY from isolated peak clusters
+
+    // Isolated peak noise - ONLY mountain source
+    let isolated_peaks = generate_isolated_peaks(x, y, detail_noise, map_scale);
+
+    // Add some additional peak variation at different scale for variety
+    let peaks_fine = generate_isolated_peaks(x * 1.7, y * 1.7, ridge_noise, map_scale);
+    let peaks_coarse = generate_isolated_peaks(x * 0.6, y * 0.6, terrain_noise, map_scale);
+
+    // Blend peak layers for multi-scale mountains
+    let combined_peaks = (isolated_peaks * 0.5 + peaks_fine * 0.3 + peaks_coarse * 0.3).min(1.0);
+
+    // Sharp peaks
+    let ridge_squared = combined_peaks * combined_peaks;
+
     // Ridges are present everywhere but slightly higher inland
     let ridge_contribution = ridge_squared * ridge_height * (0.5 + coastal_gradient * 0.5);
 
     // Fine detail noise for texture
     let detail = fbm(detail_noise, x * detail_freq, y * detail_freq, 4, 0.6, 2.0) as f32;
     let detail_contribution = detail * detail_height;
+
+    // High-frequency mountain roughness - adds jagged crags to break smooth ridges
+    // This layer kicks in proportionally to ridge height
+    let roughness_freq = scale_frequency(100.0, map_scale);  // Higher frequency for finer crags
+    let roughness_raw = fbm(detail_noise, x * roughness_freq, y * roughness_freq, 6, 0.6, 2.0) as f32;
+    // Roughness amplitude scales with ridge contribution (more rough = more jagged peaks)
+    let roughness_amplitude = scale_elevation(400.0, map_scale);  // Up to 400m of roughness
+    // Apply roughness to all elevated terrain, not just ridges
+    let elevation_factor = (ridge_squared + coastal_gradient * 0.3).min(1.0);
+    let roughness_contribution = roughness_raw * roughness_amplitude * elevation_factor;
     
     // Scale frequencies for tectonic noise
     let peak_freq = scale_frequency(150.0, map_scale);
@@ -653,27 +676,23 @@ fn generate_continental_elevation(
     let rift_freq = scale_frequency(60.0, map_scale);
 
     // Tectonic stress contribution (mountains at plate boundaries)
-    // Add noise modulation for organic, irregular mountain ranges
+    // Uses isolated peaks instead of ridged noise to avoid "wormy" appearance
     let tectonic = if stress > 0.05 {
-        // Ridged noise along stress zones for irregular peaks
-        let tectonic_ridge = generate_ridges_scaled(x * 1.5, y * 1.5, ridge_noise, 1.5, map_scale) as f32;
+        // Isolated peaks for tectonic mountains - creates distinct peaks, not ridges
+        let tectonic_peaks = generate_isolated_peaks(x * 1.3, y * 1.3, detail_noise, map_scale);
 
         // High-frequency detail for individual peak variation
         let peak_variation = detail_noise.get([x * peak_freq, y * peak_freq, 0.5]) as f32;
         let peak_factor = 0.6 + peak_variation * 0.4; // 0.2 to 1.0 range
 
-        // Medium-frequency noise for mountain chain continuity
-        let chain_noise = terrain_noise.get([x * chain_freq, y * chain_freq, 1.0]) as f32;
-        let chain_factor = (chain_noise + 1.0) * 0.5; // 0 to 1
-
-        // Combine: stress provides envelope, noise creates organic variation
+        // Combine: stress provides envelope, peaks create variation
         let base_height = stress.sqrt() * tectonic_scale;
-        let ridge_modulation = 0.3 + tectonic_ridge * 0.7; // 0.3 to 1.0
-        let organic_height = base_height * ridge_modulation * peak_factor;
+        let peak_modulation = 0.4 + tectonic_peaks * 0.6; // 0.4 to 1.0
+        let organic_height = base_height * peak_modulation * peak_factor;
 
-        // Add some peaks that exceed the stress envelope for dramatic effect
-        let dramatic_peaks = if tectonic_ridge > 0.7 && chain_factor > 0.6 {
-            base_height * 0.3 * (tectonic_ridge - 0.7) / 0.3
+        // Add some extra height for strong peak areas
+        let dramatic_peaks = if tectonic_peaks > 0.6 {
+            base_height * 0.25 * (tectonic_peaks - 0.6) / 0.4
         } else {
             0.0
         };
@@ -702,11 +721,12 @@ fn generate_continental_elevation(
     
     // Combine all layers:
     // - Base elevation provides underlying terrain variation (always present)
-    // - Coastal gradient mainly affects minimum elevation  
+    // - Coastal gradient mainly affects minimum elevation
     let min_elevation = COASTAL_HEIGHT + CONTINENTAL_MIN * coastal_gradient;
     let base_variation = base_terrain * CONTINENTAL_MAX * (0.3 + coastal_gradient * 0.7);
-    
-    min_elevation + base_variation + ridge_contribution + detail_contribution + tectonic
+
+    // roughness_contribution adds jagged detail to mountain ridges
+    min_elevation + base_variation + ridge_contribution + detail_contribution + roughness_contribution + tectonic
 }
 
 /// Generate small coastal islands near continental edges
@@ -1387,23 +1407,75 @@ fn generate_ridges(x: f64, y: f64, noise: &Perlin, power: f64) -> f64 {
 fn generate_ridges_scaled(x: f64, y: f64, noise: &Perlin, power: f64, map_scale: &MapScale) -> f64 {
     let freq = scale_frequency(RIDGE_FREQUENCY * 100.0, map_scale);
 
-    // Multi-octave ridged noise
+    // VERY AGGRESSIVE DOMAIN WARPING - shatters continuous ridge lines into fragments
+    // This is the key fix for the "brain coral" / "wormy" mountain appearance
+    // Multiple scales of warping create chaotic, non-continuous terrain
+
+    // Large-scale warp (shatters major ridge continuity into separate clusters)
+    let warp1_freq = freq * 0.2;  // Very low frequency = continent-scale distortion
+    let warp1_strength = 1.2;     // Very strong displacement
+    let warp1_x = noise.get([x * warp1_freq, y * warp1_freq, 100.0]) * warp1_strength;
+    let warp1_y = noise.get([x * warp1_freq + 5.2, y * warp1_freq + 1.3, 200.0]) * warp1_strength;
+
+    // Medium-scale warp (breaks ridge paths into segments)
+    let warp2_freq = freq * 0.5;
+    let warp2_strength = 0.5;
+    let warp2_x = noise.get([x * warp2_freq + 3.7, y * warp2_freq + 8.1, 150.0]) * warp2_strength;
+    let warp2_y = noise.get([x * warp2_freq + 9.2, y * warp2_freq + 2.8, 250.0]) * warp2_strength;
+
+    // Fine-scale warp (adds jagged irregularity to individual peaks)
+    let warp3_freq = freq * 1.5;
+    let warp3_strength = 0.15;
+    let warp3_x = noise.get([x * warp3_freq + 7.1, y * warp3_freq + 4.4, 175.0]) * warp3_strength;
+    let warp3_y = noise.get([x * warp3_freq + 2.9, y * warp3_freq + 6.7, 275.0]) * warp3_strength;
+
+    // Combined warped coordinates - total warp up to ~1.85
+    let warped_x = x + (warp1_x + warp2_x + warp3_x) / freq;
+    let warped_y = y + (warp1_y + warp2_y + warp3_y) / freq;
+
+    // PEAK ISOLATION MASK - creates distinct mountain clusters instead of continuous ridges
+    // This uses low-frequency noise to create "mountain zones" vs "valley zones"
+    let isolation_freq = freq * 0.15;
+    let isolation_noise = noise.get([x * isolation_freq + 50.0, y * isolation_freq + 50.0, 600.0]);
+    // Only ~40% of area gets significant mountains, rest are lowlands/foothills
+    let isolation_mask = ((isolation_noise + 0.3) * 1.5).clamp(0.0, 1.0);
+
+    // Multi-octave ridged noise - 6 octaves for detail
     let mut total = 0.0;
     let mut amplitude = 1.0;
     let mut frequency = 1.0;
     let mut max_val = 0.0;
 
-    for i in 0..4 {
+    for i in 0..6 {
         let n = noise.get([
-            x * freq * frequency,
-            y * freq * frequency,
+            warped_x * freq * frequency,
+            warped_y * freq * frequency,
             i as f64 * 0.5,
         ]);
 
         // Ridge function: 1 - |noise| creates ridges at zero crossings
         let ridge = 1.0 - n.abs();
-        // Sharpen with power function
-        let ridge = ridge.powf(power);
+
+        // Add "ridge breaking" - randomly suppress ridge height to create gaps/saddles
+        // Combined with isolation mask, this creates truly isolated peak clusters
+        let break_noise = noise.get([
+            x * freq * frequency * 0.3,
+            y * freq * frequency * 0.3,
+            500.0 + i as f64,
+        ]);
+
+        // Aggressive breaking: creates ~40% gaps when combined with isolation
+        let break_factor = if break_noise < -0.1 {
+            (0.15 + (break_noise + 0.1) * 0.6 / 0.9).max(0.05)
+        } else if break_noise < 0.2 {
+            // Partial height for transitional zones
+            0.6 + (break_noise + 0.1) * 0.4 / 0.3
+        } else {
+            1.0
+        };
+
+        // Sharpen with power function, then apply isolation mask and breaking
+        let ridge = ridge.powf(power) * break_factor;
 
         total += amplitude * ridge;
         max_val += amplitude;
@@ -1411,7 +1483,66 @@ fn generate_ridges_scaled(x: f64, y: f64, noise: &Perlin, power: f64, map_scale:
         frequency *= 2.0;
     }
 
-    (total / max_val).max(0.0)
+    // Apply isolation mask - mountains only appear in "mountain zones"
+    // This fundamentally breaks the continuous ridge pattern
+    let base_result = (total / max_val).max(0.0);
+    base_result * isolation_mask.powf(0.7)
+}
+
+/// Generate truly isolated mountain peaks using multiplicative rotated noise
+/// Peaks only form where MULTIPLE rotated noise layers are all positive
+/// This creates genuine isolation - no continuous ridges possible
+fn generate_isolated_peaks(x: f64, y: f64, noise: &Perlin, map_scale: &MapScale) -> f32 {
+    let freq = scale_frequency(3.5, map_scale);
+
+    // MULTIPLICATIVE ROTATED NOISE
+    // Sample noise at 3 different rotations and multiply the positive parts
+    // Peaks only exist where ALL three layers happen to be positive
+    // This mathematically guarantees isolation (no continuous patterns)
+
+    // Layer 1: Original orientation
+    let n1 = noise.get([x * freq, y * freq, 700.0]);
+    let p1 = (n1 * 1.5).max(0.0).min(1.0);  // Expanded positive region
+
+    // Layer 2: Rotated 60 degrees
+    let cos60: f64 = 0.5;
+    let sin60: f64 = 0.866;
+    let x2 = x * cos60 - y * sin60;
+    let y2 = x * sin60 + y * cos60;
+    let n2 = noise.get([x2 * freq, y2 * freq, 750.0]);
+    let p2 = (n2 * 1.5).max(0.0).min(1.0);
+
+    // Layer 3: Rotated 120 degrees
+    let cos120: f64 = -0.5;
+    let sin120: f64 = 0.866;
+    let x3 = x * cos120 - y * sin120;
+    let y3 = x * sin120 + y * cos120;
+    let n3 = noise.get([x3 * freq, y3 * freq, 800.0]);
+    let p3 = (n3 * 1.5).max(0.0).min(1.0);
+
+    // Multiply layers - only strong where ALL are positive
+    let combined = p1 * p2 * p3;
+
+    // Add medium-scale variation for varied peak sizes
+    let med_freq = freq * 0.6;
+    let n_med = noise.get([x * med_freq + 50.0, y * med_freq + 50.0, 850.0]);
+    let p_med = (n_med * 1.3).max(0.0).min(1.0);
+
+    // Layer 4 at 45 degrees for medium scale
+    let cos45: f64 = 0.707;
+    let sin45: f64 = 0.707;
+    let x4 = x * cos45 - y * sin45;
+    let y4 = x * sin45 + y * cos45;
+    let n4 = noise.get([x4 * med_freq, y4 * med_freq, 900.0]);
+    let p4 = (n4 * 1.3).max(0.0).min(1.0);
+
+    let med_combined = p_med * p4;
+
+    // Final: blend fine and medium isolated peaks
+    let peak_value = (combined * 0.6 + med_combined * 0.5).min(1.0);
+
+    // Sharpen to create more distinct peak boundaries
+    (peak_value as f32).powf(0.6).min(1.0)
 }
 
 /// Smooth step interpolation
