@@ -15,8 +15,10 @@ mod climate;
 mod coastline;
 mod erosion;
 mod explorer;
+mod exr_export;
 mod grid_export;
 mod heightmap;
+mod map_export;
 mod menu;
 mod microclimate;
 mod plates;
@@ -135,6 +137,30 @@ struct Args {
     /// Skip launching the explorer (for batch/headless export)
     #[arg(long)]
     headless: bool,
+
+    /// Export heightmap and river map to EXR files
+    #[arg(long)]
+    export_exr: bool,
+
+    /// Output directory for EXR files (default: current directory)
+    #[arg(long, default_value = ".")]
+    exr_output_dir: String,
+
+    /// Export all map variants (visual, data, legend) using improved export
+    #[arg(long)]
+    export_maps: bool,
+
+    /// Output directory for PNG map exports (default: current directory)
+    #[arg(long, default_value = ".")]
+    map_output_dir: String,
+
+    /// Disable LUT-based coloring (use discrete biome colors only)
+    #[arg(long)]
+    no_lut: bool,
+
+    /// Disable border dithering
+    #[arg(long)]
+    no_dither: bool,
 }
 
 fn main() {
@@ -298,6 +324,9 @@ fn main() {
     println!("Calculating plate stress...");
     let stress_map = plates::calculate_stress(&plate_map, &plates);
 
+    // Create map scale for coordinate scaling (used throughout generation)
+    let map_scale = scale::MapScale::default();
+
     // Generate heightmap
     println!("Generating heightmap...");
     let land_mask = heightmap::generate_land_mask(&plate_map, &plates, seeds.heightmap);
@@ -374,9 +403,29 @@ fn main() {
     let coastline_network = coastline::generate_coastline_network(&heightmap, &coastline_params, seeds.coastline);
     coastline::apply_coastline_to_heightmap(&coastline_network, &mut heightmap, coastline_params.blend_width);
 
+    // Carve fjord channels into coastal terrain (creates narrow inlets like Norwegian fjords)
+    println!("Carving fjord channels...");
+    heightmap::apply_fjord_incisions(&mut heightmap, seeds.heightmap, &map_scale);
+
     // Apply terrain noise layers based on region type
     println!("Applying terrain noise layers...");
     heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
+
+    // Apply archipelago pass to add islands in shallow ocean near stress zones
+    println!("Applying archipelago pass...");
+    heightmap::apply_archipelago_pass(&mut heightmap, &stress_map, seeds.heightmap);
+
+    // Expand single-tile islands into proper multi-tile islands
+    println!("Expanding island clusters...");
+    heightmap::expand_island_clusters(&mut heightmap, &stress_map, seeds.heightmap);
+
+    // Apply volcano pass to add volcanic cones based on tectonic stress
+    println!("Placing volcanoes...");
+    let volcanoes = heightmap::apply_volcano_pass(&mut heightmap, &stress_map, seeds.heightmap);
+
+    // Generate lava for active volcanoes
+    println!("Generating lava flows...");
+    let lava_map = heightmap::generate_lava_map(&heightmap, &volcanoes, seeds.heightmap);
 
     // CRITICAL: Final depression fill to ensure river connectivity
     // Post-processing steps (coastline, noise) may have created new pits
@@ -442,6 +491,18 @@ fn main() {
         println!("Placed {} unique biomes", unique_biomes_placed);
     }
 
+    // Apply volcanic biomes based on lava map
+    let volcanic_tiles = biomes::apply_volcanic_biomes(
+        &mut extended_biomes,
+        &lava_map,
+        &volcanoes,
+        &heightmap,
+        seeds.biomes,
+    );
+    if volcanic_tiles > 0 {
+        println!("Converted {} tiles to volcanic biomes", volcanic_tiles);
+    }
+
     // Compute biome feathering map for smooth transitions
     println!("Computing biome feathering map...");
     let feather_config = biome_feathering::FeatherConfig::default();
@@ -453,7 +514,6 @@ fn main() {
 
     // Launch explorer
     println!("Launching terminal explorer...");
-    let map_scale = scale::MapScale::default();
     // Generate Bezier river network
     let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seeds.rivers);
 
@@ -518,6 +578,7 @@ fn main() {
     world_data.handshakes = Some(world_handshakes);
     world_data.underground_water = Some(underground_water_features);
     world_data.set_flow_accumulation(flow_accumulation);
+    world_data.set_volcanic_features(lava_map, volcanoes);
 
     // Export freshwater network if requested
     if args.export_rivers {
@@ -532,6 +593,55 @@ fn main() {
         let filename = format!("world_base_{}.png", master_seed);
         if let Err(e) = explorer::export_base_map_image(&world_data, &filename) {
             eprintln!("Failed to export base map: {}", e);
+        }
+    }
+
+    // Export EXR files if requested
+    if args.export_exr {
+        let output_dir = std::path::Path::new(&args.exr_output_dir);
+        if let Some(ref flow_acc) = world_data.flow_accumulation {
+            if let Err(e) = exr_export::export_world_exr(
+                &world_data.heightmap,
+                flow_acc,
+                &world_data.biomes,
+                output_dir,
+                master_seed,
+            ) {
+                eprintln!("Failed to export EXR files: {}", e);
+            }
+        } else {
+            eprintln!("Warning: Flow accumulation not available, skipping river map export");
+            // Export just the heightmap and biomes
+            let heightmap_path = output_dir.join(format!("world_{}_heightmap.exr", master_seed));
+            if let Err(e) = exr_export::export_heightmap_exr(&world_data.heightmap, &heightmap_path) {
+                eprintln!("Failed to export heightmap EXR: {}", e);
+            } else {
+                println!("Exported heightmap to: {}", heightmap_path.display());
+            }
+            let biome_path = output_dir.join(format!("world_{}_biomes.exr", master_seed));
+            if let Err(e) = exr_export::export_biome_map_exr(&world_data.biomes, &biome_path) {
+                eprintln!("Failed to export biome EXR: {}", e);
+            } else {
+                println!("Exported biomes to: {}", biome_path.display());
+            }
+        }
+    }
+
+    // Export improved PNG maps if requested
+    if args.export_maps {
+        let output_dir = std::path::Path::new(&args.map_output_dir);
+        let config = map_export::MapExportConfig {
+            use_lut: !args.no_lut,
+            dithering: !args.no_dither,
+            dither_seed: master_seed,
+            hillshade: true,
+            hillshade_intensity: 0.6,
+            height_exaggeration: 0.035,
+            lut_biome_blend: 0.35, // 35% biome color, 65% LUT for smooth natural look
+        };
+
+        if let Err(e) = map_export::export_all_maps(&world_data, output_dir, master_seed, &config) {
+            eprintln!("Failed to export maps: {}", e);
         }
     }
 

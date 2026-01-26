@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use noise::{NoiseFn, Perlin, Seedable};
+use rayon::prelude::*;
 use crate::climate::Biome;
 use crate::tilemap::Tilemap;
 
@@ -1848,6 +1849,7 @@ fn maybe_convert_to_fantasy(
 }
 
 /// Generate extended biome map
+/// Generate extended biomes with parallelization for improved performance.
 pub fn generate_extended_biomes(
     heightmap: &Tilemap<f32>,
     temperature: &Tilemap<f32>,
@@ -1862,26 +1864,28 @@ pub fn generate_extended_biomes(
     // Create noise generator for biome variation
     let noise = Perlin::new(1).set_seed(seed as u32);
 
-    let mut biomes = Tilemap::new_with(width, height, ExtendedBiome::Ocean);
+    // Compute biomes in parallel by rows
+    let rows: Vec<Vec<ExtendedBiome>> = (0..height)
+        .into_par_iter()
+        .map(|y| {
+            (0..width).map(|x| {
+                let elev = *heightmap.get(x, y);
+                let temp = *temperature.get(x, y);
+                let moist = *moisture.get(x, y);
+                let stress = *stress_map.get(x, y);
 
-    for y in 0..height {
-        for x in 0..width {
-            let elev = *heightmap.get(x, y);
-            let temp = *temperature.get(x, y);
-            let moist = *moisture.get(x, y);
-            let stress = *stress_map.get(x, y);
+                classify_extended(
+                    elev, temp, moist, stress,
+                    x, y, width, height,
+                    config, &noise,
+                )
+            }).collect()
+        })
+        .collect();
 
-            let biome = classify_extended(
-                elev, temp, moist, stress,
-                x, y, width, height,
-                config, &noise,
-            );
-
-            biomes.set(x, y, biome);
-        }
-    }
-
-    biomes
+    // Flatten rows into single vector
+    let data: Vec<ExtendedBiome> = rows.into_iter().flatten().collect();
+    Tilemap::from_vec(width, height, data)
 }
 
 // ============================================================================
@@ -3593,4 +3597,144 @@ fn place_dark_tower(
     let (x, y, _) = *chosen;
     biomes.set(x, y, ExtendedBiome::DarkTower);
     true
+}
+
+/// Apply volcanic biomes based on lava map.
+///
+/// Converts biomes near active volcanoes and lava flows to volcanic variants:
+/// - Molten lava -> LavaLake
+/// - Flowing lava -> VolcanicWasteland
+/// - Cooled lava -> Ashlands or VolcanicWasteland
+/// - Near volcanoes (no lava) -> Higher chance of VolcanicWasteland
+///
+/// Returns the number of tiles converted to volcanic biomes.
+pub fn apply_volcanic_biomes(
+    biomes: &mut Tilemap<ExtendedBiome>,
+    lava_map: &Tilemap<crate::heightmap::LavaState>,
+    volcanoes: &[crate::heightmap::VolcanoLocation],
+    heightmap: &Tilemap<f32>,
+    seed: u64,
+) -> usize {
+    use crate::heightmap::LavaState;
+    use noise::{NoiseFn, Perlin, Seedable};
+
+    let width = biomes.width;
+    let height = biomes.height;
+    let mut converted = 0;
+
+    // Noise for variation
+    let variation_noise = Perlin::new(1).set_seed((seed + 12345) as u32);
+
+    // First pass: Convert lava tiles to volcanic biomes
+    for y in 0..height {
+        for x in 0..width {
+            let lava_state = *lava_map.get(x, y);
+            let elevation = *heightmap.get(x, y);
+            let current_biome = *biomes.get(x, y);
+
+            // Skip water biomes (ocean, lakes)
+            if elevation < 0.0 {
+                continue;
+            }
+
+            let nx = x as f64 / width as f64;
+            let ny = y as f64 / height as f64;
+            let noise_val = variation_noise.get([nx * 30.0, ny * 30.0]) as f32;
+
+            let new_biome = match lava_state {
+                LavaState::Molten => {
+                    // Active lava crater - always LavaLake
+                    Some(ExtendedBiome::LavaLake)
+                }
+                LavaState::Flowing => {
+                    // Active lava flow - VolcanicWasteland
+                    Some(ExtendedBiome::VolcanicWasteland)
+                }
+                LavaState::Cooled => {
+                    // Cooled lava - Ashlands or VolcanicWasteland based on noise
+                    if noise_val > 0.2 {
+                        Some(ExtendedBiome::Ashlands)
+                    } else {
+                        Some(ExtendedBiome::VolcanicWasteland)
+                    }
+                }
+                LavaState::None => {
+                    // No lava - check if near a volcano
+                    None
+                }
+            };
+
+            if let Some(biome) = new_biome {
+                // Don't overwrite certain special biomes
+                if !matches!(current_biome,
+                    ExtendedBiome::Ocean | ExtendedBiome::DeepOcean |
+                    ExtendedBiome::CoastalWater | ExtendedBiome::Ice |
+                    ExtendedBiome::SnowyPeaks | ExtendedBiome::LavaLake
+                ) {
+                    biomes.set(x, y, biome);
+                    converted += 1;
+                }
+            }
+        }
+    }
+
+    // Second pass: Convert tiles near volcano centers to volcanic biomes
+    // At world scale, influence radius is just 1-2 tiles around the volcano
+    const INFLUENCE_RADIUS: isize = 2;
+
+    for volcano in volcanoes {
+        let cx = volcano.x as isize;
+        let cy = volcano.y as isize;
+
+        for dy in -INFLUENCE_RADIUS..=INFLUENCE_RADIUS {
+            for dx in -INFLUENCE_RADIUS..=INFLUENCE_RADIUS {
+                // Skip the volcano tile itself (already handled by lava)
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+
+                let dist_sq = (dx * dx + dy * dy) as f32;
+                if dist_sq > (INFLUENCE_RADIUS * INFLUENCE_RADIUS) as f32 {
+                    continue;
+                }
+
+                let tx = (cx + dx).rem_euclid(width as isize) as usize;
+                let ty = (cy + dy).rem_euclid(height as isize) as usize;
+
+                let elevation = *heightmap.get(tx, ty);
+                if elevation < 0.0 {
+                    continue; // Skip water
+                }
+
+                let current_biome = *biomes.get(tx, ty);
+                let lava_state = *lava_map.get(tx, ty);
+
+                // Skip if already volcanic
+                if matches!(current_biome,
+                    ExtendedBiome::VolcanicWasteland | ExtendedBiome::LavaLake |
+                    ExtendedBiome::Ashlands | ExtendedBiome::ObsidianFields
+                ) {
+                    continue;
+                }
+
+                // Skip if has lava (already handled in first pass)
+                if lava_state != LavaState::None {
+                    continue;
+                }
+
+                let nx = tx as f64 / width as f64;
+                let ny = ty as f64 / height as f64;
+                let noise_val = variation_noise.get([nx * 50.0, ny * 50.0]) as f32;
+
+                // Adjacent to volcano = Ashlands (volcanic soil, ash deposits)
+                // Probability based on noise for natural variation
+                if noise_val > -0.3 {
+                    biomes.set(tx, ty, ExtendedBiome::Ashlands);
+                    converted += 1;
+                }
+            }
+        }
+    }
+
+    converted
 }

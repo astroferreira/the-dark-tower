@@ -171,7 +171,7 @@ pub fn compute_flow_accumulation(
             cells.push((x, y, *heightmap.get(x, y)));
         }
     }
-    cells.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    cells.sort_unstable_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
     // Process cells from highest to lowest
     for (x, y, _) in cells {
@@ -225,7 +225,7 @@ fn find_river_sources(
     }
 
     // Sort sources by accumulation (larger rivers first)
-    sources.sort_by(|a, b| {
+    sources.sort_unstable_by(|a, b| {
         let acc_a = *flow_acc.get(a.0, a.1);
         let acc_b = *flow_acc.get(b.0, b.1);
         acc_b.partial_cmp(&acc_a).unwrap_or(std::cmp::Ordering::Equal)
@@ -739,7 +739,7 @@ fn breach_river_barriers(
     }
 
     // Sort by elevation (highest first) - process from sources downstream
-    river_cells.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    river_cells.sort_unstable_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
     // Multiple passes to propagate breaching downstream
     for pass in 0..MAX_PASSES {
@@ -786,75 +786,99 @@ pub fn fill_depressions_public(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
     fill_depressions(heightmap)
 }
 
-/// Fill depressions using a simplified Planchon-Darboux algorithm.
+/// Fill depressions using the Priority-Flood algorithm.
+/// This is O(n log n) instead of the iterative O(k × n) approach.
 /// Ensures that every cell can flow to the ocean (height < 0.0) or map edge.
 fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
+    use std::collections::BinaryHeap;
+    use std::cmp::Ordering;
+
     let width = heightmap.width;
     let height = heightmap.height;
-    let mut water = Tilemap::new_with(width, height, f32::MAX);
     let epsilon = 1e-4; // Tiny drop to ensure flow
 
-    // 1. Initialize ocean cells with their real height
-    // Everything else stays at f32::MAX (infinite)
+    // Priority queue entry: we want minimum elevation first, so we negate
+    #[derive(Copy, Clone)]
+    struct Cell {
+        neg_elevation: f32, // Negated for min-heap behavior
+        x: usize,
+        y: usize,
+    }
+
+    impl PartialEq for Cell {
+        fn eq(&self, other: &Self) -> bool {
+            self.neg_elevation == other.neg_elevation
+        }
+    }
+
+    impl Eq for Cell {}
+
+    impl PartialOrd for Cell {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for Cell {
+        fn cmp(&self, other: &Self) -> Ordering {
+            // Compare negated elevations for min-heap behavior
+            self.neg_elevation.partial_cmp(&other.neg_elevation)
+                .unwrap_or(Ordering::Equal)
+        }
+    }
+
+    let mut water = Tilemap::new_with(width, height, f32::MAX);
+    let mut visited = Tilemap::new_with(width, height, false);
+    let mut heap: BinaryHeap<Cell> = BinaryHeap::with_capacity(width * height / 4);
+
+    // Initialize with ocean cells (below sea level)
     for y in 0..height {
         for x in 0..width {
             let h = *heightmap.get(x, y);
             if h < 0.0 {
                 water.set(x, y, h);
+                visited.set(x, y, true);
+                heap.push(Cell { neg_elevation: -h, x, y });
             }
         }
     }
 
-    // 2. Iteratively lower the water surface from neighbors
-    // We alternate passes to propagate changes efficiently
-    let mut changed = true;
-    while changed {
-        changed = false;
+    // Priority-Flood: process cells in order of increasing elevation
+    while let Some(cell) = heap.pop() {
+        let current_water = *water.get(cell.x, cell.y);
 
-        // Pass 1: Top-Left to Bottom-Right
-        for y in 0..height {
-            for x in 0..width {
-                let h = *heightmap.get(x, y);
-                let mut min_neigh = f32::MAX;
+        // Check all 8 neighbors
+        for dir in 0..8 {
+            let nx = (cell.x as i32 + DX[dir]).rem_euclid(width as i32) as usize;
+            let ny = cell.y as i32 + DY[dir];
 
-                // Check 8 neighbors (with wrapping for X)
-                for dir in 0..8 {
-                    let nx = (x as i32 + DX[dir]).rem_euclid(width as i32) as usize;
-                    let ny = y as i32 + DY[dir];
-                    if ny >= 0 && ny < height as i32 {
-                        min_neigh = min_neigh.min(*water.get(nx, ny as usize));
-                    }
-                }
-
-                // Water level is max(terrain, neighbor + epsilon)
-                // We clamp to current water level (only lower it)
-                let new_water = h.max(min_neigh + epsilon);
-                if new_water < *water.get(x, y) {
-                    water.set(x, y, new_water);
-                    changed = true;
-                }
+            if ny < 0 || ny >= height as i32 {
+                continue;
             }
+            let ny = ny as usize;
+
+            if *visited.get(nx, ny) {
+                continue;
+            }
+
+            visited.set(nx, ny, true);
+            let neighbor_terrain = *heightmap.get(nx, ny);
+
+            // Water level is max(terrain, current_water + epsilon)
+            // This ensures water can flow from neighbor to current cell
+            let neighbor_water = neighbor_terrain.max(current_water + epsilon);
+            water.set(nx, ny, neighbor_water);
+
+            heap.push(Cell { neg_elevation: -neighbor_water, x: nx, y: ny });
         }
+    }
 
-        // Pass 2: Bottom-Right to Top-Left
-        for y in (0..height).rev() {
-            for x in (0..width).rev() {
-                let h = *heightmap.get(x, y);
-                let mut min_neigh = f32::MAX;
-
-                for dir in 0..8 {
-                    let nx = (x as i32 + DX[dir]).rem_euclid(width as i32) as usize;
-                    let ny = y as i32 + DY[dir];
-                    if ny >= 0 && ny < height as i32 {
-                        min_neigh = min_neigh.min(*water.get(nx, ny as usize));
-                    }
-                }
-
-                let new_water = h.max(min_neigh + epsilon);
-                if new_water < *water.get(x, y) {
-                    water.set(x, y, new_water);
-                    changed = true;
-                }
+    // Handle any cells not reachable from ocean (shouldn't happen in normal maps)
+    // Set them to their terrain height
+    for y in 0..height {
+        for x in 0..width {
+            if !*visited.get(x, y) {
+                water.set(x, y, *heightmap.get(x, y));
             }
         }
     }

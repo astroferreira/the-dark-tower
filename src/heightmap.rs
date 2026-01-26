@@ -177,6 +177,103 @@ pub struct TerrainNoiseStack {
     pub layers: Vec<NoiseLayer>,
 }
 
+/// A compiled noise layer with pre-created Perlin noise generator
+pub struct CompiledNoiseLayer {
+    /// The noise generator (pre-created for performance)
+    pub noise: Perlin,
+    /// Reference to the original layer configuration
+    pub frequency: f64,
+    pub amplitude: f32,
+    pub octaves: u32,
+    pub persistence: f64,
+    pub lacunarity: f64,
+    pub blend_mode: BlendMode,
+    pub mask: LayerMask,
+}
+
+/// A compiled noise stack with pre-created noise generators for efficient evaluation.
+/// This avoids creating Perlin noise objects on every evaluate() call.
+pub struct CompiledNoiseStack {
+    /// Compiled layers with pre-created noise generators
+    pub layers: Vec<CompiledNoiseLayer>,
+}
+
+impl CompiledNoiseStack {
+    /// Evaluate all layers at a position
+    pub fn evaluate(
+        &self,
+        x: f64,
+        y: f64,
+        current_elevation: f32,
+        moisture: Option<f32>,
+    ) -> f32 {
+        let mut result = current_elevation;
+
+        for layer in &self.layers {
+            // Check mask
+            let mask_weight = match &layer.mask {
+                LayerMask::None => 1.0,
+                LayerMask::Elevation { min, max } => {
+                    if result >= *min && result <= *max {
+                        // Smooth falloff at edges
+                        let range = max - min;
+                        let center = (min + max) / 2.0;
+                        let dist = (result - center).abs() / (range / 2.0);
+                        1.0 - dist.powi(2)
+                    } else {
+                        0.0
+                    }
+                }
+                LayerMask::Moisture { min, max } => {
+                    if let Some(m) = moisture {
+                        if m >= *min && m <= *max {
+                            let range = max - min;
+                            let center = (min + max) / 2.0;
+                            let dist = (m - center).abs() / (range / 2.0);
+                            1.0 - dist.powi(2)
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        1.0 // No moisture data, apply fully
+                    }
+                }
+            };
+
+            if mask_weight <= 0.0 {
+                continue;
+            }
+
+            // Sample noise using pre-created generator
+            let nx = x * layer.frequency;
+            let ny = y * layer.frequency;
+            let noise_val = fbm(
+                &layer.noise,
+                nx, ny,
+                layer.octaves,
+                layer.persistence,
+                layer.lacunarity,
+            ) as f32;
+
+            // Scale by amplitude and mask
+            let layer_value = noise_val * layer.amplitude * mask_weight;
+
+            // Apply blend mode
+            result = match layer.blend_mode {
+                BlendMode::Add => result + layer_value,
+                BlendMode::Multiply => result * (1.0 + layer_value / layer.amplitude),
+                BlendMode::Max => result.max(result + layer_value),
+                BlendMode::Min => result.min(result + layer_value),
+                BlendMode::Lerp(weight) => {
+                    result * (1.0 - weight) + (result + layer_value) * weight
+                }
+            };
+        }
+
+        result
+    }
+}
+
 impl TerrainNoiseStack {
     /// Create an empty noise stack
     pub fn new() -> Self {
@@ -189,7 +286,28 @@ impl TerrainNoiseStack {
         self
     }
 
-    /// Evaluate all layers at a position
+    /// Compile the noise stack for efficient evaluation.
+    /// Pre-creates all Perlin noise generators so they don't need to be
+    /// created on every evaluate() call.
+    pub fn compile(&self, base_seed: u64) -> CompiledNoiseStack {
+        let layers = self.layers.iter().map(|layer| {
+            CompiledNoiseLayer {
+                noise: Perlin::new(1).set_seed((base_seed + layer.seed_offset) as u32),
+                frequency: layer.frequency,
+                amplitude: layer.amplitude,
+                octaves: layer.octaves,
+                persistence: layer.persistence,
+                lacunarity: layer.lacunarity,
+                blend_mode: layer.blend_mode,
+                mask: layer.mask.clone(),
+            }
+        }).collect();
+
+        CompiledNoiseStack { layers }
+    }
+
+    /// Evaluate all layers at a position (legacy method - creates noise on each call)
+    /// Prefer using compile() + CompiledNoiseStack::evaluate() for better performance.
     pub fn evaluate(
         &self,
         x: f64,
@@ -235,7 +353,7 @@ impl TerrainNoiseStack {
                 continue;
             }
 
-            // Create noise for this layer
+            // Create noise for this layer (inefficient - use compile() instead)
             let noise = Perlin::new(1).set_seed((base_seed + layer.seed_offset) as u32);
 
             // Sample noise
@@ -387,6 +505,10 @@ pub fn apply_noise_stack(
     let width = heightmap.width;
     let height = heightmap.height;
 
+    // Pre-compile the noise stack for efficient evaluation
+    // This creates all Perlin noise generators once instead of per-cell
+    let compiled = stack.compile(seed);
+
     for y in 0..height {
         for x in 0..width {
             let nx = x as f64 / width as f64;
@@ -395,7 +517,7 @@ pub fn apply_noise_stack(
             let current = *heightmap.get(x, y);
             let m = moisture.map(|m| *m.get(x, y));
 
-            let new_elevation = stack.evaluate(nx, ny, seed, current, m);
+            let new_elevation = compiled.evaluate(nx, ny, current, m);
             heightmap.set(x, y, new_elevation);
         }
     }
@@ -424,14 +546,38 @@ const RIDGE_FREQUENCY: f64 = 0.012;      // Ridge spacing (lower = larger featur
 const TECTONIC_SCALE: f32 = 2000.0;      // Increased for proper mountain ranges
 
 // Volcanic island parameters (oceanic convergence zones)
-const VOLCANIC_THRESHOLD: f32 = 0.02;    // Very low threshold to ensure islands appear
-const VOLCANIC_BASE: f32 = -500.0;       // Seamount base (underwater)
-const VOLCANIC_PEAK: f32 = 800.0;        // Max island peak height
-const VOLCANIC_ISLAND_FREQ: f64 = 0.12;  // Island clustering frequency (increased for more islands)
+const VOLCANIC_THRESHOLD: f32 = 0.015;   // Lower threshold for more islands
+const VOLCANIC_BASE: f32 = -400.0;       // Seamount base (shallower for more emergence)
+const VOLCANIC_PEAK: f32 = 1200.0;       // Max island peak height (taller islands)
+const VOLCANIC_ISLAND_FREQ: f64 = 0.10;  // Island clustering frequency (lower = larger clusters)
 
 // Coastal fractal parameters
 const COAST_FRACTAL_OCTAVES: u32 = 5;
 const COAST_FRACTAL_SCALE: f64 = 0.15;
+
+// Hotspot archipelago parameters (independent ocean island clusters)
+const HOTSPOT_MIN_DISTANCE: f32 = 12.0;       // Reduced min distance for more hotspot zones
+const HOTSPOT_ZONE_FREQ: f64 = 0.007;         // Higher freq for more hotspot regions (~20% coverage)
+const HOTSPOT_CHAIN_FREQ: f64 = 0.020;        // Lower freq for longer island chains
+const HOTSPOT_ISLAND_FREQ: f64 = 0.10;        // Slightly lower for larger individual islands
+const HOTSPOT_BASE_HEIGHT: f32 = 150.0;       // Higher minimum island height
+const HOTSPOT_MAX_HEIGHT: f32 = 1200.0;       // Taller maximum peak
+
+// Continental fragmentation parameters (breaking up coastlines into islands)
+const FRAG_ZONE_FREQ: f64 = 0.006;            // Lower freq for larger fragmentation zones
+const FRAG_ISLAND_FREQ: f64 = 0.04;           // Lower freq for larger scattered islands
+const FRAG_WATER_RANGE: f32 = -180.0;         // Extended further into water for more offshore islands
+const FRAG_LAND_RANGE: f32 = 80.0;            // Extended onto land for more coastal fragmentation
+const FRAG_BASE_HEIGHT: f32 = 60.0;           // Higher minimum fragmented island height
+const FRAG_MAX_HEIGHT: f32 = 700.0;           // Taller maximum fragmented island height
+
+// Fjord incision parameters (narrow channels cutting into coast)
+const FJORD_ZONE_FREQ: f64 = 0.012;           // Low freq for fjord zone selection
+const FJORD_CHANNEL_LONG_FREQ: f64 = 0.005;   // Very low freq along channel (long features)
+const FJORD_CHANNEL_NARROW_FREQ: f64 = 0.10;  // High freq across channel (narrow features)
+const FJORD_MAX_DEPTH: f32 = 250.0;           // Max channel incision depth in meters (deeper)
+const FJORD_MIN_ELEVATION: f32 = 3.0;         // Min land elevation to carve
+const FJORD_MAX_ELEVATION: f32 = 800.0;       // Max land elevation to carve (higher terrain)
 
 // =============================================================================
 // MAIN HEIGHTMAP GENERATION
@@ -598,9 +744,19 @@ fn generate_continental_elevation(
     let tectonic_scale = scale_elevation(TECTONIC_SCALE, map_scale);
     let detail_freq = scale_frequency(25.0, map_scale);
 
-    // Underwater continental shelf - with barrier island check
+    // Underwater continental shelf - with island generation checks
     if coast_distance < 0.0 {
-        // Check for barrier islands first (they rise above sea level)
+        // Check for continental fragmentation islands first (archipelago-like scatter)
+        let frag_island = generate_continental_fragmentation(
+            x, y, coast_distance, terrain_noise, detail_noise, seed, map_scale
+        );
+
+        if frag_island > 0.0 {
+            // Fragmented archipelago island rises above sea level
+            return frag_island;
+        }
+
+        // Check for barrier islands (they rise above sea level)
         let barrier_island = generate_barrier_islands(
             x, y, coast_distance, terrain_noise, detail_noise, seed, map_scale
         );
@@ -738,53 +894,54 @@ fn generate_coastal_islands(
     detail_noise: &Perlin,
     seed: u64,
 ) -> f32 {
-    // Island probability increases closer to coast, peaks around -20 distance
-    let distance_factor = (-coast_distance - 5.0) / 55.0; // 0.0 at -5, 1.0 at -60
-    let proximity_factor = if coast_distance > -30.0 {
-        // Peak probability near coast
-        1.0 - ((-coast_distance - 15.0).abs() / 15.0).min(1.0)
+    // Island probability increases closer to coast, peaks around -25 distance
+    // Extended range for more offshore islands
+    let distance_factor = (-coast_distance - 5.0) / 80.0; // Extended range
+    let proximity_factor = if coast_distance > -40.0 {
+        // Peak probability near coast (extended)
+        1.0 - ((-coast_distance - 20.0).abs() / 20.0).min(1.0)
     } else {
         // Decreasing further out
         1.0 - distance_factor.min(1.0)
     };
-    
-    // Multi-scale noise for island clusters
+
+    // Multi-scale noise for island clusters - lower frequencies for larger clusters
     let large_cluster = coast_noise.get([
-        x * 120.0,
-        y * 120.0,
+        x * 90.0,
+        y * 90.0,
         seed_to_z(seed, 2.1),
     ]);
 
     let medium_cluster = coast_noise.get([
-        x * 250.0 + 5.2,
-        y * 250.0 + 3.1,
+        x * 200.0 + 5.2,
+        y * 200.0 + 3.1,
         seed_to_z(seed, 2.2),
     ]);
 
     let small_peaks = detail_noise.get([
-        x * 500.0,
-        y * 500.0,
+        x * 400.0,
+        y * 400.0,
         seed_to_z(seed, 2.3),
     ]);
-    
+
     // Combine scales - larger features guide smaller ones
     let combined = (large_cluster * 0.4 + medium_cluster * 0.35 + small_peaks * 0.25 + 0.5) as f32;
-    
-    // Threshold for island formation - affected by proximity
-    let base_threshold = 0.65;
-    let threshold = base_threshold - proximity_factor * 0.12;
-    
+
+    // Lower threshold for island formation - more islands
+    let base_threshold = 0.55;
+    let threshold = base_threshold - proximity_factor * 0.18;
+
     if combined < threshold {
         return f32::MIN; // No island - return very low so it doesn't override ocean
     }
-    
-    // Island height - smaller islands near edge of range
+
+    // Island height - taller islands possible
     let peak_factor = ((combined - threshold) / (1.0 - threshold)).min(1.0);
-    let max_height = 150.0 * proximity_factor; // Smaller islands further from coast
-    
+    let max_height = 250.0 * proximity_factor; // Taller islands possible
+
     // Some islands are just rocks, some are proper islands
-    let height = 5.0 + peak_factor * max_height;
-    
+    let height = 8.0 + peak_factor * max_height;
+
     height
 }
 
@@ -867,8 +1024,14 @@ fn generate_oceanic_elevation(
         f32::MIN
     };
 
-    // Use the higher of ocean floor or volcanic island
-    let final_ocean = ocean_elevation.max(volcanic_elevation);
+    // Hotspot archipelagos - independent of plate stress
+    // Creates Hawaii-like or Faroe-like island chains in open ocean
+    let hotspot_elevation = generate_hotspot_archipelago(
+        x, y, continental_distance, terrain_noise, detail_noise, seed, map_scale
+    );
+
+    // Use the higher of ocean floor, volcanic island, or hotspot island
+    let final_ocean = ocean_elevation.max(volcanic_elevation).max(hotspot_elevation);
 
     // Transition zone near continental shelf
     let shelf_blend = if continental_distance < shelf_blend_dist {
@@ -982,18 +1145,18 @@ fn generate_volcanic_islands(
 
     // Cluster zones - medium frequency
     let cluster = noise.get([x * 80.0, y * 80.0, seed_to_z(seed, 0.3)]);
-    let in_cluster = cluster > -0.4; // ~70% of stressed areas can have islands
-    
+    let in_cluster = cluster > -0.6; // ~80% of stressed areas can have islands (increased)
+
     if !in_cluster {
         return f32::MIN;
     }
-    
+
     // Take max of spots for isolated peaks (not average - creates dots not lines)
     let best_spot = spot1.max(spot2) as f32;
-    
+
     // Higher stress = lower threshold = more islands
     // Lower base threshold for more islands overall
-    let threshold = 0.3 - stress_factor * 0.25;
+    let threshold = 0.22 - stress_factor * 0.20;
     
     if best_spot < threshold {
         return f32::MIN;
@@ -1041,7 +1204,7 @@ fn generate_volcanic_islands_scaled(
 
     // Cluster zones - medium frequency
     let cluster = noise.get([x * cluster_freq, y * cluster_freq, seed_to_z(seed, 1.3)]);
-    let in_cluster = cluster > -0.4; // ~70% of stressed areas can have islands
+    let in_cluster = cluster > -0.6; // ~80% of stressed areas can have islands (increased)
 
     if !in_cluster {
         return f32::MIN;
@@ -1052,7 +1215,7 @@ fn generate_volcanic_islands_scaled(
 
     // Higher stress = lower threshold = more islands
     // Lower base threshold for more islands overall
-    let threshold = 0.3 - stress_factor * 0.25;
+    let threshold = 0.22 - stress_factor * 0.20;
 
     if best_spot < threshold {
         return f32::MIN;
@@ -1082,6 +1245,238 @@ fn generate_volcanic_islands_scaled(
     let height = base_height + stress_factor * stress_bonus;
 
     height
+}
+
+// =============================================================================
+// HOTSPOT ARCHIPELAGOS (Independent Ocean Island Clusters)
+// =============================================================================
+
+/// Generate hotspot archipelago islands in open ocean
+/// Creates Hawaii-like or Faroe-like island chains independent of plate boundaries
+/// These represent mantle plume hotspots that create island chains as plates move over them
+fn generate_hotspot_archipelago(
+    x: f64,
+    y: f64,
+    continental_distance: f32,
+    terrain_noise: &Perlin,
+    detail_noise: &Perlin,
+    seed: u64,
+    map_scale: &MapScale,
+) -> f32 {
+    // Only in deep ocean, far from continents
+    let min_dist = scale_distance(HOTSPOT_MIN_DISTANCE, map_scale);
+    if continental_distance < min_dist {
+        return f32::MIN;
+    }
+
+    // Scale frequencies for map scale
+    let zone_freq = scale_frequency(HOTSPOT_ZONE_FREQ * 100.0, map_scale);
+    let chain_freq = scale_frequency(HOTSPOT_CHAIN_FREQ * 100.0, map_scale);
+    let island_freq = scale_frequency(HOTSPOT_ISLAND_FREQ * 100.0, map_scale);
+
+    // LOW-FREQUENCY hotspot zone placement - creates hotspot regions
+    // ~20-25% of deep ocean gets hotspot activity (increased for more archipelagos)
+    let hotspot_zone = terrain_noise.get([
+        x * zone_freq,
+        y * zone_freq,
+        seed_to_z(seed, 70.0),
+    ]) as f32;
+
+    // Lower threshold for more hotspot zones
+    if hotspot_zone < 0.15 {
+        return f32::MIN;
+    }
+
+    let zone_strength = ((hotspot_zone - 0.15) / 0.85).min(1.0);
+
+    // MEDIUM-FREQUENCY chain pattern - creates linear island chains within zones
+    // Hotspots create chains as the plate moves over them (like Hawaiian chain)
+    // Slightly elongated pattern for chain effect
+    let chain_x = terrain_noise.get([
+        x * chain_freq * 1.3,
+        y * chain_freq,
+        seed_to_z(seed, 71.0),
+    ]) as f32;
+    let chain_y = terrain_noise.get([
+        x * chain_freq,
+        y * chain_freq * 1.3,
+        seed_to_z(seed, 72.0),
+    ]) as f32;
+    let chain_pattern = (chain_x + chain_y) * 0.5;
+
+    // Chain modulation - affects island density along the chain
+    let chain_factor = (chain_pattern * 0.5 + 0.5).clamp(0.3, 1.0);
+
+    // HIGH-FREQUENCY individual islands using multiplicative rotated noise
+    // This creates truly isolated peaks (same technique as generate_isolated_peaks)
+
+    // Layer 1: Original orientation
+    let n1 = detail_noise.get([x * island_freq, y * island_freq, seed_to_z(seed, 73.0)]);
+    let p1 = (n1 * 1.6 + 0.2).max(0.0).min(1.0) as f32;
+
+    // Layer 2: Rotated 60 degrees
+    let cos60: f64 = 0.5;
+    let sin60: f64 = 0.866;
+    let x2 = x * cos60 - y * sin60;
+    let y2 = x * sin60 + y * cos60;
+    let n2 = detail_noise.get([x2 * island_freq, y2 * island_freq, seed_to_z(seed, 74.0)]);
+    let p2 = (n2 * 1.6 + 0.2).max(0.0).min(1.0) as f32;
+
+    // Layer 3: Rotated 120 degrees
+    let cos120: f64 = -0.5;
+    let sin120: f64 = 0.866;
+    let x3 = x * cos120 - y * sin120;
+    let y3 = x * sin120 + y * cos120;
+    let n3 = detail_noise.get([x3 * island_freq, y3 * island_freq, seed_to_z(seed, 75.0)]);
+    let p3 = (n3 * 1.6 + 0.2).max(0.0).min(1.0) as f32;
+
+    // Multiply layers - islands only where ALL layers positive
+    let isolation = (p1 * p2 * p3).sqrt();
+
+    // Combined probability
+    let combined = zone_strength * chain_factor * isolation;
+
+    // Lower threshold for more island formation
+    if combined < 0.05 {
+        return f32::MIN;
+    }
+
+    // Island height based on combined strength
+    let peak_factor = ((combined - 0.05) / 0.95).min(1.0);
+    let base = scale_elevation(HOTSPOT_BASE_HEIGHT, map_scale);
+    let extra = scale_elevation(HOTSPOT_MAX_HEIGHT - HOTSPOT_BASE_HEIGHT, map_scale);
+
+    // Larger islands for stronger combined values
+    let height = base + peak_factor.powf(0.7) * extra;
+
+    // Add some height variation for volcanic peaks
+    let peak_detail = detail_noise.get([
+        x * island_freq * 2.0,
+        y * island_freq * 2.0,
+        seed_to_z(seed, 76.0),
+    ]) as f32;
+    let detail_bonus = scale_elevation(100.0, map_scale) * peak_detail.abs() * peak_factor;
+
+    height + detail_bonus
+}
+
+// =============================================================================
+// CONTINENTAL FRAGMENTATION (Breaking Coastlines into Islands)
+// =============================================================================
+
+/// Generate continental fragmentation - scattered islands at continental edges
+/// Creates archipelago-like patterns near coasts (like Scotland's western islands, Norway's coast)
+fn generate_continental_fragmentation(
+    x: f64,
+    y: f64,
+    coast_distance: f32,
+    terrain_noise: &Perlin,
+    detail_noise: &Perlin,
+    seed: u64,
+    map_scale: &MapScale,
+) -> f32 {
+    // Only in the fragmentation zone near coastlines
+    let water_range = scale_distance(FRAG_WATER_RANGE, map_scale);
+    let land_range = scale_distance(FRAG_LAND_RANGE, map_scale);
+
+    if coast_distance < water_range || coast_distance > land_range {
+        return f32::MIN;
+    }
+
+    // Only create islands in water (coast_distance < 0)
+    // Land fragmentation is handled by fjord incisions
+    if coast_distance >= 0.0 {
+        return f32::MIN;
+    }
+
+    // Scale frequencies
+    let zone_freq = scale_frequency(FRAG_ZONE_FREQ * 100.0, map_scale);
+    let island_freq = scale_frequency(FRAG_ISLAND_FREQ * 100.0, map_scale);
+
+    // ZONE-BASED fragmentation - not all coastlines fragment
+    // ~35-40% of coastline gets archipelago-like fragmentation
+    let frag_zone = terrain_noise.get([
+        x * zone_freq,
+        y * zone_freq,
+        seed_to_z(seed, 80.0),
+    ]) as f32;
+
+    if frag_zone < 0.15 {
+        return f32::MIN;  // No fragmentation in this coastal section
+    }
+
+    let zone_strength = ((frag_zone - 0.15) / 0.85).min(1.0);
+
+    // Distance factor - more islands closer to coast, fewer further out
+    let normalized_dist = -coast_distance / -water_range;  // 0 at coast, 1 at max water range
+    // Peak probability at ~30% of the way out, taper at edges
+    let dist_factor = if normalized_dist < 0.35 {
+        normalized_dist / 0.35
+    } else {
+        1.0 - (normalized_dist - 0.35) / 0.65
+    };
+
+    if dist_factor < 0.1 {
+        return f32::MIN;
+    }
+
+    // ISLAND SCATTER using multiplicative isolation
+    // Primary layer
+    let n1 = detail_noise.get([
+        x * island_freq,
+        y * island_freq,
+        seed_to_z(seed, 81.0),
+    ]) as f32;
+    let p1 = (n1 * 1.5 + 0.35).max(0.0).min(1.0);
+
+    // Rotated 45 degrees for second layer
+    let cos45: f64 = 0.707;
+    let sin45: f64 = 0.707;
+    let x2 = x * cos45 - y * sin45;
+    let y2 = x * sin45 + y * cos45;
+    let n2 = detail_noise.get([
+        x2 * island_freq * 0.9,
+        y2 * island_freq * 0.9,
+        seed_to_z(seed, 82.0),
+    ]) as f32;
+    let p2 = (n2 * 1.5 + 0.35).max(0.0).min(1.0);
+
+    // Third layer at 90 degrees
+    let n3 = detail_noise.get([
+        -y * island_freq * 1.1,
+        x * island_freq * 1.1,
+        seed_to_z(seed, 83.0),
+    ]) as f32;
+    let p3 = (n3 * 1.5 + 0.3).max(0.0).min(1.0);
+
+    // Multiplicative isolation
+    let isolation = (p1 * p2 * p3).powf(0.6);
+
+    // Combined probability
+    let combined = zone_strength * dist_factor * isolation;
+
+    // Lower threshold for more fragmented islands
+    if combined < 0.08 {
+        return f32::MIN;
+    }
+
+    // Island height
+    let peak_factor = ((combined - 0.08) / 0.92).min(1.0);
+    let base = scale_elevation(FRAG_BASE_HEIGHT, map_scale);
+    let extra = scale_elevation(FRAG_MAX_HEIGHT - FRAG_BASE_HEIGHT, map_scale);
+
+    // Height with some variation
+    let height = base + peak_factor.powf(0.8) * extra;
+
+    // Detail variation for natural look
+    let height_detail = terrain_noise.get([
+        x * island_freq * 1.5,
+        y * island_freq * 1.5,
+        seed_to_z(seed, 84.0),
+    ]) as f32;
+    let variation = scale_elevation(50.0, map_scale) * height_detail.abs() * peak_factor;
+
+    height + variation
 }
 
 // =============================================================================
@@ -1907,6 +2302,7 @@ pub fn apply_regional_noise_stacks(
     seed: u64,
 ) {
     use noise::{Perlin, Seedable};
+    use rayon::prelude::*;
 
     let width = heightmap.width;
     let height = heightmap.height;
@@ -1919,57 +2315,879 @@ pub fn apply_regional_noise_stacks(
 
     // Define noise parameters per region type
     // (frequency, amplitude, octaves)
-    let mountain_params = (0.08, 150.0, 4);
-    let ocean_params = (0.02, 50.0, 3);
-    let floodplain_params = (0.03, 20.0, 2);
-    let forest_params = (0.05, 40.0, 3);
+    let mountain_params = (0.08, 150.0f32, 4usize);
+    let ocean_params = (0.02, 50.0f32, 3usize);
+    let floodplain_params = (0.03, 20.0f32, 2usize);
+    let forest_params = (0.05, 40.0f32, 3usize);
+
+    // Compute noise contributions in parallel
+    let contributions: Vec<(usize, usize, f32)> = (0..height)
+        .into_par_iter()
+        .flat_map(|y| {
+            let mut row_contributions = Vec::with_capacity(width);
+            for x in 0..width {
+                let elevation = *heightmap.get(x, y);
+                let stress = *stress_map.get(x, y);
+
+                let nx = x as f64 / width as f64;
+                let ny = y as f64 / height as f64;
+
+                // Select noise based on region type
+                let noise_contribution = if stress > 0.1 {
+                    // Mountain regions - more dramatic variation
+                    let (freq, amp, octaves) = mountain_params;
+                    fbm_simple(&mountain_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp * stress
+                } else if elevation < 0.0 {
+                    // Ocean regions - subtle variation
+                    let (freq, amp, octaves) = ocean_params;
+                    fbm_simple(&ocean_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+                } else if stress < -0.05 {
+                    // Floodplain/rift regions - very smooth
+                    let (freq, amp, octaves) = floodplain_params;
+                    fbm_simple(&floodplain_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+                } else {
+                    // Default forest/grassland - gentle rolling
+                    let (freq, amp, octaves) = forest_params;
+                    fbm_simple(&forest_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+                };
+
+                row_contributions.push((x, y, elevation + noise_contribution));
+            }
+            row_contributions
+        })
+        .collect();
+
+    // Apply contributions to heightmap
+    for (x, y, new_elevation) in contributions {
+        heightmap.set(x, y, new_elevation);
+    }
+}
+
+// Pre-computed fBm constants (avoid recalculating in hot loops)
+const FBM_AMPLITUDES: [f64; 6] = [1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125];
+const FBM_FREQUENCIES: [f64; 6] = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0];
+const FBM_MAX_VALS: [f64; 6] = [1.0, 1.5, 1.75, 1.875, 1.9375, 1.96875];
+
+/// Simple fBm helper for regional noise (optimized with precomputed constants)
+#[inline]
+fn fbm_simple(noise: &noise::Perlin, x: f64, y: f64, octaves: usize) -> f64 {
+    use noise::NoiseFn;
+    let octaves = octaves.min(6);
+    let mut total = 0.0;
+
+    for i in 0..octaves {
+        total += FBM_AMPLITUDES[i] * noise.get([x * FBM_FREQUENCIES[i], y * FBM_FREQUENCIES[i]]);
+    }
+
+    total / FBM_MAX_VALS[octaves - 1]
+}
+
+// =============================================================================
+// ARCHIPELAGO PASS - SMALL SCATTERED ISLANDS
+// =============================================================================
+
+/// Apply archipelago pass to create small scattered islands in shallow ocean areas.
+///
+/// This uses high-frequency noise to "sprinkle" small islands across shallow ocean
+/// zones (continental shelves), creating archipelago-like clusters of tiny islands.
+///
+/// Islands form where:
+/// - Water is shallow (-500m to -10m depth)
+/// - High-frequency noise exceeds a threshold
+/// - Multiple noise octaves align (creating clustered patterns)
+/// Apply archipelago pass - creates islands guided by tectonic stress patterns.
+/// Islands form preferentially near plate boundaries and stressed zones.
+pub fn apply_archipelago_pass(
+    heightmap: &mut Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    seed: u64,
+) {
+    use noise::{NoiseFn, Perlin, Seedable};
+    use rayon::prelude::*;
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    // Create noise generators with unique seed offsets
+    let cluster_noise = Perlin::new(1).set_seed((seed + 5555) as u32);
+    let shape_noise = Perlin::new(1).set_seed((seed + 6666) as u32);
+
+    // Ocean depth thresholds
+    const OCEAN_MIN: f32 = -2000.0;  // Not too deep
+    const OCEAN_MAX: f32 = -10.0;    // Must be underwater
+
+    // Lower frequencies = larger island clusters (not single tiles)
+    const CLUSTER_FREQ: f64 = 0.03;   // Very low - creates large island groups
+    const SHAPE_FREQ: f64 = 0.08;     // Low - creates smooth island shapes
+
+    // Compute island modifications in parallel
+    let islands: Vec<(usize, usize, f32)> = (0..height)
+        .into_par_iter()
+        .flat_map(|y| {
+            let mut row_islands = Vec::new();
+            for x in 0..width {
+                let elevation = *heightmap.get(x, y);
+
+                // Only affect ocean areas
+                if elevation < OCEAN_MIN || elevation > OCEAN_MAX {
+                    continue;
+                }
+
+                // Get tectonic stress at this location
+                let stress = stress_map.get(x, y).abs();
+
+                // Islands much more likely in stressed areas (near plate boundaries)
+                // Minimum stress threshold - no islands in completely calm ocean
+                if stress < 0.02 {
+                    continue;
+                }
+
+                let stress_factor = (stress / 0.3).min(1.0); // Normalize stress
+
+                let nx = x as f64 / width as f64;
+                let ny = y as f64 / height as f64;
+
+                // Large-scale cluster pattern - determines island group locations
+                let cluster = cluster_noise.get([
+                    nx * CLUSTER_FREQ * 100.0,
+                    ny * CLUSTER_FREQ * 100.0,
+                    seed_to_z(seed, 50.0)
+                ]) as f32;
+
+                // Shape pattern - determines island boundaries within clusters
+                let shape = shape_noise.get([
+                    nx * SHAPE_FREQ * 100.0,
+                    ny * SHAPE_FREQ * 100.0,
+                    seed_to_z(seed, 51.0)
+                ]) as f32;
+
+                // Combined pattern favoring larger connected features
+                let combined = cluster * 0.6 + shape * 0.4;
+
+                // Threshold depends on stress - higher stress = more islands
+                // Base threshold is high, stress lowers it significantly
+                let threshold = 0.35 - stress_factor * 0.30;
+
+                if combined < threshold {
+                    continue;
+                }
+
+                // Depth factor: shallower water = easier to form islands
+                let depth_factor = 1.0 - (elevation.abs() / 2000.0);
+                let depth_factor = depth_factor.max(0.2).min(1.0);
+
+                // Calculate island height
+                let strength = ((combined - threshold) / (1.0 - threshold)).min(1.0);
+
+                // Height based on strength and stress (volcanic = taller)
+                let base_height = 30.0 + strength * 200.0 * depth_factor;
+                let stress_bonus = stress_factor * 150.0; // Volcanic islands are taller
+
+                let island_height = base_height + stress_bonus;
+
+                row_islands.push((x, y, island_height));
+            }
+            row_islands
+        })
+        .collect();
+
+    // Apply islands to heightmap
+    let islands_created = islands.len();
+    for (x, y, new_height) in islands {
+        heightmap.set(x, y, new_height);
+    }
+
+    if islands_created > 0 {
+        println!("  Created {} archipelago island tiles", islands_created);
+    }
+}
+
+/// Expand small islands into larger clusters (minimum 3 tiles).
+/// Uses stress patterns to guide expansion direction.
+pub fn expand_island_clusters(
+    heightmap: &mut Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    seed: u64,
+) {
+    use noise::{NoiseFn, Perlin, Seedable};
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    let shape_noise = Perlin::new(1).set_seed((seed + 3333) as u32);
+
+    // Find all small islands (land tiles surrounded mostly by water)
+    let mut island_seeds: Vec<(usize, usize, f32)> = Vec::new();
 
     for y in 0..height {
         for x in 0..width {
             let elevation = *heightmap.get(x, y);
+
+            // Only consider land tiles
+            if elevation <= 0.0 {
+                continue;
+            }
+
+            // Count water neighbors
+            let mut water_neighbors = 0;
+            let mut land_neighbors = 0;
+
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+                    let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+                    if *heightmap.get(nx, ny) <= 0.0 {
+                        water_neighbors += 1;
+                    } else {
+                        land_neighbors += 1;
+                    }
+                }
+            }
+
+            // Island seed: land tile with mostly water neighbors (isolated)
+            // This identifies small islands that need expansion
+            if water_neighbors >= 5 && land_neighbors <= 3 {
+                island_seeds.push((x, y, elevation));
+            }
+        }
+    }
+
+    // Expand each island seed into a larger cluster
+    let mut expansions: Vec<(usize, usize, f32)> = Vec::new();
+
+    for (ix, iy, base_elevation) in &island_seeds {
+        let stress = stress_map.get(*ix, *iy).abs();
+        let stress_factor = (stress / 0.2).min(1.0);
+
+        // Expansion radius based on stress (higher stress = bigger volcanic islands)
+        let base_radius = 2;
+        let stress_radius = (stress_factor * 3.0) as i32;
+        let radius = base_radius + stress_radius;
+
+        let nx_base = *ix as f64 / width as f64;
+        let ny_base = *iy as f64 / height as f64;
+
+        // Expand in a radius around the island seed
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let dist_sq = dx * dx + dy * dy;
+                let max_dist_sq = radius * radius;
+
+                if dist_sq > max_dist_sq {
+                    continue;
+                }
+
+                let nx = ((*ix as i32) + dx).rem_euclid(width as i32) as usize;
+                let ny = ((*iy as i32) + dy).clamp(0, height as i32 - 1) as usize;
+
+                // Only expand into water
+                if *heightmap.get(nx, ny) > 0.0 {
+                    continue;
+                }
+
+                // Use noise to create natural irregular shapes
+                let sample_x = nx as f64 / width as f64;
+                let sample_y = ny as f64 / height as f64;
+
+                let shape = shape_noise.get([
+                    sample_x * 15.0 * 100.0,
+                    sample_y * 15.0 * 100.0,
+                    seed_to_z(seed, 60.0)
+                ]) as f32;
+
+                // Distance falloff - closer to center = more likely to be land
+                let dist = (dist_sq as f32).sqrt();
+                let dist_factor = 1.0 - (dist / radius as f32);
+
+                // Combined probability for this cell to become land
+                let prob = dist_factor * 0.7 + (shape * 0.5 + 0.5) * 0.3;
+
+                // Higher stress = fill in more of the island shape
+                let threshold = 0.4 - stress_factor * 0.2;
+
+                if prob > threshold {
+                    // Height decreases toward edges
+                    let edge_factor = dist_factor.powf(0.5);
+                    let new_height = base_elevation * edge_factor * 0.8 + 20.0;
+
+                    expansions.push((nx, ny, new_height.max(15.0)));
+                }
+            }
+        }
+    }
+
+    // Apply expansions
+    let expanded_count = expansions.len();
+    for (x, y, new_height) in expansions {
+        // Only expand if still water (don't overwrite other expansions with lower values)
+        if *heightmap.get(x, y) <= 0.0 {
+            heightmap.set(x, y, new_height);
+        }
+    }
+
+    if expanded_count > 0 {
+        println!("  Expanded {} island tiles from {} seeds", expanded_count, island_seeds.len());
+    }
+}
+
+// =============================================================================
+// FJORD INCISION SYSTEM
+// =============================================================================
+
+/// Compute distance from each cell to nearest water using BFS
+/// Returns a tilemap with distance values (0.0 for water, increasing for land)
+/// This is O(n) instead of O(n * r^2) for repeated neighbor searches
+fn compute_distance_to_water(heightmap: &Tilemap<f32>, max_dist: f32) -> Tilemap<f32> {
+    use std::collections::VecDeque;
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+    let mut distance = Tilemap::new_with(width, height, f32::MAX);
+    let mut queue: VecDeque<(usize, usize)> = VecDeque::with_capacity(width * height / 4);
+
+    // Initialize: all water tiles have distance 0
+    for y in 0..height {
+        for x in 0..width {
+            if *heightmap.get(x, y) < 0.0 {
+                distance.set(x, y, 0.0);
+                queue.push_back((x, y));
+            }
+        }
+    }
+
+    // BFS propagation - process cells in order of distance
+    while let Some((x, y)) = queue.pop_front() {
+        let current_dist = *distance.get(x, y);
+        if current_dist >= max_dist {
+            continue;
+        }
+
+        // Check 8 neighbors
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+
+                let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+                let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+
+                // Diagonal distance is sqrt(2) ≈ 1.414
+                let step = if dx != 0 && dy != 0 { 1.414 } else { 1.0 };
+                let new_dist = current_dist + step;
+
+                if new_dist < *distance.get(nx, ny) {
+                    distance.set(nx, ny, new_dist);
+                    queue.push_back((nx, ny));
+                }
+            }
+        }
+    }
+
+    distance
+}
+
+/// Apply fjord-like channel incisions to coastal terrain
+/// This is a post-processing pass that carves narrow inlets into existing coastlines
+/// Creates features like Norwegian fjords, Scottish sea lochs, Faroe Island sounds
+pub fn apply_fjord_incisions(
+    heightmap: &mut Tilemap<f32>,
+    seed: u64,
+    map_scale: &MapScale,
+) {
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    let channel_noise = Perlin::new(1).set_seed((seed + 8001) as u32);
+    let direction_noise = Perlin::new(1).set_seed((seed + 8002) as u32);
+    let detail_noise = Perlin::new(1).set_seed((seed + 8003) as u32);
+
+    // Scale parameters
+    let zone_freq = scale_frequency(FJORD_ZONE_FREQ * 100.0, map_scale);
+    let channel_long = scale_frequency(FJORD_CHANNEL_LONG_FREQ * 100.0, map_scale);
+    let channel_narrow = scale_frequency(FJORD_CHANNEL_NARROW_FREQ * 100.0, map_scale);
+    let max_depth = scale_elevation(FJORD_MAX_DEPTH, map_scale);
+    let min_elev = scale_elevation(FJORD_MIN_ELEVATION, map_scale);
+    let max_elev = scale_elevation(FJORD_MAX_ELEVATION, map_scale);
+
+    let check_radius = 12.0f32;
+
+    // Pre-compute distance to water using BFS - O(n) instead of O(n * r^2)
+    let water_distance = compute_distance_to_water(heightmap, check_radius + 1.0);
+
+    let mut fjords_carved = 0;
+
+    for y in 0..height {
+        for x in 0..width {
+            let elevation = *heightmap.get(x, y);
+
+            // Only affect land in the right elevation range
+            if elevation < min_elev || elevation > max_elev {
+                continue;
+            }
+
+            // O(1) lookup instead of O(625) neighbor search
+            let min_water_dist = *water_distance.get(x, y);
+            if min_water_dist > check_radius || min_water_dist == 0.0 {
+                continue;  // Too far from water or is water
+            }
+
+            // Normalized coordinates for noise sampling
+            let nx = x as f64 / width as f64;
+            let ny = y as f64 / height as f64;
+
+            // FJORD ZONE: low-frequency noise determines which coastal stretches get fjords
+            let fjord_zone = channel_noise.get([
+                nx * zone_freq,
+                ny * zone_freq,
+                seed_to_z(seed, 90.0),
+            ]) as f32;
+
+            if fjord_zone < 0.25 {
+                continue;
+            }
+
+            let zone_strength = ((fjord_zone - 0.25) / 0.75).min(1.0);
+
+            // DIRECTION: varies smoothly across the map for natural fjord orientations
+            let dir_angle = direction_noise.get([
+                nx * zone_freq * 0.5,
+                ny * zone_freq * 0.5,
+                seed_to_z(seed, 91.0),
+            ]) as f32 * std::f32::consts::PI;
+
+            let cos_d = dir_angle.cos() as f64;
+            let sin_d = dir_angle.sin() as f64;
+
+            // Rotated coordinates for elongated channel pattern
+            let u = nx * cos_d + ny * sin_d;
+            let v = -nx * sin_d + ny * cos_d;
+
+            // CHANNEL PATTERN: anisotropic noise creates elongated channels
+            let channel_pattern = channel_noise.get([
+                u * channel_long * 100.0,
+                v * channel_narrow * 100.0,
+                seed_to_z(seed, 92.0),
+            ]) as f32;
+
+            if channel_pattern < 0.40 {
+                continue;
+            }
+
+            let channel_strength = (channel_pattern - 0.40) / 0.60;
+
+            // Distance factor - channels more likely/deeper closer to existing water
+            let dist_factor = 1.0 - (min_water_dist / check_radius).min(1.0);
+
+            // Elevation factor - deeper channels at lower elevations
+            let elev_normalized = (elevation - min_elev) / (max_elev - min_elev);
+            let elev_factor = 1.0 - elev_normalized * 0.6;
+
+            // Combined incision depth
+            let incision = max_depth * zone_strength * channel_strength * dist_factor * elev_factor;
+
+            if incision < 5.0 {
+                continue;
+            }
+
+            // Add detail noise for irregular channel floor
+            let detail = detail_noise.get([
+                nx * channel_narrow * 50.0,
+                ny * channel_narrow * 50.0,
+                seed_to_z(seed, 93.0),
+            ]) as f32;
+            let varied_incision = incision * (0.75 + detail.abs() * 0.25);
+
+            // Carve the channel
+            let new_elev = (elevation - varied_incision).max(-150.0);
+            heightmap.set(x, y, new_elev);
+            fjords_carved += 1;
+        }
+    }
+
+    if fjords_carved > 0 {
+        println!("  Carved {} fjord channel tiles", fjords_carved);
+    }
+}
+
+// =============================================================================
+// VOLCANO GENERATION SYSTEM
+// =============================================================================
+//
+// At world map scale (several km per tile), a volcano fits within a single tile.
+// We mark volcano tiles and calculate lava flow to adjacent tiles based on terrain.
+// The detailed volcano structure is generated at region map scale.
+
+/// Represents a volcano location with properties for region map generation.
+#[derive(Clone, Debug)]
+pub struct VolcanoLocation {
+    /// Tile x coordinate
+    pub x: usize,
+    /// Tile y coordinate
+    pub y: usize,
+    /// Volcano peak height above surrounding terrain (in meters)
+    pub peak_height: f32,
+    /// Whether this is an active volcano (has lava)
+    pub is_active: bool,
+    /// Volcano type affects region map generation
+    pub volcano_type: VolcanoType,
+}
+
+/// Type of volcano - affects region map generation
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VolcanoType {
+    /// Shield volcano - broad, gentle slopes (like Hawaii)
+    Shield,
+    /// Stratovolcano - steep cone with crater (like Mt. Fuji)
+    Stratovolcano,
+    /// Caldera - collapsed crater, often with lake
+    Caldera,
+}
+
+/// Find suitable locations for volcanoes based on tectonic stress.
+///
+/// Volcanoes form primarily at:
+/// - Convergent plate boundaries (subduction zones) - high positive stress
+/// - Oceanic hotspots (simulated with noise)
+/// - Divergent boundaries (mid-ocean ridges) - high negative stress
+///
+/// Returns a list of volcano locations (single tiles).
+pub fn find_volcano_locations(
+    heightmap: &Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    seed: u64,
+) -> Vec<VolcanoLocation> {
+    use noise::{NoiseFn, Perlin, Seedable};
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    let mut candidates: Vec<(usize, usize, f32)> = Vec::new();
+
+    // Noise for variation and hotspot simulation
+    let hotspot_noise = Perlin::new(1).set_seed((seed + 8888) as u32);
+    let variation_noise = Perlin::new(1).set_seed((seed + 9999) as u32);
+
+    // Minimum stress threshold for volcano formation
+    const MIN_STRESS: f32 = 0.15;
+
+    // Sample grid - don't check every tile, use a coarse grid
+    let sample_step = 8;
+
+    for y in (0..height).step_by(sample_step) {
+        for x in (0..width).step_by(sample_step) {
             let stress = *stress_map.get(x, y);
+            let elevation = *heightmap.get(x, y);
 
             let nx = x as f64 / width as f64;
             let ny = y as f64 / height as f64;
 
-            // Select noise based on region type
-            let noise_contribution = if stress > 0.1 {
-                // Mountain regions - more dramatic variation
-                let (freq, amp, octaves) = mountain_params;
-                fbm_simple(&mountain_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp * stress
-            } else if elevation < 0.0 {
-                // Ocean regions - subtle variation
-                let (freq, amp, octaves) = ocean_params;
-                fbm_simple(&ocean_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
-            } else if stress < -0.05 {
-                // Floodplain/rift regions - very smooth
-                let (freq, amp, octaves) = floodplain_params;
-                fbm_simple(&floodplain_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
-            } else {
-                // Default forest/grassland - gentle rolling
-                let (freq, amp, octaves) = forest_params;
-                fbm_simple(&forest_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
-            };
+            // Hotspot noise can create volcanoes in lower stress areas
+            let hotspot = hotspot_noise.get([nx * 15.0, ny * 15.0, seed_to_z(seed, 60.0)]) as f32;
+            let hotspot_boost = if hotspot > 0.6 { (hotspot - 0.6) * 1.5 } else { 0.0 };
 
-            heightmap.set(x, y, elevation + noise_contribution);
+            let effective_stress = stress.abs() + hotspot_boost;
+
+            // Skip if stress too low
+            if effective_stress < MIN_STRESS {
+                continue;
+            }
+
+            // Oceanic volcanoes (underwater or island arcs)
+            let is_oceanic = elevation < 500.0;
+
+            // Continental volcanoes prefer higher elevations (mountain building zones)
+            let is_mountain_zone = elevation > 500.0 && stress > 0.2;
+
+            if !is_oceanic && !is_mountain_zone && hotspot < 0.7 {
+                continue;
+            }
+
+            // Score based on stress magnitude and variation
+            let variation = variation_noise.get([nx * 30.0, ny * 30.0, seed_to_z(seed, 61.0)]) as f32;
+            let score = effective_stress * (0.8 + variation * 0.4);
+
+            if score > 0.25 {
+                candidates.push((x, y, score));
+            }
         }
     }
-}
 
-/// Simple fBm helper for regional noise
-fn fbm_simple(noise: &noise::Perlin, x: f64, y: f64, octaves: usize) -> f64 {
-    use noise::NoiseFn;
-    let mut total = 0.0;
-    let mut amplitude = 1.0;
-    let mut frequency = 1.0;
-    let mut max_val = 0.0;
+    // Sort by score (highest first)
+    candidates.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
-    for _ in 0..octaves {
-        total += amplitude * noise.get([x * frequency, y * frequency]);
-        max_val += amplitude;
-        amplitude *= 0.5;
-        frequency *= 2.0;
+    // Filter to avoid volcanoes too close together
+    // At world scale, volcanoes should be at least 5-10 tiles apart
+    let min_distance = 8.0;
+    let mut selected: Vec<(usize, usize, f32)> = Vec::new();
+    let min_distance_sq = min_distance * min_distance;  // Compare squared distances (avoid sqrt)
+
+    for (x, y, score) in candidates {
+        let too_close = selected.iter().any(|(sx, sy, _)| {
+            let dx = (*sx as f32 - x as f32).abs();
+            let dy = (*sy as f32 - y as f32).abs();
+            let dx = dx.min(width as f32 - dx);  // Handle wraparound
+            dx * dx + dy * dy < min_distance_sq  // No sqrt needed
+        });
+
+        if !too_close {
+            selected.push((x, y, score));
+        }
     }
 
-    total / max_val
+    // Convert to VolcanoLocation structs
+    let mut rng_seed = seed;
+    selected.into_iter().map(|(x, y, score)| {
+        // Pseudo-random variation per volcano
+        rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let rand1 = (rng_seed >> 33) as f32 / u32::MAX as f32;
+        rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let rand2 = (rng_seed >> 33) as f32 / u32::MAX as f32;
+
+        // Peak height based on score (1000-4000m above surrounding terrain)
+        let peak_height = 1000.0 + score * 3000.0 * (0.8 + rand1 * 0.4);
+
+        // Active volcanoes based on stress and randomness
+        let stress = *stress_map.get(x, y);
+        let is_active = stress.abs() > 0.25 && rand2 > 0.3;
+
+        // Volcano type based on characteristics
+        let volcano_type = if rand1 < 0.2 {
+            VolcanoType::Caldera
+        } else if rand1 < 0.5 || stress < 0.0 {
+            // Shield volcanoes more common at hotspots and divergent boundaries
+            VolcanoType::Shield
+        } else {
+            VolcanoType::Stratovolcano
+        };
+
+        VolcanoLocation {
+            x,
+            y,
+            peak_height,
+            is_active,
+            volcano_type,
+        }
+    }).collect()
+}
+
+/// Mark volcano tiles on the heightmap.
+///
+/// At world map scale (several km per tile), a volcano fits in a single tile.
+/// This function applies a height boost to the volcano tile to represent
+/// the volcanic mountain. The detailed volcano structure is generated
+/// at region map scale.
+///
+/// Returns the number of volcano tiles marked.
+pub fn mark_volcano_tiles(
+    heightmap: &mut Tilemap<f32>,
+    volcanoes: &[VolcanoLocation],
+) -> usize {
+    let mut tiles_modified = 0;
+
+    for volcano in volcanoes {
+        let current = *heightmap.get(volcano.x, volcano.y);
+
+        // Add volcano peak height to existing elevation
+        // This represents the volcanic mountain rising above the terrain
+        let new_elevation = current + volcano.peak_height;
+        heightmap.set(volcano.x, volcano.y, new_elevation);
+        tiles_modified += 1;
+    }
+
+    tiles_modified
+}
+
+/// Apply volcano generation pass to the heightmap.
+///
+/// At world map scale, volcanoes are marked as single tiles with a height boost.
+/// The detailed structure is generated at region map scale.
+///
+/// Returns the list of volcano locations for further processing.
+pub fn apply_volcano_pass(
+    heightmap: &mut Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    seed: u64,
+) -> Vec<VolcanoLocation> {
+    // Find volcano locations
+    let volcanoes = find_volcano_locations(heightmap, stress_map, seed);
+
+    if volcanoes.is_empty() {
+        println!("  No suitable volcano locations found");
+        return volcanoes;
+    }
+
+    let active_count = volcanoes.iter().filter(|v| v.is_active).count();
+    println!("  Found {} volcanoes ({} active)", volcanoes.len(), active_count);
+
+    // Mark volcano tiles with height boost
+    let tiles_modified = mark_volcano_tiles(heightmap, &volcanoes);
+    println!("  Marked {} volcano tiles", tiles_modified);
+
+    volcanoes
+}
+
+// =============================================================================
+// LAVA SYSTEM - WORLD SCALE LAVA FLOW
+// =============================================================================
+//
+// At world map scale (several km per tile), lava flows are calculated based on:
+// - Volcano tile = molten lava source
+// - Adjacent downhill tiles = flowing lava (up to ~3 tiles, representing 10-30km flows)
+// - Tiles at flow edge = cooled basalt
+
+/// Lava tile state
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LavaState {
+    /// No lava present
+    #[default]
+    None,
+    /// Molten lava at volcano vent
+    Molten,
+    /// Actively flowing lava (still hot)
+    Flowing,
+    /// Cooled lava (solidified basalt)
+    Cooled,
+}
+
+/// Generate lava map for active volcanoes at world scale.
+///
+/// At world scale:
+/// - Volcano tile is marked as molten lava
+/// - Lava flows downhill to adjacent tiles (max 3 tiles = ~15-30km)
+/// - Flow probability based on slope and noise
+///
+/// Returns a tilemap marking lava presence and state.
+pub fn generate_lava_map(
+    heightmap: &Tilemap<f32>,
+    volcanoes: &[VolcanoLocation],
+    seed: u64,
+) -> Tilemap<LavaState> {
+    use noise::{NoiseFn, Perlin, Seedable};
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+    let mut lava_map = Tilemap::new_with(width, height, LavaState::None);
+
+    // Noise for variation in lava flow patterns
+    let flow_noise = Perlin::new(1).set_seed((seed + 10101) as u32);
+
+    let active_volcanoes: Vec<_> = volcanoes.iter().filter(|v| v.is_active).collect();
+
+    if active_volcanoes.is_empty() {
+        return lava_map;
+    }
+
+    // Maximum lava flow distance in tiles (represents ~15-30km of lava flow)
+    const MAX_FLOW_DISTANCE: usize = 3;
+
+    for volcano in &active_volcanoes {
+        // Volcano tile is the molten source
+        lava_map.set(volcano.x, volcano.y, LavaState::Molten);
+
+        // Flow lava to adjacent tiles using BFS
+        let mut flow_frontier: Vec<(usize, usize, usize)> = Vec::new();
+        let volcano_height = *heightmap.get(volcano.x, volcano.y);
+
+        // Start from volcano tile's neighbors
+        let start_neighbors = get_neighbors_8(volcano.x, volcano.y, width, height);
+        for (nx, ny) in start_neighbors {
+            let neighbor_height = *heightmap.get(nx, ny);
+            // Only flow downhill
+            if neighbor_height < volcano_height {
+                flow_frontier.push((nx, ny, 1));
+            }
+        }
+
+        // Process flow frontier
+        while let Some((x, y, dist)) = flow_frontier.pop() {
+            // Skip if already has lava
+            if *lava_map.get(x, y) != LavaState::None {
+                continue;
+            }
+
+            // Skip if too far
+            if dist > MAX_FLOW_DISTANCE {
+                continue;
+            }
+
+            let current_height = *heightmap.get(x, y);
+
+            // Skip water (ocean)
+            if current_height < 0.0 {
+                // Mark as cooled if it reaches water (lava hitting ocean)
+                lava_map.set(x, y, LavaState::Cooled);
+                continue;
+            }
+
+            // Noise check for flow variation
+            let nx_f = x as f64 / width as f64;
+            let ny_f = y as f64 / height as f64;
+            let noise_val = flow_noise.get([nx_f * 30.0, ny_f * 30.0, seed_to_z(seed, 70.0)]) as f32;
+
+            // Flow probability decreases with distance
+            let flow_prob = 1.0 - (dist as f32 / (MAX_FLOW_DISTANCE as f32 + 1.0));
+
+            // Skip some tiles based on noise and distance for natural variation
+            if noise_val > flow_prob * 1.5 - 0.5 {
+                continue;
+            }
+
+            // Mark as flowing lava (near volcano) or cooled (at edge)
+            let state = if dist <= 2 {
+                LavaState::Flowing
+            } else {
+                LavaState::Cooled
+            };
+            lava_map.set(x, y, state);
+
+            // Continue flowing to neighbors if not at max distance
+            if dist < MAX_FLOW_DISTANCE {
+                let neighbors = get_neighbors_8(x, y, width, height);
+                for (nx, ny) in neighbors {
+                    let neighbor_height = *heightmap.get(nx, ny);
+                    // Only flow downhill or same level
+                    if neighbor_height <= current_height + 50.0 {
+                        flow_frontier.push((nx, ny, dist + 1));
+                    }
+                }
+            }
+        }
+    }
+
+    // Count lava tiles (single pass instead of 3 separate iterations)
+    let (mut molten, mut flowing, mut cooled) = (0usize, 0usize, 0usize);
+    for (_, _, state) in lava_map.iter() {
+        match state {
+            LavaState::Molten => molten += 1,
+            LavaState::Flowing => flowing += 1,
+            LavaState::Cooled => cooled += 1,
+            LavaState::None => {}
+        }
+    }
+
+    if molten + flowing + cooled > 0 {
+        println!("  Lava: {} molten, {} flowing, {} cooled tiles", molten, flowing, cooled);
+    }
+
+    lava_map
+}
+
+/// Get 8-connected neighbors (including diagonals)
+fn get_neighbors_8(x: usize, y: usize, width: usize, height: usize) -> Vec<(usize, usize)> {
+    let mut neighbors = Vec::with_capacity(8);
+    for dy in -1isize..=1 {
+        for dx in -1isize..=1 {
+            if dx == 0 && dy == 0 {
+                continue;
+            }
+            let nx = (x as isize + dx).rem_euclid(width as isize) as usize;
+            let ny = (y as isize + dy).rem_euclid(height as isize) as usize;
+            neighbors.push((nx, ny));
+        }
+    }
+    neighbors
 }

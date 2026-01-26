@@ -19,6 +19,7 @@ use ratatui::{
 };
 
 use crate::ascii::{biome_char, height_color, temperature_color, moisture_color, stress_color};
+use crate::heightmap::{LavaState, VolcanoType};
 use crate::world::{WorldData, generate_world};
 use crate::weather_zones::ExtremeWeatherType;
 use crate::region::{RegionMap, RegionCache};
@@ -71,6 +72,7 @@ pub enum ViewMode {
     WeatherZones,
     Microclimate,
     SeasonalTemp,
+    Lava,
 }
 
 impl ViewMode {
@@ -89,6 +91,7 @@ impl ViewMode {
             ViewMode::WeatherZones => "Weather",
             ViewMode::Microclimate => "Micro",
             ViewMode::SeasonalTemp => "Season",
+            ViewMode::Lava => "Lava",
         }
     }
 
@@ -106,7 +109,8 @@ impl ViewMode {
             ViewMode::Coastline => ViewMode::WeatherZones,
             ViewMode::WeatherZones => ViewMode::Microclimate,
             ViewMode::Microclimate => ViewMode::SeasonalTemp,
-            ViewMode::SeasonalTemp => ViewMode::Biome,
+            ViewMode::SeasonalTemp => ViewMode::Lava,
+            ViewMode::Lava => ViewMode::Biome,
         }
     }
 }
@@ -556,6 +560,44 @@ impl Explorer {
                 let (r, g, b) = temperature_color(seasonal_temp);
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
+            ViewMode::Lava => {
+                // Show lava map overlay
+                if let Some(ref lava_map) = self.world.lava_map {
+                    use crate::heightmap::LavaState;
+                    let lava_state = *lava_map.get(x, y);
+                    match lava_state {
+                        LavaState::Molten => {
+                            // Bright orange/yellow for molten lava in crater
+                            ('*', Color::Rgb(255, 200, 0), Color::Rgb(255, 100, 0))
+                        }
+                        LavaState::Flowing => {
+                            // Orange/red for flowing lava
+                            ('~', Color::Rgb(255, 150, 0), Color::Rgb(200, 50, 0))
+                        }
+                        LavaState::Cooled => {
+                            // Dark gray/black for cooled basalt
+                            ('#', Color::Rgb(80, 70, 70), Color::Rgb(40, 35, 35))
+                        }
+                        LavaState::None => {
+                            // No lava - show regular terrain
+                            if is_water {
+                                ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
+                            } else {
+                                let (r, g, b) = height_color(height);
+                                ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                            }
+                        }
+                    }
+                } else {
+                    // No lava map available
+                    if is_water {
+                        ('~', Color::Rgb(80, 140, 220), Color::Rgb(20, 40, 80))
+                    } else {
+                        let (r, g, b) = height_color(height);
+                        ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                    }
+                }
+            }
         }
     }
 
@@ -573,7 +615,7 @@ impl Explorer {
             "  Biome, Base, Height, Temperature,",
             "  Moisture, Plates, Stress, Rivers,",
             "  BiomeBlend, Coastline, Weather,",
-            "  Micro, Season",
+            "  Micro, Season, Lava",
             "",
             "Season (for Season view):",
             "  [ / ] - Previous/Next season",
@@ -729,11 +771,58 @@ impl Explorer {
         lines.push((" Geology".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
         lines.push((format!("  Plate ID: {}", plate_id.0), Style::default().fg(Color::White)));
         lines.push((format!("  Plate Type: {}", plate_type_str), Style::default().fg(Color::White)));
+
+        // Check if this tile is a volcano
+        let volcano = self.world.volcanoes.iter().find(|v| v.x == x && v.y == y);
+        if let Some(v) = volcano {
+            let type_str = match v.volcano_type {
+                VolcanoType::Shield => "Shield",
+                VolcanoType::Stratovolcano => "Stratovolcano",
+                VolcanoType::Caldera => "Caldera",
+            };
+            let active_str = if v.is_active { " (Active)" } else { " (Dormant)" };
+            lines.push((format!("  Volcano: {}{}", type_str, active_str), Style::default().fg(Color::Red)));
+            lines.push((format!("    Peak: +{:.0}m", v.peak_height), Style::default().fg(Color::Gray)));
+        }
+
+        // Lava state
+        if let Some(ref lava_map) = self.world.lava_map {
+            let lava_state = *lava_map.get(x, y);
+            match lava_state {
+                LavaState::Molten => {
+                    lines.push(("  Lava: Molten".to_string(), Style::default().fg(Color::Rgb(255, 150, 0))));
+                }
+                LavaState::Flowing => {
+                    lines.push(("  Lava: Flowing".to_string(), Style::default().fg(Color::Rgb(255, 100, 0))));
+                }
+                LavaState::Cooled => {
+                    lines.push(("  Lava: Cooled (Basalt)".to_string(), Style::default().fg(Color::Rgb(100, 80, 80))));
+                }
+                LavaState::None => {}
+            }
+        }
         lines.push(("".to_string(), Style::default()));
 
         // Water section
         lines.push((" Water".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
         lines.push((format!("  Body: {}", water_str), Style::default().fg(Color::White)));
+
+        // Flow accumulation (drainage area)
+        if let Some(ref flow_acc) = self.world.flow_accumulation {
+            let flow = *flow_acc.get(x, y);
+            if flow > 10.0 {
+                let river_str = if flow > 1000.0 {
+                    format!("  Flow: {:.0} (Major River)", flow)
+                } else if flow > 100.0 {
+                    format!("  Flow: {:.0} (River)", flow)
+                } else if flow > 50.0 {
+                    format!("  Flow: {:.0} (Stream)", flow)
+                } else {
+                    format!("  Flow: {:.0} (Drainage)", flow)
+                };
+                lines.push((river_str, Style::default().fg(Color::Cyan)));
+            }
+        }
 
         // Underground water features
         if tile.water_features.has_any() {
@@ -1098,6 +1187,23 @@ pub fn export_map_image(
                 ViewMode::SeasonalTemp => {
                     let seasonal_temp = world.get_seasonal_temperature(x, y);
                     temperature_color(seasonal_temp)
+                }
+                ViewMode::Lava => {
+                    use crate::heightmap::LavaState;
+                    if let Some(ref lava_map) = world.lava_map {
+                        match *lava_map.get(x, y) {
+                            LavaState::Molten => (255, 200, 0),
+                            LavaState::Flowing => (255, 100, 0),
+                            LavaState::Cooled => (60, 50, 50),
+                            LavaState::None => {
+                                if is_water { (50, 100, 200) } else { height_color(h) }
+                            }
+                        }
+                    } else if is_water {
+                        (50, 100, 200)
+                    } else {
+                        height_color(h)
+                    }
                 }
             };
 
@@ -1483,7 +1589,7 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                     let panel_chunks = Layout::default()
                         .direction(Direction::Vertical)
                         .constraints([
-                            Constraint::Length(14), // Tile info panel (compact)
+                            Constraint::Length(22), // Tile info panel (compact, room for volcano/lava info)
                             Constraint::Min(20),    // Region map takes rest
                         ])
                         .split(panel_area);

@@ -193,12 +193,14 @@ fn compute_distance_field(
     (distance, gradient)
 }
 
-/// Compute blend weights for each tile based on neighboring biomes
+/// Compute blend weights for each tile based on neighboring biomes.
+/// Optimized to use O(n×8) instead of O(n×r²) by leveraging the distance field
+/// and only checking immediate neighbors.
 fn compute_blend_weights(
     biomes: &Tilemap<ExtendedBiome>,
     depth_map: &Tilemap<f32>,
     config: &FeatherConfig,
-    noise: &Perlin,
+    _noise: &Perlin,
 ) -> Tilemap<Vec<(ExtendedBiome, f32)>> {
     let width = biomes.width;
     let height = biomes.height;
@@ -216,38 +218,32 @@ fn compute_blend_weights(
                 continue;
             }
 
-            // Collect biomes within blend radius
-            let blend_radius = config.max_depth;
+            // Optimized: Use distance field directly for blend weights
+            // and only check 8 immediate neighbors instead of r² area
             let mut biome_contributions: std::collections::HashMap<ExtendedBiome, f32> = std::collections::HashMap::new();
 
-            // Add center biome
+            // Center biome weight based on distance from boundary
             let center_weight = catmull_rom_weight(depth, config.max_depth as f32, &config.spline_weights);
             biome_contributions.insert(center_biome, center_weight);
 
-            // Sample nearby biomes
-            for dy in -(blend_radius as i32)..=(blend_radius as i32) {
-                for dx in -(blend_radius as i32)..=(blend_radius as i32) {
-                    let dist = ((dx * dx + dy * dy) as f32).sqrt();
-                    if dist > blend_radius as f32 || (dx == 0 && dy == 0) {
-                        continue;
-                    }
+            // Check only 8 immediate neighbors to find adjacent biomes
+            // The distance field already tells us how far we are from boundaries
+            let neighbors = biomes.neighbors_8(x, y);
+            for (nx, ny) in neighbors {
+                let neighbor_biome = *biomes.get(nx, ny);
+                if neighbor_biome == center_biome {
+                    continue;
+                }
 
-                    let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
-                    let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+                // Weight based on our distance to boundary (from depth_map) and compatibility
+                // Closer to boundary = more influence from neighbor biome
+                let blend_factor = 1.0 - (depth / config.max_depth as f32).clamp(0.0, 1.0);
+                let compat = biome_compatibility(center_biome, neighbor_biome);
+                let weight = blend_factor * compat * (1.0 - center_weight);
 
-                    let neighbor_biome = *biomes.get(nx, ny);
-                    if neighbor_biome == center_biome {
-                        continue;
-                    }
-
-                    // Weight based on distance and compatibility
-                    let dist_weight = 1.0 - (dist / blend_radius as f32);
-                    let compat = biome_compatibility(center_biome, neighbor_biome);
-                    let weight = dist_weight * compat * (1.0 - center_weight);
-
-                    if weight > 0.01 {
-                        *biome_contributions.entry(neighbor_biome).or_insert(0.0) += weight;
-                    }
+                if weight > 0.01 {
+                    // Accumulate weight for each unique neighbor biome
+                    *biome_contributions.entry(neighbor_biome).or_insert(0.0) += weight;
                 }
             }
 
@@ -264,7 +260,7 @@ fn compute_blend_weights(
             };
 
             // Sort by weight descending
-            weights.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            weights.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
             weights_map.set(x, y, weights);
         }

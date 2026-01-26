@@ -25,6 +25,14 @@ impl<T: Clone> Tilemap<T> {
         }
     }
 
+    /// Create a Tilemap from a pre-computed vector.
+    /// The vector should be in row-major order (y * width + x).
+    /// Panics if the vector length doesn't match width * height.
+    pub fn from_vec(width: usize, height: usize, data: Vec<T>) -> Self {
+        assert_eq!(data.len(), width * height, "Data length must match width * height");
+        Self { width, height, data }
+    }
+
     /// Get the index into the data array, handling horizontal wrapping.
     fn index(&self, x: usize, y: usize) -> usize {
         let x = x % self.width; // Wrap horizontally

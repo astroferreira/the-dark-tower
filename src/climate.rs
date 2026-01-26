@@ -2,6 +2,7 @@
 //! Based on latitude, elevation, and ocean proximity
 
 use noise::{NoiseFn, Perlin, Seedable};
+use rayon::prelude::*;
 use crate::tilemap::Tilemap;
 use crate::scale::{MapScale, scale_distance, scale_elevation};
 
@@ -162,6 +163,7 @@ pub fn generate_temperature_with_config(
 }
 
 /// Generate temperature map with domain warping to break horizontal bands
+/// Parallelized with rayon for improved performance.
 pub fn generate_temperature_with_seed(
     heightmap: &Tilemap<f32>,
     width: usize,
@@ -169,8 +171,6 @@ pub fn generate_temperature_with_seed(
     mode: ClimateMode,
     seed: u64,
 ) -> Tilemap<f32> {
-    let mut temperature = Tilemap::new_with(width, height, 0.0f32);
-
     // Domain warping noise - distorts latitude lines for organic climate zones
     let warp_noise = Perlin::new(1).set_seed(seed as u32);
     let detail_noise = Perlin::new(1).set_seed(seed as u32 + 100);
@@ -180,64 +180,67 @@ pub fn generate_temperature_with_seed(
     const WARP_STRENGTH: f32 = 0.12;
     const WARP_SCALE: f64 = 3.0;  // Frequency of the warping (lower = larger blobs)
 
-    for y in 0..height {
-        for x in 0..width {
-            let elevation = *heightmap.get(x, y);
-
-            // Normalized coordinates for noise sampling
-            let nx = x as f64 / width as f64;
+    // Compute temperature values in parallel by rows
+    let rows: Vec<Vec<f32>> = (0..height)
+        .into_par_iter()
+        .map(|y| {
             let ny = y as f64 / height as f64;
+            (0..width).map(|x| {
+                let elevation = *heightmap.get(x, y);
+                let nx = x as f64 / width as f64;
 
-            // Base temperature depends on climate mode
-            let base_temp = match mode {
-                ClimateMode::Globe => {
-                    // DOMAIN WARPING: Distort the Y-coordinate using noise
-                    // This creates wavy, organic climate zone boundaries
-                    let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32;
-                    let detail = detail_noise.get([nx * WARP_SCALE * 2.0, ny * WARP_SCALE * 2.0]) as f32 * 0.3;
-                    let total_warp = (warp + detail) * WARP_STRENGTH;
+                // Base temperature depends on climate mode
+                let base_temp = match mode {
+                    ClimateMode::Globe => {
+                        // DOMAIN WARPING: Distort the Y-coordinate using noise
+                        // This creates wavy, organic climate zone boundaries
+                        let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32;
+                        let detail = detail_noise.get([nx * WARP_SCALE * 2.0, ny * WARP_SCALE * 2.0]) as f32 * 0.3;
+                        let total_warp = (warp + detail) * WARP_STRENGTH;
 
-                    // Warped Y position for latitude calculation
-                    let warped_y = (y as f32 / height as f32) + total_warp;
+                        // Warped Y position for latitude calculation
+                        let warped_y = (y as f32 / height as f32) + total_warp;
 
-                    // Latitude factor: 0 at equator, 1 at poles
-                    let latitude_normalized = (warped_y - 0.5).abs().clamp(0.0, 0.5) * 2.0;
-                    let lat_factor = latitude_normalized.powf(1.5);
-                    EQUATOR_TEMP - (EQUATOR_TEMP - POLE_TEMP) * lat_factor
-                }
-                ClimateMode::Flat => {
-                    // Uniform base temperature (mild temperate)
-                    15.0
-                }
-                ClimateMode::TemperateBand => {
-                    // Simulates ~45° latitude band with slight variation
-                    let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32 * 0.05;
-                    let y_factor = ((y as f32 / height as f32 - 0.5) + warp).abs();
-                    12.0 + y_factor * 8.0
-                }
-                ClimateMode::TropicalBand => {
-                    // Simulates equatorial region with minimal variation
-                    let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32 * 0.05;
-                    let y_factor = ((y as f32 / height as f32 - 0.5) + warp).abs();
-                    28.0 - y_factor * 6.0
-                }
-            };
+                        // Latitude factor: 0 at equator, 1 at poles
+                        let latitude_normalized = (warped_y - 0.5).abs().clamp(0.0, 0.5) * 2.0;
+                        let lat_factor = latitude_normalized.powf(1.5);
+                        EQUATOR_TEMP - (EQUATOR_TEMP - POLE_TEMP) * lat_factor
+                    }
+                    ClimateMode::Flat => {
+                        // Uniform base temperature (mild temperate)
+                        15.0
+                    }
+                    ClimateMode::TemperateBand => {
+                        // Simulates ~45° latitude band with slight variation
+                        let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32 * 0.05;
+                        let y_factor = ((y as f32 / height as f32 - 0.5) + warp).abs();
+                        12.0 + y_factor * 8.0
+                    }
+                    ClimateMode::TropicalBand => {
+                        // Simulates equatorial region with minimal variation
+                        let warp = warp_noise.get([nx * WARP_SCALE, ny * WARP_SCALE]) as f32 * 0.05;
+                        let y_factor = ((y as f32 / height as f32 - 0.5) + warp).abs();
+                        28.0 - y_factor * 6.0
+                    }
+                };
 
-            // Elevation adjustment (only for land above sea level)
-            let elevation_adjustment = if elevation > 0.0 {
-                // Lapse rate: temperature drops with altitude
-                -(elevation / 1000.0) * ELEVATION_LAPSE_RATE
-            } else {
-                // Ocean: slight warming effect in shallow water
-                0.0
-            };
+                // Elevation adjustment (only for land above sea level)
+                let elevation_adjustment = if elevation > 0.0 {
+                    // Lapse rate: temperature drops with altitude
+                    -(elevation / 1000.0) * ELEVATION_LAPSE_RATE
+                } else {
+                    // Ocean: slight warming effect in shallow water
+                    0.0
+                };
 
-            let temp = base_temp + elevation_adjustment;
-            temperature.set(x, y, temp);
-        }
-    }
+                base_temp + elevation_adjustment
+            }).collect()
+        })
+        .collect();
 
-    temperature
+    // Flatten rows into single vector
+    let data: Vec<f32> = rows.into_iter().flatten().collect();
+    Tilemap::from_vec(width, height, data)
 }
 
 // =============================================================================
@@ -345,21 +348,13 @@ pub fn generate_moisture_with_config_and_seed(
     generate_moisture_full_with_seed(heightmap, width, height, &map_scale, config, seed)
 }
 
-/// Generate moisture map with explicit scale parameter
-pub fn generate_moisture_scaled(
-    heightmap: &Tilemap<f32>,
-    width: usize,
-    height: usize,
-    map_scale: &MapScale,
-) -> Tilemap<f32> {
+/// Compute ocean distance field using BFS.
+/// This is cached/shared between moisture generation functions to avoid duplicate computation.
+pub fn compute_ocean_distance(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
     use std::collections::VecDeque;
 
-    // Continental moisture noise - creates large wet/dry patches independent of latitude
-    // This breaks the "layer cake" horizontal banding effect
-    let continental_noise = Perlin::new(1).set_seed(42);
-    let regional_noise = Perlin::new(1).set_seed(142);
-
-    // First pass: compute distance from ocean
+    let width = heightmap.width;
+    let height = heightmap.height;
     let mut ocean_distance = Tilemap::new_with(width, height, f32::MAX);
     let mut queue: VecDeque<(usize, usize, f32)> = VecDeque::new();
 
@@ -393,6 +388,24 @@ pub fn generate_moisture_scaled(
             }
         }
     }
+
+    ocean_distance
+}
+
+/// Generate moisture map with explicit scale parameter
+pub fn generate_moisture_scaled(
+    heightmap: &Tilemap<f32>,
+    width: usize,
+    height: usize,
+    map_scale: &MapScale,
+) -> Tilemap<f32> {
+    // Continental moisture noise - creates large wet/dry patches independent of latitude
+    // This breaks the "layer cake" horizontal banding effect
+    let continental_noise = Perlin::new(1).set_seed(42);
+    let regional_noise = Perlin::new(1).set_seed(142);
+
+    // Compute ocean distance (single BFS, reused)
+    let ocean_distance = compute_ocean_distance(heightmap);
 
     // Second pass: compute moisture from distance
     // Key insight: Start DRY and only add moisture near ocean
@@ -597,8 +610,6 @@ pub fn generate_moisture_full_with_seed(
     config: &ClimateConfig,
     seed: u64,
 ) -> Tilemap<f32> {
-    use std::collections::VecDeque;
-
     // Create Perlin noise for longitude variation
     let longitude_noise = Perlin::new(1).set_seed(seed as u32);
 
@@ -607,38 +618,8 @@ pub fn generate_moisture_full_with_seed(
     let continental_noise = Perlin::new(1).set_seed(seed as u32 + 200);
     let regional_noise = Perlin::new(1).set_seed(seed as u32 + 300);
 
-    // First pass: compute distance from ocean
-    let mut ocean_distance = Tilemap::new_with(width, height, f32::MAX);
-    let mut queue: VecDeque<(usize, usize, f32)> = VecDeque::new();
-
-    for y in 0..height {
-        for x in 0..width {
-            if *heightmap.get(x, y) <= 0.0 {
-                ocean_distance.set(x, y, 0.0);
-                queue.push_back((x, y, 0.0));
-            }
-        }
-    }
-
-    while let Some((x, y, dist)) = queue.pop_front() {
-        let neighbors = [
-            (x.wrapping_sub(1), y),
-            (x + 1, y),
-            (x, y.wrapping_sub(1)),
-            (x, y + 1),
-        ];
-
-        for (nx, ny) in neighbors {
-            if nx >= width || ny >= height {
-                continue;
-            }
-            let new_dist = dist + 1.0;
-            if new_dist < *ocean_distance.get(nx, ny) {
-                ocean_distance.set(nx, ny, new_dist);
-                queue.push_back((nx, ny, new_dist));
-            }
-        }
-    }
+    // Compute ocean distance (single BFS, reused)
+    let ocean_distance = compute_ocean_distance(heightmap);
 
     let mut moisture = Tilemap::new_with(width, height, 0.0f32);
 

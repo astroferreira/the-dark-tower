@@ -173,6 +173,7 @@ fn is_below_sea_level(terrain_h: f32) -> bool {
 }
 
 /// Detect water bodies with pre-computed water level and flow accumulation.
+/// Optimized to combine multiple passes into fewer iterations.
 pub fn detect_water_bodies_full(
     heightmap: &Tilemap<f32>,
     water_level: &Tilemap<f32>,
@@ -186,26 +187,19 @@ pub fn detect_water_bodies_full(
     let mut water_depth = Tilemap::new_with(width, height, 0.0f32);
     let mut water_bodies = Vec::new();
 
-    // Calculate water depth everywhere (water_level - terrain)
-    // Positive = submerged, Zero = dry land
-    for y in 0..height {
-        for x in 0..width {
-            let terrain_h = *heightmap.get(x, y);
-            let water_h = *water_level.get(x, y);
-            let depth = (water_h - terrain_h).max(0.0);
-            water_depth.set(x, y, depth);
-        }
-    }
-
-    // Track which tiles are water candidates (submerged or below sea level)
+    // COMBINED PASS: Calculate water depth AND identify water candidates simultaneously
+    // This replaces two separate full-map iterations with one
     let mut is_water_candidate = Tilemap::new_with(width, height, false);
     let mut next_id = 2u16; // 1 is reserved for ocean
 
-    // Step 1: Identify all water candidates (submerged OR below sea level)
     for y in 0..height {
         for x in 0..width {
             let terrain_h = *heightmap.get(x, y);
             let water_h = *water_level.get(x, y);
+
+            // Calculate water depth (positive = submerged, zero = dry)
+            let depth = (water_h - terrain_h).max(0.0);
+            water_depth.set(x, y, depth);
 
             // Water if: submerged (alpine lake) OR below sea level (ocean/coastal)
             if is_submerged(terrain_h, water_h) || is_below_sea_level(terrain_h) {

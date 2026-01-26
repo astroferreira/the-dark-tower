@@ -9,7 +9,7 @@ use crate::biomes::{self, ExtendedBiome};
 use crate::biome_feathering::{self, BiomeFeatherMap, FeatherConfig};
 use crate::climate;
 use crate::erosion::RiverNetwork;
-use crate::heightmap;
+use crate::heightmap::{self, LavaState, VolcanoLocation};
 use crate::microclimate::{self, MicroclimateModifiers, MicroclimateConfig};
 use crate::plates::{self, Plate, PlateId};
 use crate::region::{self, WorldHandshakes};
@@ -72,6 +72,10 @@ pub struct WorldData {
     pub current_season: Season,
     /// Underground water features (aquifers, springs, waterfalls)
     pub underground_water: Option<UndergroundWater>,
+    /// Lava state map for active volcanoes (molten, flowing, cooled)
+    pub lava_map: Option<Tilemap<LavaState>>,
+    /// List of volcano locations
+    pub volcanoes: Vec<VolcanoLocation>,
 }
 
 impl WorldData {
@@ -125,6 +129,8 @@ impl WorldData {
             handshakes: None,
             current_season: Season::Summer,
             underground_water: None,
+            lava_map: None,
+            volcanoes: Vec::new(),
         }
     }
 
@@ -177,12 +183,20 @@ impl WorldData {
             handshakes: None,
             current_season: Season::Summer,
             underground_water,
+            lava_map: None,
+            volcanoes: Vec::new(),
         }
     }
 
     /// Set flow accumulation map (computed after erosion)
     pub fn set_flow_accumulation(&mut self, flow_acc: Tilemap<f32>) {
         self.flow_accumulation = Some(flow_acc);
+    }
+
+    /// Set volcanic features (lava map and volcano locations)
+    pub fn set_volcanic_features(&mut self, lava_map: Tilemap<LavaState>, volcanoes: Vec<VolcanoLocation>) {
+        self.lava_map = Some(lava_map);
+        self.volcanoes = volcanoes;
     }
 
     /// Get tile info at coordinates
@@ -643,5 +657,7 @@ pub fn generate_test_world() -> WorldData {
         handshakes: None,
         current_season: Season::Summer,
         underground_water: None,
+        lava_map: None,
+        volcanoes: Vec::new(),
     }
 }

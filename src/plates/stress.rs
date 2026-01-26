@@ -84,57 +84,42 @@ pub fn calculate_stress(plate_map: &Tilemap<PlateId>, plates: &[Plate]) -> Tilem
         }
     }
 
-    // Second pass: spread stress from boundary cells based on velocity
+    // Second pass: mark boundary cells with stress values
+    // Using Gaussian blur approach instead of direct spreading (O(n × kernel) vs O(boundary × spread²))
     let mut stress_map = Tilemap::new_with(width, height, 0.0f32);
 
     // High frequency noise for texture
     let noise = Perlin::new(1).set_seed(42);
 
-    for (bx, by, stress, spread) in boundary_cells {
-        // Add random variation to spread based on position
-        // Simple hash from position for deterministic randomness
-        let hash = ((bx * 73856093) ^ (by * 19349663)) as f32;
-        let variation = ((hash % 1000.0) / 1000.0) * 0.6 + 0.7; // Range: 0.7 to 1.3
-        let spread = ((spread as f32) * variation) as usize;
-        let spread = spread.max(2);
+    // First, mark all boundary cells with their stress values
+    // Apply noise modulation at marking time
+    for (bx, by, stress, _spread) in &boundary_cells {
+        let nx_val = *bx as f64 / width as f64;
+        let ny_val = *by as f64 / height as f64;
+        let noise_val = noise.get([nx_val * 40.0, ny_val * 40.0]) as f32;
+        let noise_factor = 0.7 + (noise_val + 1.0) * 0.3; // Range: 0.7 to 1.3
 
-        // Apply stress in a radius around the boundary cell
-        let spread_i = spread as i32;
+        let cell_stress = stress * noise_factor;
+        let current = *stress_map.get(*bx, *by);
 
-        for dy in -spread_i..=spread_i {
-            for dx in -spread_i..=spread_i {
-                let dist = ((dx * dx + dy * dy) as f32).sqrt();
-                if dist > spread as f32 {
-                    continue;
-                }
-
-                let target_x = ((bx as i32 + dx).rem_euclid(width as i32)) as usize;
-                let target_y = (by as i32 + dy).clamp(0, height as i32 - 1) as usize;
-
-                // Gaussian falloff for sharp peak, smooth descent to ocean level
-                // exp(-k * t^2) gives a bell curve shape
-                let t = dist / spread as f32;
-                let k = 3.0; // Controls steepness - higher = sharper peak
-                let falloff = (-k * t * t).exp();
-
-                // High frequency noise for texture (multiply to modulate stress)
-                let nx_val = target_x as f64 / width as f64;
-                let ny_val = target_y as f64 / height as f64;
-                let noise_val = noise.get([nx_val * 40.0, ny_val * 40.0]) as f32;
-                let noise_factor = 0.7 + (noise_val + 1.0) * 0.3; // Range: 0.7 to 1.3
-
-                let cell_stress = stress * falloff * noise_factor;
-
-                // Keep maximum magnitude stress at each cell
-                // Positive stress = convergent (mountains), negative = divergent (rifts)
-                let current = *stress_map.get(target_x, target_y);
-                if (stress > 0.0 && cell_stress > current) ||
-                   (stress < 0.0 && cell_stress < current) {
-                    stress_map.set(target_x, target_y, cell_stress);
-                }
-            }
+        // Keep maximum magnitude stress
+        if (*stress > 0.0 && cell_stress > current) ||
+           (*stress < 0.0 && cell_stress < current) {
+            stress_map.set(*bx, *by, cell_stress);
         }
     }
+
+    // Calculate average spread for Gaussian blur radius
+    let avg_spread = if !boundary_cells.is_empty() {
+        boundary_cells.iter().map(|(_, _, _, s)| *s).sum::<usize>() / boundary_cells.len()
+    } else {
+        8
+    };
+    let blur_radius = avg_spread.max(4);
+    let sigma = blur_radius as f32 * 0.7;
+
+    // Apply separable Gaussian blur to spread stress (O(n × kernel_size) instead of O(boundary × spread²))
+    let stress_map = smooth_stress(&stress_map, blur_radius, sigma);
 
     stress_map
 }
