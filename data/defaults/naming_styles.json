@@ -1,0 +1,842 @@
+{
+  "naming_styles": {
+    "Harsh": {
+      "onset_consonants": [
+        "k", "kr", "d", "dr", "g", "gr", "th", "b", "br", "n", "m", "t", "tr", "v", "st", "sk",
+        "kh", "gh", "gn", "thr", "str", "sn", "sp", "pr", "pl", "bl", "kl", "gl", "fl",
+        "vr", "dw", "tw", "sw", "skr", "spr", "scr", "kr", "dn", "dm", "gw", "bj",
+        "fn", "fr", "hr", "hv", "kn", "pf", "wr", "zd", "zg", "zr"
+      ],
+      "coda_consonants": [
+        "k", "rk", "th", "n", "m", "r", "rd", "ng", "lk", "ld", "x",
+        "ft", "kt", "nk", "rg", "rm", "rn", "rt", "sk", "st", "xt",
+        "lm", "lt", "mp", "nd", "nt", "pt", "rb", "rf", "sp", "gd",
+        "ks", "lf", "lp", "nch", "rch", "rth", "tch"
+      ],
+      "vowels": [
+        "a", "o", "u", "i", "e", "ur", "or", "ar", "er", "ir",
+        "au", "ou", "oi", "ui", "uo", "ai", "ei", "oa", "ua",
+        "ae", "oe", "uu", "aa", "oo"
+      ],
+      "syllable_range": [1, 3],
+      "uses_apostrophes": false,
+      "uses_hyphens": true,
+      "place_prefixes": [
+        "Iron", "Black", "Bitter", "Stone", "Dark", "Deep",
+        "Steel", "Grim", "Ash", "Dread", "Cold", "Hard",
+        "Rust", "Slag", "Thorn", "Wrought", "Stark", "Bleak",
+        "Fell", "Scar", "Blight", "Scorch", "Anvil", "Granite",
+        "Obsidian", "Basalt", "Flint", "Crag", "Dusk", "Wrath",
+        "Doom", "Gore", "Bane", "Storm", "Night", "War"
+      ],
+      "place_suffixes": [
+        "hold", "forge", "delve", "helm", "guard", "hall", "gate",
+        "wall", "peak", "scar", "crag", "barrow", "cairn", "maw",
+        "keep", "ward", "fell", "mount", "ridge", "thorn",
+        "brand", "break", "clash", "grim", "lock", "march",
+        "vault", "waste", "wrack", "bane", "fang", "pike",
+        "rift", "gorge", "chasm", "spire"
+      ],
+      "epithet_patterns": [
+        "the Unyielding", "Ironhand", "Stoneheart", "the Grim", "Hammerfist", "the Merciless",
+        "the Unbowed", "Steelbreaker", "the Relentless", "Ironjaw", "the Wrathful", "Doomhammer",
+        "the Unforgiving", "Blackblade", "the Brutal", "Bonecrusher", "the Fearless", "Thornheart",
+        "Ashwalker", "the Hardened", "Warbringer", "the Remorseless", "Stonebreaker", "Grimcleaver",
+        "the Scarred", "Ironfang", "the Dauntless", "Darkforge", "Stormhammer", "the Ruthless",
+        "Frostbane", "the Undaunted", "Siegebreaker", "the Implacable", "Steelborn", "Warforged",
+        "the Unbending", "Granitefist", "Scarbringer", "the Unconquered"
+      ]
+    },
+    "Flowing": {
+      "onset_consonants": [
+        "l", "th", "s", "n", "r", "f", "v", "el", "al", "gl", "br", "m", "c", "t",
+        "fl", "sl", "cl", "bl", "ph", "sh", "wh", "ch", "pl", "pr",
+        "fr", "thr", "w", "sw", "tw", "dh", "gw", "lh", "rh",
+        "sph", "str", "vl", "yl", "d", "h", "j", "k", "qu",
+        "cr", "dr", "gr", "kh", "ly", "ry", "ny", "my"
+      ],
+      "coda_consonants": [
+        "n", "l", "r", "s", "th", "nd", "ll", "rn", "wen", "iel",
+        "an", "en", "in", "on", "el", "al", "il", "ol", "ar", "er",
+        "ir", "or", "ath", "eth", "ith", "oth", "and", "end", "ind",
+        "ard", "eld", "ild", "old", "ann", "enn", "inn", "onn",
+        "arl", "erl", "irl", "orl"
+      ],
+      "vowels": [
+        "ae", "a", "e", "i", "o", "ei", "ia", "io", "ea",
+        "ai", "eo", "ie", "oa", "ue", "ao", "oe", "ui",
+        "aia", "eai", "eia", "oea", "uia", "aei", "iae"
+      ],
+      "syllable_range": [2, 4],
+      "uses_apostrophes": false,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "Sil", "Lor", "Thal", "Cel", "Ael", "Gal",
+        "Aur", "Elen", "Fael", "Glor", "Ith", "Lam",
+        "Mir", "Nael", "Quel", "Rael", "Sar", "Tir",
+        "Val", "Yor", "Zan", "Elar", "Aven", "Bel",
+        "Cael", "Dael", "Eol", "Fael", "Gor", "Hael",
+        "Iol", "Jael", "Kal", "Lael", "Mael", "Nol"
+      ],
+      "place_suffixes": [
+        "wen", "oth", "dor", "ion", "iel", "ost", "anor",
+        "alas", "elin", "ilor", "inar", "orel", "uria", "andil",
+        "ennor", "indel", "oleth", "alion", "endir", "istar",
+        "ariel", "enar", "ilwen", "olwen", "athien", "ethion",
+        "ithian", "othiel", "ander", "endra", "irien", "orien",
+        "aldor", "elion", "ilaen", "olaen"
+      ],
+      "epithet_patterns": [
+        "the Radiant", "Starweaver", "the Evergreen", "Dawnbringer", "the Ageless", "Moonwhisper",
+        "Lightbearer", "the Luminous", "Silvertongue", "the Resplendent", "Sunweaver", "the Graceful",
+        "Windwalker", "the Eloquent", "Dreamweaver", "the Serene", "Songbird", "the Verdant",
+        "Starblessed", "the Harmonious", "Duskweaver", "the Ethereal", "Sunblessed", "Tidewalker",
+        "the Benevolent", "Rosebloom", "the Tranquil", "Lightsinger", "the Eternal", "Pearlborn",
+        "Twilightdancer", "the Shimmering", "Leafwhisper", "the Undying", "Crystalgazer", "Riverborn",
+        "the Gentle", "Dawnweaver", "Starwalker", "the Timeless"
+      ]
+    },
+    "Compound": {
+      "onset_consonants": [
+        "b", "d", "g", "h", "l", "m", "n", "r", "s", "t", "w", "j", "f", "p", "c",
+        "bl", "br", "cl", "cr", "dr", "fl", "fr", "gl", "gr", "pl", "pr",
+        "sh", "sl", "sm", "sn", "sp", "st", "sw", "th", "tr", "tw",
+        "wh", "wr", "ch", "kn", "qu", "sc", "sk", "str", "spr", "scr"
+      ],
+      "coda_consonants": [
+        "n", "d", "r", "l", "s", "t", "ld", "rd", "nd", "ck",
+        "ft", "lf", "lk", "lm", "lt", "mp", "nch", "ng", "nk", "nt",
+        "pt", "rb", "rch", "rf", "rk", "rm", "rn", "rp", "rt", "sk",
+        "sp", "st", "th", "tch", "wn", "xt"
+      ],
+      "vowels": [
+        "a", "e", "i", "o", "u", "ay", "ow",
+        "ea", "ee", "oo", "ai", "au", "ey", "ie",
+        "oa", "ou", "aw", "ew", "oi", "oy"
+      ],
+      "syllable_range": [1, 3],
+      "uses_apostrophes": false,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "North", "South", "East", "West", "Red", "White", "Green", "High", "Low", "Old",
+        "New", "Great", "Little", "Long", "Broad", "Fair", "Gold", "Silver", "Iron", "Copper",
+        "Oak", "Elm", "Ash", "Birch", "Stone", "Mill", "Church", "Kings", "Queens", "Cross",
+        "Marsh", "Mead", "Hay", "Wheat", "Barley", "Stag", "Fox", "Hawk", "Swan", "Raven"
+      ],
+      "place_suffixes": [
+        "ton", "burg", "dale", "ford", "wick", "field", "bridge", "stead", "haven", "mere",
+        "worth", "ham", "ley", "croft", "shire", "thorpe", "mouth", "holm", "minster", "well",
+        "brook", "wood", "land", "hill", "cliff", "glen", "grove", "lawn", "park", "view",
+        "side", "gate", "water", "pool", "lake", "end", "cross", "green", "way", "church"
+      ],
+      "epithet_patterns": [
+        "the Bold", "the Wise", "the Brave", "the Just", "the Conqueror", "the Peacemaker",
+        "the Fair", "the Strong", "the Clever", "the Faithful", "the Pious", "the Humble",
+        "the Great", "the Tall", "the Short", "the Red", "the Black", "the White",
+        "the Good", "the Generous", "the Builder", "the Lawgiver", "the Protector", "the Wanderer",
+        "the Farmer", "the Smith", "the Miller", "the Hunter", "the Shepherd", "the Trader",
+        "the Stout", "the Keen", "the Learned", "the Steadfast", "the Patient", "the True",
+        "the Honorable", "the Kindly", "the Resolute", "the Valiant"
+      ]
+    },
+    "Guttural": {
+      "onset_consonants": [
+        "gr", "kr", "g", "z", "b", "dr", "sk", "gh", "v", "r", "hr", "sn", "gn",
+        "kh", "ghr", "zr", "br", "vr", "skr", "gnr", "grr", "krr", "zg", "zd",
+        "gw", "kw", "bv", "dg", "gk", "kg", "rg", "rk", "rz", "zk",
+        "gl", "bl", "thr", "str", "ngr", "nk", "gg", "kk", "rgh", "rzh",
+        "shk", "zhg", "vrg", "drg", "brg", "grz"
+      ],
+      "coda_consonants": [
+        "k", "g", "gh", "rk", "zz", "sh", "rg", "gk", "kh", "x",
+        "rgh", "gth", "kth", "zg", "rz", "gz", "rkh", "gkh", "nk", "ng",
+        "ngk", "rgk", "zgh", "kgh", "gzh", "rkg", "ngh", "mgk", "lgk", "rgz",
+        "zk", "gn", "km", "gm", "rm", "lk", "rn"
+      ],
+      "vowels": [
+        "a", "u", "o", "aa", "uu", "oo", "ao", "ua", "ou",
+        "au", "oa", "uo", "aau", "uua", "oou", "agu", "oku",
+        "ugh", "akh", "okh", "ukh"
+      ],
+      "syllable_range": [1, 3],
+      "uses_apostrophes": false,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "Blood", "Skull", "War", "Bone", "Rot", "Ash",
+        "Gore", "Gut", "Fang", "Claw", "Tusk", "Horn",
+        "Brute", "Scab", "Grim", "Snarl", "Crush", "Maw",
+        "Slag", "Rust", "Blight", "Murk", "Doom", "Warg",
+        "Gnash", "Spite", "Filth", "Wretch", "Gloom", "Dross",
+        "Bog", "Slime", "Bane", "Dread", "Foul", "Grave"
+      ],
+      "place_suffixes": [
+        "maw", "pit", "gore", "fang", "crush", "break",
+        "gnaw", "rend", "slash", "stomp", "smash", "grind",
+        "rot", "blight", "snarl", "growl", "howl", "feast",
+        "gut", "skull", "bone", "claw", "tusk", "horn",
+        "bog", "fen", "mire", "swamp", "marsh", "sludge",
+        "hole", "den", "lair", "burrow", "warren", "cave"
+      ],
+      "epithet_patterns": [
+        "the Destroyer", "Skullcrusher", "Bonegnawer", "the Savage", "Blooddrinker", "the Dread",
+        "the Ravager", "Gorefist", "the Brutal", "Skullsplitter", "the Berserker", "Mawripper",
+        "Gutripper", "the Vicious", "Bonebreaker", "the Terrible", "Fleshrender", "the Monstrous",
+        "Bloodfang", "the Beastly", "Tuskcrusher", "the Primal", "Goreclaw", "the Abominable",
+        "Slagheart", "the Ghastly", "Blightbringer", "the Wretched", "Doomhowler", "the Ferocious",
+        "Ironmaw", "Warborn", "Snarltooth", "the Ravenous", "Clawstrike", "the Untamed",
+        "Hornbreaker", "Rotgut", "the Pestilent", "Gravemaker"
+      ]
+    },
+    "Mystical": {
+      "onset_consonants": [
+        "l", "n", "s", "w", "f", "th", "sh", "wh", "ph", "m", "r", "v",
+        "fl", "gl", "sl", "sw", "tw", "wr", "kh", "zh", "dh", "gh",
+        "ny", "ly", "ry", "my", "vy", "sy", "fy", "hy",
+        "thr", "shr", "phr", "whr", "sph", "chr", "ps", "gn",
+        "qu", "rh", "lw", "nw", "mw", "vr", "yr", "yl"
+      ],
+      "coda_consonants": [
+        "ss", "th", "n", "l", "r", "ll", "nn", "sh",
+        "rn", "lm", "ln", "rm", "nd", "ld", "rd", "ph",
+        "nth", "lth", "rth", "mth", "nsh", "lsh", "rsh",
+        "ns", "ls", "rs", "ms", "ng", "nk", "lf",
+        "rf", "mn", "gn", "wn", "yn"
+      ],
+      "vowels": [
+        "i", "y", "e", "a", "ie", "ea", "ai",
+        "ei", "ae", "ia", "ey", "ay", "yi", "ya",
+        "eai", "iae", "aei", "yae", "eia", "aye",
+        "iy", "ye", "ya", "yo", "yu"
+      ],
+      "syllable_range": [2, 4],
+      "uses_apostrophes": true,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "Whisper", "Mist", "Dream", "Shimmer", "Moon", "Star",
+        "Spirit", "Fey", "Twilight", "Shadow", "Phantom", "Wisp",
+        "Veil", "Spell", "Enchant", "Glamour", "Illusion", "Charm",
+        "Ether", "Arcane", "Wyrd", "Rune", "Sigil", "Oracle",
+        "Mystic", "Seer", "Vision", "Omen", "Fate", "Prophecy",
+        "Astral", "Void", "Prism", "Mirror", "Echo", "Riddle"
+      ],
+      "place_suffixes": [
+        "wind", "vale", "mere", "glade", "song", "light",
+        "weave", "spell", "charm", "dream", "shade", "veil",
+        "mist", "wisp", "shroud", "bloom", "glow", "gleam",
+        "shine", "spark", "flame", "dusk", "dawn", "moon",
+        "star", "tide", "wave", "fall", "rise", "wane",
+        "whisper", "murmur", "sigh", "breath", "wish", "prayer"
+      ],
+      "epithet_patterns": [
+        "the Dreaming", "Mistwalker", "the Fey-touched", "Glamourweave", "the Changeling", "Starborn",
+        "the Arcane", "Spellweaver", "the Enigmatic", "Voidtouched", "the Prophetic", "Moonblessed",
+        "the Eldritch", "Runecaster", "the Ethereal", "Spiritcaller", "the Veiled", "Fatespinner",
+        "the Mystic", "Oracleborn", "the Cryptic", "Shadowmeld", "the Otherworldly", "Dreamshaper",
+        "Starseer", "the Spectral", "Whisperweave", "the Illusory", "Echoborn", "the Timeworn",
+        "Charmcaster", "the Unseen", "Visionseeker", "the Transcendent", "Wyrdborn", "the Unfathomable",
+        "Sigilscribe", "the Ephemeral", "Twilightborn", "the All-seeing"
+      ]
+    },
+    "Sibilant": {
+      "onset_consonants": [
+        "ss", "s", "z", "x", "sh", "th", "ts", "sk", "sl", "zh", "ks",
+        "sz", "zs", "sx", "xs", "shz", "zsh", "tsh", "sth", "ths",
+        "st", "str", "shr", "scr", "spl", "spr", "skr", "sn", "sm",
+        "sv", "sw", "sf", "sr", "ssk", "ssh", "ssz", "zl", "zr",
+        "xh", "xs", "xz", "thr", "phs", "ps", "tz"
+      ],
+      "coda_consonants": [
+        "ss", "th", "x", "k", "sh", "z", "sk", "ks",
+        "ts", "zz", "sz", "zs", "xs", "sx", "tss", "zzh",
+        "ssh", "ssk", "ths", "sth", "xth", "thx", "kss", "zsk",
+        "st", "sp", "sk", "xt", "ft", "lst", "rst", "nst",
+        "nz", "lz", "rz", "ns", "ls", "rs"
+      ],
+      "vowels": [
+        "i", "a", "e", "o", "ai", "ei", "ia", "ie",
+        "oi", "io", "ae", "ea", "ao", "oa", "ii",
+        "ee", "aa", "iss", "ass", "ess", "oss"
+      ],
+      "syllable_range": [2, 3],
+      "uses_apostrophes": true,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "Scale", "Fang", "Venom", "Sand", "Sun", "Salt",
+        "Serpent", "Viper", "Cobra", "Asp", "Adder", "Mamba",
+        "Scorch", "Sear", "Blaze", "Dust", "Glass", "Quartz",
+        "Brass", "Bronze", "Gold", "Amber", "Tawny", "Ochre",
+        "Dune", "Mesa", "Cliff", "Ridge", "Crest", "Spine",
+        "Needle", "Shard", "Splinter", "Sliver", "Slice", "Slit"
+      ],
+      "place_suffixes": [
+        "spire", "nest", "coil", "den", "rock", "marsh",
+        "scale", "fang", "tooth", "claw", "tail", "skin",
+        "spit", "hiss", "snarl", "strike", "lash", "whip",
+        "pit", "hole", "burrow", "warren", "tunnel", "cave",
+        "dust", "sand", "glass", "salt", "ash", "cinder",
+        "spike", "thorn", "barb", "sting", "bite", "venom"
+      ],
+      "epithet_patterns": [
+        "the Venomous", "Scaleborn", "the Cold-blooded", "Sandstrider", "Sunbasker", "the Scaled",
+        "the Serpentine", "Fangtouched", "the Sinuous", "Viperblood", "the Slithering", "Dustwalker",
+        "the Shedding", "Coilstrike", "the Forked-tongue", "Sandswimmer", "the Basking", "Glassfang",
+        "the Hooded", "Spitfire", "the Silent-strike", "Saltblood", "the Molting", "Needlefang",
+        "Ashscale", "the Venomtipped", "Sunscale", "the Flickering", "Sandserpent", "the Copperskinned",
+        "Bronzescale", "the Ambereyed", "Dustviper", "the Scorching", "Heatscale", "the Quickstrike",
+        "Glasswalker", "the Desertborn", "Siltswimmer", "the Sun-blessed"
+      ]
+    },
+    "Ancient": {
+      "onset_consonants": [
+        "kr", "b", "g", "th", "m", "d", "n", "r", "st", "br", "tr",
+        "gr", "dr", "pr", "kh", "gh", "sk", "sp", "str", "shr",
+        "thr", "bl", "cl", "fl", "gl", "pl", "sl", "wr", "kn",
+        "gn", "pn", "mn", "rh", "wh", "ph", "ch", "sw", "tw",
+        "dw", "gw", "kw", "bw", "hw", "nw", "mw"
+      ],
+      "coda_consonants": [
+        "rn", "rd", "th", "m", "n", "r", "ld", "nd", "lm",
+        "rm", "rth", "nth", "lth", "mth", "ndr", "ldr", "rdr",
+        "rnd", "lnd", "mnd", "rst", "lst", "nst", "mst",
+        "rk", "lk", "nk", "mk", "rg", "lg", "ng",
+        "rf", "lf", "nf", "rt", "lt", "nt", "mt"
+      ],
+      "vowels": [
+        "o", "u", "a", "au", "ou", "oo", "oa", "ua",
+        "ao", "uo", "auo", "oua", "uoa", "aou", "oau",
+        "uu", "aa", "eu", "ea", "oe", "oi", "ou"
+      ],
+      "syllable_range": [2, 3],
+      "uses_apostrophes": false,
+      "uses_hyphens": true,
+      "place_prefixes": [
+        "Grand", "Titan", "Elder", "Basalt", "Thunder", "Crown",
+        "Colossal", "Primeval", "Eternal", "Monolith", "Behemoth", "Leviathan",
+        "Mammoth", "Ancient", "Primal", "Ageless", "Timeless", "Boundless",
+        "Vast", "Towering", "Immense", "Titanic", "Massive", "Mighty",
+        "Sovereign", "Imperial", "Regal", "Majestic", "Supreme", "Paramount",
+        "Hallowed", "Sacred", "Venerable", "Revered", "Exalted", "August"
+      ],
+      "place_suffixes": [
+        "mount", "spire", "throne", "cairn", "monolith", "keep",
+        "citadel", "bastion", "fortress", "rampart", "bulwark", "tower",
+        "obelisk", "pillar", "column", "monument", "mausoleum", "barrow",
+        "dolmen", "menhir", "cromlech", "ziggurat", "pyramid", "temple",
+        "sanctum", "shrine", "altar", "vault", "crypt", "tomb",
+        "haven", "hold", "seat", "crown", "heart", "root"
+      ],
+      "epithet_patterns": [
+        "the Eternal", "Worldshaker", "the Colossal", "Mountainborn", "the Undying", "Stormfather",
+        "the Primordial", "Titanborn", "the Everlasting", "Earthshaper", "the Immemorial", "Stonefather",
+        "the Deathless", "Worldforge", "the Imperishable", "Skybearer", "the Unbroken", "Rootkeeper",
+        "the Timeless", "Starforger", "the Boundless", "Deepwalker", "the Unforgotten", "Mountainfather",
+        "the All-knowing", "Runekeeper", "the Unshaken", "Lorewarden", "the Sleepless", "Dawnwatcher",
+        "Ageborn", "the Firstborn", "Worldkeeper", "the Awakened", "Stoneblood", "the Remembered",
+        "Oathkeeper", "the Hallowed", "Crownbearer", "the Fathomless"
+      ]
+    },
+    "Melodic": {
+      "onset_consonants": [
+        "l", "m", "n", "r", "v", "f", "th", "w", "y",
+        "ll", "mm", "nn", "rr", "fl", "gl", "sl", "bl", "cl",
+        "pl", "ml", "nl", "rl", "vl", "wl", "yl",
+        "fr", "br", "dr", "gr", "pr", "tr", "cr",
+        "lh", "mh", "nh", "rh", "wh", "sh", "ch",
+        "ly", "my", "ny", "ry", "vy", "fy", "sy", "hy"
+      ],
+      "coda_consonants": [
+        "l", "m", "n", "r", "ll", "mm", "nn", "rr",
+        "lm", "ln", "lr", "ml", "mn", "mr", "nl", "nm",
+        "nr", "rl", "rm", "rn", "nd", "ld", "rd",
+        "ng", "nk", "lk", "rk", "nch", "rch", "lch",
+        "ns", "ls", "rs", "ms", "nth", "lth", "rth"
+      ],
+      "vowels": [
+        "a", "e", "i", "o", "u", "aa", "ee", "ii", "oo", "uu",
+        "ai", "ei", "oi", "ui", "ae", "ea", "ia", "oa", "ua",
+        "ao", "eo", "io", "ue", "ou", "eu"
+      ],
+      "syllable_range": [2, 4],
+      "uses_apostrophes": false,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "Lull", "Melody", "Chime", "Bell", "Harp", "Lyre",
+        "Song", "Chorus", "Hymn", "Aria", "Harmony", "Cadence",
+        "Silver", "Golden", "Pearl", "Coral", "Silk", "Velvet",
+        "Dawn", "Dusk", "Moon", "Sun", "Star", "Cloud",
+        "Lily", "Rose", "Iris", "Laurel", "Willow", "Bloom",
+        "Sweet", "Gentle", "Calm", "Serene", "Fair", "Bright"
+      ],
+      "place_suffixes": [
+        "song", "vale", "dell", "glen", "moor", "lea",
+        "haven", "rest", "lull", "calm", "peace", "grace",
+        "bloom", "blossom", "petal", "leaf", "bower", "garden",
+        "fountain", "spring", "brook", "stream", "pool", "lake",
+        "melody", "harmony", "chorus", "hymn", "chime", "bell",
+        "hall", "court", "manor", "villa", "palace", "tower"
+      ],
+      "epithet_patterns": [
+        "the Melodious", "Songweaver", "the Harmonious", "Bellvoice", "the Lyrical", "Chorusborn",
+        "the Dulcet", "Harpstring", "the Euphonious", "Silvertongue", "the Resonant", "Chimekeeper",
+        "the Sonorous", "Hymnsinger", "the Tuneful", "Lullabysong", "the Mellifluous", "Ariaborn",
+        "the Lilting", "Cadencekeeper", "the Symphonic", "Noteweaver", "the Serenading", "Choirborn",
+        "Pearlvoice", "the Enchanting", "Goldensong", "the Soothing", "Moonlullaby", "the Graceful",
+        "Bellchime", "the Trilling", "Dewsong", "the Entrancing", "Harmonyblessed", "Echovoice",
+        "the Captivating", "Riversong", "Windchime", "the Sweet-voiced"
+      ]
+    },
+    "Staccato": {
+      "onset_consonants": [
+        "k", "t", "p", "b", "d", "g", "ck", "tk", "pk", "bk",
+        "dk", "gk", "kt", "pt", "bt", "dt", "gt", "kp", "tp",
+        "bp", "dp", "gp", "st", "sk", "sp", "ts", "ks", "ps",
+        "kr", "tr", "pr", "br", "dr", "gr", "kl", "tl", "pl",
+        "bl", "dl", "gl", "tsk", "kst", "pst", "bst", "dst", "gst"
+      ],
+      "coda_consonants": [
+        "k", "t", "p", "ck", "ct", "pt", "kt", "pk", "tk",
+        "st", "sk", "sp", "ts", "ks", "ps", "ft", "xt",
+        "lk", "lt", "lp", "rk", "rt", "rp", "nk", "nt", "np",
+        "tch", "kch", "pch", "dst", "gst", "bst", "kst", "pst",
+        "x", "ck", "tsk"
+      ],
+      "vowels": [
+        "i", "a", "e", "o", "u", "ik", "ak", "ek", "ok", "uk",
+        "it", "at", "et", "ot", "ut", "ip", "ap", "ep", "op", "up"
+      ],
+      "syllable_range": [1, 2],
+      "uses_apostrophes": true,
+      "uses_hyphens": true,
+      "place_prefixes": [
+        "Tick", "Click", "Snap", "Pop", "Crack", "Tap",
+        "Chit", "Kit", "Pit", "Bit", "Spit", "Grit",
+        "Cut", "Gut", "Jut", "Rut", "Strut", "Shut",
+        "Chip", "Clip", "Drip", "Grip", "Skip", "Strip",
+        "Blot", "Clot", "Dot", "Knot", "Shot", "Trot",
+        "Hex", "Plex", "Crux", "Flux", "Nix", "Pix"
+      ],
+      "place_suffixes": [
+        "pit", "cut", "gut", "hut", "jut", "rut",
+        "kit", "bit", "spit", "grit", "slit", "knit",
+        "click", "tick", "brick", "flick", "prick", "trick",
+        "snap", "trap", "clap", "slap", "cap", "gap",
+        "nest", "crest", "test", "best", "rest", "quest",
+        "plex", "hex", "crux", "flex", "mix", "fix"
+      ],
+      "epithet_patterns": [
+        "the Quick", "Clickborn", "the Precise", "Snapstrike", "the Punctual", "Tiktok",
+        "the Exact", "Sharpcut", "the Crisp", "Rapidfire", "the Staccato", "Bitsnap",
+        "the Swift", "Quickstrike", "the Abrupt", "Cutsharp", "the Decisive", "Snapjaw",
+        "the Curt", "Clipwing", "the Terse", "Chipshot", "the Blunt", "Crackthorn",
+        "the Brisk", "Flickblade", "the Keen", "Splitstrike", "the Brief", "Nickpoint",
+        "Sharppoint", "the Incisive", "Pinstrike", "the Piercing", "Dartshot", "the Acute",
+        "Boltsnap", "the Clipped", "Needlestrike", "the Instantaneous"
+      ]
+    },
+    "Whispering": {
+      "onset_consonants": [
+        "sh", "wh", "f", "th", "ph", "h", "s", "sw", "fl", "fr",
+        "v", "w", "sl", "shr", "thr", "phr", "whr", "hw",
+        "hs", "hf", "hv", "hw", "hy", "hr", "hl", "hm", "hn",
+        "sf", "sv", "fw", "fh", "vw", "vh",
+        "shw", "thw", "phw", "whf", "whs", "fth", "sth",
+        "fsh", "vsh", "shf", "thf", "phf", "whsh", "shth"
+      ],
+      "coda_consonants": [
+        "sh", "th", "f", "ph", "ss", "ff", "wh", "v",
+        "ft", "st", "sp", "sk", "fs", "ths", "shs", "phs",
+        "fth", "shf", "thf", "phf", "sft", "fts", "ths",
+        "shth", "thsh", "fsh", "shf", "whf", "fwh",
+        "lf", "rf", "nf", "lth", "rth", "nth"
+      ],
+      "vowels": [
+        "i", "e", "a", "u", "o", "ie", "ei", "ae", "ea",
+        "ai", "ia", "ue", "eu", "ui", "iu",
+        "ieh", "eih", "aeh", "eah", "aih", "iah",
+        "ueh", "euh", "uih", "iuh"
+      ],
+      "syllable_range": [2, 4],
+      "uses_apostrophes": true,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "Whisper", "Shadow", "Shade", "Hush", "Mist", "Fog",
+        "Dusk", "Veil", "Shroud", "Cloak", "Mask", "Phantom",
+        "Ghost", "Wraith", "Specter", "Haunt", "Gloom", "Murk",
+        "Twilight", "Penumbra", "Eclipse", "Umbra", "Dim", "Fade",
+        "Wisp", "Breath", "Sigh", "Murmur", "Haze", "Blur",
+        "Smoke", "Ash", "Dust", "Silk", "Moth", "Owl"
+      ],
+      "place_suffixes": [
+        "whisper", "shadow", "shade", "hush", "mist", "fog",
+        "veil", "shroud", "cloak", "mask", "haunt", "gloom",
+        "murk", "dusk", "twilight", "fade", "wisp", "breath",
+        "sigh", "murmur", "haze", "blur", "smoke", "dust",
+        "weave", "fold", "fall", "drift", "step", "path",
+        "walk", "crawl", "creep", "stalk", "lurk", "hide"
+      ],
+      "epithet_patterns": [
+        "the Whispering", "Shadowstep", "the Hushed", "Mistwalker", "the Silent", "Fogborn",
+        "the Unseen", "Veildancer", "the Shrouded", "Cloakweaver", "the Phantom", "Maskborn",
+        "the Ghostly", "Wraithtouch", "the Spectral", "Hauntborn", "the Gloom-touched", "Murkwalker",
+        "the Twilight", "Duskborn", "the Fading", "Wisptouch", "the Breathless", "Sighdancer",
+        "the Muffled", "Blurwalker", "the Smoky", "Ashborn", "the Dusty", "Silkstep",
+        "Mothwing", "the Nocturnal", "Owleye", "the Dimming", "Fadewalker", "the Vanishing",
+        "Shadowmeld", "the Ephemeral", "Mistborn", "the Elusive"
+      ]
+    },
+    "Thunderous": {
+      "onset_consonants": [
+        "th", "br", "dr", "gr", "kr", "tr", "thr", "str", "spr",
+        "bl", "gl", "kl", "pr", "pl", "fr", "fl", "scr", "skr",
+        "b", "d", "g", "k", "t", "st", "sk", "sp",
+        "bhr", "dhr", "ghr", "khr", "phr", "chr",
+        "bw", "dw", "gw", "kw", "tw", "sw",
+        "br", "dr", "gr", "pr", "tr", "wr", "vr", "zr"
+      ],
+      "coda_consonants": [
+        "nd", "rm", "rn", "rd", "ng", "nk", "ld", "lm",
+        "mb", "mp", "nt", "nch", "rch", "rst", "rth", "nth",
+        "lk", "rk", "ndr", "ldr", "mbl", "mpr", "ntr",
+        "rg", "lg", "mg", "rnd", "lnd", "rnk", "lnk",
+        "rdth", "ndth", "rgh", "ngh", "lgh",
+        "rst", "lst", "nst", "mst"
+      ],
+      "vowels": [
+        "o", "u", "a", "ou", "au", "oo", "oa", "ua",
+        "ao", "uo", "aou", "oua", "ou", "ow", "aw",
+        "or", "ur", "ar", "oor", "our", "aur"
+      ],
+      "syllable_range": [1, 3],
+      "uses_apostrophes": false,
+      "uses_hyphens": true,
+      "place_prefixes": [
+        "Thunder", "Storm", "Boom", "Rumble", "Crash", "Quake",
+        "Tempest", "Gale", "Blast", "Surge", "Bolt", "Flash",
+        "Roar", "Bellow", "Shatter", "Smash", "Pound", "Hammer",
+        "Boulder", "Granite", "Mountain", "Titan", "Giant", "Colossus",
+        "Iron", "Steel", "Bronze", "Copper", "Brass", "Forge",
+        "Sky", "Cloud", "Peak", "Summit", "Crest", "Crown"
+      ],
+      "place_suffixes": [
+        "thunder", "storm", "boom", "rumble", "crash", "quake",
+        "peak", "mount", "crag", "cliff", "ridge", "summit",
+        "hold", "keep", "hall", "forge", "anvil", "hammer",
+        "gate", "wall", "tower", "spire", "citadel", "bastion",
+        "throne", "crown", "heart", "core", "root", "deep",
+        "fall", "break", "crack", "split", "rend", "shatter"
+      ],
+      "epithet_patterns": [
+        "the Thunderous", "Stormborn", "the Booming", "Rumblefoot", "the Crashing", "Quakefist",
+        "the Tempestuous", "Galeforce", "the Blasting", "Surgeborn", "the Bolting", "Flashstrike",
+        "the Roaring", "Bellowvoice", "the Shattering", "Smashfist", "the Pounding", "Hammerborn",
+        "the Seismic", "Boulderborn", "the Mountainous", "Titangrip", "the Colossal", "Giantborn",
+        "Ironthunder", "the Deafening", "Steelstorm", "the Reverberating", "Bronzeroar", "the Resounding",
+        "Skysplitter", "the Cataclysmic", "Cloudbreaker", "the Devastating", "Peakcrusher", "the Overwhelming",
+        "Groundshaker", "the Almighty", "Stormhammer", "the Unstoppable"
+      ]
+    },
+    "Crystalline": {
+      "onset_consonants": [
+        "kr", "kl", "gl", "pr", "pl", "tr", "tl", "fr", "fl",
+        "sk", "st", "sp", "sl", "str", "spr", "spl", "skr", "skl",
+        "cl", "cr", "bl", "br", "dr", "dl", "gr", "gn",
+        "k", "t", "p", "s", "f", "l", "r", "n", "m",
+        "kw", "tw", "sw", "ph", "th", "ch",
+        "shr", "scr", "phr", "thr", "chr"
+      ],
+      "coda_consonants": [
+        "l", "r", "n", "s", "t", "k", "x", "st", "sk", "sp",
+        "lt", "lk", "ls", "rt", "rk", "rs", "nt", "nk", "ns",
+        "ft", "fk", "fs", "xt", "xk", "xs", "ct", "pt",
+        "lx", "rx", "nx", "rst", "lst", "nst",
+        "rl", "rn", "ln", "lm", "rm"
+      ],
+      "vowels": [
+        "i", "e", "a", "u", "o", "ai", "ei", "ie", "ae",
+        "ia", "ea", "oi", "io", "ui", "iu",
+        "y", "yi", "ya", "ye", "yo", "yu"
+      ],
+      "syllable_range": [2, 3],
+      "uses_apostrophes": false,
+      "uses_hyphens": true,
+      "place_prefixes": [
+        "Crystal", "Prism", "Glass", "Quartz", "Diamond", "Gem",
+        "Facet", "Shard", "Splinter", "Mirror", "Lens", "Lucid",
+        "Clear", "Pure", "Bright", "Gleam", "Glint", "Flash",
+        "Frost", "Ice", "Snow", "Rime", "Sleet", "Hail",
+        "Silver", "Chrome", "Platinum", "Opal", "Agate", "Topaz",
+        "Arc", "Apex", "Vertex", "Node", "Grid", "Lattice"
+      ],
+      "place_suffixes": [
+        "spire", "point", "edge", "facet", "prism", "lens",
+        "shard", "splinter", "needle", "peak", "pinnacle", "apex",
+        "crystal", "gem", "stone", "glass", "mirror", "frost",
+        "grid", "lattice", "matrix", "nexus", "node", "core",
+        "arc", "line", "ray", "beam", "shaft", "bolt",
+        "form", "shape", "frame", "structure", "pattern", "design"
+      ],
+      "epithet_patterns": [
+        "the Crystalline", "Prismborn", "the Faceted", "Shardmind", "the Translucent", "Glassforged",
+        "the Geometric", "Quartzborn", "the Precise", "Diamondedge", "the Refractive", "Gemheart",
+        "the Lucid", "Frostforged", "the Lambent", "Icecrystal", "the Pellucid", "Mirrorborn",
+        "the Angular", "Lensmaker", "the Symmetrical", "Latticeborn", "the Calculated", "Gridmind",
+        "the Flawless", "Prismheart", "the Immaculate", "Crystalweave", "the Perfect", "Glintborn",
+        "Frostprism", "the Brilliant", "Shardweaver", "the Radiant", "Clearlight", "the Luminescent",
+        "Diamondborn", "the Absolute", "Gemweaver", "the Unerring"
+      ]
+    },
+    "Verdant": {
+      "onset_consonants": [
+        "v", "f", "th", "w", "l", "r", "n", "m", "b", "d", "g",
+        "fl", "fr", "br", "dr", "gr", "gl", "bl", "cl", "cr",
+        "pl", "pr", "tr", "thr", "shr", "sw", "tw",
+        "wh", "sh", "sl", "sp", "st", "sk",
+        "vy", "fy", "ly", "ry", "ny", "my", "wy",
+        "vl", "vr", "wr", "yr", "yl"
+      ],
+      "coda_consonants": [
+        "n", "l", "r", "m", "th", "f", "v", "nd", "ld", "rd",
+        "ng", "nk", "lf", "rf", "lm", "rm", "rn", "ln",
+        "rth", "lth", "nth", "rk", "lk", "nch",
+        "wn", "wl", "wth", "ws", "rn", "rl",
+        "ns", "ls", "rs", "ms", "nf", "lv", "rv"
+      ],
+      "vowels": [
+        "a", "e", "i", "o", "u", "ea", "ae", "ie", "ei",
+        "ai", "ia", "oe", "eo", "oa", "ao", "ue", "eu",
+        "ee", "aa", "oo", "ou", "au", "ow", "aw"
+      ],
+      "syllable_range": [2, 4],
+      "uses_apostrophes": false,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "Green", "Moss", "Fern", "Root", "Leaf", "Branch",
+        "Vine", "Thorn", "Bark", "Oak", "Elm", "Ash",
+        "Birch", "Willow", "Cedar", "Pine", "Maple", "Yew",
+        "Ivy", "Holly", "Hazel", "Rowan", "Elder", "Alder",
+        "Bloom", "Blossom", "Petal", "Bud", "Sprout", "Seed",
+        "Meadow", "Grove", "Glade", "Thicket", "Copse", "Dell"
+      ],
+      "place_suffixes": [
+        "wood", "grove", "glen", "dale", "vale", "hollow",
+        "glade", "copse", "thicket", "dell", "meadow", "moor",
+        "field", "garden", "bower", "arbor", "weald", "forest",
+        "marsh", "fen", "bog", "heath", "mire", "swamp",
+        "root", "branch", "leaf", "bloom", "blossom", "thorn",
+        "moss", "fern", "bark", "seed", "vine", "canopy"
+      ],
+      "epithet_patterns": [
+        "the Verdant", "Rootborn", "the Evergreen", "Leafweaver", "the Blooming", "Mosswalker",
+        "the Sylvan", "Thornheart", "the Arboreal", "Barkborn", "the Flowering", "Vinegrower",
+        "the Fertile", "Seedkeeper", "the Lush", "Fernwhisper", "the Wild", "Branchweaver",
+        "the Overgrown", "Willowborn", "the Tangled", "Oakenshield", "the Rooted", "Elmheart",
+        "the Blossoming", "Cedarborn", "the Thriving", "Pinespirit", "the Untamed", "Mapleblood",
+        "Ashwalker", "the Ancient-rooted", "Birchsong", "the Everbloom", "Hollyheart", "the Deepwood",
+        "Fernkeeper", "the Meadowborn", "Gladewalker", "the Springtouched"
+      ]
+    },
+    "Infernal": {
+      "onset_consonants": [
+        "z", "x", "v", "kr", "gr", "dr", "br", "tr", "thr", "str",
+        "zr", "xr", "vr", "zh", "xh", "kh", "gh",
+        "sz", "zs", "xz", "zx", "vz", "zv",
+        "skr", "scr", "shr", "spr", "spl", "sl",
+        "bl", "gl", "kl", "pl", "fl", "dl",
+        "zg", "zd", "zk", "zt", "zb", "zn", "zm",
+        "xg", "xd", "xk", "xn", "xm"
+      ],
+      "coda_consonants": [
+        "z", "x", "zz", "xx", "zh", "xh", "kh", "gh",
+        "rz", "lz", "nz", "mz", "rx", "lx", "nx", "mx",
+        "zk", "xk", "zg", "xg", "zt", "xt", "zd", "xd",
+        "rzh", "lzh", "nzh", "rgh", "lgh", "ngh",
+        "rk", "lk", "nk", "st", "sk", "sp"
+      ],
+      "vowels": [
+        "a", "e", "i", "o", "u", "ai", "ei", "oi", "ui",
+        "ae", "ea", "ia", "oa", "ua", "ao", "eo", "io",
+        "aa", "ee", "ii", "oo", "uu"
+      ],
+      "syllable_range": [2, 3],
+      "uses_apostrophes": true,
+      "uses_hyphens": true,
+      "place_prefixes": [
+        "Inferno", "Blaze", "Char", "Ember", "Cinder", "Scorch",
+        "Brimstone", "Sulfur", "Magma", "Lava", "Slag", "Smelt",
+        "Hellfire", "Doom", "Dread", "Bane", "Wrath", "Fury",
+        "Shadow", "Void", "Abyss", "Chasm", "Pit", "Maw",
+        "Blood", "Bone", "Skull", "Fang", "Claw", "Horn",
+        "Ash", "Soot", "Smoke", "Flame", "Pyre", "Brand"
+      ],
+      "place_suffixes": [
+        "fire", "flame", "blaze", "burn", "scorch", "char",
+        "pit", "maw", "chasm", "abyss", "void", "rift",
+        "forge", "furnace", "kiln", "crucible", "pyre", "brand",
+        "blight", "waste", "ruin", "wreck", "doom", "fall",
+        "fang", "claw", "horn", "tooth", "skull", "bone",
+        "gate", "throne", "tower", "spire", "citadel", "keep"
+      ],
+      "epithet_patterns": [
+        "the Infernal", "Flameborn", "the Accursed", "Emberheart", "the Damned", "Cinderborn",
+        "the Burning", "Scorchbringer", "the Unholy", "Brimstoneborn", "the Wrathful", "Doomfire",
+        "the Abyssal", "Voidtouched", "the Profane", "Hellforged", "the Malevolent", "Ashborne",
+        "the Fiendish", "Slagborn", "the Diabolical", "Sulfurblood", "the Ruinous", "Magmaheart",
+        "the Cataclysmic", "Lavafist", "the Baleful", "Pyrekeeper", "the Devastating", "Charred",
+        "Flamewreath", "the Tormented", "Blazeborn", "the Forsaken", "Dreadfire", "the Corrupted",
+        "Banebringer", "the Maleficent", "Smokeborn", "the Smoldering"
+      ]
+    },
+    "Oceanic": {
+      "onset_consonants": [
+        "w", "l", "r", "m", "n", "f", "v", "s", "sh", "th",
+        "wh", "fl", "fr", "sw", "sl", "br", "bl", "gl", "gr",
+        "cl", "cr", "dr", "pl", "pr", "tr", "thr", "shr",
+        "wl", "wr", "vl", "vr", "ml", "mr", "nl", "nr",
+        "lw", "rw", "nw", "mw", "fw", "vw",
+        "ly", "ry", "ny", "my", "wy", "vy"
+      ],
+      "coda_consonants": [
+        "n", "l", "r", "m", "th", "f", "v", "s", "sh",
+        "nd", "ld", "rd", "ng", "lf", "rf", "lm", "rm",
+        "rn", "ln", "wn", "wl", "rl", "nl", "ml",
+        "rth", "lth", "nth", "rs", "ls", "ns", "ms",
+        "lv", "rv", "nv", "mv"
+      ],
+      "vowels": [
+        "a", "e", "i", "o", "u", "aa", "ee", "oo", "uu",
+        "ai", "ei", "oi", "ui", "ae", "ea", "ia", "oa",
+        "ua", "ao", "eo", "io", "ue", "ou", "eu", "au"
+      ],
+      "syllable_range": [2, 4],
+      "uses_apostrophes": false,
+      "uses_hyphens": false,
+      "place_prefixes": [
+        "Tide", "Wave", "Current", "Surf", "Foam", "Spray",
+        "Coral", "Pearl", "Shell", "Reef", "Shoal", "Bank",
+        "Deep", "Abyss", "Trench", "Fathom", "Depth", "Marine",
+        "Salt", "Brine", "Kelp", "Algae", "Drift", "Float",
+        "Harbor", "Port", "Bay", "Cove", "Inlet", "Lagoon",
+        "Storm", "Gale", "Squall", "Tempest", "Surge", "Swell"
+      ],
+      "place_suffixes": [
+        "tide", "wave", "current", "surf", "foam", "spray",
+        "coral", "pearl", "shell", "reef", "shoal", "bank",
+        "deep", "abyss", "trench", "fathom", "depth", "floor",
+        "haven", "harbor", "port", "bay", "cove", "lagoon",
+        "pool", "lake", "mere", "sea", "ocean", "water",
+        "fall", "flow", "stream", "river", "brook", "spring"
+      ],
+      "epithet_patterns": [
+        "the Oceanic", "Tideborn", "the Abyssal", "Wavewalker", "the Deep", "Currentrider",
+        "the Pelagic", "Surfborn", "the Fathomless", "Foamtouched", "the Tidal", "Coralborn",
+        "the Briny", "Pearlkeeper", "the Submerged", "Shellborn", "the Maritime", "Reefwalker",
+        "the Drowned", "Kelptouched", "the Saltblood", "Driftborn", "the Seafaring", "Stormrider",
+        "the Tempestuous", "Surgeborn", "the Sunken", "Depthkeeper", "the Aquatic", "Trenchborn",
+        "Tidalborn", "the Unyielding-tide", "Harbormaster", "the Current-blessed", "Baykeeper", "the Ever-flowing",
+        "Lagoonborn", "the Deepwater", "Seaborn", "the Wave-blessed"
+      ]
+    },
+    "Runic": {
+      "onset_consonants": [
+        "r", "th", "k", "g", "b", "d", "n", "m", "f", "v", "s", "h",
+        "hr", "hn", "hv", "hj", "sk", "st", "sp", "str", "skr", "spr",
+        "br", "dr", "gr", "kr", "pr", "tr", "fr", "vr",
+        "gn", "kn", "sn", "fn", "mn", "rn",
+        "bl", "gl", "fl", "sl", "kl", "pl",
+        "sv", "sf", "sm", "sw", "tw", "dv", "kv"
+      ],
+      "coda_consonants": [
+        "r", "n", "l", "m", "th", "k", "g", "d", "t", "f", "s",
+        "rn", "rd", "rk", "rg", "rf", "rt", "rm", "rl",
+        "nd", "nk", "ng", "nt", "nf", "ns", "nm",
+        "ld", "lk", "lg", "lf", "lt", "ls", "lm",
+        "st", "sk", "sp", "ft", "pt", "kt"
+      ],
+      "vowels": [
+        "a", "e", "i", "o", "u", "y", "ae", "ei", "au", "ou",
+        "ai", "oi", "ia", "io", "ea", "eo", "ua", "uo",
+        "yr", "ar", "er", "ir", "or", "ur"
+      ],
+      "syllable_range": [1, 3],
+      "uses_apostrophes": false,
+      "uses_hyphens": true,
+      "place_prefixes": [
+        "Rune", "Frost", "Iron", "Stone", "Storm", "Wolf",
+        "Bear", "Raven", "Eagle", "Hawk", "Stag", "Boar",
+        "Ice", "Snow", "Hail", "Sleet", "Blizzard", "Glacier",
+        "Sword", "Shield", "Axe", "Spear", "Helm", "Mail",
+        "Odin", "Thor", "Tyr", "Freya", "Loki", "Baldur",
+        "Fjord", "Mountain", "Vale", "Ridge", "Peak", "Crest"
+      ],
+      "place_suffixes": [
+        "heim", "gard", "fell", "mark", "stead", "hold",
+        "fjord", "borg", "vik", "dal", "ness", "foss",
+        "holm", "berg", "vald", "mund", "byr", "stad",
+        "hof", "tun", "vang", "haug", "land", "rike",
+        "hall", "forge", "throne", "keep", "ward", "watch",
+        "gate", "wall", "tower", "peak", "ridge", "cairn"
+      ],
+      "epithet_patterns": [
+        "the Runic", "Frostborn", "the Iron-willed", "Stonecarver", "the Storm-blessed", "Wolfblood",
+        "the Unyielding", "Bearborn", "the Raven-marked", "Eaglewing", "the Stalwart", "Hawkeye",
+        "the Ice-veined", "Snowwalker", "the Hailborn", "Sleetbringer", "the Glacier-hearted", "Blizzardborn",
+        "the Sword-sworn", "Shieldbearer", "the Axe-wielder", "Spearmaster", "the Helm-crowned", "Mailforged",
+        "Runescribe", "the All-father", "Thunderborn", "the Cunning", "Skaald", "the Shieldmaiden",
+        "Fjordwalker", "the Mountain-bred", "Valekeeper", "the Ridge-runner", "Peakborn", "the Crest-crowned",
+        "Wyrdborn", "the Saga-keeper", "Fateweaver", "the Oath-sworn"
+      ]
+    },
+    "Ethereal": {
+      "onset_consonants": [
+        "th", "ph", "kh", "zh", "wh", "sh", "ch", "gh",
+        "thr", "phr", "khr", "zhr", "whr", "shr", "chr", "ghr",
+        "thl", "phl", "khl", "zhl", "whl", "shl", "chl", "ghl",
+        "v", "f", "s", "z", "l", "r", "n", "m", "w", "y", "h",
+        "vr", "fr", "zr", "lr", "nr", "mr", "wr", "yr",
+        "vl", "fl", "zl", "nl", "ml", "wl", "yl"
+      ],
+      "coda_consonants": [
+        "th", "ph", "kh", "zh", "sh", "ch", "gh",
+        "rth", "lth", "nth", "mth", "rph", "lph", "nph",
+        "rkh", "lkh", "nkh", "rzh", "lzh", "nzh",
+        "rsh", "lsh", "nsh", "rch", "lch", "nch",
+        "rgh", "lgh", "ngh", "l", "r", "n", "m",
+        "ll", "rr", "nn", "mm"
+      ],
+      "vowels": [
+        "ae", "ea", "ie", "ei", "ai", "ia", "oe", "eo",
+        "ue", "eu", "ao", "oa", "io", "oi", "iu", "ui",
+        "aei", "eia", "iae", "eai", "aie", "iea",
+        "oue", "uoe", "eou", "oeu", "ueo", "euo"
+      ],
+      "syllable_range": [2, 4],
+      "uses_apostrophes": true,
+      "uses_hyphens": true,
+      "place_prefixes": [
+        "Ether", "Void", "Astral", "Planar", "Liminal", "Nexus",
+        "Phase", "Flux", "Warp", "Rift", "Fold", "Shift",
+        "Dream", "Vision", "Phantom", "Specter", "Wraith", "Spirit",
+        "Null", "Zero", "Infinite", "Eternal", "Timeless", "Boundless",
+        "Echo", "Mirror", "Prism", "Fractal", "Spiral", "Vortex",
+        "Cosmic", "Stellar", "Nebula", "Pulsar", "Quasar", "Nova"
+      ],
+      "place_suffixes": [
+        "ether", "void", "plane", "realm", "sphere", "domain",
+        "gate", "portal", "rift", "tear", "fold", "warp",
+        "reach", "expanse", "traverse", "passage", "crossing", "threshold",
+        "nexus", "node", "point", "vertex", "axis", "locus",
+        "dream", "vision", "echo", "mirror", "reflection", "shadow",
+        "drift", "flow", "stream", "current", "tide", "pulse"
+      ],
+      "epithet_patterns": [
+        "the Ethereal", "Voidborn", "the Astral", "Planewalker", "the Liminal", "Nexusborn",
+        "the Phasing", "Fluxborn", "the Warped", "Rifttouched", "the Folded", "Shiftborn",
+        "the Dreaming", "Visionseeker", "the Phantom", "Specterborn", "the Spectral", "Wraithtouch",
+        "the Null", "Zeromind", "the Infinite", "Eternborn", "the Timeless", "Boundlessmind",
+        "the Echoing", "Mirrorborn", "the Prismatic", "Fractalborn", "the Spiraling", "Vortexborn",
+        "the Cosmic", "Stellarborn", "the Nebular", "Pulsarborn", "the Transcendent", "Novaborn",
+        "the Between", "Thresholdwalker", "the Unmoored", "the Dimensionless"
+      ]
+    }
+  }
+}

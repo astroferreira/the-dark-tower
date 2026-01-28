@@ -18,6 +18,7 @@ mod explorer;
 mod exr_export;
 mod grid_export;
 mod heightmap;
+mod history;
 mod map_export;
 mod menu;
 mod microclimate;
@@ -161,6 +162,30 @@ struct Args {
     /// Disable border dithering
     #[arg(long)]
     no_dither: bool,
+
+    /// Number of years of history to simulate (0 to skip history)
+    #[arg(long, default_value = "0")]
+    history_years: u32,
+
+    /// Seed for history simulation (derived from master seed if not specified)
+    #[arg(long)]
+    history_seed: Option<u64>,
+
+    /// Load history from a save file instead of simulating
+    #[arg(long)]
+    load_history: Option<String>,
+
+    /// Save history to a file after simulation
+    #[arg(long)]
+    save_history: Option<String>,
+
+    /// Export legends summary as markdown
+    #[arg(long)]
+    export_legends: Option<String>,
+
+    /// Run N benchmark simulations and print aggregate quality metrics
+    #[arg(long)]
+    benchmark: Option<u32>,
 }
 
 fn main() {
@@ -645,12 +670,97 @@ fn main() {
         }
     }
 
+    // Run benchmark mode if requested (early return)
+    if let Some(num_runs) = args.benchmark {
+        let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
+        let history_years = if args.history_years > 0 { args.history_years } else { 200 };
+        let config = history::config::HistoryConfig {
+            simulation_years: history_years,
+            ..history::config::HistoryConfig::default()
+        };
+        let game_data = history::data::GameData::load_from(std::path::Path::new("data"));
+
+        eprintln!("Running {} benchmark simulations ({} years each)...", num_runs, history_years);
+
+        let batch_config = history::simulation::harness::BatchConfig {
+            name: "benchmark".to_string(),
+            history_config: config,
+            num_runs,
+            base_seed: history_seed,
+        };
+
+        let results = history::simulation::harness::run_batch(&world_data, &batch_config, &game_data);
+        eprintln!("{}", results.report());
+        return;
+    }
+
+    // Load or simulate history
+    let history = if let Some(ref load_path) = args.load_history {
+        eprintln!("Loading history from {}...", load_path);
+        match history::persistence::load_history(std::path::Path::new(load_path)) {
+            Ok(loaded) => {
+                let summary = loaded.history.summary();
+                eprintln!("{}", summary);
+                Some(loaded.history)
+            }
+            Err(e) => {
+                eprintln!("Failed to load history: {}", e);
+                None
+            }
+        }
+    } else if args.history_years > 0 {
+        let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
+        let config = history::config::HistoryConfig {
+            simulation_years: args.history_years,
+            ..history::config::HistoryConfig::default()
+        };
+        // Load game data (embedded defaults + optional data/ directory overrides)
+        let game_data = history::data::GameData::load_from(std::path::Path::new("data"));
+        eprintln!("Simulating {} years of history (seed: {})...", args.history_years, history_seed);
+        let mut engine = history::simulation::HistoryEngine::new(history_seed);
+        let hist = engine.simulate_with_data(&world_data, config, &game_data);
+        let summary = hist.summary();
+        eprintln!("{}", summary);
+        Some(hist)
+    } else {
+        None
+    };
+
+    // Save history if requested
+    if let (Some(ref hist), Some(ref save_path)) = (&history, &args.save_history) {
+        let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
+        eprintln!("Saving history to {}...", save_path);
+        if let Err(e) = history::persistence::save_history(
+            hist, master_seed, history_seed, std::path::Path::new(save_path),
+        ) {
+            eprintln!("Failed to save history: {}", e);
+        } else {
+            eprintln!("History saved.");
+        }
+    }
+
+    // Export legends if requested
+    if let (Some(ref hist), Some(ref export_path)) = (&history, &args.export_legends) {
+        eprintln!("Exporting legends to {}...", export_path);
+        let path = std::path::Path::new(export_path);
+        let result = if export_path.ends_with(".md") {
+            history::persistence::export_legends_markdown(hist, path)
+        } else {
+            history::persistence::export_legends_text(hist, path)
+        };
+        if let Err(e) = result {
+            eprintln!("Failed to export legends: {}", e);
+        } else {
+            eprintln!("Legends exported.");
+        }
+    }
+
     // Skip explorer in headless mode
     if args.headless {
         return;
     }
 
-    if let Err(e) = explorer::run_explorer(world_data) {
+    if let Err(e) = explorer::run_explorer(world_data, history) {
         eprintln!("Explorer error: {}", e);
     }
 }

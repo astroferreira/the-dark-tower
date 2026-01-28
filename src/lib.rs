@@ -23,6 +23,7 @@ pub mod coastline;
 pub mod erosion;
 pub mod exr_export;
 pub mod heightmap;
+pub mod history;
 pub mod map_export;
 pub mod microclimate;
 pub mod plates;

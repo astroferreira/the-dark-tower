@@ -5,6 +5,7 @@
 //! - Climate-type-dependent moisture phase (Mediterranean vs. tropical)
 //! - Hemisphere-aware season offsets
 
+use serde::{Serialize, Deserialize};
 use crate::tilemap::Tilemap;
 use crate::biomes::ExtendedBiome;
 
@@ -13,7 +14,7 @@ use crate::biomes::ExtendedBiome;
 // =============================================================================
 
 /// The four seasons
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Season {
     Spring = 0,
     Summer = 1,

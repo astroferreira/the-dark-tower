@@ -1,0 +1,5542 @@
+# World History Legends
+
+**Years simulated:** 1201
+
+## Summary
+
+| Stat | Value |
+|------|-------|
+| Events | 10000 (3518 major) |
+| Factions | 8 (8 active) |
+| Settlements | 8 |
+| Figures | 485 (109 living) |
+| Dynasties | 8 |
+| Legendary Creatures | 150 (150 alive) |
+| Artifacts | 157 |
+| Monuments | 104 |
+| Religions | 8 |
+| Wars | 1750 |
+| Population | 800000 |
+
+## Eras
+
+- **The Age of Founding (Era 1)**: Year 1 - Year 51
+- **The Age of Conflict (Era 2)**: Year 52 - Year 102
+- **The Age of Founding (Era 3)**: Year 103 - Year 153
+- **The Age of Conflict (Era 4)**: Year 154 - Year 204
+- **The Age of Conflict (Era 5)**: Year 205 - Year 255
+- **The Age of Conflict (Era 6)**: Year 256 - Year 306
+- **The Age of Conflict (Era 7)**: Year 307 - Year 357
+- **The Age of Conflict (Era 8)**: Year 358 - Year 408
+- **The Age of Conflict (Era 9)**: Year 409 - Year 459
+- **The Age of Conflict (Era 10)**: Year 460 - Year 510
+- **The Age of Conflict (Era 11)**: Year 511 - Year 561
+- **The Age of Conflict (Era 12)**: Year 562 - Year 612
+- **The Age of Conflict (Era 13)**: Year 613 - Year 663
+- **The Age of Conflict (Era 14)**: Year 664 - Year 714
+- **The Age of Conflict (Era 15)**: Year 715 - Year 765
+- **The Age of Conflict (Era 16)**: Year 766 - Year 816
+- **The Age of Conflict (Era 17)**: Year 817 - Year 867
+- **The Age of Conflict (Era 18)**: Year 868 - Year 918
+- **The Age of Conflict (Era 19)**: Year 919 - Year 969
+- **The Age of Conflict (Era 20)**: Year 970 - Year 1020
+- **The Age of Conflict (Era 21)**: Year 1021 - Year 1071
+- **The Age of Conflict (Era 22)**: Year 1072 - Year 1122
+- **The Age of Conflict (Era 23)**: Year 1123 - Year 1173
+- **The Age of Conflict (Era 24)**: Year 1174 - Year 1201
+
+## Factions
+
+### The Whitefield Beastfolk (active)
+
+- Founded: Year 68
+- Settlements: 1
+- Current leader: Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Jos the Scarred
+
+### The Shainieshailight Fey (active)
+
+- Founded: Year 18
+- Settlements: 1
+- Current leader: Successor of Successor of Mi'lielranear the Silent
+
+### The Brolebraeion Elf (active)
+
+- Founded: Year 72
+- Settlements: 1
+- Current leader: Successor of Successor of Thianorn
+
+### The Re Human (active)
+
+- Founded: Year 28
+- Settlements: 1
+- Current leader: Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Fowt the Oathbreaker
+
+### The Tsiskksai'ksiden Reptilian (active)
+
+- Founded: Year 58
+- Settlements: 1
+- Current leader: Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Zaiskothsex
+
+### The Theanfifitho Elf (active)
+
+- Founded: Year 105
+- Settlements: 1
+- Current leader: Successor of Successor of Briafeand the Bold
+
+### The Crownmonolith Giant (active)
+
+- Founded: Year 11
+- Settlements: 1
+- Current leader: Successor of Successor of Successor of Aumgukrauth
+
+### The Westford Human (active)
+
+- Founded: Year 63
+- Settlements: 1
+- Current leader: Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Successor of Idet
+
+## Notable Figures
+
+- **Matrurn the Reformer** (deceased)
+- **Owtpeweck the Benevolent** (deceased)
+- **Mi'lielranear the Silent** (deceased)
+- **Rynle the Dreaming** (deceased)
+- **Cowropow the Golden** (deceased)
+- **Aynd the Silver-tongued** (deceased)
+- **Fowt the Oathbreaker** (deceased)
+- **Meaalieleiel Sunshadow** (deceased)
+- **Briafeand the Bold** (deceased)
+- **Briobrial the Ageless** (deceased)
+- **Thianorn** (deceased)
+- **Aumgukrauth** (deceased)
+- **Idet** (deceased)
+- **Jos the Scarred** (deceased)
+- **Skaitsaissaiz the Wise** (deceased)
+- **Zaiskothsex** (deceased)
+
+## Legendary Creatures
+
+- **Vrakzul Sky-Render** (alive)
+- **Moldrek the Profane** (alive)
+- **Nyxfang the Insatiable** (alive)
+- **Molath Storm-Caller** (alive)
+- **Shaul the Ravenous** (alive)
+- **Baelon Bone-Crusher** (alive)
+- **Grimgar Plague-Bearer** (alive)
+- **Vrakmaw Death-Bringer** (alive)
+- **Draken Bone-Crusher** (alive)
+- **Sylzul the Profane** (alive)
+- **Thornrok the Ancient** (alive)
+- **Ithen the Devourer** (alive)
+- **Golmaw the Devourer** (alive)
+- **Golax the Profane** (alive)
+- **Drakmaw Soul-Reaper** (alive)
+- **Thornorath the Merciless** (alive)
+- **Korath the Devourer** (alive)
+- **Baeliel Soul-Reaper** (alive)
+- **Kronax the Merciless** (alive)
+- **Golmoth the Dreaded** (alive)
+- **Ithfang the Merciless** (alive)
+- **Zarul the Undying** (alive)
+- **Kronix Bone-Crusher** (alive)
+- **Baeldrek Bone-Crusher** (alive)
+- **Ithul Soul-Reaper** (alive)
+- **Golon Bone-Crusher** (alive)
+- **Zariel the Eternal** (alive)
+- **Thornesh the Nightmare** (alive)
+- **Velorath the Voracious** (alive)
+- **Thornmoth the Terrible** (alive)
+- **Grimmaw Sky-Render** (alive)
+- **Thornath Sky-Render** (alive)
+- **Kordrek the Ancient** (alive)
+- **Xarorath Death-Bringer** (alive)
+- **Mormaw the Voracious** (alive)
+- **Shaorath the Ancient** (alive)
+- **Kaelul Plague-Bearer** (alive)
+- **Ithdrek the Eternal** (alive)
+- **Velorath Sky-Render** (alive)
+- **Grimul the Dreaded** (alive)
+- **Ashdrek the Shadow** (alive)
+- **Molorath the Devourer** (alive)
+- **Ashul the Dreaded** (alive)
+- **Kronul the Undying** (alive)
+- **Kaelgor the Insatiable** (alive)
+- **Thornfang the Nightmare** (alive)
+- **Kaelgar the Undying** (alive)
+- **Golen Death-Bringer** (alive)
+- **Moriel the Unending** (alive)
+- **Kroniel Flame-Born** (alive)
+- **Fyrix the Profane** (alive)
+- **Kronthax the Voracious** (alive)
+- **Zarorath the Dreaded** (alive)
+- **Golmoth the Terrible** (alive)
+- **Morax the Undying** (alive)
+- **Kaeldrek the Unending** (alive)
+- **Golmaw the Eternal** (alive)
+- **Molorath the Voracious** (alive)
+- **Nyxul the Ravenous** (alive)
+- **Velmoth World-Eater** (alive)
+- **Ithorath Death-Bringer** (alive)
+- **Xarmaw the Eternal** (alive)
+- **Drakdrek the Insatiable** (alive)
+- **Vraken the Unending** (alive)
+- **Golrok the Corrupted** (alive)
+- **Zarfang Storm-Caller** (alive)
+- **Baelesh the Unending** (alive)
+- **Shafang Death-Bringer** (alive)
+- **Baelrok the Eternal** (alive)
+- **Xardrek the Corrupted** (alive)
+- **Golthax the Corrupted** (alive)
+- **Sylgor the Undying** (alive)
+- **Thornax the Ancient** (alive)
+- **Ashthax Sky-Render** (alive)
+- **Morgor the Corrupted** (alive)
+- **Morul the Corrupted** (alive)
+- **Shaen the Nightmare** (alive)
+- **Nyxthax the Merciless** (alive)
+- **Kronax Sky-Render** (alive)
+- **Kaelur the Terrible** (alive)
+- **Ithgar Bone-Crusher** (alive)
+- **Kaelrok the Devourer** (alive)
+- **Xarzul Plague-Bearer** (alive)
+- **Kaelnak the Unending** (alive)
+- **Kaeliel Bone-Crusher** (alive)
+- **Morix the Nightmare** (alive)
+- **Kaelmaw the Desolator** (alive)
+- **Thornfang Flame-Born** (alive)
+- **Kronzul the Unending** (alive)
+- **Velzul Storm-Caller** (alive)
+- **Ashmoth the Dreaded** (alive)
+- **Thornax Flame-Born** (alive)
+- **Velrok the Corrupted** (alive)
+- **Velgor the Insatiable** (alive)
+- **Golthax Bone-Crusher** (alive)
+- **Nyxorath the Profane** (alive)
+- **Baelen Death-Bringer** (alive)
+- **Baelmoth Plague-Bearer** (alive)
+- **Moliel the Desolator** (alive)
+- **Korgor World-Eater** (alive)
+- **Ashgor Flame-Born** (alive)
+- **Morrok the Terrible** (alive)
+- **Kaelax the Terrible** (alive)
+- **Shamoth the Nightmare** (alive)
+- **Thornax the Profane** (alive)
+- **Zarzul the Eternal** (alive)
+- **Ashix the Undying** (alive)
+- **Morul the Profane** (alive)
+- **Krongar the Terrible** (alive)
+- **Sylen Soul-Reaper** (alive)
+- **Ithen World-Eater** (alive)
+- **Ashthax the Eternal** (alive)
+- **Drakmaw the Shadow** (alive)
+- **Veldrek the Corrupted** (alive)
+- **Thornfang the Corrupted** (alive)
+- **Kaeliel the Ancient** (alive)
+- **Ithesh the Undying** (alive)
+- **Zarorath the Eternal** (alive)
+- **Nyxgor Death-Bringer** (alive)
+- **Thornen Soul-Reaper** (alive)
+- **Mororath Flame-Born** (alive)
+- **Kaelgar the Eternal** (alive)
+- **Zarax the Nightmare** (alive)
+- **Fyrath the Eternal** (alive)
+- **Krongar the Desolator** (alive)
+- **Kaelgor the Insatiable** (alive)
+- **Kaelen the Corrupted** (alive)
+- **Korgar World-Eater** (alive)
+- **Korax the Voracious** (alive)
+- **Korfang the Ravenous** (alive)
+- **Kaelorath the Devourer** (alive)
+- **Ashath Plague-Bearer** (alive)
+- **Grimul the Ancient** (alive)
+- **Sylrok Storm-Caller** (alive)
+- **Thornesh Flame-Born** (alive)
+- **Xariel the Corrupted** (alive)
+- **Sylnak Plague-Bearer** (alive)
+- **Nyxthax the Ancient** (alive)
+- **Vrakgar the Ancient** (alive)
+- **Korax the Corrupted** (alive)
+- **Thorngar the Insatiable** (alive)
+- **Kaelzul the Ancient** (alive)
+- **Ashen Storm-Caller** (alive)
+- **Kaelmoth the Terrible** (alive)
+- **Ashnak the Devourer** (alive)
+- **Xarmoth the Insatiable** (alive)
+- **Shanak the Eternal** (alive)
+- **Grimax the Terrible** (alive)
+- **Ithnak the Undying** (alive)
+- **Korgor Sky-Render** (alive)
+
+## Wars
+
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 201 - Year 206
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 201 - Year 205
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 202 - Year 208
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 202 - Year 206
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 203 - Year 208
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 204 - Year 208
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 205 - Year 209
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 205 - Year 209
+- **Resource War of The Crownmonolith Giant and The Re Human**: Year 206 - Year 210
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 206 - Year 210
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 206 - Year 210
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 207 - Year 211
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 208 - Year 212
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 209 - Year 214
+- **Territorial War of The Re Human and The Westford Human**: Year 209 - Year 213
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 209 - Year 213
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 211 - Year 215
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 212 - Year 216
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 212 - Year 216
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 213 - Year 219
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 213 - Year 217
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 214 - Year 218
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 214 - Year 218
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 215 - Year 219
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 216 - Year 220
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 216 - Year 220
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 217 - Year 222
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 217 - Year 221
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 218 - Year 222
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 218 - Year 222
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 219 - Year 223
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 219 - Year 223
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 219 - Year 223
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 220 - Year 224
+- **Religious War of The Re Human and The Westford Human**: Year 220 - Year 225
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 220 - Year 224
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 221 - Year 225
+- **Religious War of The Crownmonolith Giant and The Westford Human**: Year 224 - Year 229
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 224 - Year 228
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 225 - Year 229
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 225 - Year 229
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 225 - Year 229
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 225 - Year 229
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 226 - Year 230
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 226 - Year 230
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 226 - Year 230
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 227 - Year 231
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 227 - Year 231
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 228 - Year 232
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 230 - Year 234
+- **Revenge War of The Re Human and The Westford Human**: Year 230 - Year 234
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 231 - Year 235
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 231 - Year 236
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 231 - Year 235
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 231 - Year 235
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 231 - Year 235
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 231 - Year 235
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 231 - Year 235
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 231 - Year 235
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 231 - Year 235
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 232 - Year 237
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 232 - Year 237
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 232 - Year 236
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 233 - Year 237
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 233 - Year 237
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 233 - Year 237
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 235 - Year 240
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 235 - Year 240
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 236 - Year 240
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 237 - Year 241
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 237 - Year 241
+- **Resource War of The Crownmonolith Giant and The Re Human**: Year 238 - Year 242
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 239 - Year 243
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 239 - Year 243
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 241 - Year 245
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 241 - Year 245
+- **Religious War of The Re Human and The Westford Human**: Year 242 - Year 246
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 243 - Year 247
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 244 - Year 248
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 244 - Year 248
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 245 - Year 249
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 245 - Year 249
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 245 - Year 249
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 246 - Year 250
+- **Resource War of The Re Human and The Westford Human**: Year 247 - Year 251
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 249 - Year 253
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 249 - Year 253
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 250 - Year 254
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 251 - Year 255
+- **Religious War of The Crownmonolith Giant and The Westford Human**: Year 252 - Year 256
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 252 - Year 256
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 252 - Year 256
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 252 - Year 256
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 252 - Year 256
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 253 - Year 257
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 254 - Year 258
+- **Resource War of The Re Human and The Westford Human**: Year 254 - Year 258
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 255 - Year 259
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 255 - Year 259
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 255 - Year 259
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 255 - Year 259
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 256 - Year 260
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 256 - Year 260
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 257 - Year 262
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 258 - Year 262
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 259 - Year 263
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 259 - Year 263
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 260 - Year 264
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 260 - Year 264
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 261 - Year 266
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 261 - Year 265
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 261 - Year 265
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 263 - Year 267
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 263 - Year 267
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 263 - Year 268
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 264 - Year 268
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 265 - Year 269
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 267 - Year 272
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 268 - Year 272
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 268 - Year 272
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 268 - Year 272
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 269 - Year 274
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 269 - Year 273
+- **Resource War of The Shainieshailight Fey and The Westford Human**: Year 270 - Year 274
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 270 - Year 274
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 270 - Year 274
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 271 - Year 275
+- **Religious War of The Re Human and The Westford Human**: Year 272 - Year 276
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 274 - Year 279
+- **Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 274 - Year 278
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 275 - Year 279
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 277 - Year 281
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 277 - Year 281
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 278 - Year 282
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 278 - Year 282
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 278 - Year 282
+- **Conquest War of The Re Human and The Westford Human**: Year 279 - Year 284
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 279 - Year 283
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 281 - Year 285
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 282 - Year 286
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 282 - Year 286
+- **Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 283 - Year 287
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 283 - Year 287
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 284 - Year 288
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 284 - Year 288
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 285 - Year 290
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 286 - Year 291
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 286 - Year 290
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 287 - Year 291
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 289 - Year 293
+- **Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 289 - Year 294
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 290 - Year 294
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 290 - Year 294
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 290 - Year 294
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 290 - Year 294
+- **Conquest War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 292 - Year 296
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 293 - Year 297
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 295 - Year 300
+- **Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 296 - Year 300
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 296 - Year 300
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 297 - Year 301
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 297 - Year 301
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 298 - Year 302
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 298 - Year 303
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 298 - Year 302
+- **Resource War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 298 - Year 303
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 299 - Year 303
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 299 - Year 303
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 300 - Year 304
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 301 - Year 305
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 302 - Year 306
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 302 - Year 306
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 302 - Year 306
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 303 - Year 307
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 303 - Year 308
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 303 - Year 307
+- **Territorial War of The Re Human and The Westford Human**: Year 304 - Year 308
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 304 - Year 308
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 305 - Year 309
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 305 - Year 309
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 306 - Year 310
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 306 - Year 310
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 307 - Year 311
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 308 - Year 312
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 308 - Year 312
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 309 - Year 313
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 310 - Year 314
+- **Territorial War of The Re Human and The Westford Human**: Year 310 - Year 314
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 311 - Year 315
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 311 - Year 316
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 312 - Year 317
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 312 - Year 316
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 313 - Year 317
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 313 - Year 317
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 314 - Year 318
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 315 - Year 319
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 316 - Year 320
+- **Resource War of The Crownmonolith Giant and The Re Human**: Year 316 - Year 320
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 317 - Year 321
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 318 - Year 323
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 319 - Year 323
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 321 - Year 325
+- **Resource War of The Re Human and The Westford Human**: Year 321 - Year 325
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 321 - Year 325
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 326 - Year 330
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 327 - Year 332
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 327 - Year 332
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 329 - Year 333
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 329 - Year 333
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 329 - Year 334
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 331 - Year 335
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 331 - Year 335
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 331 - Year 335
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 333 - Year 337
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 333 - Year 338
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 334 - Year 338
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 334 - Year 338
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 335 - Year 339
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 335 - Year 339
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 335 - Year 339
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 336 - Year 340
+- **Territorial War of The Re Human and The Westford Human**: Year 338 - Year 342
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 339 - Year 343
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 339 - Year 343
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 340 - Year 344
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 340 - Year 345
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 341 - Year 345
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 341 - Year 345
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 342 - Year 346
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 342 - Year 347
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 343 - Year 347
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 345 - Year 349
+- **Conquest War of The Re Human and The Westford Human**: Year 346 - Year 350
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 346 - Year 350
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 346 - Year 350
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 347 - Year 351
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 347 - Year 351
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 348 - Year 352
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 348 - Year 352
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 348 - Year 353
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 349 - Year 353
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 349 - Year 353
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 350 - Year 354
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 350 - Year 354
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 351 - Year 355
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 352 - Year 356
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 352 - Year 356
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 353 - Year 357
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 353 - Year 357
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 354 - Year 358
+- **Resource War of The Crownmonolith Giant and The Re Human**: Year 354 - Year 358
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 354 - Year 358
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 355 - Year 359
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 355 - Year 359
+- **Resource War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 355 - Year 359
+- **Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 356 - Year 361
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 357 - Year 361
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 357 - Year 362
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 357 - Year 361
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 357 - Year 361
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 358 - Year 362
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 358 - Year 362
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 358 - Year 362
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 360 - Year 364
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 361 - Year 365
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 364 - Year 368
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 365 - Year 369
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 365 - Year 369
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 366 - Year 370
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 366 - Year 370
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 367 - Year 371
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 368 - Year 372
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 368 - Year 372
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 369 - Year 373
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 369 - Year 373
+- **Resource War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 369 - Year 373
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 369 - Year 373
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 370 - Year 375
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 371 - Year 376
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 371 - Year 375
+- **Conquest War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 371 - Year 375
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 371 - Year 375
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 372 - Year 376
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 373 - Year 377
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 373 - Year 379
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 376 - Year 380
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 378 - Year 382
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 378 - Year 382
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 379 - Year 384
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 380 - Year 384
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 380 - Year 385
+- **Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 381 - Year 385
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 381 - Year 385
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 381 - Year 385
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 383 - Year 387
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 384 - Year 388
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 386 - Year 390
+- **Resource War of The Re Human and The Westford Human**: Year 386 - Year 390
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 386 - Year 390
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 386 - Year 390
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 387 - Year 391
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 387 - Year 391
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 387 - Year 391
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 387 - Year 391
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 388 - Year 392
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 388 - Year 392
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 389 - Year 393
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 390 - Year 395
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 390 - Year 395
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 391 - Year 395
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 392 - Year 396
+- **Religious War of The Re Human and The Westford Human**: Year 392 - Year 396
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 393 - Year 397
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 394 - Year 398
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 394 - Year 398
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 395 - Year 399
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 396 - Year 400
+- **Resource War of The Shainieshailight Fey and The Westford Human**: Year 397 - Year 401
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 397 - Year 401
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 397 - Year 401
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 397 - Year 402
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 398 - Year 402
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 398 - Year 402
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 398 - Year 402
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 398 - Year 402
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 398 - Year 402
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 400 - Year 404
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 400 - Year 405
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 401 - Year 405
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 401 - Year 405
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 403 - Year 407
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 403 - Year 407
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 403 - Year 407
+- **Religious War of The Crownmonolith Giant and The Westford Human**: Year 404 - Year 408
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 404 - Year 408
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 406 - Year 410
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 406 - Year 410
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 407 - Year 411
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 408 - Year 412
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 409 - Year 413
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 409 - Year 413
+- **Conquest War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 410 - Year 414
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 410 - Year 414
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 410 - Year 414
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 411 - Year 415
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 412 - Year 416
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 413 - Year 417
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 414 - Year 418
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 414 - Year 418
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 415 - Year 420
+- **Resource War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 415 - Year 419
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 416 - Year 420
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 417 - Year 421
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 417 - Year 421
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 417 - Year 421
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 417 - Year 421
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 418 - Year 422
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 418 - Year 422
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 418 - Year 422
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 419 - Year 423
+- **Religious War of The Crownmonolith Giant and The Westford Human**: Year 419 - Year 423
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 420 - Year 424
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 422 - Year 426
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 423 - Year 427
+- **Religious War of The Re Human and The Westford Human**: Year 423 - Year 427
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 423 - Year 428
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 424 - Year 428
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 425 - Year 429
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 425 - Year 429
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 425 - Year 429
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 426 - Year 430
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 426 - Year 430
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 427 - Year 431
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 429 - Year 433
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 429 - Year 434
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 429 - Year 433
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 429 - Year 433
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 429 - Year 434
+- **Conquest War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 430 - Year 434
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 430 - Year 435
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 432 - Year 436
+- **Conquest War of The Re Human and The Westford Human**: Year 433 - Year 437
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 433 - Year 437
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 434 - Year 438
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 435 - Year 439
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 435 - Year 440
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 436 - Year 440
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 436 - Year 440
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 437 - Year 441
+- **Religious War of The Re Human and The Westford Human**: Year 438 - Year 442
+- **Conquest War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 438 - Year 442
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 438 - Year 442
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 439 - Year 443
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 439 - Year 444
+- **Territorial War of The Westford Human and The Brolebraeion Elf**: Year 439 - Year 443
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 440 - Year 444
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 441 - Year 445
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 441 - Year 445
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 442 - Year 446
+- **Religious War of The Re Human and The Westford Human**: Year 442 - Year 446
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 443 - Year 447
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 446 - Year 450
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 447 - Year 452
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 447 - Year 451
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 450 - Year 454
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 451 - Year 455
+- **Religious War of The Re Human and The Westford Human**: Year 451 - Year 455
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 451 - Year 455
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 451 - Year 455
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 452 - Year 456
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 452 - Year 456
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 454 - Year 458
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 454 - Year 458
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 454 - Year 458
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 454 - Year 458
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 455 - Year 459
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 455 - Year 459
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 456 - Year 460
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 456 - Year 460
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 456 - Year 462
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 457 - Year 462
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 457 - Year 461
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 457 - Year 461
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 457 - Year 461
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 458 - Year 462
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 460 - Year 464
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 461 - Year 465
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 461 - Year 465
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 461 - Year 465
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 462 - Year 467
+- **Religious War of The Re Human and The Westford Human**: Year 462 - Year 466
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 462 - Year 466
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 462 - Year 466
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 463 - Year 468
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 464 - Year 469
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 464 - Year 468
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 465 - Year 469
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 465 - Year 469
+- **Religious War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 466 - Year 470
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 467 - Year 471
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 467 - Year 471
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 467 - Year 471
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 468 - Year 472
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 468 - Year 472
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 469 - Year 473
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 470 - Year 474
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 470 - Year 474
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 470 - Year 474
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 470 - Year 474
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 470 - Year 475
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 471 - Year 475
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 471 - Year 475
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 471 - Year 475
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 471 - Year 475
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 473 - Year 477
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 474 - Year 478
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 475 - Year 479
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 475 - Year 479
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 476 - Year 480
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 476 - Year 480
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 477 - Year 481
+- **Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 478 - Year 482
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 478 - Year 482
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 479 - Year 483
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 479 - Year 483
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 480 - Year 484
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 480 - Year 484
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 481 - Year 485
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 481 - Year 485
+- **Resource War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 481 - Year 486
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 481 - Year 485
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 481 - Year 485
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 482 - Year 487
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 482 - Year 486
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 483 - Year 487
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 483 - Year 487
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 485 - Year 489
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 485 - Year 489
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 485 - Year 489
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 485 - Year 489
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 485 - Year 489
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 486 - Year 490
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 486 - Year 490
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 487 - Year 492
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 487 - Year 491
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 487 - Year 491
+- **Conquest War of The Re Human and The Whitefield Beastfolk**: Year 489 - Year 493
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 489 - Year 493
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 490 - Year 494
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 491 - Year 495
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 491 - Year 496
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 492 - Year 496
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 492 - Year 496
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 493 - Year 497
+- **Resource War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 493 - Year 497
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 494 - Year 498
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 495 - Year 499
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 496 - Year 500
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 497 - Year 501
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 497 - Year 501
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 498 - Year 503
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 498 - Year 502
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 499 - Year 503
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 499 - Year 503
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 500 - Year 504
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 501 - Year 505
+- **Territorial War of The Westford Human and The Brolebraeion Elf**: Year 501 - Year 505
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 501 - Year 505
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 501 - Year 505
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 502 - Year 506
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 502 - Year 506
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 502 - Year 506
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 502 - Year 506
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 504 - Year 508
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 504 - Year 508
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 504 - Year 508
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 506 - Year 510
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 506 - Year 510
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 507 - Year 511
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 507 - Year 511
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 507 - Year 511
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 507 - Year 511
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 508 - Year 512
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 509 - Year 514
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 510 - Year 514
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 510 - Year 514
+- **Religious War of The Re Human and The Westford Human**: Year 510 - Year 514
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 511 - Year 515
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 512 - Year 516
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 512 - Year 516
+- **Resource War of The Shainieshailight Fey and The Westford Human**: Year 512 - Year 516
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 514 - Year 519
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 515 - Year 519
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 515 - Year 519
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 515 - Year 519
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 515 - Year 519
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 515 - Year 520
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 516 - Year 520
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 516 - Year 520
+- **Resource War of The Re Human and The Westford Human**: Year 516 - Year 520
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 517 - Year 521
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 518 - Year 522
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 519 - Year 523
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 520 - Year 524
+- **Resource War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 520 - Year 524
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 521 - Year 525
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 521 - Year 525
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 522 - Year 526
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 522 - Year 526
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 524 - Year 528
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 524 - Year 528
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 526 - Year 530
+- **Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 526 - Year 531
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 526 - Year 530
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 527 - Year 531
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 528 - Year 532
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 528 - Year 532
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 528 - Year 532
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 529 - Year 533
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 530 - Year 535
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 530 - Year 534
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 532 - Year 536
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 532 - Year 536
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 533 - Year 537
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 533 - Year 537
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 535 - Year 539
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 537 - Year 542
+- **Conquest War of The Re Human and The Whitefield Beastfolk**: Year 538 - Year 542
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 538 - Year 542
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 538 - Year 543
+- **Conquest War of The Re Human and The Westford Human**: Year 539 - Year 544
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 541 - Year 545
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 543 - Year 547
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 543 - Year 547
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 544 - Year 548
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 544 - Year 548
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 544 - Year 548
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 544 - Year 548
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 545 - Year 549
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 546 - Year 550
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 547 - Year 551
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 547 - Year 551
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 547 - Year 551
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 547 - Year 551
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 548 - Year 552
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 548 - Year 552
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 549 - Year 553
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 549 - Year 553
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 550 - Year 554
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 550 - Year 554
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 550 - Year 555
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 551 - Year 555
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 551 - Year 555
+- **Conquest War of The Re Human and The Westford Human**: Year 551 - Year 555
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 551 - Year 556
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 551 - Year 555
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 553 - Year 558
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 553 - Year 557
+- **Conquest War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 553 - Year 557
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 554 - Year 559
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 555 - Year 559
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 555 - Year 559
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 555 - Year 559
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 555 - Year 559
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 556 - Year 560
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 558 - Year 562
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 559 - Year 563
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 559 - Year 563
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 559 - Year 563
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 559 - Year 563
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 560 - Year 564
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 560 - Year 564
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 561 - Year 565
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 561 - Year 565
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 562 - Year 566
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 562 - Year 566
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 563 - Year 567
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 564 - Year 568
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 564 - Year 568
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 564 - Year 568
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 564 - Year 568
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 565 - Year 569
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 566 - Year 570
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 566 - Year 570
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 566 - Year 570
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 567 - Year 571
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 567 - Year 571
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 567 - Year 571
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 567 - Year 571
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 567 - Year 571
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 568 - Year 572
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 570 - Year 574
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 570 - Year 574
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 570 - Year 574
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 571 - Year 575
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 571 - Year 576
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 571 - Year 575
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 573 - Year 577
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 573 - Year 577
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 575 - Year 579
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 576 - Year 580
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 576 - Year 580
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 576 - Year 580
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 576 - Year 580
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 576 - Year 580
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 576 - Year 581
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 576 - Year 580
+- **Conquest War of The Re Human and The Westford Human**: Year 577 - Year 581
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 577 - Year 581
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 577 - Year 581
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 579 - Year 583
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 579 - Year 583
+- **Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 580 - Year 584
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 580 - Year 584
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 581 - Year 585
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 581 - Year 585
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 581 - Year 585
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 581 - Year 586
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 582 - Year 586
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 583 - Year 587
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 583 - Year 587
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 586 - Year 590
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 586 - Year 591
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 587 - Year 591
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 587 - Year 591
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 588 - Year 592
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 589 - Year 593
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 590 - Year 594
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 590 - Year 594
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 590 - Year 594
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 590 - Year 595
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 591 - Year 596
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 592 - Year 596
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 592 - Year 596
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 593 - Year 597
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 593 - Year 597
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 594 - Year 598
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 594 - Year 598
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 595 - Year 600
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 595 - Year 599
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 595 - Year 599
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 596 - Year 600
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 596 - Year 600
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 596 - Year 600
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 597 - Year 601
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 598 - Year 602
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 598 - Year 603
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 599 - Year 603
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 599 - Year 603
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 599 - Year 603
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 599 - Year 603
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 599 - Year 603
+- **Conquest War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 601 - Year 605
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 601 - Year 605
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 601 - Year 605
+- **Religious War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 601 - Year 605
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 601 - Year 605
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 602 - Year 606
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 602 - Year 606
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 603 - Year 607
+- **Conquest War of The Re Human and The Westford Human**: Year 604 - Year 609
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 604 - Year 608
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 605 - Year 610
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 606 - Year 610
+- **Resource War of The Shainieshailight Fey and The Westford Human**: Year 606 - Year 610
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 607 - Year 611
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 607 - Year 612
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 608 - Year 612
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 608 - Year 613
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 610 - Year 614
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 611 - Year 615
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 612 - Year 616
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 612 - Year 616
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 612 - Year 616
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 612 - Year 616
+- **Resource War of The Shainieshailight Fey and The Westford Human**: Year 613 - Year 617
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 613 - Year 617
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 615 - Year 619
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 616 - Year 620
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 616 - Year 620
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 617 - Year 621
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 619 - Year 623
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 619 - Year 624
+- **Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 620 - Year 624
+- **Territorial War of The Re Human and The Westford Human**: Year 622 - Year 627
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 622 - Year 626
+- **Resource War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 622 - Year 626
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 623 - Year 627
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 624 - Year 628
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 624 - Year 628
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 624 - Year 628
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 625 - Year 629
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 626 - Year 630
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 626 - Year 631
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 626 - Year 630
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 626 - Year 630
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 627 - Year 631
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 627 - Year 631
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 628 - Year 632
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 629 - Year 634
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 629 - Year 633
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 629 - Year 633
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 629 - Year 633
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 630 - Year 634
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 630 - Year 634
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 631 - Year 635
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 632 - Year 637
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 632 - Year 636
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 633 - Year 637
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 634 - Year 638
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 634 - Year 638
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 638 - Year 642
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 638 - Year 643
+- **Religious War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 640 - Year 644
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 640 - Year 644
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 640 - Year 644
+- **Resource War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 640 - Year 644
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 641 - Year 645
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 641 - Year 645
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 642 - Year 646
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 643 - Year 647
+- **Religious War of The Re Human and The Westford Human**: Year 643 - Year 647
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 644 - Year 648
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 644 - Year 648
+- **Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 646 - Year 650
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 647 - Year 651
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 648 - Year 652
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 648 - Year 652
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 650 - Year 655
+- **Religious War of The Re Human and The Westford Human**: Year 650 - Year 655
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 651 - Year 655
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 652 - Year 656
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 652 - Year 656
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 653 - Year 657
+- **Conquest War of The Re Human and The Whitefield Beastfolk**: Year 653 - Year 657
+- **Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 653 - Year 657
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 654 - Year 658
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 655 - Year 659
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 656 - Year 660
+- **Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 656 - Year 661
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 656 - Year 660
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 657 - Year 661
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 657 - Year 662
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 658 - Year 662
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 658 - Year 664
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 659 - Year 663
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 660 - Year 664
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 660 - Year 664
+- **Conquest War of The Re Human and The Westford Human**: Year 660 - Year 664
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 661 - Year 665
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 661 - Year 666
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 662 - Year 666
+- **Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 663 - Year 667
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 664 - Year 668
+- **Conquest War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 665 - Year 669
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 666 - Year 670
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 667 - Year 671
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 668 - Year 672
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 668 - Year 672
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 668 - Year 672
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 668 - Year 672
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 668 - Year 672
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 670 - Year 674
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 670 - Year 674
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 671 - Year 675
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 672 - Year 676
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 672 - Year 676
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 672 - Year 676
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 672 - Year 676
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 673 - Year 678
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 674 - Year 678
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 674 - Year 678
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 675 - Year 679
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 676 - Year 682
+- **Conquest War of The Re Human and The Westford Human**: Year 677 - Year 681
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 677 - Year 681
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 677 - Year 681
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 678 - Year 684
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 678 - Year 682
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 678 - Year 682
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 678 - Year 682
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 679 - Year 684
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 679 - Year 683
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 679 - Year 683
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 680 - Year 685
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 682 - Year 686
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 683 - Year 687
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 685 - Year 689
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 685 - Year 689
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 685 - Year 689
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 685 - Year 689
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 685 - Year 689
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 686 - Year 690
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 686 - Year 690
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 687 - Year 691
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 688 - Year 692
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 688 - Year 692
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 688 - Year 692
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 688 - Year 692
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 689 - Year 694
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 689 - Year 693
+- **Religious War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 692 - Year 696
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 692 - Year 698
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 692 - Year 696
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 693 - Year 697
+- **Resource War of The Shainieshailight Fey and The Westford Human**: Year 695 - Year 699
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 695 - Year 699
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 695 - Year 699
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 695 - Year 699
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 700 - Year 704
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 700 - Year 704
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 700 - Year 704
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 700 - Year 704
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 701 - Year 705
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 701 - Year 706
+- **Resource War of The Re Human and The Westford Human**: Year 701 - Year 705
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 701 - Year 705
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 702 - Year 706
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 703 - Year 707
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 704 - Year 708
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 704 - Year 708
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 705 - Year 709
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 706 - Year 710
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 707 - Year 711
+- **Resource War of The Re Human and The Westford Human**: Year 707 - Year 711
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 707 - Year 711
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 707 - Year 711
+- **Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 707 - Year 712
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 707 - Year 711
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 709 - Year 713
+- **Conquest War of The Re Human and The Whitefield Beastfolk**: Year 710 - Year 714
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 710 - Year 714
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 712 - Year 716
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 712 - Year 716
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 716 - Year 720
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 718 - Year 722
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 718 - Year 722
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 718 - Year 722
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 719 - Year 723
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 720 - Year 724
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 720 - Year 724
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 720 - Year 724
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 721 - Year 725
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 722 - Year 726
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 722 - Year 726
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 723 - Year 727
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 723 - Year 727
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 723 - Year 727
+- **Resource War of The Re Human and The Westford Human**: Year 724 - Year 728
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 724 - Year 728
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 724 - Year 729
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 724 - Year 728
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 725 - Year 729
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 725 - Year 730
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 726 - Year 730
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 727 - Year 731
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 727 - Year 731
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 728 - Year 732
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 730 - Year 734
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 730 - Year 737
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 730 - Year 734
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 730 - Year 734
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 731 - Year 735
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 731 - Year 735
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 731 - Year 735
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 731 - Year 735
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 732 - Year 736
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 732 - Year 736
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 734 - Year 738
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 734 - Year 738
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 735 - Year 739
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 735 - Year 740
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 735 - Year 740
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 735 - Year 739
+- **Conquest War of The Re Human and The Westford Human**: Year 735 - Year 740
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 735 - Year 739
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 737 - Year 741
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 737 - Year 741
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 737 - Year 741
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 738 - Year 743
+- **Territorial War of The Westford Human and The Brolebraeion Elf**: Year 738 - Year 742
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 738 - Year 742
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 739 - Year 743
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 739 - Year 743
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 739 - Year 743
+- **Revenge War of The Re Human and The Westford Human**: Year 741 - Year 745
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 741 - Year 745
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 741 - Year 745
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 742 - Year 746
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 743 - Year 748
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 745 - Year 750
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 745 - Year 749
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 746 - Year 750
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 748 - Year 752
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 749 - Year 754
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 749 - Year 753
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 750 - Year 754
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 750 - Year 754
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 750 - Year 754
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 751 - Year 755
+- **Resource War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 752 - Year 756
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 753 - Year 757
+- **Conquest War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 753 - Year 757
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 754 - Year 758
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 754 - Year 758
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 754 - Year 758
+- **Conquest War of The Re Human and The Westford Human**: Year 754 - Year 758
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 755 - Year 759
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 756 - Year 760
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 756 - Year 760
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 758 - Year 762
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 758 - Year 763
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 759 - Year 763
+- **Conquest War of The Re Human and The Whitefield Beastfolk**: Year 759 - Year 764
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 759 - Year 765
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 760 - Year 764
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 760 - Year 764
+- **Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 761 - Year 765
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 761 - Year 765
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 761 - Year 765
+- **Resource War of The Re Human and The Westford Human**: Year 761 - Year 765
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 761 - Year 765
+- **Resource War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 763 - Year 767
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 764 - Year 768
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 764 - Year 768
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 765 - Year 769
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 766 - Year 770
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 767 - Year 771
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 769 - Year 773
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 769 - Year 773
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 769 - Year 773
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 769 - Year 773
+- **Resource War of The Re Human and The Westford Human**: Year 769 - Year 773
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 770 - Year 774
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 771 - Year 775
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 773 - Year 777
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 773 - Year 777
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 773 - Year 777
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 774 - Year 778
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 774 - Year 778
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 775 - Year 779
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 775 - Year 779
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 776 - Year 780
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 777 - Year 781
+- **Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 777 - Year 781
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 778 - Year 782
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 778 - Year 782
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 778 - Year 782
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 779 - Year 783
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 780 - Year 784
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 780 - Year 784
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 781 - Year 785
+- **Conquest War of The Re Human and The Westford Human**: Year 782 - Year 786
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 783 - Year 787
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 784 - Year 788
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 784 - Year 788
+- **Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 786 - Year 790
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 786 - Year 790
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 786 - Year 790
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 787 - Year 791
+- **Resource War of The Re Human and The Theanfifitho Elf**: Year 787 - Year 791
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 787 - Year 791
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 787 - Year 791
+- **Territorial War of The Westford Human and The Brolebraeion Elf**: Year 787 - Year 791
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 788 - Year 792
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 789 - Year 793
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 789 - Year 793
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 790 - Year 794
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 790 - Year 794
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 791 - Year 795
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 791 - Year 796
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 791 - Year 795
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 791 - Year 795
+- **Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 791 - Year 795
+- **Religious War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 791 - Year 796
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 791 - Year 795
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 793 - Year 797
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 793 - Year 798
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 793 - Year 797
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 794 - Year 798
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 795 - Year 799
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 795 - Year 799
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 796 - Year 800
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 796 - Year 800
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 797 - Year 801
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 797 - Year 801
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 797 - Year 801
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 798 - Year 804
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 799 - Year 803
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 799 - Year 803
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 800 - Year 804
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 800 - Year 804
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 800 - Year 804
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 800 - Year 804
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 801 - Year 805
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 801 - Year 805
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 801 - Year 805
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 802 - Year 806
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 802 - Year 806
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 804 - Year 808
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 805 - Year 809
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 805 - Year 809
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 806 - Year 810
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 807 - Year 811
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 807 - Year 811
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 807 - Year 811
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 809 - Year 813
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 810 - Year 814
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 810 - Year 814
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 811 - Year 815
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 812 - Year 816
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 813 - Year 817
+- **Resource War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 813 - Year 817
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 815 - Year 819
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 815 - Year 819
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 815 - Year 819
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 816 - Year 820
+- **Religious War of The Crownmonolith Giant and The Westford Human**: Year 816 - Year 821
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 816 - Year 820
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 816 - Year 820
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 817 - Year 821
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 818 - Year 822
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 819 - Year 823
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 819 - Year 824
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 820 - Year 824
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 820 - Year 824
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 821 - Year 825
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 822 - Year 826
+- **Religious War of The Re Human and The Westford Human**: Year 822 - Year 826
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 823 - Year 827
+- **Territorial War of The Westford Human and The Brolebraeion Elf**: Year 823 - Year 827
+- **Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 823 - Year 827
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 823 - Year 827
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 824 - Year 828
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 824 - Year 828
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 825 - Year 829
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 826 - Year 830
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 826 - Year 830
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 827 - Year 831
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 828 - Year 832
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 828 - Year 832
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 828 - Year 832
+- **Conquest War of The Re Human and The Whitefield Beastfolk**: Year 828 - Year 832
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 829 - Year 833
+- **Revenge War of The Re Human and The Westford Human**: Year 830 - Year 834
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 830 - Year 834
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 830 - Year 834
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 832 - Year 836
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 834 - Year 838
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 834 - Year 838
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 834 - Year 838
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 836 - Year 840
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 836 - Year 840
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 836 - Year 840
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 836 - Year 840
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 837 - Year 841
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 837 - Year 841
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 837 - Year 841
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 839 - Year 844
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 840 - Year 844
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 840 - Year 844
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 840 - Year 844
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 840 - Year 844
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 842 - Year 846
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 842 - Year 846
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 843 - Year 847
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 844 - Year 848
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 846 - Year 850
+- **Conquest War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 846 - Year 850
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 847 - Year 851
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 847 - Year 851
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 848 - Year 852
+- **Revenge War of The Re Human and The Westford Human**: Year 849 - Year 854
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 850 - Year 854
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 850 - Year 854
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 850 - Year 854
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 851 - Year 857
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 852 - Year 856
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 853 - Year 857
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 853 - Year 857
+- **Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 853 - Year 858
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 854 - Year 858
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 854 - Year 858
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 854 - Year 858
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 855 - Year 859
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 857 - Year 861
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 857 - Year 861
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 858 - Year 862
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 858 - Year 862
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 859 - Year 864
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 861 - Year 865
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 861 - Year 865
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 861 - Year 865
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 863 - Year 867
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 863 - Year 867
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 863 - Year 867
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 863 - Year 868
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 863 - Year 867
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 863 - Year 867
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 863 - Year 867
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 864 - Year 868
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 864 - Year 868
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 865 - Year 869
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 866 - Year 870
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 866 - Year 870
+- **Resource War of The Crownmonolith Giant and The Re Human**: Year 866 - Year 870
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 866 - Year 870
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 867 - Year 871
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 867 - Year 872
+- **Resource War of The Re Human and The Westford Human**: Year 867 - Year 871
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 867 - Year 871
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 868 - Year 872
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 869 - Year 873
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 870 - Year 874
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 870 - Year 876
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 871 - Year 875
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 871 - Year 875
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 871 - Year 875
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 872 - Year 876
+- **Revenge War of The Re Human and The Westford Human**: Year 872 - Year 876
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 872 - Year 876
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 874 - Year 878
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 874 - Year 878
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 874 - Year 878
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 875 - Year 879
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 875 - Year 879
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 875 - Year 879
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 876 - Year 880
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 876 - Year 880
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 877 - Year 882
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 877 - Year 881
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 877 - Year 881
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 878 - Year 882
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 878 - Year 882
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 879 - Year 883
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 880 - Year 884
+- **Territorial War of The Re Human and The Westford Human**: Year 880 - Year 884
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 880 - Year 885
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 880 - Year 884
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 880 - Year 884
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 882 - Year 886
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 882 - Year 886
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 882 - Year 886
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 883 - Year 887
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 884 - Year 889
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 884 - Year 889
+- **Conquest War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 884 - Year 888
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 884 - Year 888
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 885 - Year 889
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 885 - Year 890
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 885 - Year 889
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 886 - Year 890
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 887 - Year 891
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 888 - Year 892
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 889 - Year 893
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 889 - Year 893
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 890 - Year 894
+- **Resource War of The Re Human and The Westford Human**: Year 890 - Year 894
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 890 - Year 894
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 890 - Year 894
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 891 - Year 895
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 892 - Year 896
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 892 - Year 896
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 893 - Year 897
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 894 - Year 899
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 894 - Year 899
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 894 - Year 899
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 894 - Year 898
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 894 - Year 899
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 895 - Year 899
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 895 - Year 899
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 896 - Year 900
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 896 - Year 901
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 897 - Year 901
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 897 - Year 902
+- **Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 897 - Year 901
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 898 - Year 902
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 898 - Year 902
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 898 - Year 902
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 899 - Year 904
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 899 - Year 904
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 901 - Year 905
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 901 - Year 905
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 901 - Year 905
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 902 - Year 907
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 902 - Year 906
+- **Territorial War of The Re Human and The Westford Human**: Year 905 - Year 909
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 906 - Year 910
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 907 - Year 912
+- **Territorial War of The Westford Human and The Brolebraeion Elf**: Year 907 - Year 911
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 908 - Year 913
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 908 - Year 912
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 909 - Year 913
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 909 - Year 913
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 909 - Year 914
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 912 - Year 917
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 912 - Year 918
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 913 - Year 917
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 913 - Year 917
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 914 - Year 919
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 914 - Year 918
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 914 - Year 919
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 914 - Year 918
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 917 - Year 921
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 917 - Year 921
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 918 - Year 922
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 918 - Year 922
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 918 - Year 922
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 919 - Year 923
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 919 - Year 923
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 919 - Year 923
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 920 - Year 924
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 920 - Year 924
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 921 - Year 926
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 921 - Year 925
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 921 - Year 925
+- **Resource War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 922 - Year 926
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 922 - Year 927
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 923 - Year 927
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 924 - Year 929
+- **Resource War of The Shainieshailight Fey and The Westford Human**: Year 924 - Year 928
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 926 - Year 930
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 926 - Year 930
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 926 - Year 930
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 926 - Year 930
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 929 - Year 933
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 931 - Year 935
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 934 - Year 938
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 934 - Year 938
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 936 - Year 940
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 936 - Year 940
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 936 - Year 940
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 936 - Year 941
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 937 - Year 941
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 937 - Year 941
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 938 - Year 942
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 938 - Year 942
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 939 - Year 943
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 939 - Year 943
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 940 - Year 944
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 941 - Year 945
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 942 - Year 946
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 943 - Year 947
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 943 - Year 947
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 944 - Year 948
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 944 - Year 948
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 944 - Year 948
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 944 - Year 948
+- **Revenge War of The Re Human and The Westford Human**: Year 944 - Year 949
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 945 - Year 949
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 945 - Year 950
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 945 - Year 949
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 946 - Year 950
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 947 - Year 952
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 949 - Year 953
+- **Resource War of The Re Human and The Westford Human**: Year 949 - Year 953
+- **Resource War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 950 - Year 954
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 952 - Year 956
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 952 - Year 956
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 952 - Year 956
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 954 - Year 958
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 954 - Year 959
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 954 - Year 958
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 955 - Year 959
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 955 - Year 959
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 955 - Year 959
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 955 - Year 959
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 956 - Year 960
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 956 - Year 960
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 956 - Year 960
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 957 - Year 961
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 957 - Year 961
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 957 - Year 961
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 958 - Year 962
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 958 - Year 962
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 958 - Year 962
+- **Territorial War of The Re Human and The Westford Human**: Year 958 - Year 962
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 960 - Year 964
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 961 - Year 965
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 961 - Year 965
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 963 - Year 967
+- **Resource War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 963 - Year 967
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 965 - Year 969
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 965 - Year 969
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 965 - Year 969
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 966 - Year 970
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 966 - Year 970
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 966 - Year 970
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 967 - Year 971
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 968 - Year 972
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 968 - Year 972
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 968 - Year 972
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 969 - Year 973
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 969 - Year 973
+- **Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 971 - Year 976
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 971 - Year 975
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 971 - Year 975
+- **Resource War of The Re Human and The Westford Human**: Year 971 - Year 975
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 971 - Year 975
+- **Conquest War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 973 - Year 977
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 974 - Year 978
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 974 - Year 978
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 975 - Year 979
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 975 - Year 979
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 975 - Year 979
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 976 - Year 980
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 976 - Year 980
+- **Resource War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 977 - Year 981
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 977 - Year 981
+- **Resource War of The Crownmonolith Giant and The Re Human**: Year 977 - Year 981
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 978 - Year 982
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 980 - Year 984
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 980 - Year 984
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 981 - Year 986
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 981 - Year 985
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 982 - Year 986
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 982 - Year 986
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 982 - Year 986
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 982 - Year 986
+- **Religious War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 983 - Year 987
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 984 - Year 989
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 985 - Year 989
+- **Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 985 - Year 989
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 986 - Year 990
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 986 - Year 990
+- **Territorial War of The Shainieshailight Fey and The Re Human**: Year 987 - Year 991
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 987 - Year 991
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 987 - Year 991
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 988 - Year 992
+- **Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 988 - Year 992
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 990 - Year 995
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 991 - Year 995
+- **Territorial War of The Westford Human and The Brolebraeion Elf**: Year 991 - Year 995
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 992 - Year 996
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 992 - Year 997
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 992 - Year 996
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 993 - Year 997
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 994 - Year 998
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 995 - Year 999
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 995 - Year 1000
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 996 - Year 1001
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 997 - Year 1002
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 997 - Year 1001
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 997 - Year 1002
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 998 - Year 1002
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 998 - Year 1002
+- **Resource War of The Crownmonolith Giant and The Westford Human**: Year 999 - Year 1003
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1000 - Year 1004
+- **Territorial War of The Re Human and The Westford Human**: Year 1002 - Year 1006
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 1002 - Year 1006
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1002 - Year 1006
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1002 - Year 1006
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1003 - Year 1007
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 1003 - Year 1007
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1003 - Year 1007
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1004 - Year 1008
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1004 - Year 1008
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 1005 - Year 1009
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1006 - Year 1010
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1006 - Year 1010
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1006 - Year 1010
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1006 - Year 1010
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 1007 - Year 1011
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1007 - Year 1011
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1007 - Year 1011
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 1007 - Year 1011
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1008 - Year 1012
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 1009 - Year 1013
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1009 - Year 1013
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1009 - Year 1013
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 1009 - Year 1013
+- **Territorial War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1010 - Year 1014
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 1011 - Year 1015
+- **Religious War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1011 - Year 1015
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 1011 - Year 1015
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 1011 - Year 1015
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1013 - Year 1017
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1014 - Year 1018
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1014 - Year 1018
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 1014 - Year 1018
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 1014 - Year 1018
+- **Resource War of The Re Human and The Westford Human**: Year 1015 - Year 1019
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1017 - Year 1021
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1017 - Year 1021
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1018 - Year 1022
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 1019 - Year 1023
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1020 - Year 1024
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1020 - Year 1024
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1021 - Year 1025
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1021 - Year 1025
+- **Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1021 - Year 1025
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1022 - Year 1026
+- **Conquest War of The Re Human and The Westford Human**: Year 1023 - Year 1027
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1023 - Year 1027
+- **Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1024 - Year 1028
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 1024 - Year 1028
+- **Conquest War of The Re Human and The Whitefield Beastfolk**: Year 1025 - Year 1029
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 1025 - Year 1029
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1026 - Year 1030
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1027 - Year 1031
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1027 - Year 1031
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1029 - Year 1033
+- **Resource War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1030 - Year 1034
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1031 - Year 1035
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 1033 - Year 1038
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1034 - Year 1038
+- **Territorial War of The Re Human and The Westford Human**: Year 1034 - Year 1038
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 1034 - Year 1038
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1035 - Year 1039
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1035 - Year 1039
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1036 - Year 1040
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 1037 - Year 1041
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1037 - Year 1041
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1037 - Year 1043
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 1037 - Year 1041
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 1037 - Year 1041
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1039 - Year 1043
+- **Conquest War of The Shainieshailight Fey and The Westford Human**: Year 1040 - Year 1044
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1040 - Year 1044
+- **Territorial War of The Re Human and The Westford Human**: Year 1040 - Year 1045
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1041 - Year 1045
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 1042 - Year 1046
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1044 - Year 1048
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 1044 - Year 1048
+- **Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1044 - Year 1048
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 1045 - Year 1049
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1045 - Year 1050
+- **Resource War of The Westford Human and The Theanfifitho Elf**: Year 1047 - Year 1051
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1047 - Year 1051
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1048 - Year 1052
+- **Territorial War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1048 - Year 1052
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1050 - Year 1054
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 1050 - Year 1054
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1051 - Year 1055
+- **Territorial War of The Re Human and The Westford Human**: Year 1051 - Year 1055
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 1052 - Year 1056
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1052 - Year 1056
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 1052 - Year 1057
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1053 - Year 1057
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1054 - Year 1058
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 1054 - Year 1058
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1057 - Year 1061
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 1057 - Year 1061
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 1058 - Year 1062
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1059 - Year 1063
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1059 - Year 1063
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 1061 - Year 1065
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1061 - Year 1065
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 1061 - Year 1065
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1062 - Year 1066
+- **Religious War of The Re Human and The Westford Human**: Year 1062 - Year 1066
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1062 - Year 1066
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1062 - Year 1066
+- **Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1062 - Year 1066
+- **Resource War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1062 - Year 1066
+- **Religious War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1062 - Year 1066
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1064 - Year 1070
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 1065 - Year 1069
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1065 - Year 1069
+- **Conquest War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1066 - Year 1070
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1066 - Year 1070
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 1066 - Year 1070
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 1066 - Year 1070
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1067 - Year 1071
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1067 - Year 1071
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1067 - Year 1071
+- **Territorial War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1068 - Year 1072
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1069 - Year 1073
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1070 - Year 1074
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 1070 - Year 1074
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 1070 - Year 1074
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1070 - Year 1075
+- **Conquest War of The Re Human and The Westford Human**: Year 1071 - Year 1075
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1071 - Year 1075
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 1072 - Year 1076
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 1072 - Year 1076
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 1072 - Year 1076
+- **Territorial War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1073 - Year 1077
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1074 - Year 1078
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 1075 - Year 1079
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1076 - Year 1081
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 1076 - Year 1080
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 1077 - Year 1081
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1077 - Year 1081
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 1077 - Year 1081
+- **Territorial War of The Westford Human and The Whitefield Beastfolk**: Year 1077 - Year 1082
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1078 - Year 1082
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1078 - Year 1082
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 1078 - Year 1084
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 1079 - Year 1083
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1079 - Year 1083
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1079 - Year 1083
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1081 - Year 1085
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 1082 - Year 1086
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1083 - Year 1087
+- **Conquest War of The Westford Human and The Theanfifitho Elf**: Year 1083 - Year 1087
+- **Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1083 - Year 1087
+- **Resource War of The Shainieshailight Fey and The Re Human**: Year 1083 - Year 1089
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1084 - Year 1088
+- **Resource War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1084 - Year 1088
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 1084 - Year 1088
+- **Religious War of The Re Human and The Westford Human**: Year 1085 - Year 1089
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 1085 - Year 1090
+- **Conquest War of The Re Human and The Whitefield Beastfolk**: Year 1086 - Year 1090
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1087 - Year 1091
+- **Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1087 - Year 1091
+- **Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1088 - Year 1092
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1088 - Year 1092
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 1088 - Year 1092
+- **Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1088 - Year 1092
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1089 - Year 1094
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1090 - Year 1094
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1090 - Year 1094
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 1090 - Year 1094
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 1090 - Year 1094
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1091 - Year 1095
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1091 - Year 1095
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 1092 - Year 1097
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 1092 - Year 1096
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 1093 - Year 1097
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1093 - Year 1098
+- **Religious War of The Re Human and The Westford Human**: Year 1094 - Year 1098
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1094 - Year 1099
+- **Resource War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1095 - Year 1099
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1095 - Year 1099
+- **Territorial War of The Re Human and The Whitefield Beastfolk**: Year 1096 - Year 1101
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 1097 - Year 1101
+- **Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1098 - Year 1102
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 1098 - Year 1102
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1099 - Year 1104
+- **Conquest War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1099 - Year 1103
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 1100 - Year 1104
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 1100 - Year 1104
+- **Resource War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1100 - Year 1105
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1100 - Year 1104
+- **Religious War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1102 - Year 1107
+- **Conquest War of The Re Human and The Westford Human**: Year 1103 - Year 1107
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1104 - Year 1108
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 1105 - Year 1109
+- **Territorial War of The Re Human and The Brolebraeion Elf**: Year 1105 - Year 1109
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1105 - Year 1109
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1106 - Year 1110
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 1107 - Year 1111
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 1107 - Year 1111
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1108 - Year 1112
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1109 - Year 1113
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1109 - Year 1113
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 1109 - Year 1113
+- **Resource War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1109 - Year 1113
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 1110 - Year 1114
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 1111 - Year 1115
+- **Religious War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1111 - Year 1115
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1112 - Year 1116
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1112 - Year 1116
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1112 - Year 1116
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1113 - Year 1117
+- **Conquest War of The Re Human and The Brolebraeion Elf**: Year 1114 - Year 1118
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1114 - Year 1118
+- **Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1114 - Year 1118
+- **Resource War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1115 - Year 1119
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1115 - Year 1119
+- **Conquest War of The Re Human and The Theanfifitho Elf**: Year 1115 - Year 1119
+- **Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1115 - Year 1119
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1116 - Year 1120
+- **Revenge War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1117 - Year 1121
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 1117 - Year 1121
+- **Religious War of The Re Human and The Westford Human**: Year 1118 - Year 1122
+- **Revenge War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1119 - Year 1123
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1120 - Year 1124
+- **Resource War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1121 - Year 1125
+- **Religious War of The Crownmonolith Giant and The Re Human**: Year 1122 - Year 1126
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1122 - Year 1126
+- **Resource War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1122 - Year 1126
+- **Religious War of The Re Human and The Theanfifitho Elf**: Year 1123 - Year 1128
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 1124 - Year 1128
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1125 - Year 1129
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 1125 - Year 1129
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1128 - Year 1132
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1128 - Year 1132
+- **Conquest War of The Shainieshailight Fey and The Re Human**: Year 1129 - Year 1133
+- **Territorial War of The Westford Human and The Theanfifitho Elf**: Year 1129 - Year 1133
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1129 - Year 1134
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1129 - Year 1133
+- **Conquest War of The Crownmonolith Giant and The Re Human**: Year 1130 - Year 1134
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 1130 - Year 1135
+- **Religious War of The Shainieshailight Fey and The Westford Human**: Year 1131 - Year 1135
+- **Revenge War of The Re Human and The Brolebraeion Elf**: Year 1133 - Year 1137
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1134 - Year 1138
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1134 - Year 1138
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1134 - Year 1138
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1134 - Year 1138
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1134 - Year 1138
+- **Conquest War of The Westford Human and The Whitefield Beastfolk**: Year 1135 - Year 1139
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1135 - Year 1139
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1135 - Year 1139
+- **Resource War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1135 - Year 1139
+- **Resource War of The Westford Human and The Brolebraeion Elf**: Year 1137 - Year 1141
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1137 - Year 1141
+- **Religious War of The Westford Human and The Theanfifitho Elf**: Year 1137 - Year 1141
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1138 - Year 1142
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 1139 - Year 1144
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1139 - Year 1143
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1139 - Year 1143
+- **Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1139 - Year 1143
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 1142 - Year 1146
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1142 - Year 1146
+- **Resource War of The Westford Human and The Whitefield Beastfolk**: Year 1143 - Year 1148
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 1143 - Year 1147
+- **Conquest War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1143 - Year 1147
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1144 - Year 1148
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1144 - Year 1148
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1146 - Year 1150
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1146 - Year 1150
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1146 - Year 1150
+- **Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1146 - Year 1150
+- **Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1147 - Year 1151
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1147 - Year 1151
+- **Religious War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1147 - Year 1151
+- **Territorial War of The Re Human and The Westford Human**: Year 1148 - Year 1152
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1149 - Year 1153
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1149 - Year 1153
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1149 - Year 1153
+- **Revenge War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1150 - Year 1154
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 1150 - Year 1154
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1151 - Year 1155
+- **Territorial War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1151 - Year 1155
+- **Resource War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1151 - Year 1155
+- **Revenge War of The Crownmonolith Giant and The Re Human**: Year 1152 - Year 1156
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 1152 - Year 1156
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 1152 - Year 1156
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 1152 - Year 1156
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1154 - Year 1159
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1154 - Year 1158
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1156 - Year 1160
+- **Resource War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1158 - Year 1162
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1158 - Year 1162
+- **Revenge War of The Crownmonolith Giant and The Shainieshailight Fey**: Year 1158 - Year 1162
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 1159 - Year 1163
+- **Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1159 - Year 1163
+- **Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1160 - Year 1164
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1160 - Year 1164
+- **Territorial War of The Crownmonolith Giant and The Re Human**: Year 1161 - Year 1165
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 1161 - Year 1165
+- **Revenge War of The Crownmonolith Giant and The Westford Human**: Year 1162 - Year 1166
+- **Revenge War of The Westford Human and The Theanfifitho Elf**: Year 1162 - Year 1166
+- **Conquest War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1163 - Year 1167
+- **Territorial War of The Westford Human and The Brolebraeion Elf**: Year 1164 - Year 1168
+- **Religious War of The Re Human and The Tsiskksai'ksiden Reptilian**: Year 1166 - Year 1170
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1166 - Year 1171
+- **Revenge War of The Re Human and The Westford Human**: Year 1166 - Year 1170
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1167 - Year 1171
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1168 - Year 1172
+- **Religious War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1168 - Year 1172
+- **Revenge War of The Westford Human and The Brolebraeion Elf**: Year 1168 - Year 1172
+- **Resource War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1169 - Year 1173
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk**: Year 1169 - Year 1173
+- **Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1169 - Year 1173
+- **Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1170 - Year 1174
+- **Territorial War of The Crownmonolith Giant and The Westford Human**: Year 1170 - Year 1174
+- **Resource War of The Re Human and The Westford Human**: Year 1172 - Year 1178
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1172 - Year 1176
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1173 - Year 1177
+- **Revenge War of The Shainieshailight Fey and The Re Human**: Year 1174 - Year 1178
+- **Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1174 - Year 1178
+- **Revenge War of The Westford Human and The Whitefield Beastfolk**: Year 1174 - Year 1178
+- **Religious War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1175 - Year 1179
+- **Religious War of The Re Human and The Whitefield Beastfolk**: Year 1175 - Year 1179
+- **Revenge War of The Shainieshailight Fey and The Westford Human**: Year 1176 - Year 1180
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 1176 - Year 1180
+- **Revenge War of The Re Human and The Theanfifitho Elf**: Year 1177 - Year 1181
+- **Religious War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1178 - Year 1183
+- **Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1178 - Year 1182
+- **Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1178 - Year 1182
+- **Religious War of The Shainieshailight Fey and The Re Human**: Year 1178 - Year 1182
+- **Resource War of The Re Human and The Whitefield Beastfolk**: Year 1179 - Year 1183
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 1180 - Year 1184
+- **Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk**: Year 1180 - Year 1184
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 1180 - Year 1184
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1182 - Year 1186
+- **Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf**: Year 1183 - Year 1187
+- **Religious War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1183 - Year 1187
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 1184 - Year 1189
+- **Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1185 - Year 1189
+- **Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf**: Year 1186 - Year 1190
+- **Revenge War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1186 - Year 1192
+- **Religious War of The Re Human and The Brolebraeion Elf**: Year 1186 - Year 1190
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1188 - Year 1192
+- **Religious War of The Shainieshailight Fey and The Theanfifitho Elf**: Year 1188 - Year 1192
+- **Conquest War of The Crownmonolith Giant and The Westford Human**: Year 1189 - Year 1193
+- **Territorial War of The Re Human and The Theanfifitho Elf**: Year 1189 - Year 1193
+- **Resource War of The Re Human and The Westford Human**: Year 1190 - Year 1194
+- **Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1190 - Year 1195
+- **Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf**: Year 1190 - Year 1195
+- **Territorial War of The Shainieshailight Fey and The Westford Human**: Year 1191 - Year 1196
+- **Religious War of The Westford Human and The Brolebraeion Elf**: Year 1191 - Year 1196
+- **Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1192 - Year 1196
+- **Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk**: Year 1192 - Year 1196
+- **Conquest War of The Crownmonolith Giant and The Brolebraeion Elf**: Year 1193 - Year 1197
+- **Territorial War of The Theanfifitho Elf and The Brolebraeion Elf**: Year 1193 - Year 1197
+- **Resource War of The Re Human and The Brolebraeion Elf**: Year 1194 - Year 1198
+- **Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian**: Year 1196 - Year 1200
+- **Conquest War of The Westford Human and The Brolebraeion Elf**: Year 1196 - Year 1200
+- **Revenge War of The Re Human and The Whitefield Beastfolk**: Year 1196 - Year 1200
+- **Religious War of The Re Human and The Westford Human**: Year 1198 - ongoing
+- **Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian**: Year 1198 - ongoing
+- **Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian**: Year 1198 - ongoing
+- **Religious War of The Westford Human and The Whitefield Beastfolk**: Year 1199 - ongoing
+- **Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf**: Year 1200 - ongoing
+- **Revenge War of The Crownmonolith Giant and The Theanfifitho Elf**: Year 1200 - ongoing
+- **Religious War of The Shainieshailight Fey and The Brolebraeion Elf**: Year 1200 - ongoing
+
+## Major Events
+
+- **Year 77, Winter**: War of the northern Border
+- **Year 68, Autumn**: Founding of The Whitefield Beastfolk
+- **Year 18, Autumn**: Founding of The Shainieshailight Fey
+- **Year 72, Summer**: Founding of The Brolebraeion Elf
+- **Year 28, Spring**: Founding of The Re Human
+- **Year 88, Summer**: War of the storm Border
+- **Year 58, Summer**: Founding of The Tsiskksai'ksiden Reptilian
+- **Year 105, Winter**: Founding of The Theanfifitho Elf
+- **Year 11, Autumn**: Founding of The Crownmonolith Giant
+- **Year 129, Summer**: The Wasting Sickness
+- **Year 63, Winter**: Founding of The Westford Human
+- **Year 16, Autumn**: Founding of the Faith of The or
+- **Year 1, Winter**: Founding of the Faith of The or
+- **Year 2, Winter**: Founding of the Faith of The or
+- **Year 73, Autumn**: Founding of the Faith of The or
+- **Year 45, Autumn**: Founding of the Faith of The or
+- **Year 101, Summer**: Founding of the Faith of The or
+- **Year 81, Winter**: Founding of the Faith of The or
+- **Year 115, Summer**: Founding of the Faith of The or
+- **Year 201, Summer**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 201, Winter**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 202, Spring**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 202, Winter**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 203, Spring**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 204, Spring**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 205, Spring**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 205, Winter**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 205, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 206, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 206, Autumn**: Resource War of The Crownmonolith Giant and The Re Human
+- **Year 206, Autumn**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 206, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 206, Winter**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 207, Winter**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 208, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 208, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 208, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 208, Winter**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 209, Spring**: Territorial War of The Re Human and The Westford Human
+- **Year 209, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 209, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 209, Autumn**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 209, Winter**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 210, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 210, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 210, Winter**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 211, Summer**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 211, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 212, Spring**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 212, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 212, Winter**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 213, Spring**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 213, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 213, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 213, Autumn**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 214, Spring**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 214, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 214, Autumn**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 215, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 215, Winter**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 216, Spring**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 216, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 216, Summer**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 216, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 217, Spring**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 217, Summer**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 217, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 218, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 218, Autumn**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 218, Autumn**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 218, Winter**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 219, Spring**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 219, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 219, Summer**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 219, Autumn**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 219, Autumn**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 220, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 220, Autumn**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 220, Autumn**: Religious War of The Re Human and The Westford Human
+- **Year 220, Autumn**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 220, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 221, Spring**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 221, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 222, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 222, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 222, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 223, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 223, Autumn**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 223, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 224, Summer**: Religious War of The Crownmonolith Giant and The Westford Human
+- **Year 224, Summer**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 224, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 224, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 225, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 225, Summer**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 225, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 225, Winter**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 225, Winter**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 225, Winter**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 226, Autumn**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 226, Autumn**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 226, Autumn**: Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 227, Spring**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 227, Autumn**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 228, Summer**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 228, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 229, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 229, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 229, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 229, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 229, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 230, Spring**: Revenge War of The Re Human and The Westford Human
+- **Year 230, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 230, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 230, Summer**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 230, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 231, Spring**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 231, Summer**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 231, Autumn**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 231, Autumn**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 231, Autumn**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 231, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 231, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 231, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 231, Winter**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 231, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 231, Winter**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 232, Spring**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 232, Spring**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 232, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 232, Winter**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 233, Summer**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 233, Summer**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 233, Autumn**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 234, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 234, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 235, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 235, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 235, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 235, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 235, Autumn**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 235, Autumn**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 235, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 235, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 235, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 235, Winter**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 236, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 236, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 236, Summer**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 237, Spring**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 237, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 237, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 237, Summer**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 237, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 237, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 237, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 238, Spring**: Resource War of The Crownmonolith Giant and The Re Human
+- **Year 239, Spring**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 239, Summer**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 240, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 240, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 240, Winter**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 241, Spring**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 241, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 241, Summer**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 241, Winter**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 242, Summer**: Religious War of The Re Human and The Westford Human
+- **Year 242, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 243, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 243, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 243, Winter**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 244, Winter**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 244, Winter**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 245, Spring**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 245, Summer**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 245, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 245, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 245, Winter**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 246, Autumn**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 246, Winter**: End of the war between The Re Human and The Westford Human
+- **Year 247, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 247, Winter**: Resource War of The Re Human and The Westford Human
+- **Year 248, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 248, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 249, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 249, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 249, Autumn**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 249, Winter**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 249, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 250, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 250, Autumn**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 251, Spring**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 251, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 252, Spring**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 252, Spring**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 252, Summer**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 252, Autumn**: Religious War of The Crownmonolith Giant and The Westford Human
+- **Year 252, Autumn**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 253, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 253, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 253, Autumn**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 254, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 254, Winter**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 254, Winter**: Resource War of The Re Human and The Westford Human
+- **Year 255, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 255, Summer**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 255, Autumn**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 255, Autumn**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 255, Winter**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 256, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 256, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 256, Summer**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 256, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 256, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 256, Autumn**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 256, Autumn**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 257, Summer**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 257, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 258, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 258, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 258, Winter**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 259, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 259, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 259, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 259, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 259, Autumn**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 259, Winter**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 260, Autumn**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 260, Winter**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 260, Winter**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 260, Winter**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 261, Spring**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 261, Winter**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 261, Winter**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 262, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 262, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 263, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 263, Summer**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 263, Summer**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 263, Winter**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 263, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 264, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 264, Summer**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 264, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 265, Spring**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 265, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 265, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 266, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 267, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 267, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 267, Winter**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 268, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 268, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 268, Summer**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 268, Winter**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 268, Winter**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 269, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 269, Autumn**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 269, Autumn**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 270, Summer**: Resource War of The Shainieshailight Fey and The Westford Human
+- **Year 270, Summer**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 270, Autumn**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 271, Winter**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 272, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 272, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 272, Summer**: Religious War of The Re Human and The Westford Human
+- **Year 272, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 272, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 273, Autumn**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 274, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 274, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 274, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 274, Summer**: Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 274, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 274, Winter**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 275, Winter**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 275, Winter**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 276, Winter**: End of the war between The Re Human and The Westford Human
+- **Year 277, Summer**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 277, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 278, Autumn**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 278, Winter**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 278, Winter**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 278, Winter**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 279, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 279, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 279, Winter**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 279, Winter**: Conquest War of The Re Human and The Westford Human
+- **Year 281, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 281, Winter**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 281, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 282, Spring**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 282, Spring**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 282, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 282, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 282, Winter**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 283, Summer**: Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 283, Summer**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 283, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 284, Spring**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 284, Winter**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 284, Winter**: End of the war between The Re Human and The Westford Human
+- **Year 285, Summer**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 285, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 286, Spring**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 286, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 286, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 286, Summer**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 287, Spring**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 287, Autumn**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 287, Winter**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 288, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 288, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 289, Autumn**: Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 289, Autumn**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 290, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 290, Summer**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 290, Autumn**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 290, Autumn**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 290, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 290, Winter**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 291, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 291, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 292, Winter**: Conquest War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 293, Spring**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 293, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 294, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 294, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 294, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 294, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 294, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 295, Winter**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 296, Summer**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 296, Autumn**: Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 296, Winter**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 297, Spring**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 297, Autumn**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 297, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 298, Autumn**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 298, Winter**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 298, Winter**: Resource War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 298, Winter**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 299, Summer**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 299, Autumn**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 300, Spring**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 300, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 300, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 300, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 300, Summer**: VolcanoErupted strikes Westburg
+- **Year 301, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 301, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 301, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 302, Spring**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 302, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 302, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 302, Summer**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 302, Winter**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 303, Spring**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 303, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 303, Summer**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 303, Summer**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 303, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 303, Autumn**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 303, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 304, Spring**: Territorial War of The Re Human and The Westford Human
+- **Year 304, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 304, Summer**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 305, Spring**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 305, Spring**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 305, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 306, Spring**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 306, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 306, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 306, Winter**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 306, Winter**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 307, Spring**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 307, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 307, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 308, Spring**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 308, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 308, Summer**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 308, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 308, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 309, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 309, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 309, Winter**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 310, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 310, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 310, Winter**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 310, Winter**: Territorial War of The Re Human and The Westford Human
+- **Year 311, Spring**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 311, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 311, Summer**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 312, Spring**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 312, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 312, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 312, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 313, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 313, Winter**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 313, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 314, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 314, Summer**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 314, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 315, Spring**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 315, Winter**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 316, Summer**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 316, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 316, Winter**: Resource War of The Crownmonolith Giant and The Re Human
+- **Year 316, Winter**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 317, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 317, Summer**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 317, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 317, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 318, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 318, Winter**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 319, Summer**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 319, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 320, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 320, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 321, Spring**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 321, Spring**: Resource War of The Re Human and The Westford Human
+- **Year 321, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 321, Summer**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 323, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 323, Autumn**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 325, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 325, Winter**: End of the war between The Re Human and The Westford Human
+- **Year 325, Winter**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 326, Summer**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 327, Spring**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 327, Autumn**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 329, Autumn**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 329, Autumn**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 329, Winter**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 330, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 331, Summer**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 331, Autumn**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 331, Winter**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 332, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 332, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 333, Spring**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 333, Spring**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 333, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 333, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 334, Summer**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 334, Autumn**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 334, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 335, Spring**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 335, Spring**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 335, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 335, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 335, Summer**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 335, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 336, Autumn**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 337, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 338, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 338, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 338, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 338, Winter**: Territorial War of The Re Human and The Westford Human
+- **Year 339, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 339, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 339, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 339, Autumn**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 339, Winter**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 340, Summer**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 340, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 340, Winter**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 341, Winter**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 341, Winter**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 342, Spring**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 342, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 342, Autumn**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 343, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 343, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 343, Autumn**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 344, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 345, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 345, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 345, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 345, Winter**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 346, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 346, Summer**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 346, Autumn**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 346, Winter**: Conquest War of The Re Human and The Westford Human
+- **Year 347, Spring**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 347, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 347, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 347, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 348, Winter**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 348, Winter**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 348, Winter**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 349, Summer**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 349, Summer**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 349, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 350, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 350, Summer**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 350, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 350, Winter**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 350, Winter**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 351, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 351, Summer**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 351, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 352, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 352, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 352, Autumn**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 352, Winter**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 353, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 353, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 353, Summer**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 353, Summer**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 353, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 354, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 354, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 354, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 354, Autumn**: Resource War of The Crownmonolith Giant and The Re Human
+- **Year 354, Winter**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 355, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 355, Summer**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 355, Autumn**: Resource War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 355, Winter**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 356, Spring**: Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 356, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 356, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 357, Spring**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 357, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 357, Autumn**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 357, Winter**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 357, Winter**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 357, Winter**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 358, Spring**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 358, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 358, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 358, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 358, Summer**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 358, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 359, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 359, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 359, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 360, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 361, Spring**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 361, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 361, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 361, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 361, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 362, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 362, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 362, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 362, Autumn**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 364, Spring**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 364, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 365, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 365, Autumn**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 365, Winter**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 366, Summer**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 366, Autumn**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 367, Winter**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 368, Summer**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 368, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 368, Autumn**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 369, Spring**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 369, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 369, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 369, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 369, Autumn**: Resource War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 369, Autumn**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 370, Spring**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 370, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 370, Winter**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 371, Spring**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 371, Spring**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 371, Summer**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 371, Autumn**: Conquest War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 371, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 372, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 372, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 372, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 373, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 373, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 373, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 373, Summer**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 373, Autumn**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 373, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 375, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 375, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 375, Autumn**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 375, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 376, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 376, Autumn**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 376, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 377, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 378, Spring**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 378, Summer**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 379, Spring**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 379, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 380, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 380, Autumn**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 380, Autumn**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 381, Spring**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 381, Summer**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 381, Summer**: Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 382, Autumn**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 382, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 383, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 384, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 384, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 384, Winter**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 385, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 385, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 385, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 385, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 386, Spring**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 386, Autumn**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 386, Autumn**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 386, Winter**: Resource War of The Re Human and The Westford Human
+- **Year 387, Spring**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 387, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 387, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 387, Autumn**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 387, Winter**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 388, Spring**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 388, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 388, Summer**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 389, Winter**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 390, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 390, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 390, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 390, Summer**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 390, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 390, Winter**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 391, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 391, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 391, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 391, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 391, Autumn**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 392, Spring**: Religious War of The Re Human and The Westford Human
+- **Year 392, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 392, Winter**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 392, Winter**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 393, Spring**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 393, Autumn**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 394, Summer**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 394, Autumn**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 395, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 395, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 395, Summer**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 395, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 396, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 396, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 396, Summer**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 397, Spring**: Resource War of The Shainieshailight Fey and The Westford Human
+- **Year 397, Spring**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 397, Summer**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 397, Winter**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 397, Winter**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 398, Spring**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 398, Spring**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 398, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 398, Summer**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 398, Summer**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 398, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 398, Winter**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 399, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 400, Spring**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 400, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 400, Winter**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 401, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 401, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 401, Summer**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 401, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 401, Winter**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 402, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 402, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 402, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 402, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 402, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 402, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 403, Summer**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 403, Summer**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 403, Winter**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 404, Spring**: Religious War of The Crownmonolith Giant and The Westford Human
+- **Year 404, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 404, Winter**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 405, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 405, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 405, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 406, Autumn**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 406, Winter**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 407, Spring**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 407, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 407, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 407, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 408, Spring**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 408, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 408, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 409, Spring**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 409, Spring**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 410, Spring**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 410, Spring**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 410, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 410, Summer**: Conquest War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 410, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 411, Spring**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 411, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 412, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 412, Summer**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 413, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 413, Autumn**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 413, Winter**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 414, Spring**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 414, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 414, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 414, Summer**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 414, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 415, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 415, Autumn**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 415, Winter**: Resource War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 416, Spring**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 416, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 417, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 417, Autumn**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 417, Autumn**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 417, Winter**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 417, Winter**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 418, Spring**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 418, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 418, Summer**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 418, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 418, Autumn**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 419, Spring**: Religious War of The Crownmonolith Giant and The Westford Human
+- **Year 419, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 419, Autumn**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 420, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 420, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 420, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 421, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 421, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 421, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 421, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 422, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 422, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 422, Summer**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 422, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 423, Spring**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 423, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 423, Summer**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 423, Autumn**: Religious War of The Re Human and The Westford Human
+- **Year 423, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 424, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 424, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 425, Spring**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 425, Summer**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 425, Autumn**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 426, Spring**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 426, Summer**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 426, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 427, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 427, Autumn**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 427, Autumn**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 428, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 428, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 429, Spring**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 429, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 429, Summer**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 429, Summer**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 429, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 429, Autumn**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 429, Autumn**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 429, Winter**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 430, Spring**: Conquest War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 430, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 430, Winter**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 430, Winter**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 431, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 432, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 433, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 433, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 433, Spring**: VolcanoErupted strikes Sandden
+- **Year 433, Summer**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 433, Winter**: Conquest War of The Re Human and The Westford Human
+- **Year 433, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 434, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 434, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 434, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 434, Summer**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 435, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 435, Summer**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 435, Winter**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 436, Spring**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 436, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 436, Summer**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 437, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 437, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 437, Winter**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 438, Spring**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 438, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 438, Summer**: Conquest War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 438, Autumn**: Religious War of The Re Human and The Westford Human
+- **Year 439, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 439, Autumn**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 439, Winter**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 439, Winter**: Territorial War of The Westford Human and The Brolebraeion Elf
+- **Year 440, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 440, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 440, Summer**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 440, Winter**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 441, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 441, Autumn**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 441, Winter**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 442, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 442, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 442, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 442, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 442, Winter**: Religious War of The Re Human and The Westford Human
+- **Year 443, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 443, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 443, Winter**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 444, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 444, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 445, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 445, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 446, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 446, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 446, Summer**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 447, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 447, Summer**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 447, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 450, Autumn**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 450, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 451, Spring**: Religious War of The Re Human and The Westford Human
+- **Year 451, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 451, Autumn**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 451, Autumn**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 451, Winter**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 452, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 452, Summer**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 452, Winter**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 454, Summer**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 454, Autumn**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 454, Autumn**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 454, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 454, Winter**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 455, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 455, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 455, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 455, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 455, Autumn**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 455, Winter**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 456, Spring**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 456, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 456, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 456, Autumn**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 456, Winter**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 457, Summer**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 457, Summer**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 457, Autumn**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 457, Winter**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 458, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 458, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 458, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 458, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 458, Autumn**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 459, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 459, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 460, Spring**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 460, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 460, Winter**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 461, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 461, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 461, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 461, Autumn**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 461, Autumn**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 461, Winter**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 462, Spring**: Religious War of The Re Human and The Westford Human
+- **Year 462, Spring**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 462, Spring**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 462, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 462, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 462, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 462, Winter**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 463, Winter**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 464, Spring**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 464, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 464, Summer**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 465, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 465, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 465, Winter**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 465, Winter**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 465, Winter**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 466, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 466, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 466, Winter**: Religious War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 466, Winter**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 467, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 467, Summer**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 467, Summer**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 467, Summer**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 468, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 468, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 468, Summer**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 468, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 469, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 469, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 469, Autumn**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 469, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 470, Spring**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 470, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 470, Summer**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 470, Autumn**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 470, Winter**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 470, Winter**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 471, Spring**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 471, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 471, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 471, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 471, Autumn**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 471, Autumn**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 471, Winter**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 472, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 472, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 473, Summer**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 473, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 474, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 474, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 474, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 474, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 474, Winter**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 475, Spring**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 475, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 475, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 475, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 475, Winter**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 475, Winter**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 475, Winter**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 476, Spring**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 476, Summer**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 477, Summer**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 477, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 478, Spring**: Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 478, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 478, Winter**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 479, Spring**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 479, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 479, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 479, Autumn**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 480, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 480, Autumn**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 480, Autumn**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 480, Autumn**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 481, Spring**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 481, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 481, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 481, Autumn**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 481, Autumn**: Resource War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 481, Autumn**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 482, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 482, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 482, Autumn**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 482, Autumn**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 483, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 483, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 483, Winter**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 483, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 484, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 484, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 485, Spring**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 485, Spring**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 485, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 485, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 485, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 485, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 485, Autumn**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 485, Autumn**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 485, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 486, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 486, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 486, Autumn**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 486, Autumn**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 487, Spring**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 487, Spring**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 487, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 487, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 487, Autumn**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 487, Winter**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 489, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 489, Summer**: Conquest War of The Re Human and The Whitefield Beastfolk
+- **Year 489, Summer**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 489, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 489, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 489, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 489, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 490, Summer**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 490, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 490, Winter**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 491, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 491, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 491, Autumn**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 491, Winter**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 492, Spring**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 492, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 492, Summer**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 493, Summer**: Resource War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 493, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 493, Autumn**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 493, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 494, Summer**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 494, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 495, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 495, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 496, Spring**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 496, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 496, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 496, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 497, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 497, Autumn**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 497, Winter**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 497, Winter**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 498, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 498, Autumn**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 498, Autumn**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 499, Spring**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 499, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 499, Winter**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 500, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 500, Winter**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 501, Summer**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 501, Summer**: Territorial War of The Westford Human and The Brolebraeion Elf
+- **Year 501, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 501, Autumn**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 501, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 501, Winter**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 502, Spring**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 502, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 502, Summer**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 502, Autumn**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 502, Autumn**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 503, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 503, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 503, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 504, Spring**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 504, Autumn**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 504, Autumn**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 504, Winter**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 505, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 505, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 505, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 505, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 506, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 506, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 506, Summer**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 506, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 506, Autumn**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 506, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 507, Spring**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 507, Winter**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 507, Winter**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 507, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 508, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 508, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 508, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 508, Autumn**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 509, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 510, Spring**: Religious War of The Re Human and The Westford Human
+- **Year 510, Spring**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 510, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 510, Autumn**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 510, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 511, Spring**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 511, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 511, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 511, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 511, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 512, Spring**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 512, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 512, Summer**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 512, Autumn**: Resource War of The Shainieshailight Fey and The Westford Human
+- **Year 514, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 514, Summer**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 514, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 514, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 514, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 515, Spring**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 515, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 515, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 515, Winter**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 515, Winter**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 515, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 516, Spring**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 516, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 516, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 516, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 516, Autumn**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 516, Autumn**: Resource War of The Re Human and The Westford Human
+- **Year 517, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 518, Summer**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 519, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 519, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 519, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 519, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 519, Winter**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 519, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 520, Spring**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 520, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 520, Summer**: Resource War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 520, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 520, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 520, Winter**: End of the war between The Re Human and The Westford Human
+- **Year 521, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 521, Winter**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 521, Winter**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 522, Summer**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 522, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 522, Winter**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 523, Winter**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 524, Spring**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 524, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 524, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 524, Summer**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 525, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 525, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 526, Spring**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 526, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 526, Autumn**: Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 526, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 526, Winter**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 527, Autumn**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 528, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 528, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 528, Autumn**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 528, Autumn**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 528, Winter**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 529, Spring**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 530, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 530, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 530, Autumn**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 530, Autumn**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 531, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 531, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 532, Spring**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 532, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 532, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 532, Summer**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 532, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 533, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 533, Summer**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 533, Autumn**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 534, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 535, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 535, Summer**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 536, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 536, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 537, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 537, Autumn**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 537, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 538, Summer**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 538, Summer**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 538, Winter**: Conquest War of The Re Human and The Whitefield Beastfolk
+- **Year 539, Spring**: Conquest War of The Re Human and The Westford Human
+- **Year 539, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 541, Winter**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 542, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 542, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 542, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 543, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 543, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 543, Autumn**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 544, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 544, Autumn**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 544, Autumn**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 544, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 544, Winter**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 545, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 545, Autumn**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 546, Winter**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 547, Summer**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 547, Summer**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 547, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 547, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 547, Autumn**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 547, Winter**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 548, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 548, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 548, Autumn**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 548, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 548, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 548, Winter**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 549, Spring**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 549, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 549, Winter**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 550, Spring**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 550, Spring**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 550, Summer**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 550, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 551, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 551, Summer**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 551, Summer**: Conquest War of The Re Human and The Westford Human
+- **Year 551, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 551, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 551, Autumn**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 551, Autumn**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 551, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 551, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 552, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 552, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 553, Spring**: Conquest War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 553, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 553, Summer**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 553, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 553, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 554, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 554, Summer**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 554, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 555, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 555, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 555, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 555, Summer**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 555, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 555, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 555, Autumn**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 555, Autumn**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 555, Autumn**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 556, Autumn**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 556, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 557, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 557, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 558, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 558, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 559, Summer**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 559, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 559, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 559, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 559, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 559, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 559, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 559, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 559, Winter**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 560, Spring**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 560, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 560, Summer**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 561, Spring**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 561, Autumn**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 562, Summer**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 562, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 562, Autumn**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 563, Spring**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 563, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 563, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 563, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 563, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 564, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 564, Summer**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 564, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 564, Summer**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 564, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 564, Autumn**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 565, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 565, Winter**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 565, Winter**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 566, Spring**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 566, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 566, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 566, Summer**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 566, Summer**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 567, Spring**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 567, Spring**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 567, Spring**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 567, Spring**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 567, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 567, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 568, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 568, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 568, Summer**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 568, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 568, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 569, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 570, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 570, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 570, Summer**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 570, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 570, Autumn**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 570, Autumn**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 571, Spring**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 571, Spring**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 571, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 571, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 571, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 571, Summer**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 571, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 571, Winter**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 572, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 573, Spring**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 573, Spring**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 574, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 574, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 574, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 575, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 575, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 575, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 576, Spring**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 576, Summer**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 576, Summer**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 576, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 576, Autumn**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 576, Winter**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 576, Winter**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 576, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 577, Spring**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 577, Spring**: Conquest War of The Re Human and The Westford Human
+- **Year 577, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 577, Summer**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 577, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 579, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 579, Summer**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 579, Winter**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 580, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 580, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 580, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 580, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 580, Summer**: Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 580, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 580, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 580, Winter**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 581, Spring**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 581, Spring**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 581, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 581, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 581, Summer**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 581, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 581, Autumn**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 581, Winter**: End of the war between The Re Human and The Westford Human
+- **Year 582, Winter**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 583, Spring**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 583, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 583, Autumn**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 583, Winter**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 584, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 584, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 585, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 585, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 585, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 586, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 586, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 586, Autumn**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 586, Winter**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 587, Summer**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 587, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 587, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 587, Autumn**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 588, Summer**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 589, Summer**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 590, Spring**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 590, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 590, Summer**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 590, Autumn**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 590, Winter**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 591, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 591, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 591, Autumn**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 591, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 592, Spring**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 592, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 592, Summer**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 593, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 593, Autumn**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 593, Autumn**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 594, Spring**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 594, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 594, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 594, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 594, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 595, Spring**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 595, Spring**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 595, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 595, Winter**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 596, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 596, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 596, Summer**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 596, Summer**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 596, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 596, Winter**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 597, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 597, Winter**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 597, Winter**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 598, Spring**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 598, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 598, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 598, Winter**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 599, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 599, Summer**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 599, Summer**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 599, Autumn**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 599, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 599, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 599, Winter**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 600, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 600, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 600, Autumn**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 600, Autumn**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 601, Spring**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 601, Spring**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 601, Spring**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 601, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 601, Autumn**: Conquest War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 601, Winter**: Religious War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 602, Spring**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 602, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 602, Winter**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 603, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 603, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 603, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 603, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 603, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 603, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 603, Winter**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 604, Spring**: Conquest War of The Re Human and The Westford Human
+- **Year 604, Spring**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 605, Spring**: Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 605, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 605, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 605, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 605, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 605, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 606, Spring**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 606, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 606, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 606, Winter**: Resource War of The Shainieshailight Fey and The Westford Human
+- **Year 607, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 607, Autumn**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 607, Winter**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 608, Spring**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 608, Summer**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 608, Winter**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 609, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 610, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 610, Winter**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 610, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 610, Winter**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 611, Spring**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 611, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 612, Spring**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 612, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 612, Summer**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 612, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 612, Autumn**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 612, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 613, Summer**: Resource War of The Shainieshailight Fey and The Westford Human
+- **Year 613, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 613, Autumn**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 614, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 615, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 615, Winter**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 616, Spring**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 616, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 616, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 616, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 616, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 616, Autumn**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 617, Spring**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 617, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 617, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 619, Spring**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 619, Autumn**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 619, Winter**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 620, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 620, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 620, Summer**: Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 621, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 622, Summer**: Resource War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 622, Summer**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 622, Summer**: Territorial War of The Re Human and The Westford Human
+- **Year 623, Spring**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 623, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 624, Spring**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 624, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 624, Summer**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 624, Winter**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 624, Winter**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 625, Spring**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 626, Spring**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 626, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 626, Summer**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 626, Summer**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 626, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 626, Winter**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 627, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 627, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 627, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 627, Autumn**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 628, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 628, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 628, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 628, Winter**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 629, Spring**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 629, Summer**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 629, Summer**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 629, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 629, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 630, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 630, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 630, Autumn**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 630, Winter**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 630, Winter**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 631, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 631, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 631, Winter**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 631, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 632, Winter**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 632, Winter**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 632, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 633, Spring**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 633, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 633, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 633, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 634, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 634, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 634, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 634, Summer**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 634, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 635, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 636, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 637, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 637, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 638, Spring**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 638, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 638, Summer**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 638, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 640, Spring**: Resource War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 640, Summer**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 640, Autumn**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 640, Winter**: Religious War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 641, Spring**: Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 641, Autumn**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 642, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 642, Winter**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 643, Summer**: Religious War of The Re Human and The Westford Human
+- **Year 643, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 643, Autumn**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 644, Spring**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 644, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 644, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 644, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 644, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 644, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 645, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 645, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 646, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 646, Winter**: Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 647, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 647, Winter**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 647, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 648, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 648, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 648, Autumn**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 648, Winter**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 650, Autumn**: Religious War of The Re Human and The Westford Human
+- **Year 650, Winter**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 650, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 651, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 651, Winter**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 652, Spring**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 652, Summer**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 652, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 652, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 653, Spring**: Conquest War of The Re Human and The Whitefield Beastfolk
+- **Year 653, Spring**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 653, Autumn**: Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 654, Autumn**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 655, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 655, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 655, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 655, Winter**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 656, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 656, Summer**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 656, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 656, Winter**: Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 656, Winter**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 657, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 657, Summer**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 657, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 657, Winter**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 657, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 658, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 658, Summer**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 658, Winter**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 659, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 659, Winter**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 660, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 660, Autumn**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 660, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 660, Winter**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 660, Winter**: Conquest War of The Re Human and The Westford Human
+- **Year 661, Spring**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 661, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 661, Autumn**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 661, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 662, Spring**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 662, Autumn**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 662, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 663, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 663, Autumn**: Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 664, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 664, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 664, Summer**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 664, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 664, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 665, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 665, Autumn**: Conquest War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 666, Spring**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 666, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 666, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 667, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 667, Autumn**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 668, Spring**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 668, Spring**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 668, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 668, Autumn**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 668, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 668, Winter**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 669, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 670, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 670, Summer**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 670, Winter**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 671, Summer**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 671, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 672, Spring**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 672, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 672, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 672, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 672, Summer**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 672, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 672, Autumn**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 672, Autumn**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 672, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 673, Spring**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 674, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 674, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 674, Autumn**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 674, Autumn**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 675, Summer**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 675, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 676, Spring**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 676, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 676, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 676, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 676, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 677, Spring**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 677, Autumn**: Conquest War of The Re Human and The Westford Human
+- **Year 677, Autumn**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 678, Spring**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 678, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 678, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 678, Summer**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 678, Summer**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 678, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 678, Autumn**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 679, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 679, Summer**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 679, Autumn**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 679, Winter**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 680, Autumn**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 681, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 681, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 681, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 682, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 682, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 682, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 682, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 682, Winter**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 683, Spring**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 683, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 683, Winter**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 684, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 684, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 685, Spring**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 685, Spring**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 685, Summer**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 685, Summer**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 685, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 685, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 686, Spring**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 686, Spring**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 686, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 687, Autumn**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 687, Winter**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 688, Spring**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 688, Winter**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 688, Winter**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 688, Winter**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 689, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 689, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 689, Summer**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 689, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 689, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 689, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 689, Winter**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 690, Winter**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 690, Winter**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 691, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 692, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 692, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 692, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 692, Summer**: Religious War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 692, Summer**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 692, Summer**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 692, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 693, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 693, Autumn**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 694, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 695, Spring**: Resource War of The Shainieshailight Fey and The Westford Human
+- **Year 695, Spring**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 695, Autumn**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 695, Winter**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 696, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 696, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 697, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 698, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 699, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 699, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 699, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 699, Winter**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 700, Spring**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 700, Spring**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 700, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 700, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 701, Autumn**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 701, Autumn**: Resource War of The Re Human and The Westford Human
+- **Year 701, Autumn**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 701, Winter**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 702, Spring**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 703, Spring**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 704, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 704, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 704, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 704, Summer**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 704, Autumn**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 704, Winter**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 705, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 705, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 705, Autumn**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 705, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 706, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 706, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 706, Summer**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 707, Spring**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 707, Summer**: Resource War of The Re Human and The Westford Human
+- **Year 707, Autumn**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 707, Autumn**: Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 707, Autumn**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 707, Winter**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 707, Winter**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 708, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 708, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 709, Summer**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 709, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 710, Spring**: Conquest War of The Re Human and The Whitefield Beastfolk
+- **Year 710, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 710, Winter**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 711, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 711, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 711, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 711, Autumn**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 711, Winter**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 712, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 712, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 712, Winter**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 713, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 714, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 714, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 716, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 716, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 716, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 718, Spring**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 718, Summer**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 718, Autumn**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 719, Autumn**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 720, Summer**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 720, Summer**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 720, Summer**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 720, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 721, Spring**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 722, Summer**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 722, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 722, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 722, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 722, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 723, Spring**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 723, Spring**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 723, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 723, Autumn**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 724, Spring**: Resource War of The Re Human and The Westford Human
+- **Year 724, Spring**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 724, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 724, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 724, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 724, Winter**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 724, Winter**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 725, Summer**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 725, Summer**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 725, Winter**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 726, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 726, Autumn**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 726, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 727, Spring**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 727, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 727, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 727, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 727, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 728, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 728, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 728, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 728, Winter**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 729, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 729, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 730, Spring**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 730, Spring**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 730, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 730, Summer**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 730, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 730, Winter**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 731, Spring**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 731, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 731, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 731, Summer**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 731, Summer**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 731, Autumn**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 732, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 732, Winter**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 732, Winter**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 734, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 734, Summer**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 734, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 734, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 734, Winter**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 735, Spring**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 735, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 735, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 735, Summer**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 735, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 735, Autumn**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 735, Autumn**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 735, Autumn**: Conquest War of The Re Human and The Westford Human
+- **Year 735, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 735, Winter**: Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 736, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 736, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 737, Spring**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 737, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 737, Summer**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 737, Summer**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 738, Summer**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 738, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 738, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 738, Autumn**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 738, Winter**: Territorial War of The Westford Human and The Brolebraeion Elf
+- **Year 739, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 739, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 739, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 739, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 739, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 739, Autumn**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 740, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 740, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 740, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 741, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 741, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 741, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 741, Summer**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 741, Summer**: Revenge War of The Re Human and The Westford Human
+- **Year 741, Winter**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 742, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 742, Autumn**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 742, Winter**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 743, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 743, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 743, Summer**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 743, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 743, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 745, Spring**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 745, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 745, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 745, Autumn**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 745, Winter**: End of the war between The Re Human and The Westford Human
+- **Year 746, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 746, Autumn**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 748, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 748, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 749, Spring**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 749, Autumn**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 749, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 750, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 750, Autumn**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 750, Autumn**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 750, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 750, Winter**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 751, Summer**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 752, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 752, Autumn**: Resource War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 753, Spring**: Conquest War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 753, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 753, Winter**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 754, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 754, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 754, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 754, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 754, Autumn**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 754, Autumn**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 754, Winter**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 754, Winter**: Conquest War of The Re Human and The Westford Human
+- **Year 755, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 755, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 756, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 756, Summer**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 756, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 757, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 757, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 758, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 758, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 758, Autumn**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 758, Autumn**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 758, Autumn**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 758, Winter**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 759, Summer**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 759, Summer**: Conquest War of The Re Human and The Whitefield Beastfolk
+- **Year 759, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 759, Winter**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 760, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 760, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 760, Winter**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 760, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 761, Spring**: Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 761, Spring**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 761, Spring**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 761, Autumn**: Resource War of The Re Human and The Westford Human
+- **Year 761, Winter**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 762, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 763, Spring**: Resource War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 763, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 763, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 764, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 764, Summer**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 764, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 764, Autumn**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 764, Winter**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 765, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 765, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 765, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 765, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 765, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 765, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 765, Winter**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 766, Spring**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 767, Autumn**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 767, Winter**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 768, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 768, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 769, Spring**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 769, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 769, Summer**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 769, Summer**: Resource War of The Re Human and The Westford Human
+- **Year 769, Autumn**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 769, Winter**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 770, Summer**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 770, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 771, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 771, Winter**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 773, Spring**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 773, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 773, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 773, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 773, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 773, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 773, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 773, Winter**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 774, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 774, Autumn**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 774, Winter**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 775, Spring**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 775, Autumn**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 775, Winter**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 776, Winter**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 777, Spring**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 777, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 777, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 777, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 777, Winter**: Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 778, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 778, Summer**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 778, Summer**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 778, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 778, Winter**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 779, Spring**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 779, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 779, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 780, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 780, Autumn**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 780, Winter**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 781, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 781, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 781, Autumn**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 782, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 782, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 782, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 782, Winter**: Conquest War of The Re Human and The Westford Human
+- **Year 783, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 783, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 784, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 784, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 784, Autumn**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 784, Winter**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 785, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 786, Spring**: Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 786, Summer**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 786, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 786, Winter**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 787, Spring**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 787, Spring**: Resource War of The Re Human and The Theanfifitho Elf
+- **Year 787, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 787, Autumn**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 787, Autumn**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 787, Winter**: Territorial War of The Westford Human and The Brolebraeion Elf
+- **Year 788, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 788, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 788, Winter**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 789, Summer**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 789, Winter**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 790, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 790, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 790, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 790, Autumn**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 790, Winter**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 791, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 791, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 791, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 791, Summer**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 791, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 791, Summer**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 791, Autumn**: Religious War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 791, Autumn**: Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 791, Autumn**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 791, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 791, Winter**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 791, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 792, Winter**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 793, Summer**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 793, Autumn**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 793, Autumn**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 793, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 793, Winter**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 794, Spring**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 794, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 794, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 795, Spring**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 795, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 795, Summer**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 795, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 795, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 795, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 795, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 796, Spring**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 796, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 796, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 796, Winter**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 797, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 797, Summer**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 797, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 797, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 797, Autumn**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 798, Spring**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 798, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 798, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 799, Spring**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 799, Spring**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 799, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 799, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 800, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 800, Autumn**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 800, Autumn**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 800, Autumn**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 800, Winter**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 800, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 801, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 801, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 801, Summer**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 801, Autumn**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 801, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 801, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 802, Summer**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 802, Autumn**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 803, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 803, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 804, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 804, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 804, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 804, Autumn**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 804, Winter**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 804, Winter**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 805, Spring**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 805, Spring**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 805, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 805, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 805, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 806, Spring**: Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 806, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 806, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 807, Spring**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 807, Summer**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 807, Winter**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 808, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 809, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 809, Autumn**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 809, Winter**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 810, Summer**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 810, Summer**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 810, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 811, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 811, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 811, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 811, Winter**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 812, Winter**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 813, Spring**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 813, Summer**: Resource War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 813, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 814, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 814, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 815, Spring**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 815, Summer**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 815, Autumn**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 815, Winter**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 816, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 816, Summer**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 816, Summer**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 816, Autumn**: Religious War of The Crownmonolith Giant and The Westford Human
+- **Year 816, Autumn**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 817, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 817, Winter**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 817, Winter**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 818, Autumn**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 819, Spring**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 819, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 819, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 819, Winter**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 819, Winter**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 820, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 820, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 820, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 820, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 820, Autumn**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 821, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 821, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 821, Autumn**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 822, Autumn**: Religious War of The Re Human and The Westford Human
+- **Year 822, Winter**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 822, Winter**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 823, Spring**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 823, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 823, Autumn**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 823, Autumn**: Territorial War of The Westford Human and The Brolebraeion Elf
+- **Year 823, Winter**: Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 824, Spring**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 824, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 824, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 824, Summer**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 824, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 825, Winter**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 825, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 826, Spring**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 826, Spring**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 826, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 826, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 827, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 827, Autumn**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 827, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 827, Winter**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 827, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 828, Spring**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 828, Spring**: Conquest War of The Re Human and The Whitefield Beastfolk
+- **Year 828, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 828, Autumn**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 828, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 828, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 829, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 829, Autumn**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 830, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 830, Summer**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 830, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 830, Winter**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 830, Winter**: Revenge War of The Re Human and The Westford Human
+- **Year 831, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 832, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 832, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 832, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 832, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 832, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 833, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 834, Spring**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 834, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 834, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 834, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 834, Autumn**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 834, Autumn**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 836, Summer**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 836, Summer**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 836, Autumn**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 836, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 836, Winter**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 837, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 837, Autumn**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 837, Winter**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 838, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 838, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 838, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 839, Winter**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 840, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 840, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 840, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 840, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 840, Summer**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 840, Autumn**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 840, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 840, Winter**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 841, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 841, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 841, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 842, Summer**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 842, Winter**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 843, Winter**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 844, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 844, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 844, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 844, Autumn**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 844, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 844, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 846, Spring**: Conquest War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 846, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 846, Winter**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 846, Winter**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 847, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 847, Winter**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 847, Winter**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 848, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 848, Summer**: Plague strikes Errann
+- **Year 848, Winter**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 849, Spring**: Revenge War of The Re Human and The Westford Human
+- **Year 850, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 850, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 850, Summer**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 850, Autumn**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 850, Winter**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 851, Spring**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 851, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 851, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 852, Summer**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 852, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 853, Autumn**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 853, Autumn**: Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 853, Autumn**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 854, Spring**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 854, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 854, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 854, Summer**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 854, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 854, Autumn**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 854, Autumn**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 855, Summer**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 856, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 857, Summer**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 857, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 857, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 857, Winter**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 857, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 858, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 858, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 858, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 858, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 858, Winter**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 858, Winter**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 859, Spring**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 859, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 861, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 861, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 861, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 861, Winter**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 861, Winter**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 862, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 862, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 863, Spring**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 863, Summer**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 863, Autumn**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 863, Autumn**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 863, Winter**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 863, Winter**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 863, Winter**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 864, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 864, Summer**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 864, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 865, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 865, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 865, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 865, Winter**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 866, Spring**: Resource War of The Crownmonolith Giant and The Re Human
+- **Year 866, Spring**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 866, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 866, Summer**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 867, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 867, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 867, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 867, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 867, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 867, Summer**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 867, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 867, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 867, Autumn**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 867, Autumn**: Resource War of The Re Human and The Westford Human
+- **Year 868, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 868, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 868, Winter**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 868, Winter**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 869, Autumn**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 869, Winter**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 870, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 870, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 870, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 870, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 870, Winter**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 870, Winter**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 871, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 871, Summer**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 871, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 871, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 871, Autumn**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 871, Winter**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 872, Spring**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 872, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 872, Summer**: Revenge War of The Re Human and The Westford Human
+- **Year 872, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 872, Winter**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 873, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 874, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 874, Winter**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 874, Winter**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 874, Winter**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 875, Spring**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 875, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 875, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 875, Autumn**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 875, Winter**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 875, Winter**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 876, Spring**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 876, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 876, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 876, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 876, Summer**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 876, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 877, Summer**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 877, Autumn**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 877, Autumn**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 878, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 878, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 878, Autumn**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 878, Winter**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 878, Winter**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 879, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 879, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 879, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 879, Autumn**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 880, Spring**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 880, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 880, Summer**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 880, Autumn**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 880, Autumn**: Territorial War of The Re Human and The Westford Human
+- **Year 880, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 880, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 881, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 881, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 882, Spring**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 882, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 882, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 882, Summer**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 882, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 882, Winter**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 883, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 883, Winter**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 884, Spring**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 884, Spring**: Conquest War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 884, Spring**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 884, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 884, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 884, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 884, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 884, Winter**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 885, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 885, Autumn**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 885, Autumn**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 885, Winter**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 886, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 886, Autumn**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 886, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 886, Winter**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 887, Spring**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 887, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 888, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 888, Autumn**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 888, Winter**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 889, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 889, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 889, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 889, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 889, Summer**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 889, Summer**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 890, Spring**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 890, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 890, Summer**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 890, Summer**: Resource War of The Re Human and The Westford Human
+- **Year 890, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 890, Winter**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 891, Summer**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 891, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 892, Spring**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 892, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 892, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 893, Spring**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 893, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 893, Autumn**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 894, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 894, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 894, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 894, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 894, Summer**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 894, Summer**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 894, Summer**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 894, Autumn**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 894, Autumn**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 895, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 895, Autumn**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 895, Winter**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 896, Spring**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 896, Summer**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 896, Autumn**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 896, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 897, Spring**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 897, Summer**: Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 897, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 897, Winter**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 898, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 898, Summer**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 898, Summer**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 898, Winter**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 899, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 899, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 899, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 899, Autumn**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 899, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 899, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 899, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 899, Winter**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 900, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 901, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 901, Summer**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 901, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 901, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 901, Winter**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 901, Winter**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 902, Spring**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 902, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 902, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 902, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 902, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 902, Autumn**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 904, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 904, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 905, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 905, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 905, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 905, Winter**: Territorial War of The Re Human and The Westford Human
+- **Year 906, Summer**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 906, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 907, Spring**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 907, Autumn**: Territorial War of The Westford Human and The Brolebraeion Elf
+- **Year 907, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 908, Summer**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 908, Autumn**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 909, Spring**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 909, Summer**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 909, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 909, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 910, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 911, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 912, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 912, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 912, Winter**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 912, Winter**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 913, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 913, Summer**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 913, Summer**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 913, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 913, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 914, Summer**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 914, Summer**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 914, Summer**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 914, Autumn**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 914, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 917, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 917, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 917, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 917, Summer**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 917, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 918, Spring**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 918, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 918, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 918, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 918, Autumn**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 918, Autumn**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 919, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 919, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 919, Summer**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 919, Autumn**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 919, Winter**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 920, Spring**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 920, Autumn**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 921, Spring**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 921, Summer**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 921, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 921, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 921, Winter**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 922, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 922, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 922, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 922, Autumn**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 922, Winter**: Resource War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 923, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 923, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 923, Autumn**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 923, Autumn**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 924, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 924, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 924, Summer**: Resource War of The Shainieshailight Fey and The Westford Human
+- **Year 924, Winter**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 925, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 925, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 926, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 926, Summer**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 926, Summer**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 926, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 926, Autumn**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 926, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 927, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 927, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 928, Summer**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 929, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 929, Autumn**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 930, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 930, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 930, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 930, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 931, Summer**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 933, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 934, Spring**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 934, Summer**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 935, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 936, Autumn**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 936, Autumn**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 936, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 936, Winter**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 937, Summer**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 937, Summer**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 938, Summer**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 938, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 938, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 938, Winter**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 939, Autumn**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 939, Winter**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 940, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 940, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 940, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 940, Winter**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 941, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 941, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 941, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 941, Winter**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 942, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 942, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 942, Winter**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 943, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 943, Autumn**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 943, Autumn**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 943, Winter**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 944, Spring**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 944, Summer**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 944, Autumn**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 944, Winter**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 944, Winter**: Revenge War of The Re Human and The Westford Human
+- **Year 944, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 945, Spring**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 945, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 945, Summer**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 945, Summer**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 946, Spring**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 946, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 947, Autumn**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 947, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 947, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 948, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 948, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 948, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 948, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 949, Spring**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 949, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 949, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 949, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 949, Summer**: Resource War of The Re Human and The Westford Human
+- **Year 950, Spring**: Resource War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 950, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 950, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 952, Spring**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 952, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 952, Autumn**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 952, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 953, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 953, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 954, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 954, Summer**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 954, Autumn**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 954, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 955, Spring**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 955, Spring**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 955, Summer**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 955, Winter**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 956, Spring**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 956, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 956, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 956, Summer**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 956, Autumn**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 956, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 957, Spring**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 957, Autumn**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 957, Winter**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 958, Spring**: Territorial War of The Re Human and The Westford Human
+- **Year 958, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 958, Summer**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 958, Summer**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 958, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 958, Winter**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 959, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 959, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 959, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 959, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 959, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 960, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 960, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 960, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 960, Winter**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 961, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 961, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 961, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 961, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 961, Winter**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 962, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 962, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 962, Winter**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 962, Winter**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 963, Autumn**: Resource War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 963, Winter**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 964, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 965, Spring**: Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 965, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 965, Autumn**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 965, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 965, Winter**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 966, Autumn**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 966, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 966, Autumn**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 967, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 967, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 967, Winter**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 968, Autumn**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 968, Winter**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 968, Winter**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 969, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 969, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 969, Summer**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 969, Autumn**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 969, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 970, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 970, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 970, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 971, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 971, Summer**: Territorial War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 971, Summer**: Resource War of The Re Human and The Westford Human
+- **Year 971, Summer**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 971, Summer**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 971, Autumn**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 972, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 972, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 972, Autumn**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 973, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 973, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 973, Summer**: Conquest War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 974, Spring**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 974, Winter**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 975, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 975, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 975, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 975, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 975, Summer**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 975, Winter**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 975, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 976, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 976, Autumn**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 976, Winter**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 977, Spring**: Resource War of The Crownmonolith Giant and The Re Human
+- **Year 977, Spring**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 977, Autumn**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 977, Winter**: Resource War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 978, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 978, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 978, Summer**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 979, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 979, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 979, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 980, Spring**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 980, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 980, Winter**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 980, Winter**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 981, Summer**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 981, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 981, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 981, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 981, Winter**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 982, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 982, Autumn**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 982, Winter**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 982, Winter**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 982, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 983, Autumn**: Religious War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 984, Summer**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 984, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 984, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 985, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 985, Summer**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 985, Winter**: Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 986, Spring**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 986, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 986, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 986, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 986, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 986, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 986, Winter**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 987, Spring**: Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 987, Summer**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 987, Autumn**: Territorial War of The Shainieshailight Fey and The Re Human
+- **Year 987, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 988, Spring**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 988, Winter**: Territorial War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 989, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 989, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 989, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 990, Spring**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 990, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 990, Winter**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 991, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 991, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 991, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 991, Summer**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 991, Autumn**: Territorial War of The Westford Human and The Brolebraeion Elf
+- **Year 992, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 992, Autumn**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 992, Autumn**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 992, Autumn**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 992, Autumn**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 993, Spring**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 994, Spring**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 995, Spring**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 995, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 995, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 995, Winter**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 995, Winter**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 996, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 996, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 996, Winter**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 997, Spring**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 997, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 997, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 997, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 997, Autumn**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 998, Summer**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 998, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 998, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 999, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 999, Winter**: Resource War of The Crownmonolith Giant and The Westford Human
+- **Year 1000, Spring**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1000, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1001, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1001, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1002, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1002, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1002, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1002, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1002, Summer**: Territorial War of The Re Human and The Westford Human
+- **Year 1002, Winter**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1002, Winter**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 1002, Winter**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1003, Spring**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 1003, Summer**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1003, Winter**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1003, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1004, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1004, Winter**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1004, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1005, Summer**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 1006, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 1006, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1006, Summer**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1006, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1006, Autumn**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1006, Autumn**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1006, Winter**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1006, Winter**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1007, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1007, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1007, Autumn**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1007, Autumn**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 1007, Winter**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 1007, Winter**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1007, Winter**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1008, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1008, Summer**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1008, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1009, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1009, Autumn**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 1009, Autumn**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 1009, Winter**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1009, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1010, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1010, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1010, Summer**: Territorial War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1010, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1010, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1011, Spring**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 1011, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1011, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1011, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1011, Autumn**: Religious War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1011, Autumn**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 1011, Autumn**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1011, Winter**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 1012, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1013, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1013, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1013, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1013, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1013, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1014, Summer**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 1014, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1014, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1014, Winter**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1014, Winter**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 1015, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1015, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1015, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1015, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1015, Autumn**: Resource War of The Re Human and The Westford Human
+- **Year 1017, Summer**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1017, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1017, Winter**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1018, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1018, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1018, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1018, Summer**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1018, Autumn**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1019, Spring**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 1019, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 1020, Winter**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1020, Winter**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1021, Spring**: Resource War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1021, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1021, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1021, Winter**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1021, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1022, Spring**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1022, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1023, Spring**: Conquest War of The Re Human and The Westford Human
+- **Year 1023, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1023, Summer**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1024, Spring**: Revenge War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1024, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1024, Summer**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 1024, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1025, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1025, Autumn**: Conquest War of The Re Human and The Whitefield Beastfolk
+- **Year 1025, Autumn**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1025, Winter**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 1025, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1026, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1026, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1027, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 1027, Autumn**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1027, Autumn**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1027, Winter**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1028, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1028, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1029, Autumn**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1029, Winter**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1029, Winter**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1030, Summer**: Resource War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1030, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1031, Autumn**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1031, Autumn**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1031, Winter**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1033, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1033, Winter**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 1034, Autumn**: Territorial War of The Re Human and The Westford Human
+- **Year 1034, Autumn**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1034, Winter**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 1034, Winter**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1035, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1035, Summer**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1035, Summer**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1036, Summer**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1037, Summer**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1037, Summer**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1037, Winter**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 1037, Winter**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 1037, Winter**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 1038, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1038, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1038, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 1038, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1039, Spring**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1039, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1039, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1040, Spring**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1040, Spring**: Territorial War of The Re Human and The Westford Human
+- **Year 1040, Summer**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1040, Autumn**: Conquest War of The Shainieshailight Fey and The Westford Human
+- **Year 1041, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1041, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1041, Autumn**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1041, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1041, Winter**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1042, Spring**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 1043, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1043, Winter**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1044, Summer**: Territorial War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1044, Summer**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1044, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1044, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1044, Winter**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 1045, Autumn**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1045, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 1045, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 1045, Winter**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1046, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1047, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1047, Autumn**: Resource War of The Westford Human and The Theanfifitho Elf
+- **Year 1048, Spring**: Territorial War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1048, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1048, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1048, Summer**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1048, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1049, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1050, Summer**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1050, Autumn**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 1050, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1051, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1051, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1051, Autumn**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1051, Winter**: Territorial War of The Re Human and The Westford Human
+- **Year 1052, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1052, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1052, Autumn**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 1052, Autumn**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 1052, Winter**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1053, Summer**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1054, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1054, Autumn**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1054, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1054, Winter**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 1055, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 1055, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1056, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1056, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1057, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1057, Summer**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1057, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1057, Winter**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 1058, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1058, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1058, Summer**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 1059, Winter**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1059, Winter**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1061, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1061, Autumn**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 1061, Autumn**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1061, Winter**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 1061, Winter**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1062, Spring**: Resource War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1062, Summer**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1062, Summer**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1062, Autumn**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1062, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1062, Winter**: Religious War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1062, Winter**: Religious War of The Re Human and The Westford Human
+- **Year 1062, Winter**: Resource War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1063, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1063, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1064, Winter**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1065, Spring**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1065, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1065, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1065, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1065, Summer**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 1066, Spring**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 1066, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1066, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1066, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1066, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1066, Summer**: Conquest War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1066, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 1066, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1066, Autumn**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 1066, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1066, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1067, Spring**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1067, Summer**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1067, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1068, Spring**: Territorial War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1069, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1069, Summer**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1069, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1070, Spring**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 1070, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1070, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1070, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1070, Summer**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1070, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1070, Autumn**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1070, Autumn**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1070, Winter**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 1071, Spring**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1071, Autumn**: Conquest War of The Re Human and The Westford Human
+- **Year 1071, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1071, Winter**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1071, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1072, Spring**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 1072, Spring**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 1072, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1072, Winter**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 1073, Winter**: Territorial War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1073, Winter**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1074, Spring**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1074, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1074, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1074, Autumn**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1075, Spring**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 1075, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1075, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1075, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 1075, Winter**: VolcanoErupted strikes Sandden
+- **Year 1076, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1076, Summer**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 1076, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1076, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1076, Winter**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1077, Summer**: Territorial War of The Westford Human and The Whitefield Beastfolk
+- **Year 1077, Summer**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 1077, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1077, Autumn**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1077, Winter**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 1078, Spring**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 1078, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1078, Summer**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1078, Summer**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1079, Spring**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1079, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1079, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1079, Winter**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 1080, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1081, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1081, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1081, Autumn**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1081, Winter**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1081, Winter**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1082, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1082, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1082, Autumn**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 1082, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1083, Spring**: Resource War of The Shainieshailight Fey and The Re Human
+- **Year 1083, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1083, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1083, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1083, Summer**: Conquest War of The Westford Human and The Theanfifitho Elf
+- **Year 1083, Autumn**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1083, Autumn**: Territorial War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1084, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1084, Autumn**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 1084, Winter**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1084, Winter**: Resource War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1085, Spring**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 1085, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1085, Winter**: Religious War of The Re Human and The Westford Human
+- **Year 1086, Spring**: Conquest War of The Re Human and The Whitefield Beastfolk
+- **Year 1086, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1087, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1087, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1087, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1087, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1087, Winter**: Religious War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1088, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1088, Summer**: Conquest War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1088, Summer**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 1088, Summer**: Territorial War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1088, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1088, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1088, Winter**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1089, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 1089, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1089, Winter**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1090, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1090, Winter**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 1090, Winter**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1090, Winter**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 1090, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1090, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1091, Summer**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1091, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1091, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1091, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1092, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1092, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1092, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1092, Summer**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 1092, Autumn**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1092, Winter**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 1093, Summer**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 1093, Autumn**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1094, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1094, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1094, Summer**: Religious War of The Re Human and The Westford Human
+- **Year 1094, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1094, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1094, Autumn**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1094, Winter**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1095, Spring**: Resource War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1095, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1095, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1095, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1096, Summer**: Territorial War of The Re Human and The Whitefield Beastfolk
+- **Year 1096, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1097, Spring**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 1097, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1097, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1098, Spring**: Territorial War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1098, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1098, Summer**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 1098, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 1099, Spring**: Conquest War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1099, Spring**: Territorial War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1099, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1099, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1099, Autumn**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1100, Summer**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 1100, Autumn**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 1100, Winter**: Resource War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1100, Winter**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1101, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1101, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1102, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1102, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1102, Autumn**: Religious War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1103, Spring**: Conquest War of The Re Human and The Westford Human
+- **Year 1103, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1104, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1104, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1104, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1104, Summer**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1104, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1105, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1105, Autumn**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 1105, Autumn**: Territorial War of The Re Human and The Brolebraeion Elf
+- **Year 1105, Winter**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1105, Winter**: VolcanoErupted strikes Sandden
+- **Year 1106, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1107, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1107, Autumn**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 1107, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 1107, Winter**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 1108, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1108, Winter**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1109, Spring**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1109, Spring**: Resource War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1109, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1109, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1109, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1109, Winter**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1109, Winter**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 1110, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1110, Summer**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 1111, Spring**: Religious War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1111, Summer**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1111, Autumn**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 1111, Winter**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1112, Spring**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1112, Autumn**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1112, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1112, Winter**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1113, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1113, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1113, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1113, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1113, Winter**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1114, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1114, Summer**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1114, Summer**: Religious War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1114, Summer**: Conquest War of The Re Human and The Brolebraeion Elf
+- **Year 1115, Spring**: Conquest War of The Re Human and The Theanfifitho Elf
+- **Year 1115, Spring**: Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1115, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1115, Autumn**: Territorial War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1115, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1115, Winter**: Resource War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1116, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1116, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1116, Summer**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1116, Winter**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1117, Spring**: Revenge War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1117, Autumn**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1117, Winter**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 1118, Autumn**: Religious War of The Re Human and The Westford Human
+- **Year 1118, Autumn**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1118, Winter**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1118, Winter**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1119, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1119, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1119, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1119, Autumn**: Revenge War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1119, Winter**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1120, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1120, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1121, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1121, Autumn**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1121, Winter**: Resource War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1122, Spring**: Resource War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1122, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 1122, Summer**: Religious War of The Crownmonolith Giant and The Re Human
+- **Year 1122, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1123, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1123, Summer**: Religious War of The Re Human and The Theanfifitho Elf
+- **Year 1124, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1124, Summer**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 1125, Autumn**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 1125, Autumn**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1125, Winter**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1126, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1126, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1126, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1128, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1128, Autumn**: Territorial War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1128, Winter**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1128, Winter**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1129, Summer**: Conquest War of The Shainieshailight Fey and The Re Human
+- **Year 1129, Summer**: Religious War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1129, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1129, Autumn**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1129, Autumn**: Territorial War of The Westford Human and The Theanfifitho Elf
+- **Year 1129, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1130, Spring**: Conquest War of The Crownmonolith Giant and The Re Human
+- **Year 1130, Summer**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 1131, Summer**: Religious War of The Shainieshailight Fey and The Westford Human
+- **Year 1132, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1132, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1133, Spring**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1133, Summer**: Revenge War of The Re Human and The Brolebraeion Elf
+- **Year 1133, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1133, Autumn**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1134, Spring**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1134, Spring**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1134, Summer**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1134, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1134, Winter**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1134, Winter**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1134, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1135, Spring**: Resource War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1135, Spring**: Conquest War of The Westford Human and The Whitefield Beastfolk
+- **Year 1135, Spring**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1135, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1135, Autumn**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1135, Winter**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1137, Spring**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1137, Summer**: Religious War of The Westford Human and The Theanfifitho Elf
+- **Year 1137, Summer**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1137, Winter**: Resource War of The Westford Human and The Brolebraeion Elf
+- **Year 1138, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1138, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1138, Summer**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1138, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1138, Winter**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1138, Winter**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1139, Spring**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1139, Spring**: Conquest War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1139, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1139, Summer**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 1139, Summer**: Resource War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1139, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1139, Summer**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1139, Autumn**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1141, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1141, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1141, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1142, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1142, Winter**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1142, Winter**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 1143, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1143, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1143, Spring**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1143, Summer**: Resource War of The Westford Human and The Whitefield Beastfolk
+- **Year 1143, Autumn**: Conquest War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1143, Winter**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 1144, Spring**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1144, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1144, Winter**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1146, Spring**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1146, Summer**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1146, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1146, Autumn**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1146, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1146, Winter**: Revenge War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1147, Summer**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1147, Summer**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1147, Autumn**: Conquest War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1147, Winter**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1147, Winter**: Religious War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1148, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1148, Spring**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1148, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1148, Winter**: Territorial War of The Re Human and The Westford Human
+- **Year 1149, Autumn**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1149, Autumn**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1149, Winter**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1150, Spring**: Revenge War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1150, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1150, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1150, Spring**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1150, Summer**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1150, Winter**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 1151, Spring**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1151, Spring**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1151, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1151, Autumn**: Resource War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1151, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1151, Winter**: Territorial War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1152, Spring**: Revenge War of The Crownmonolith Giant and The Re Human
+- **Year 1152, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 1152, Summer**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 1152, Autumn**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 1152, Autumn**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 1153, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1153, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1153, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1154, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1154, Summer**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1154, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1154, Autumn**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1155, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1155, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1155, Summer**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1156, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1156, Autumn**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1156, Autumn**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1156, Autumn**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1156, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1158, Spring**: Revenge War of The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1158, Spring**: Resource War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1158, Autumn**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1158, Winter**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1159, Spring**: Conquest War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1159, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1159, Winter**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 1160, Spring**: Revenge War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1160, Summer**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1160, Autumn**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1161, Spring**: Territorial War of The Crownmonolith Giant and The Re Human
+- **Year 1161, Winter**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 1162, Spring**: Revenge War of The Crownmonolith Giant and The Westford Human
+- **Year 1162, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1162, Spring**: End of the war between The Crownmonolith Giant and The Shainieshailight Fey
+- **Year 1162, Summer**: Revenge War of The Westford Human and The Theanfifitho Elf
+- **Year 1162, Summer**: End of the war between The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1163, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1163, Winter**: Conquest War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1163, Winter**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1164, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1164, Summer**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1164, Winter**: Territorial War of The Westford Human and The Brolebraeion Elf
+- **Year 1165, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1165, Summer**: End of the war between The Crownmonolith Giant and The Re Human
+- **Year 1166, Summer**: End of the war between The Westford Human and The Theanfifitho Elf
+- **Year 1166, Autumn**: Revenge War of The Re Human and The Westford Human
+- **Year 1166, Autumn**: Religious War of The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1166, Autumn**: Resource War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1166, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1167, Winter**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1167, Winter**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1168, Spring**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1168, Spring**: Religious War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1168, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1168, Summer**: Revenge War of The Westford Human and The Brolebraeion Elf
+- **Year 1169, Spring**: Resource War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1169, Spring**: Revenge War of The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1169, Autumn**: Religious War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1170, Autumn**: End of the war between The Re Human and The Tsiskksai'ksiden Reptilian
+- **Year 1170, Autumn**: End of the war between The Re Human and The Westford Human
+- **Year 1170, Winter**: Territorial War of The Crownmonolith Giant and The Westford Human
+- **Year 1170, Winter**: Revenge War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1171, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1171, Winter**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1172, Summer**: Resource War of The Re Human and The Westford Human
+- **Year 1172, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1172, Summer**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1172, Summer**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1172, Winter**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1173, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1173, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Whitefield Beastfolk
+- **Year 1173, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1173, Summer**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1174, Spring**: Conquest War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1174, Spring**: Revenge War of The Shainieshailight Fey and The Re Human
+- **Year 1174, Spring**: Revenge War of The Westford Human and The Whitefield Beastfolk
+- **Year 1174, Spring**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1174, Summer**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1174, Winter**: VolcanoErupted strikes Thawenalolmofowen
+- **Year 1175, Autumn**: Religious War of The Re Human and The Whitefield Beastfolk
+- **Year 1175, Winter**: Religious War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1176, Summer**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 1176, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1176, Winter**: Revenge War of The Shainieshailight Fey and The Westford Human
+- **Year 1177, Spring**: Revenge War of The Re Human and The Theanfifitho Elf
+- **Year 1177, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1178, Spring**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1178, Spring**: End of the war between The Westford Human and The Whitefield Beastfolk
+- **Year 1178, Summer**: Revenge War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1178, Summer**: Territorial War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1178, Summer**: End of the war between The Re Human and The Westford Human
+- **Year 1178, Autumn**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1178, Winter**: Religious War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1178, Winter**: Religious War of The Shainieshailight Fey and The Re Human
+- **Year 1179, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1179, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1179, Summer**: Resource War of The Re Human and The Whitefield Beastfolk
+- **Year 1180, Spring**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 1180, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1180, Summer**: Conquest War of The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1180, Summer**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 1180, Autumn**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1181, Winter**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1182, Spring**: End of the war between The Shainieshailight Fey and The Re Human
+- **Year 1182, Summer**: End of the war between The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1182, Summer**: End of the war between The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1182, Autumn**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1183, Spring**: Religious War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1183, Spring**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1183, Winter**: Revenge War of The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1183, Winter**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1184, Spring**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 1184, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1184, Spring**: End of the war between The Shainieshailight Fey and The Whitefield Beastfolk
+- **Year 1184, Autumn**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1185, Spring**: Territorial War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1186, Spring**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1186, Summer**: Conquest War of The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1186, Autumn**: Religious War of The Re Human and The Brolebraeion Elf
+- **Year 1186, Winter**: Revenge War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1187, Spring**: End of the war between The Whitefield Beastfolk and The Brolebraeion Elf
+- **Year 1187, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1188, Spring**: Religious War of The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1188, Autumn**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1189, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1189, Summer**: Territorial War of The Re Human and The Theanfifitho Elf
+- **Year 1189, Autumn**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1189, Winter**: Conquest War of The Crownmonolith Giant and The Westford Human
+- **Year 1190, Spring**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1190, Autumn**: Resource War of The Re Human and The Westford Human
+- **Year 1190, Winter**: Conquest War of The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1190, Winter**: Revenge War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1190, Winter**: End of the war between The Whitefield Beastfolk and The Theanfifitho Elf
+- **Year 1191, Summer**: Religious War of The Westford Human and The Brolebraeion Elf
+- **Year 1191, Winter**: Territorial War of The Shainieshailight Fey and The Westford Human
+- **Year 1192, Spring**: Revenge War of The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1192, Spring**: End of the war between The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1192, Spring**: End of the war between The Shainieshailight Fey and The Theanfifitho Elf
+- **Year 1192, Summer**: Revenge War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1192, Summer**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1193, Spring**: Territorial War of The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1193, Spring**: End of the war between The Re Human and The Theanfifitho Elf
+- **Year 1193, Autumn**: Conquest War of The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1193, Winter**: End of the war between The Crownmonolith Giant and The Westford Human
+- **Year 1194, Spring**: Resource War of The Re Human and The Brolebraeion Elf
+- **Year 1194, Spring**: End of the war between The Re Human and The Westford Human
+- **Year 1195, Spring**: End of the war between The Tsiskksai'ksiden Reptilian and The Theanfifitho Elf
+- **Year 1195, Summer**: End of the war between The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1196, Spring**: Revenge War of The Re Human and The Whitefield Beastfolk
+- **Year 1196, Spring**: End of the war between The Shainieshailight Fey and The Westford Human
+- **Year 1196, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1196, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1196, Summer**: End of the war between The Crownmonolith Giant and The Whitefield Beastfolk
+- **Year 1196, Autumn**: Conquest War of The Westford Human and The Brolebraeion Elf
+- **Year 1196, Winter**: Resource War of The Westford Human and The Tsiskksai'ksiden Reptilian
+- **Year 1197, Spring**: End of the war between The Theanfifitho Elf and The Brolebraeion Elf
+- **Year 1197, Autumn**: End of the war between The Crownmonolith Giant and The Brolebraeion Elf
+- **Year 1198, Spring**: Conquest War of The Shainieshailight Fey and The Tsiskksai'ksiden Reptilian
+- **Year 1198, Spring**: Religious War of The Re Human and The Westford Human
+- **Year 1198, Summer**: Religious War of The Crownmonolith Giant and The Tsiskksai'ksiden Reptilian
+- **Year 1198, Winter**: End of the war between The Re Human and The Brolebraeion Elf
+- **Year 1199, Winter**: Religious War of The Westford Human and The Whitefield Beastfolk
+- **Year 1200, Spring**: Revenge War of The Crownmonolith Giant and The Theanfifitho Elf
+- **Year 1200, Spring**: Resource War of The Tsiskksai'ksiden Reptilian and The Brolebraeion Elf
+- **Year 1200, Spring**: End of the war between The Westford Human and The Brolebraeion Elf
+- **Year 1200, Spring**: End of the war between The Re Human and The Whitefield Beastfolk
+- **Year 1200, Summer**: Religious War of The Shainieshailight Fey and The Brolebraeion Elf
+- **Year 1200, Summer**: End of the war between The Westford Human and The Tsiskksai'ksiden Reptilian

@@ -614,7 +614,7 @@ mod tests {
         heightmap.set(5, 5, -25.0);
         heightmap.set(5, 6, -15.0);
 
-        let (water_map, water_bodies) = detect_water_bodies(&heightmap);
+        let (water_map, water_bodies, _water_depth) = detect_water_bodies(&heightmap);
 
         // Should have ocean and one lake
         assert!(water_bodies.len() >= 2);

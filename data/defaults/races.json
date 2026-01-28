@@ -1,0 +1,553 @@
+{
+  "races": [
+    {
+      "tag": "human",
+      "plural_name": "Humans",
+      "naming_archetype": "Compound",
+      "lifespan": [60, 90],
+      "maturity_age": 16,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "TemperateGrassland", "TemperateForest", "Savanna", "Foothills",
+        "TemperateRainforest", "Steppe", "BorealForest", "Marsh",
+        "Oasis", "AlpineMeadow", "SubalpineForest", "TropicalForest",
+        "CoastalWater", "MangroveSaltmarsh"
+      ],
+      "innate_abilities": [
+        "IronWill",
+        "FleetFooted",
+        "PackTactics"
+      ],
+      "biome_settlement_weights": {
+        "TemperateGrassland": 5.0,
+        "TemperateForest": 4.5,
+        "Foothills": 4.0,
+        "Savanna": 3.5,
+        "TemperateRainforest": 3.5,
+        "Steppe": 3.0,
+        "BorealForest": 2.5,
+        "Marsh": 2.0,
+        "Oasis": 2.5,
+        "AlpineMeadow": 2.0,
+        "SubalpineForest": 2.0,
+        "TropicalForest": 2.0,
+        "CoastalWater": 1.5,
+        "Tundra": 1.0,
+        "Desert": 0.8,
+        "HotDesert": 0.5,
+        "_default": 1.5
+      }
+    },
+    {
+      "tag": "dwarf",
+      "plural_name": "Dwarves",
+      "naming_archetype": "Harsh",
+      "lifespan": [200, 400],
+      "maturity_age": 40,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "AlpineTundra", "SnowyPeaks", "Foothills", "SubalpineForest",
+        "BasaltColumns", "ObsidianFields", "Badlands", "CrystalWasteland",
+        "MossyRockfield", "Geysers", "AlpineMeadow", "BorealForest"
+      ],
+      "innate_abilities": [
+        "DarkVision",
+        "StoneAffinity",
+        "PoisonResistance",
+        "MountainEndurance",
+        "StoneShape",
+        "MetalSense",
+        "Tremorsense",
+        "ThickHide"
+      ],
+      "biome_settlement_weights": {
+        "SnowyPeaks": 5.0,
+        "AlpineTundra": 5.0,
+        "Foothills": 5.0,
+        "BasaltColumns": 4.5,
+        "ObsidianFields": 4.0,
+        "SubalpineForest": 3.5,
+        "Badlands": 3.5,
+        "CrystalWasteland": 3.0,
+        "MossyRockfield": 3.0,
+        "Geysers": 2.5,
+        "AlpineMeadow": 2.5,
+        "BorealForest": 2.0,
+        "VolcanicWasteland": 2.0,
+        "SaltFlats": 1.5,
+        "Tundra": 1.5,
+        "TemperateGrassland": 1.0,
+        "_default": 1.0
+      }
+    },
+    {
+      "tag": "elf",
+      "plural_name": "Elves",
+      "naming_archetype": "Flowing",
+      "lifespan": [500, 1000],
+      "maturity_age": 80,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "TemperateForest", "TemperateRainforest", "BorealForest", "AncientGrove",
+        "CloudForest", "BioluminescentForest", "AlpineMeadow", "TropicalRainforest",
+        "MushroomForest", "SubalpineForest", "LeyNexus", "FloatingIslands",
+        "TropicalForest", "TemperateGrassland"
+      ],
+      "innate_abilities": [
+        "Longevity",
+        "DarkVision",
+        "AncientMemory",
+        "ArcaneGift",
+        "TreeMeld",
+        "FleetFooted",
+        "MagicResistance",
+        "NightVision"
+      ],
+      "biome_settlement_weights": {
+        "TemperateForest": 5.0,
+        "TemperateRainforest": 5.0,
+        "AncientGrove": 5.0,
+        "CloudForest": 5.0,
+        "BioluminescentForest": 4.5,
+        "BorealForest": 4.0,
+        "AlpineMeadow": 3.5,
+        "TropicalRainforest": 3.5,
+        "MushroomForest": 3.0,
+        "SubalpineForest": 3.0,
+        "LeyNexus": 3.0,
+        "FloatingIslands": 2.5,
+        "TropicalForest": 2.5,
+        "TemperateGrassland": 2.0,
+        "Swamp": 1.0,
+        "Tundra": 0.5,
+        "_default": 1.0
+      }
+    },
+    {
+      "tag": "orc",
+      "plural_name": "Orcs",
+      "naming_archetype": "Guttural",
+      "lifespan": [40, 70],
+      "maturity_age": 12,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "Savanna", "TemperateGrassland", "Tundra", "Ashlands",
+        "Badlands", "Steppe", "VolcanicWasteland", "DeadForest",
+        "Foothills", "Bog", "HotDesert", "Marsh",
+        "ObsidianFields", "PetrifiedForest"
+      ],
+      "innate_abilities": [
+        "BattleRage",
+        "NaturalArmor",
+        "BerserkerFury",
+        "BloodFrenzy",
+        "ThickHide",
+        "NaturalWeapons",
+        "IronWill",
+        "NightVision"
+      ],
+      "biome_settlement_weights": {
+        "Savanna": 5.0,
+        "Steppe": 5.0,
+        "Badlands": 4.5,
+        "Ashlands": 4.5,
+        "TemperateGrassland": 4.0,
+        "Tundra": 3.5,
+        "VolcanicWasteland": 3.0,
+        "DeadForest": 3.0,
+        "Foothills": 3.0,
+        "Bog": 2.5,
+        "HotDesert": 2.0,
+        "Marsh": 2.0,
+        "ObsidianFields": 2.0,
+        "PetrifiedForest": 1.5,
+        "Desert": 1.5,
+        "SaltFlats": 1.0,
+        "_default": 1.5
+      }
+    },
+    {
+      "tag": "goblin",
+      "plural_name": "Goblins",
+      "naming_archetype": "Guttural",
+      "lifespan": [30, 60],
+      "maturity_age": 8,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "Swamp", "Marsh", "DeadForest", "Foothills",
+        "Bog", "Shadowfen", "MushroomForest", "GlowingMarsh",
+        "Badlands", "MossyRockfield", "PetrifiedForest", "ColdDesert"
+      ],
+      "innate_abilities": [
+        "DarkVision",
+        "PackTactics",
+        "Camouflage",
+        "Burrowing",
+        "FleetFooted",
+        "NightVision",
+        "Tremorsense"
+      ],
+      "biome_settlement_weights": {
+        "Swamp": 5.0,
+        "Marsh": 5.0,
+        "Bog": 5.0,
+        "Shadowfen": 4.5,
+        "DeadForest": 4.0,
+        "MushroomForest": 4.0,
+        "GlowingMarsh": 3.5,
+        "Foothills": 3.0,
+        "MossyRockfield": 3.0,
+        "Badlands": 2.5,
+        "PetrifiedForest": 2.5,
+        "ColdDesert": 2.0,
+        "BorealForest": 1.5,
+        "TemperateForest": 1.0,
+        "_default": 1.0
+      }
+    },
+    {
+      "tag": "halfling",
+      "plural_name": "Halflings",
+      "naming_archetype": "Compound",
+      "lifespan": [80, 130],
+      "maturity_age": 20,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "TemperateGrassland", "TemperateForest", "Foothills", "AlpineMeadow",
+        "Savanna", "TemperateRainforest", "Oasis", "Steppe",
+        "SubalpineForest", "BorealForest", "Marsh", "AncientGrove"
+      ],
+      "innate_abilities": [
+        "FleetFooted",
+        "Camouflage",
+        "IronWill",
+        "MagicResistance",
+        "BurrowingSense",
+        "PackTactics"
+      ],
+      "biome_settlement_weights": {
+        "TemperateGrassland": 5.0,
+        "Foothills": 5.0,
+        "TemperateForest": 4.5,
+        "AlpineMeadow": 4.0,
+        "Savanna": 3.5,
+        "TemperateRainforest": 3.0,
+        "Oasis": 3.0,
+        "Steppe": 2.5,
+        "SubalpineForest": 2.5,
+        "BorealForest": 2.0,
+        "Marsh": 1.5,
+        "AncientGrove": 2.0,
+        "TropicalForest": 1.0,
+        "Tundra": 0.5,
+        "_default": 1.5
+      }
+    },
+    {
+      "tag": "reptilian",
+      "plural_name": "Reptilians",
+      "naming_archetype": "Sibilant",
+      "lifespan": [80, 150],
+      "maturity_age": 14,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "TropicalForest", "Swamp", "Marsh", "Desert",
+        "HotDesert", "TropicalRainforest", "MangroveSaltmarsh", "Oasis",
+        "Savanna", "SaltFlats", "CoastalWater", "GlowingMarsh",
+        "Badlands", "VolcanicWasteland", "CrystalDesert"
+      ],
+      "innate_abilities": [
+        "NaturalArmor",
+        "WaterBreathing",
+        "HeatResistance",
+        "VenomBite",
+        "ThermalSense",
+        "AmphibiousNature",
+        "NaturalWeapons",
+        "DesertAdaptation"
+      ],
+      "biome_settlement_weights": {
+        "TropicalForest": 5.0,
+        "Swamp": 5.0,
+        "TropicalRainforest": 5.0,
+        "MangroveSaltmarsh": 4.5,
+        "Marsh": 4.5,
+        "HotDesert": 4.0,
+        "Desert": 4.0,
+        "Oasis": 3.5,
+        "Savanna": 3.5,
+        "SaltFlats": 3.0,
+        "CoastalWater": 3.0,
+        "GlowingMarsh": 2.5,
+        "Badlands": 2.5,
+        "VolcanicWasteland": 2.0,
+        "CrystalDesert": 2.0,
+        "TemperateGrassland": 1.0,
+        "Tundra": 0.5,
+        "Ice": 0.5,
+        "_default": 1.0
+      }
+    },
+    {
+      "tag": "fey",
+      "plural_name": "Fey",
+      "naming_archetype": "Mystical",
+      "lifespan": [300, 800],
+      "maturity_age": 50,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "BioluminescentForest", "MushroomForest", "TemperateRainforest", "AncientGrove",
+        "GlowingMarsh", "FloatingIslands", "LeyNexus", "CloudForest",
+        "Shadowfen", "TemperateForest", "TropicalRainforest", "Oasis",
+        "AlpineMeadow", "Bog"
+      ],
+      "innate_abilities": [
+        "ArcaneGift",
+        "Shapeshifter",
+        "FeyCharm",
+        "DreamWalking",
+        "Telepathy",
+        "ShadowMeld",
+        "SpiritSight",
+        "Camouflage"
+      ],
+      "biome_settlement_weights": {
+        "BioluminescentForest": 5.0,
+        "MushroomForest": 5.0,
+        "AncientGrove": 5.0,
+        "FloatingIslands": 5.0,
+        "LeyNexus": 5.0,
+        "GlowingMarsh": 4.5,
+        "CloudForest": 4.5,
+        "TemperateRainforest": 4.0,
+        "Shadowfen": 3.5,
+        "TemperateForest": 3.0,
+        "TropicalRainforest": 3.0,
+        "Bog": 2.5,
+        "AlpineMeadow": 2.5,
+        "Oasis": 2.0,
+        "Swamp": 1.5,
+        "Desert": 0.5,
+        "Ashlands": 0.5,
+        "_default": 0.8
+      }
+    },
+    {
+      "tag": "undead",
+      "plural_name": "Undead",
+      "naming_archetype": "Ancient",
+      "lifespan": [0, 0],
+      "maturity_age": 0,
+      "can_reproduce": false,
+      "preferred_biomes": [
+        "DeadForest", "Shadowfen", "Ashlands", "Bog",
+        "PetrifiedForest", "CrystalWasteland", "Swamp", "GlowingMarsh",
+        "Tundra", "ColdDesert", "ObsidianFields", "SaltFlats",
+        "Marsh", "Badlands"
+      ],
+      "innate_abilities": [
+        "DarkVision",
+        "PoisonResistance",
+        "ColdResistance",
+        "UndeadFortitude",
+        "SpiritSight",
+        "DreamWalking",
+        "AcidResistance",
+        "Telepathy"
+      ],
+      "biome_settlement_weights": {
+        "DeadForest": 5.0,
+        "Shadowfen": 5.0,
+        "Ashlands": 5.0,
+        "PetrifiedForest": 4.5,
+        "Bog": 4.5,
+        "CrystalWasteland": 4.0,
+        "Swamp": 3.5,
+        "GlowingMarsh": 3.5,
+        "Tundra": 3.0,
+        "ColdDesert": 3.0,
+        "ObsidianFields": 2.5,
+        "SaltFlats": 2.5,
+        "Marsh": 2.0,
+        "Badlands": 2.0,
+        "Ice": 1.5,
+        "TemperateForest": 0.8,
+        "TemperateGrassland": 0.5,
+        "_default": 0.8
+      }
+    },
+    {
+      "tag": "elemental",
+      "plural_name": "Elementals",
+      "naming_archetype": "Mystical",
+      "lifespan": [0, 0],
+      "maturity_age": 0,
+      "can_reproduce": false,
+      "preferred_biomes": [
+        "VolcanicWasteland", "CrystalWasteland", "Geysers", "LeyNexus",
+        "ObsidianFields", "BasaltColumns", "FloatingIslands", "SaltFlats",
+        "CrystalDesert", "SnowyPeaks", "Ashlands", "GlowingMarsh",
+        "DeepOcean", "FrozenSea"
+      ],
+      "innate_abilities": [
+        "Regeneration",
+        "ElementalAttunement",
+        "HeatResistance",
+        "ColdResistance",
+        "WaterControl",
+        "WindRiding",
+        "LightningResistance",
+        "MagicResistance"
+      ],
+      "biome_settlement_weights": {
+        "VolcanicWasteland": 5.0,
+        "CrystalWasteland": 5.0,
+        "Geysers": 5.0,
+        "LeyNexus": 5.0,
+        "FloatingIslands": 4.5,
+        "ObsidianFields": 4.5,
+        "BasaltColumns": 4.0,
+        "CrystalDesert": 4.0,
+        "SaltFlats": 3.5,
+        "Ashlands": 3.5,
+        "SnowyPeaks": 3.0,
+        "GlowingMarsh": 2.5,
+        "DeepOcean": 2.0,
+        "FrozenSea": 2.0,
+        "Ice": 1.5,
+        "Desert": 1.0,
+        "TemperateGrassland": 0.5,
+        "_default": 0.5
+      }
+    },
+    {
+      "tag": "beastfolk",
+      "plural_name": "Beastfolk",
+      "naming_archetype": "Harsh",
+      "lifespan": [50, 80],
+      "maturity_age": 14,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "Savanna", "TemperateGrassland", "TropicalForest", "BorealForest",
+        "Steppe", "TemperateForest", "TropicalRainforest", "AlpineMeadow",
+        "Marsh", "Tundra", "AncientGrove", "CloudForest",
+        "Foothills", "SubalpineForest"
+      ],
+      "innate_abilities": [
+        "BeastSpeaker",
+        "NaturalWeapons",
+        "PackTactics",
+        "NightVision",
+        "Echolocation",
+        "SwiftClimber",
+        "ThickHide",
+        "ThermalSense"
+      ],
+      "biome_settlement_weights": {
+        "Savanna": 5.0,
+        "TemperateGrassland": 4.5,
+        "TropicalForest": 4.5,
+        "Steppe": 4.0,
+        "BorealForest": 4.0,
+        "TemperateForest": 3.5,
+        "TropicalRainforest": 3.5,
+        "AlpineMeadow": 3.0,
+        "Marsh": 3.0,
+        "Tundra": 2.5,
+        "AncientGrove": 2.5,
+        "CloudForest": 2.0,
+        "Foothills": 2.0,
+        "SubalpineForest": 2.0,
+        "Swamp": 1.5,
+        "Desert": 1.0,
+        "_default": 1.5
+      }
+    },
+    {
+      "tag": "giant",
+      "plural_name": "Giants",
+      "naming_archetype": "Ancient",
+      "lifespan": [300, 600],
+      "maturity_age": 60,
+      "can_reproduce": true,
+      "preferred_biomes": [
+        "SnowyPeaks", "AlpineTundra", "Tundra", "AlpineMeadow",
+        "SubalpineForest", "BasaltColumns", "Foothills", "BorealForest",
+        "Ice", "Steppe", "VolcanicWasteland", "Badlands",
+        "FrozenSea", "ColdDesert"
+      ],
+      "innate_abilities": [
+        "MountainEndurance",
+        "NaturalArmor",
+        "GiantStrength",
+        "ColdResistance",
+        "ArcticAdaptation",
+        "Tremorsense",
+        "ThickHide",
+        "AncientMemory"
+      ],
+      "biome_settlement_weights": {
+        "SnowyPeaks": 5.0,
+        "AlpineTundra": 5.0,
+        "AlpineMeadow": 4.5,
+        "Tundra": 4.5,
+        "SubalpineForest": 4.0,
+        "BasaltColumns": 3.5,
+        "Foothills": 3.5,
+        "BorealForest": 3.0,
+        "Ice": 3.0,
+        "Steppe": 2.5,
+        "VolcanicWasteland": 2.5,
+        "Badlands": 2.0,
+        "FrozenSea": 2.0,
+        "ColdDesert": 2.0,
+        "TemperateGrassland": 1.0,
+        "Savanna": 0.5,
+        "_default": 0.8
+      }
+    },
+    {
+      "tag": "construct",
+      "plural_name": "Constructs",
+      "naming_archetype": "Ancient",
+      "lifespan": [0, 0],
+      "maturity_age": 0,
+      "can_reproduce": false,
+      "preferred_biomes": [
+        "CrystalWasteland", "ObsidianFields", "BasaltColumns", "SaltFlats",
+        "LeyNexus", "CrystalDesert", "PetrifiedForest", "Geysers",
+        "Ashlands", "VolcanicWasteland", "FloatingIslands", "Badlands",
+        "MossyRockfield", "SnowyPeaks"
+      ],
+      "innate_abilities": [
+        "PoisonResistance",
+        "ColdResistance",
+        "HeatResistance",
+        "MagicResistance",
+        "AcidResistance",
+        "LightningResistance",
+        "Tremorsense",
+        "MetalSense"
+      ],
+      "biome_settlement_weights": {
+        "CrystalWasteland": 5.0,
+        "ObsidianFields": 5.0,
+        "BasaltColumns": 5.0,
+        "LeyNexus": 4.5,
+        "SaltFlats": 4.0,
+        "CrystalDesert": 4.0,
+        "PetrifiedForest": 3.5,
+        "Geysers": 3.5,
+        "Ashlands": 3.0,
+        "VolcanicWasteland": 3.0,
+        "FloatingIslands": 2.5,
+        "Badlands": 2.5,
+        "MossyRockfield": 2.0,
+        "SnowyPeaks": 1.5,
+        "DeadForest": 1.0,
+        "Desert": 1.0,
+        "_default": 0.5
+      }
+    }
+  ]
+}

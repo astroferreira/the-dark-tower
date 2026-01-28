@@ -3,6 +3,7 @@
 //! Simple roguelike-style terminal interface for exploring generated worlds.
 //! Navigate with arrow keys, inspect tiles, change view modes.
 
+use std::collections::HashMap;
 use std::io::{self, stdout};
 use std::error::Error;
 use std::time::Duration;
@@ -24,6 +25,10 @@ use crate::world::{WorldData, generate_world};
 use crate::weather_zones::ExtremeWeatherType;
 use crate::region::{RegionMap, RegionCache};
 use crate::underground_water::SpringType;
+use crate::history::world_state::WorldHistory;
+use crate::history::{FactionId, SettlementId, LegendaryCreatureId};
+use crate::history::legends::LegendsMode;
+use crate::history::legends::renderer::render_legends;
 
 use image::{ImageBuffer, Rgb};
 
@@ -36,6 +41,34 @@ fn make_bg_color(r: u8, g: u8, b: u8) -> Color {
     let bg = (g as f32 * factor) as u8;
     let bb = (b as f32 * factor) as u8;
     Color::Rgb(br, bg, bb)
+}
+
+/// Generate a distinct RGB color for a faction based on its ID.
+/// Uses golden angle hue distribution for maximum visual separation.
+fn faction_color(faction_id: FactionId) -> (u8, u8, u8) {
+    // Golden angle (~137.5°) distributes hues evenly
+    let hue = ((faction_id.0 as f32) * 137.508) % 360.0;
+    let s = 0.65;
+    let v = 0.85;
+
+    // HSV to RGB conversion
+    let h = hue / 60.0;
+    let i = h.floor() as u32;
+    let f = h - i as f32;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - s * f);
+    let t = v * (1.0 - s * (1.0 - f));
+
+    let (r, g, b) = match i % 6 {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+
+    ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
 }
 
 /// Create a slightly lighter/brighter foreground for better visibility on dark backgrounds.
@@ -73,6 +106,8 @@ pub enum ViewMode {
     Microclimate,
     SeasonalTemp,
     Lava,
+    Factions,
+    Roads,
 }
 
 impl ViewMode {
@@ -92,6 +127,8 @@ impl ViewMode {
             ViewMode::Microclimate => "Micro",
             ViewMode::SeasonalTemp => "Season",
             ViewMode::Lava => "Lava",
+            ViewMode::Factions => "Factions",
+            ViewMode::Roads => "Roads",
         }
     }
 
@@ -110,7 +147,9 @@ impl ViewMode {
             ViewMode::WeatherZones => ViewMode::Microclimate,
             ViewMode::Microclimate => ViewMode::SeasonalTemp,
             ViewMode::SeasonalTemp => ViewMode::Lava,
-            ViewMode::Lava => ViewMode::Biome,
+            ViewMode::Lava => ViewMode::Factions,
+            ViewMode::Factions => ViewMode::Roads,
+            ViewMode::Roads => ViewMode::Biome,
         }
     }
 }
@@ -118,6 +157,8 @@ impl ViewMode {
 /// Explorer state
 struct Explorer {
     world: WorldData,
+    /// Optional world history for faction view mode
+    history: Option<WorldHistory>,
     cursor_x: usize,
     cursor_y: usize,
     view_mode: ViewMode,
@@ -136,16 +177,43 @@ struct Explorer {
     frame_time_ms: f32,
     /// Rolling average frame time in milliseconds
     avg_frame_time: f32,
+    /// Legends mode overlay (browsing world history)
+    legends_mode: Option<LegendsMode>,
+    /// Dirty flag — when false, skip rendering to save CPU
+    needs_redraw: bool,
+    /// Position-indexed settlement lookup for O(1) per-pixel access
+    settlement_positions: HashMap<(usize, usize), SettlementId>,
+    /// Position-indexed legendary creature lair lookup for O(1) per-pixel access
+    creature_lair_positions: HashMap<(usize, usize), LegendaryCreatureId>,
 }
 
 impl Explorer {
-    fn new(world: WorldData) -> Self {
+    fn new(world: WorldData, history: Option<WorldHistory>) -> Self {
         let cursor_x = world.heightmap.width / 2;
         let cursor_y = world.heightmap.height / 2;
         let seed = world.seed();
 
+        // Build position indexes for O(1) lookups during rendering
+        let mut settlement_positions = HashMap::new();
+        let mut creature_lair_positions = HashMap::new();
+        if let Some(ref hist) = history {
+            for (id, s) in &hist.settlements {
+                if !s.is_destroyed() {
+                    settlement_positions.insert(s.location, *id);
+                }
+            }
+            for (id, c) in &hist.legendary_creatures {
+                if c.is_alive() {
+                    if let Some(loc) = c.lair_location {
+                        creature_lair_positions.insert(loc, *id);
+                    }
+                }
+            }
+        }
+
         Explorer {
             world,
+            history,
             cursor_x,
             cursor_y,
             view_mode: ViewMode::Biome,
@@ -157,6 +225,10 @@ impl Explorer {
             region_cache: RegionCache::new(seed),
             frame_time_ms: 0.0,
             avg_frame_time: 0.0,
+            legends_mode: None,
+            needs_redraw: true,
+            settlement_positions,
+            creature_lair_positions,
         }
     }
 
@@ -196,6 +268,7 @@ impl Explorer {
 
         self.message = Some(format!("Generating new world (seed: {})...", new_seed));
         self.world = generate_world(width, height, new_seed);
+        self.history = None; // History is invalidated by regeneration
 
         // Reset cursor to center of map
         self.cursor_x = width / 2;
@@ -324,11 +397,9 @@ impl Explorer {
 
         match self.view_mode {
             ViewMode::Biome => {
-                // Check for river using precomputed flow_accumulation (O(1) lookup)
-                let flow_acc = self.world.flow_accumulation.as_ref()
-                    .map(|fa| *fa.get(x, y))
-                    .unwrap_or(0.0);
-                let has_river = flow_acc > 50.0;
+                // Check if river using the river network
+                let has_river = self.world.river_tile_cache.as_ref()
+                    .map_or(false, |c| *c.get(x, y));
 
                 // Use elevation as source of truth for water type
                 if height < 0.0 {
@@ -347,7 +418,8 @@ impl Explorer {
                     if has_river {
                         // River on land
                         let (r, g, b) = biome.color();
-                        ('~', Color::Rgb(100, 180, 255), make_bg_color(r, g, b))
+                        // Use blue foreground for river visibility
+                        ('~', Color::Rgb(100, 200, 255), make_bg_color(r, g, b))
                     } else if water_depth > 0.5 {
                         // Lake (alpine lake, etc.)
                         ('~', Color::Rgb(80, 150, 220), Color::Rgb(30, 70, 140))
@@ -362,8 +434,16 @@ impl Explorer {
             ViewMode::BaseBiome => {
                 // Show parent/base biome instead of extended biome
                 let parent = biome.parent_biome();
-                let ch = if is_water { '~' } else { '.' };
-                let (r, g, b) = parent.color();
+                let has_river = self.world.river_tile_cache.as_ref()
+                    .map_or(false, |c| *c.get(x, y));
+                
+                let ch = if is_water || has_river { '~' } else { '.' };
+                let (r, g, b) = if has_river && !is_water {
+                     // Blue river on land
+                     (100, 180, 255)
+                } else {
+                     parent.color()
+                };
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Height => {
@@ -397,11 +477,9 @@ impl Explorer {
                 (ch, make_fg_color(r, g, b), make_bg_color(r, g, b))
             }
             ViewMode::Rivers => {
-                // Get flow accumulation for this tile (precomputed O(1) lookup)
-                let flow_acc = self.world.flow_accumulation.as_ref()
-                    .map(|fa| *fa.get(x, y))
-                    .unwrap_or(0.0);
-                const RIVER_THRESHOLD: f32 = 50.0;
+                // Use river network consistently
+                let has_river = self.world.river_tile_cache.as_ref()
+                    .map_or(false, |c| *c.get(x, y));
 
                 // Use elevation as source of truth
                 if height < 0.0 {
@@ -411,20 +489,18 @@ impl Explorer {
                         let depth_factor = ((-height) / 500.0).min(1.0);
                         let blue = (100.0 + depth_factor * 100.0) as u8;
                         ('~', Color::Rgb(20, 40, blue), Color::Rgb(10, 20, 40 + (depth_factor * 40.0) as u8))
-                    } else if flow_acc > RIVER_THRESHOLD {
+                    } else if has_river {
                         // River mouth in shallow coastal water
-                        let intensity = (flow_acc.log2() * 20.0).min(200.0) as u8;
-                        ('≈', Color::Rgb(80, 180, 255), Color::Rgb(20, 60 + intensity / 4, 120))
+                        ('≈', Color::Rgb(80, 180, 255), Color::Rgb(40, 80, 150))
                     } else {
                         // Shallow coastal water
                         ('~', Color::Rgb(60, 120, 180), Color::Rgb(20, 50, 100))
                     }
                 } else {
                     // ABOVE SEA LEVEL (land, lake, river - never ocean)
-                    if flow_acc > RIVER_THRESHOLD {
+                    if has_river {
                         // River on land
-                        let intensity = (flow_acc.log2() * 15.0).min(200.0) as u8;
-                        ('~', Color::Rgb(60, 150 + intensity / 2, 255), Color::Rgb(0, 40 + intensity / 4, 100))
+                        ('~', Color::Rgb(60, 180, 255), Color::Rgb(20, 80, 140))
                     } else if water_depth > 0.5 {
                         // Lake
                         ('~', Color::Rgb(80, 150, 220), Color::Rgb(20, 60, 120))
@@ -598,6 +674,98 @@ impl Explorer {
                     }
                 }
             }
+            ViewMode::Factions => {
+                if let Some(ref history) = self.history {
+                    // Check if a faction owns this tile
+                    let tile_hist = history.tile_history.get(x, y);
+
+                    // Check for settlement at this tile (O(1) lookup)
+                    let settlement = self.settlement_positions.get(&(x, y))
+                        .and_then(|id| history.settlements.get(id));
+
+                    // Check for legendary creature lair (O(1) lookup)
+                    let lair = self.creature_lair_positions.get(&(x, y))
+                        .and_then(|id| history.legendary_creatures.get(id));
+
+                    if is_water {
+                        // Water tiles stay water even in faction view
+                        ('~', Color::Rgb(60, 100, 160), Color::Rgb(15, 30, 60))
+                    } else if let Some(settlement) = settlement {
+                        // Settlement marker with faction color
+                        let (r, g, b) = faction_color(settlement.faction);
+                        let ch = match settlement.settlement_type {
+                            crate::history::civilizations::settlement::SettlementType::Capital => '#',
+                            crate::history::civilizations::settlement::SettlementType::City => '@',
+                            crate::history::civilizations::settlement::SettlementType::Town => 'O',
+                            crate::history::civilizations::settlement::SettlementType::Village => 'o',
+                            crate::history::civilizations::settlement::SettlementType::Fort => '+',
+                            crate::history::civilizations::settlement::SettlementType::Outpost => '.',
+                            _ => '*',
+                        };
+                        (ch, Color::Rgb(255, 255, 255), Color::Rgb(r, g, b))
+                    } else if let Some(_lair) = lair {
+                        // Legendary creature lair marker
+                        ('!', Color::Rgb(255, 80, 80), Color::Rgb(80, 20, 20))
+                    } else if let Some(owner) = tile_hist.current_owner {
+                        // Territory tile colored by faction
+                        let (r, g, b) = faction_color(owner);
+                        ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                    } else {
+                        // Unclaimed wilderness
+                        ('.', Color::Rgb(80, 80, 80), Color::Rgb(25, 25, 25))
+                    }
+                } else {
+                    // No history available
+                    let (r, g, b) = height_color(height);
+                    ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                }
+            }
+            ViewMode::Roads => {
+                if let Some(ref history) = self.history {
+                    // Check if this tile has a road (permanent infrastructure)
+                    let has_road = history.tile_history.has_road(x, y);
+
+                    // Check for settlement at this tile (O(1) lookup)
+                    let settlement = self.settlement_positions.get(&(x, y))
+                        .and_then(|id| history.settlements.get(id));
+
+                    if is_water {
+                        // Water tiles
+                        ('~', Color::Rgb(60, 100, 160), Color::Rgb(15, 30, 60))
+                    } else if let Some(settlement) = settlement {
+                        // Settlement marker (gold for trade hub)
+                        let ch = match settlement.settlement_type {
+                            crate::history::civilizations::settlement::SettlementType::Capital => '#',
+                            crate::history::civilizations::settlement::SettlementType::City => '@',
+                            crate::history::civilizations::settlement::SettlementType::Town => 'O',
+                            crate::history::civilizations::settlement::SettlementType::Village => 'o',
+                            _ => '*',
+                        };
+                        // Check if this settlement is a trade endpoint
+                        let is_trade_hub = history.trade_routes.values()
+                            .filter(|r| r.is_active())
+                            .any(|r| r.endpoints.0 == settlement.id || r.endpoints.1 == settlement.id);
+                        if is_trade_hub {
+                            (ch, Color::Rgb(255, 215, 0), Color::Rgb(120, 90, 0)) // Gold
+                        } else {
+                            (ch, Color::Rgb(200, 200, 200), Color::Rgb(60, 60, 60))
+                        }
+                    } else if has_road {
+                        // Trade route path - golden road
+                        ('·', Color::Rgb(255, 200, 50), Color::Rgb(100, 70, 20))
+                    } else {
+                        // Regular terrain (muted)
+                        let (r, g, b) = height_color(height);
+                        // Desaturate for background
+                        let gray = ((r as u16 + g as u16 + b as u16) / 3) as u8;
+                        ('.', Color::Rgb(gray, gray, gray), Color::Rgb(gray / 4, gray / 4, gray / 4))
+                    }
+                } else {
+                    // No history available
+                    let (r, g, b) = height_color(height);
+                    ('.', make_fg_color(r, g, b), make_bg_color(r, g, b))
+                }
+            }
         }
     }
 
@@ -615,7 +783,7 @@ impl Explorer {
             "  Biome, Base, Height, Temperature,",
             "  Moisture, Plates, Stress, Rivers,",
             "  BiomeBlend, Coastline, Weather,",
-            "  Micro, Season, Lava",
+            "  Micro, Season, Lava, Factions, Roads",
             "",
             "Season (for Season view):",
             "  [ / ] - Previous/Next season",
@@ -627,6 +795,7 @@ impl Explorer {
             "Other:",
             "  I / Tab - Toggle info panel",
             "  M - Toggle region map panel",
+            "  L - Legends mode (browse history)",
             "  R - Regenerate world (new seed)",
             "  E - Export current view as PNG",
             "  T - Export top-down view as PNG",
@@ -850,6 +1019,44 @@ impl Explorer {
         // Season indicator
         lines.push((" Season".to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
         lines.push((format!("  {}", self.world.current_season.name()), Style::default().fg(Color::Cyan)));
+
+        // History / Faction info
+        if let Some(ref history) = self.history {
+            lines.push(("".to_string(), Style::default()));
+            lines.push((" History".to_string(), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)));
+
+            let tile_hist = history.tile_history.get(x, y);
+            if let Some(owner_id) = tile_hist.current_owner {
+                if let Some(faction) = history.factions.get(&owner_id) {
+                    let (fr, fg, fb) = faction_color(owner_id);
+                    lines.push((format!("  Faction: {}", faction.name), Style::default().fg(Color::Rgb(fr, fg, fb))));
+                    lines.push((format!("  Pop: {}", faction.total_population), Style::default().fg(Color::White)));
+                }
+            } else {
+                lines.push(("  Unclaimed".to_string(), Style::default().fg(Color::DarkGray)));
+            }
+
+            // Settlement at cursor (O(1) lookup)
+            if let Some(settlement) = self.settlement_positions.get(&(x, y))
+                .and_then(|id| history.settlements.get(id))
+            {
+                lines.push((format!("  {:?}: {}", settlement.settlement_type, settlement.name), Style::default().fg(Color::Cyan)));
+                lines.push((format!("    Pop: {}", settlement.population), Style::default().fg(Color::White)));
+            }
+
+            // Legendary creature lair (O(1) lookup)
+            if let Some(creature) = self.creature_lair_positions.get(&(x, y))
+                .and_then(|id| history.legendary_creatures.get(id))
+            {
+                lines.push((format!("  Lair: {}", creature.name), Style::default().fg(Color::Red)));
+            }
+
+            // Tile event count
+            let event_count = tile_hist.events.len();
+            if event_count > 0 {
+                lines.push((format!("  Events: {}", event_count), Style::default().fg(Color::Gray)));
+            }
+        }
 
         // Draw the panel background and border
         let block = Block::default()
@@ -1205,6 +1412,14 @@ pub fn export_map_image(
                         height_color(h)
                     }
                 }
+                ViewMode::Factions => {
+                    // Faction view requires history context; fall back to height for export
+                    if is_water { (50, 100, 200) } else { height_color(h) }
+                }
+                ViewMode::Roads => {
+                    // Roads view requires history context; fall back to height for export
+                    if is_water { (50, 100, 200) } else { height_color(h) }
+                }
             };
 
             img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
@@ -1536,7 +1751,7 @@ pub fn export_base_map_image(
 }
 
 /// Run the explorer
-pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
+pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(), Box<dyn Error>> {
     // Setup terminal
     terminal::enable_raw_mode()?;
     let mut stdout = stdout();
@@ -1544,12 +1759,14 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut explorer = Explorer::new(world);
+    let mut explorer = Explorer::new(world, history);
 
     loop {
         // Measure frame render time
         let frame_start = std::time::Instant::now();
 
+        // Only render when state has changed
+        if explorer.needs_redraw {
         // Render
         terminal.draw(|f| {
             let size = f.area();
@@ -1650,8 +1867,9 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
             let panel_hint = if explorer.show_panel { "" } else { "  I:Panel" };
             let region_hint = if explorer.show_region_map { " [M]" } else { "" };
 
+            let legends_hint = if explorer.history.is_some() { "  L:Legends" } else { "" };
             let status = format!(
-                " ({},{}) | {}{}{}{}{}{}{} | V:View  M:Region  [/]:Season  ?:Help{}  Q:Quit | {:.1}ms (avg:{:.1})",
+                " ({},{}) | {}{}{}{}{}{}{} | V:View  M:Region{}  [/]:Season  ?:Help{}  Q:Quit | {:.1}ms (avg:{:.1})",
                 explorer.cursor_x,
                 explorer.cursor_y,
                 explorer.view_mode.name(),
@@ -1661,6 +1879,7 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                 season_str,
                 weather_str,
                 msg_str,
+                legends_hint,
                 panel_hint,
                 explorer.frame_time_ms,
                 explorer.avg_frame_time,
@@ -1669,8 +1888,13 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                 .style(Style::default().bg(Color::DarkGray).fg(Color::White));
             f.render_widget(status_para, status_area);
 
+            // Render legends mode overlay
+            if let Some(ref legends) = explorer.legends_mode {
+                render_legends(legends, content_area, f.buffer_mut());
+            }
+
             // Render help if active (as overlay on map)
-            if explorer.show_help {
+            if explorer.show_help && explorer.legends_mode.is_none() {
                 explorer.render_help(map_area, f.buffer_mut());
             }
         })?;
@@ -1681,11 +1905,56 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
 
         // Clear message after display
         explorer.message = None;
+        explorer.needs_redraw = false;
+        } // end if needs_redraw
 
         // Handle input
         if event::poll(Duration::from_millis(50))? {
-            match event::read()? {
+            let event = event::read()?;
+            explorer.needs_redraw = true;
+            match event {
                 Event::Key(key) => {
+                    // Handle legends mode input first
+                    if explorer.legends_mode.is_some() {
+                        let size = terminal.size()?;
+                        let visible_height = size.height.saturating_sub(4) as usize;
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
+                                let legends = explorer.legends_mode.as_mut().unwrap();
+                                if legends.nav_stack.is_empty() {
+                                    // Exit legends mode
+                                    explorer.legends_mode = None;
+                                } else {
+                                    // Pop navigation stack
+                                    legends.go_back();
+                                }
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                explorer.legends_mode.as_mut().unwrap().move_up();
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                explorer.legends_mode.as_mut().unwrap().move_down(visible_height);
+                            }
+                            KeyCode::Enter => {
+                                if let Some(ref history) = explorer.history {
+                                    explorer.legends_mode.as_mut().unwrap().select(history);
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                if let Some(ref history) = explorer.history {
+                                    explorer.legends_mode.as_mut().unwrap().search_pop(history);
+                                }
+                            }
+                            KeyCode::Char(ch) => {
+                                if let Some(ref history) = explorer.history {
+                                    explorer.legends_mode.as_mut().unwrap().search_push(history, ch);
+                                }
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+
                     if explorer.show_help {
                         explorer.show_help = false;
                         continue;
@@ -1792,6 +2061,15 @@ pub fn run_explorer(world: WorldData) -> Result<(), Box<dyn Error>> {
                         }
                         KeyCode::Char(']') | KeyCode::Char('}') => {
                             explorer.next_season();
+                        }
+
+                        // Legends mode
+                        KeyCode::Char('L') => {
+                            if explorer.history.is_some() {
+                                explorer.legends_mode = Some(LegendsMode::new());
+                            } else {
+                                explorer.message = Some("No history (run with --history-years)".to_string());
+                            }
                         }
 
                         // Region map panel toggle

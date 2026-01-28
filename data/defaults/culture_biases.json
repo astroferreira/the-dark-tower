@@ -1,0 +1,137 @@
+{
+  "culture_biases": {
+    "human": {
+      "martial": [0.5, 0.3], "tradition": [0.5, 0.3], "collectivism": [0.5, 0.3],
+      "nature_harmony": [0.4, 0.3], "magic_acceptance": [0.5, 0.3],
+      "xenophobia": [0.4, 0.3], "honor_value": [0.5, 0.3], "wealth": [0.6, 0.3]
+    },
+    "dwarf": {
+      "martial": [0.6, 0.2], "tradition": [0.8, 0.15], "collectivism": [0.7, 0.2],
+      "nature_harmony": [0.2, 0.2], "magic_acceptance": [0.3, 0.2],
+      "xenophobia": [0.6, 0.2], "honor_value": [0.7, 0.2], "wealth": [0.7, 0.2]
+    },
+    "elf": {
+      "martial": [0.3, 0.2], "tradition": [0.7, 0.2], "collectivism": [0.5, 0.2],
+      "nature_harmony": [0.8, 0.15], "magic_acceptance": [0.8, 0.15],
+      "xenophobia": [0.5, 0.25], "honor_value": [0.6, 0.2], "wealth": [0.3, 0.2]
+    },
+    "orc": {
+      "martial": [0.8, 0.15], "tradition": [0.6, 0.2], "collectivism": [0.6, 0.2],
+      "nature_harmony": [0.3, 0.2], "magic_acceptance": [0.3, 0.25],
+      "xenophobia": [0.7, 0.2], "honor_value": [0.5, 0.3], "wealth": [0.4, 0.2]
+    },
+    "goblin": {
+      "martial": [0.5, 0.3], "tradition": [0.3, 0.2], "collectivism": [0.6, 0.2],
+      "nature_harmony": [0.3, 0.2], "magic_acceptance": [0.5, 0.3],
+      "xenophobia": [0.5, 0.3], "honor_value": [0.2, 0.2], "wealth": [0.7, 0.2]
+    },
+    "halfling": {
+      "martial": [0.2, 0.2], "tradition": [0.6, 0.2], "collectivism": [0.7, 0.2],
+      "nature_harmony": [0.6, 0.2], "magic_acceptance": [0.4, 0.2],
+      "xenophobia": [0.3, 0.2], "honor_value": [0.5, 0.2], "wealth": [0.5, 0.2]
+    },
+    "reptilian": {
+      "martial": [0.6, 0.2], "tradition": [0.7, 0.2], "collectivism": [0.6, 0.2],
+      "nature_harmony": [0.5, 0.2], "magic_acceptance": [0.4, 0.25],
+      "xenophobia": [0.7, 0.2], "honor_value": [0.5, 0.2], "wealth": [0.4, 0.2]
+    },
+    "fey": {
+      "martial": [0.2, 0.2], "tradition": [0.4, 0.3], "collectivism": [0.4, 0.3],
+      "nature_harmony": [0.9, 0.1], "magic_acceptance": [0.9, 0.1],
+      "xenophobia": [0.5, 0.3], "honor_value": [0.3, 0.3], "wealth": [0.2, 0.2]
+    },
+    "undead": {
+      "martial": [0.6, 0.2], "tradition": [0.5, 0.3], "collectivism": [0.4, 0.3],
+      "nature_harmony": [0.1, 0.1], "magic_acceptance": [0.9, 0.1],
+      "xenophobia": [0.8, 0.15], "honor_value": [0.3, 0.2], "wealth": [0.5, 0.3]
+    },
+    "elemental": {
+      "martial": [0.5, 0.3], "tradition": [0.5, 0.3], "collectivism": [0.5, 0.3],
+      "nature_harmony": [0.7, 0.2], "magic_acceptance": [0.8, 0.15],
+      "xenophobia": [0.4, 0.3], "honor_value": [0.5, 0.3], "wealth": [0.3, 0.2]
+    },
+    "beastfolk": {
+      "martial": [0.6, 0.2], "tradition": [0.6, 0.2], "collectivism": [0.7, 0.2],
+      "nature_harmony": [0.7, 0.2], "magic_acceptance": [0.4, 0.25],
+      "xenophobia": [0.5, 0.25], "honor_value": [0.5, 0.25], "wealth": [0.3, 0.2]
+    },
+    "giant": {
+      "martial": [0.7, 0.2], "tradition": [0.8, 0.15], "collectivism": [0.4, 0.2],
+      "nature_harmony": [0.4, 0.2], "magic_acceptance": [0.5, 0.25],
+      "xenophobia": [0.6, 0.2], "honor_value": [0.6, 0.2], "wealth": [0.3, 0.2]
+    },
+    "construct": {
+      "martial": [0.5, 0.3], "tradition": [0.8, 0.1], "collectivism": [0.8, 0.1],
+      "nature_harmony": [0.2, 0.2], "magic_acceptance": [0.7, 0.2],
+      "xenophobia": [0.5, 0.3], "honor_value": [0.6, 0.2], "wealth": [0.3, 0.2]
+    }
+  },
+
+  "architecture_preferences": {
+    "human": ["Stone", "Wood", "Marble", "Clay", "Slate", "Limestone", "Adobe", "Ironwork"],
+    "dwarf": ["Stone", "Carved", "Metalwork", "Granite", "Ironwork", "Basalt", "Runic", "Slate"],
+    "elf": ["Living", "Wood", "Crystal", "Marble", "Organic", "Amber", "Enchanted", "Woven"],
+    "orc": ["Bone", "Stone", "Earthen", "Obsidian", "Basalt", "Ironwork", "Volcanic", "Chitin"],
+    "goblin": ["Earthen", "Woven", "Bone", "Clay", "Fungal", "Driftwood", "Bramble", "Chitin"],
+    "halfling": ["Wood", "Earthen", "Stone", "Clay", "Woven", "Driftwood", "Limestone", "Adobe"],
+    "reptilian": ["Stone", "Earthen", "Carved", "Sandstone", "Obsidian", "Basalt", "Fossilized", "Shell"],
+    "fey": ["Living", "Crystal", "Woven", "Organic", "Amber", "Bramble", "Enchanted", "Coral"],
+    "undead": ["Bone", "Stone", "Carved", "Obsidian", "Fossilized", "Petrified", "Runic", "Glass"],
+    "elemental": ["Crystalline", "Volcanic", "Coral", "Ice", "Obsidian", "Basalt", "Glass", "Sandstone"],
+    "beastfolk": ["Wood", "Woven", "Bone", "Organic", "Chitin", "Shell", "Driftwood", "Clay"],
+    "giant": ["Stone", "Carved", "Granite", "Basalt", "Marble", "Limestone", "Petrified", "Slate"],
+    "construct": ["Metalwork", "Stone", "Crystal", "Ironwork", "Glass", "Runic", "Enchanted", "Crystalline"],
+    "_default": ["Stone", "Wood", "Earthen", "Clay"]
+  },
+
+  "gender_roles": {
+    "human": ["Egalitarian", "MaleLeadership", "FemaleLeadership", "MeritBased", "CouncilBased"],
+    "dwarf": ["Egalitarian", "MeritBased", "CouncilBased", "ElderLed"],
+    "elf": ["Egalitarian", "ElderLed", "SpiritualLeadership"],
+    "orc": ["WarriorMerit", "MaleLeadership", "MeritBased", "CasteBased"],
+    "goblin": ["MeritBased", "WarriorMerit", "RotatingLeadership", "FemaleLeadership"],
+    "halfling": ["Egalitarian", "CouncilBased", "ElderLed", "MeritBased"],
+    "reptilian": ["CasteBased", "FemaleLeadership", "ElderLed", "SpiritualLeadership"],
+    "fey": ["Egalitarian", "RotatingLeadership", "SpiritualLeadership"],
+    "undead": ["CasteBased", "MeritBased", "SpiritualLeadership", "MaleLeadership"],
+    "elemental": ["Egalitarian", "RotatingLeadership", "SpiritualLeadership", "CouncilBased"],
+    "beastfolk": ["WarriorMerit", "ElderLed", "MaleLeadership", "FemaleLeadership", "MeritBased"],
+    "giant": ["ElderLed", "MaleLeadership", "WarriorMerit", "CasteBased"],
+    "construct": ["Egalitarian", "MeritBased", "CouncilBased"],
+    "_default": ["Egalitarian", "MaleLeadership", "FemaleLeadership", "MeritBased"]
+  },
+
+  "family_structure": {
+    "human": ["Nuclear", "Extended", "Clan", "Communal", "Patrilineal", "Matrilineal"],
+    "dwarf": ["Clan", "Extended", "Guild", "Patrilineal", "Nuclear"],
+    "elf": ["Extended", "Circle", "Matrilineal", "Mentorship", "Communal"],
+    "orc": ["Clan", "Extended", "Pack", "Legion", "Patrilineal"],
+    "goblin": ["Hive", "Clan", "Pack", "Communal", "Adoptive"],
+    "halfling": ["Extended", "Nuclear", "Communal", "Adoptive", "Matrilineal"],
+    "reptilian": ["Clan", "Hive", "Matrilineal", "Pack", "Extended"],
+    "fey": ["Circle", "Coven", "Solitary", "Pair", "Adoptive", "Communal"],
+    "undead": ["Coven", "Legion", "Solitary", "Guild", "Mentorship"],
+    "elemental": ["Circle", "Solitary", "Communal", "Pair", "Hive"],
+    "beastfolk": ["Pack", "Clan", "Extended", "Matrilineal", "Patrilineal", "Pair"],
+    "giant": ["Clan", "Solitary", "Pair", "Extended", "Patrilineal"],
+    "construct": ["Communal", "Hive", "Guild", "Legion", "Mentorship"],
+    "_default": ["Nuclear", "Extended", "Clan", "Communal"]
+  },
+
+  "government_preferences": {
+    "human": ["Monarchy", "Republic", "Oligarchy", "Democracy", "Federation", "Empire"],
+    "dwarf": ["Monarchy", "Oligarchy", "Meritocracy", "Gerontocracy", "Plutocracy"],
+    "elf": ["Monarchy", "Gerontocracy", "Theocracy", "Republic", "Magocracy"],
+    "orc": ["Militocracy", "Tribal", "Monarchy", "Empire", "Anarchy"],
+    "goblin": ["Tribal", "Plutocracy", "Anarchy", "Oligarchy", "Militocracy"],
+    "halfling": ["Democracy", "Republic", "Gerontocracy", "Federation"],
+    "reptilian": ["Theocracy", "Monarchy", "Tribal", "Gerontocracy", "Empire"],
+    "fey": ["Anarchy", "Monarchy", "Theocracy", "Magocracy"],
+    "undead": ["Necrocracy", "Theocracy", "Magocracy", "Monarchy", "Empire"],
+    "elemental": ["Theocracy", "Anarchy", "Meritocracy", "Federation", "Tribal"],
+    "beastfolk": ["Tribal", "Meritocracy", "Militocracy", "Federation", "Gerontocracy"],
+    "giant": ["Tribal", "Monarchy", "Gerontocracy", "Militocracy", "Patriarchy"],
+    "construct": ["Technocracy", "Hive", "Meritocracy", "Federation", "Republic"],
+    "_default": ["Monarchy", "Republic", "Oligarchy"]
+  }
+}

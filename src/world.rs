@@ -58,6 +58,8 @@ pub struct WorldData {
     pub flow_accumulation: Option<Tilemap<f32>>,
     /// Bezier curve river network (Phase 1)
     pub river_network: Option<RiverNetwork>,
+    /// Pre-computed boolean cache of river tile positions (O(1) lookup)
+    pub river_tile_cache: Option<Tilemap<bool>>,
     /// Biome feathering map for smooth transitions
     pub biome_feather_map: Option<BiomeFeatherMap>,
     /// Microclimate modifiers (valley warmth, ridge cooling, etc.)
@@ -104,6 +106,8 @@ impl WorldData {
     ) -> Self {
         let width = heightmap.width;
         let height = heightmap.height;
+        let river_tile_cache = river_network.as_ref()
+            .map(|rn| rn.build_tile_cache(width, height));
         Self {
             seeds,
             width,
@@ -122,6 +126,7 @@ impl WorldData {
             water_depth,
             flow_accumulation: None,
             river_network,
+            river_tile_cache,
             biome_feather_map,
             microclimate: None,
             seasonal_climate: None,
@@ -158,6 +163,8 @@ impl WorldData {
     ) -> Self {
         let width = heightmap.width;
         let height = heightmap.height;
+        let river_tile_cache = river_network.as_ref()
+            .map(|rn| rn.build_tile_cache(width, height));
         Self {
             seeds,
             width,
@@ -176,6 +183,7 @@ impl WorldData {
             water_depth,
             flow_accumulation: None,
             river_network,
+            river_tile_cache,
             biome_feather_map,
             microclimate,
             seasonal_climate,
@@ -650,6 +658,7 @@ pub fn generate_test_world() -> WorldData {
         water_depth,
         flow_accumulation: None,
         river_network: None,
+        river_tile_cache: None,
         biome_feather_map: None,
         microclimate: None,
         seasonal_climate: None,

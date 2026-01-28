@@ -266,6 +266,58 @@ impl RiverNetwork {
         }
         0.0
     }
+    
+    /// Check if there's a significant river flow at this tile (for pathfinding penalty)
+    pub fn has_significant_flow(&self, x: usize, y: usize) -> bool {
+        // Rivers with width > 0.5 are significant obstacles
+        self.get_width_at(x as f32, y as f32, 1.0) > 0.5
+    }
+
+    /// Pre-compute a boolean tilemap marking all tiles that have significant river flow.
+    /// This turns O(segments × 21) per-pixel lookups into O(1) lookups.
+    pub fn build_tile_cache(&self, width: usize, height: usize) -> Tilemap<bool> {
+        let mut cache = Tilemap::new_with(width, height, false);
+        let tolerance = 1.0f32;
+
+        for segment in &self.segments {
+            let length = segment.approximate_length(10);
+            // Sample densely: ~2 samples per unit length, minimum 50
+            let samples = ((length * 2.0) as usize + 10).max(50);
+
+            for i in 0..=samples {
+                let t = i as f32 / samples as f32;
+                let pt = segment.evaluate(t);
+                let half_width = pt.width / 2.0;
+                let radius = half_width + tolerance;
+
+                // Stamp all tiles within radius
+                let min_x = (pt.world_x - radius).floor() as i32;
+                let max_x = (pt.world_x + radius).ceil() as i32;
+                let min_y = (pt.world_y - radius).floor() as i32;
+                let max_y = (pt.world_y + radius).ceil() as i32;
+
+                for ty in min_y..=max_y {
+                    if ty < 0 || ty >= height as i32 {
+                        continue;
+                    }
+                    for tx in min_x..=max_x {
+                        let wx = tx.rem_euclid(width as i32) as usize;
+                        let wy = ty as usize;
+                        if !*cache.get(wx, wy) {
+                            let dx = tx as f32 - pt.world_x;
+                            let dy = ty as f32 - pt.world_y;
+                            let dist = (dx * dx + dy * dy).sqrt();
+                            if dist < pt.width + tolerance && pt.width > 0.5 {
+                                cache.set(wx, wy, true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        cache
+    }
 }
 
 /// Generate a Bezier river network from flow accumulation data
