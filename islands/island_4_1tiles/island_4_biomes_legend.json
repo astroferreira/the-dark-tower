@@ -1,0 +1,23 @@
+{
+  "biomes": [
+    { "id": 0, "name": "DeepOcean", "color": [20, 40, 80] },
+    { "id": 1, "name": "Ocean", "color": [30, 60, 120] },
+    { "id": 2, "name": "CoastalWater", "color": [60, 100, 160] },
+    { "id": 4, "name": "Tundra", "color": [180, 190, 170] },
+    { "id": 5, "name": "BorealForest", "color": [50, 80, 50] },
+    { "id": 6, "name": "TemperateGrassland", "color": [140, 170, 80] },
+    { "id": 7, "name": "TemperateForest", "color": [40, 100, 40] },
+    { "id": 8, "name": "TemperateRainforest", "color": [30, 80, 50] },
+    { "id": 16, "name": "SubalpineForest", "color": [40, 70, 45] },
+    { "id": 22, "name": "Foothills", "color": [120, 145, 85] },
+    { "id": 23, "name": "Lagoon", "color": [90, 175, 195] },
+    { "id": 25, "name": "CrystalForest", "color": [180, 220, 255] },
+    { "id": 27, "name": "MushroomForest", "color": [140, 80, 160] },
+    { "id": 35, "name": "Ashlands", "color": [80, 80, 85] },
+    { "id": 56, "name": "EtherealMist", "color": [180, 190, 210] },
+    { "id": 72, "name": "HotSprings", "color": [100, 180, 190] },
+    { "id": 87, "name": "KelpForest", "color": [35, 80, 45] },
+    { "id": 89, "name": "ContinentalShelf", "color": [45, 70, 110] },
+    { "id": 92, "name": "AbyssalPlain", "color": [25, 35, 55] }
+  ]
+}

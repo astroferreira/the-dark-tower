@@ -1,0 +1,22 @@
+{
+  "biomes": [
+    { "id": 1, "name": "Ocean", "color": [30, 60, 120] },
+    { "id": 2, "name": "CoastalWater", "color": [60, 100, 160] },
+    { "id": 6, "name": "TemperateGrassland", "color": [140, 170, 80] },
+    { "id": 9, "name": "Desert", "color": [210, 180, 120] },
+    { "id": 10, "name": "Savanna", "color": [170, 160, 80] },
+    { "id": 11, "name": "TropicalForest", "color": [30, 120, 30] },
+    { "id": 12, "name": "TropicalRainforest", "color": [20, 90, 40] },
+    { "id": 23, "name": "Lagoon", "color": [90, 175, 195] },
+    { "id": 26, "name": "BioluminescentForest", "color": [40, 200, 150] },
+    { "id": 34, "name": "SaltFlats", "color": [240, 235, 220] },
+    { "id": 42, "name": "TitanBones", "color": [200, 195, 180] },
+    { "id": 52, "name": "Oasis", "color": [50, 180, 80] },
+    { "id": 69, "name": "FungalBloom", "color": [200, 100, 180] },
+    { "id": 82, "name": "CyclopeanRuins", "color": [110, 105, 95] },
+    { "id": 83, "name": "BuriedTemple", "color": [170, 150, 120] },
+    { "id": 86, "name": "CoralReef", "color": [255, 180, 150] },
+    { "id": 88, "name": "SeagrassMeadow", "color": [50, 120, 70] },
+    { "id": 105, "name": "TowerKarst", "color": [175, 180, 160] }
+  ]
+}

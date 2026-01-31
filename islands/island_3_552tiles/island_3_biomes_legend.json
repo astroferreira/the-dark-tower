@@ -1,0 +1,15 @@
+{
+  "biomes": [
+    { "id": 0, "name": "DeepOcean", "color": [20, 40, 80] },
+    { "id": 1, "name": "Ocean", "color": [30, 60, 120] },
+    { "id": 2, "name": "CoastalWater", "color": [60, 100, 160] },
+    { "id": 4, "name": "Tundra", "color": [180, 190, 170] },
+    { "id": 5, "name": "BorealForest", "color": [50, 80, 50] },
+    { "id": 27, "name": "MushroomForest", "color": [140, 80, 160] },
+    { "id": 56, "name": "EtherealMist", "color": [180, 190, 210] },
+    { "id": 84, "name": "OvergrownCitadel", "color": [60, 90, 50] },
+    { "id": 89, "name": "ContinentalShelf", "color": [45, 70, 110] },
+    { "id": 92, "name": "AbyssalPlain", "color": [25, 35, 55] },
+    { "id": 95, "name": "BrinePool", "color": [35, 45, 60] }
+  ]
+}

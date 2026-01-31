@@ -422,6 +422,22 @@ impl WorldData {
     pub fn underground_water_stats(&self) -> Option<underground_water::UndergroundWaterStats> {
         self.underground_water.as_ref().map(|uw: &UndergroundWater| uw.stats())
     }
+
+    /// Detect all islands in the world.
+    /// Returns a tilemap of island IDs and a list of island metadata.
+    pub fn detect_islands(&self) -> (crate::tilemap::Tilemap<crate::islands::IslandId>, Vec<crate::islands::Island>) {
+        crate::islands::detect_islands(&self.heightmap)
+    }
+
+    /// Get a list of small islands (not touching polar edges) sorted by size.
+    /// `max_tiles` filters to only include islands smaller than this size.
+    pub fn get_small_islands(&self, max_tiles: usize) -> Vec<crate::islands::Island> {
+        let (_, islands) = self.detect_islands();
+        islands
+            .into_iter()
+            .filter(|i| i.is_true_island() && i.tile_count <= max_tiles)
+            .collect()
+    }
 }
 
 /// Generate a complete world with the given parameters.

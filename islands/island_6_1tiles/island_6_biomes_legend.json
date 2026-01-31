@@ -1,0 +1,12 @@
+{
+  "biomes": [
+    { "id": 0, "name": "DeepOcean", "color": [20, 40, 80] },
+    { "id": 1, "name": "Ocean", "color": [30, 60, 120] },
+    { "id": 2, "name": "CoastalWater", "color": [60, 100, 160] },
+    { "id": 9, "name": "Desert", "color": [210, 180, 120] },
+    { "id": 10, "name": "Savanna", "color": [170, 160, 80] },
+    { "id": 11, "name": "TropicalForest", "color": [30, 120, 30] },
+    { "id": 12, "name": "TropicalRainforest", "color": [20, 90, 40] },
+    { "id": 92, "name": "AbyssalPlain", "color": [25, 35, 55] }
+  ]
+}

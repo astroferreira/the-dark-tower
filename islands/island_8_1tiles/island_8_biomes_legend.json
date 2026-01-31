@@ -1,0 +1,13 @@
+{
+  "biomes": [
+    { "id": 0, "name": "DeepOcean", "color": [20, 40, 80] },
+    { "id": 1, "name": "Ocean", "color": [30, 60, 120] },
+    { "id": 2, "name": "CoastalWater", "color": [60, 100, 160] },
+    { "id": 3, "name": "Ice", "color": [240, 250, 255] },
+    { "id": 4, "name": "Tundra", "color": [180, 190, 170] },
+    { "id": 18, "name": "AlpineTundra", "color": [140, 140, 130] },
+    { "id": 89, "name": "ContinentalShelf", "color": [45, 70, 110] },
+    { "id": 92, "name": "AbyssalPlain", "color": [25, 35, 55] },
+    { "id": 97, "name": "LeviathanGraveyard", "color": [180, 175, 160] }
+  ]
+}

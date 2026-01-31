@@ -1,0 +1,21 @@
+{
+  "island_id": 2,
+  "tile_count": 51,
+  "export_width": 30,
+  "export_height": 27,
+  "offset_x": 291,
+  "offset_y": 160,
+  "min_elevation": 38.5,
+  "max_elevation": 60.7,
+  "avg_elevation": 48.8,
+  "center_x": 305.9,
+  "center_y": 172.4,
+  "bounds_min_x": 301,
+  "bounds_min_y": 170,
+  "bounds_max_x": 310,
+  "bounds_max_y": 176,
+  "touches_north": false,
+  "touches_south": false,
+  "is_true_island": true,
+  "size_category": "Medium"
+}

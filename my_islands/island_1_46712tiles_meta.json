@@ -1,0 +1,21 @@
+{
+  "island_id": 1,
+  "tile_count": 46712,
+  "export_width": 472,
+  "export_height": 230,
+  "offset_x": 18,
+  "offset_y": 11,
+  "min_elevation": 0.0,
+  "max_elevation": 1765.0,
+  "avg_elevation": 115.6,
+  "center_x": 267.4,
+  "center_y": 124.4,
+  "bounds_min_x": 28,
+  "bounds_min_y": 21,
+  "bounds_max_x": 479,
+  "bounds_max_y": 230,
+  "touches_north": false,
+  "touches_south": false,
+  "is_true_island": true,
+  "size_category": "Continent"
+}

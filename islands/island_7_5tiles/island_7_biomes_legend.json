@@ -1,0 +1,16 @@
+{
+  "biomes": [
+    { "id": 2, "name": "CoastalWater", "color": [60, 100, 160] },
+    { "id": 9, "name": "Desert", "color": [210, 180, 120] },
+    { "id": 23, "name": "Lagoon", "color": [90, 175, 195] },
+    { "id": 32, "name": "BioluminescentWater", "color": [50, 180, 200] },
+    { "id": 34, "name": "SaltFlats", "color": [240, 235, 220] },
+    { "id": 51, "name": "SingingDunes", "color": [230, 200, 140] },
+    { "id": 57, "name": "StarfallCrater", "color": [90, 60, 120] },
+    { "id": 67, "name": "BoneFields", "color": [230, 225, 210] },
+    { "id": 82, "name": "CyclopeanRuins", "color": [110, 105, 95] },
+    { "id": 83, "name": "BuriedTemple", "color": [170, 150, 120] },
+    { "id": 86, "name": "CoralReef", "color": [255, 180, 150] },
+    { "id": 88, "name": "SeagrassMeadow", "color": [50, 120, 70] }
+  ]
+}

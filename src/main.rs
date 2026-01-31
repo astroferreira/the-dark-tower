@@ -19,6 +19,7 @@ mod exr_export;
 mod grid_export;
 mod heightmap;
 mod history;
+mod islands;
 mod map_export;
 mod menu;
 mod microclimate;
@@ -32,6 +33,7 @@ mod underground_water;
 mod water_bodies;
 mod weather_zones;
 mod world;
+mod world_export;
 
 use menu::{MenuResult, WorldConfig};
 use seeds::WorldSeeds;
@@ -186,6 +188,70 @@ struct Args {
     /// Run N benchmark simulations and print aggregate quality metrics
     #[arg(long)]
     benchmark: Option<u32>,
+
+    // === Island Commands ===
+
+    /// List all islands with their sizes and locations
+    #[arg(long)]
+    list_islands: bool,
+
+    /// Export individual islands as standalone map files
+    #[arg(long)]
+    export_islands: bool,
+
+    /// Maximum island size (in tiles) to include when listing/exporting (default: all)
+    #[arg(long)]
+    island_max_size: Option<usize>,
+
+    /// Minimum island size (in tiles) to include when listing/exporting (default: 1)
+    #[arg(long, default_value = "1")]
+    island_min_size: usize,
+
+    /// Padding (ocean tiles) around exported islands (default: 10)
+    #[arg(long, default_value = "10")]
+    island_padding: usize,
+
+    /// Output directory for island exports (default: ./islands)
+    #[arg(long, default_value = "./islands")]
+    island_output_dir: String,
+
+    /// Only include "true" islands (not touching polar edges)
+    #[arg(long)]
+    islands_only: bool,
+
+    /// Export all islands in a grid layout (single PNG image)
+    #[arg(long)]
+    export_island_grid: bool,
+
+    /// Number of columns in the island grid (default: auto based on count)
+    #[arg(long, default_value = "5")]
+    island_grid_columns: usize,
+
+    /// Export complete WorldData for each island (all data layers)
+    #[arg(long)]
+    export_island_data: bool,
+
+    /// Use CSV format for island data export (default: binary)
+    #[arg(long)]
+    island_data_csv: bool,
+
+    // === World Data Export ===
+
+    /// Export complete world data for external applications
+    #[arg(long)]
+    export_world_data: bool,
+
+    /// Output directory for world data export (default: ./world_data)
+    #[arg(long, default_value = "./world_data")]
+    world_data_dir: String,
+
+    /// Use CSV format instead of binary for world data arrays
+    #[arg(long)]
+    world_data_csv: bool,
+
+    /// Include per-tile detailed JSON (large file, for debugging)
+    #[arg(long)]
+    world_data_per_tile: bool,
 }
 
 fn main() {
@@ -667,6 +733,175 @@ fn main() {
 
         if let Err(e) = map_export::export_all_maps(&world_data, output_dir, master_seed, &config) {
             eprintln!("Failed to export maps: {}", e);
+        }
+    }
+
+    // Handle island listing and export
+    if args.list_islands || args.export_islands {
+        println!("\nDetecting islands...");
+        let (island_map, all_islands) = islands::detect_islands(&world_data.heightmap);
+
+        // Filter islands based on options
+        let filtered_islands: Vec<&islands::Island> = all_islands.iter()
+            .filter(|i| {
+                // Filter by true islands if requested
+                if args.islands_only && !i.is_true_island() {
+                    return false;
+                }
+                // Filter by min size
+                if i.tile_count < args.island_min_size {
+                    return false;
+                }
+                // Filter by max size
+                if let Some(max_size) = args.island_max_size {
+                    if i.tile_count > max_size {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect();
+
+        if args.list_islands {
+            islands::print_island_summary(&all_islands);
+
+            if args.islands_only || args.island_max_size.is_some() || args.island_min_size > 1 {
+                println!("\n--- Filtered Results ({} islands match criteria) ---", filtered_islands.len());
+                let mut sorted = filtered_islands.clone();
+                sorted.sort_by_key(|i| std::cmp::Reverse(i.tile_count));
+                for (i, island) in sorted.iter().enumerate() {
+                    println!(
+                        "  #{}: ID={} {} - {} tiles, elev {:.0}-{:.0}m, center ({:.0},{:.0})",
+                        i + 1,
+                        island.id.0,
+                        island.size_category(),
+                        island.tile_count,
+                        island.min_elevation,
+                        island.max_elevation,
+                        island.center.0,
+                        island.center.1,
+                    );
+                }
+            }
+        }
+
+        if args.export_islands {
+            let output_dir = std::path::Path::new(&args.island_output_dir);
+            if !output_dir.exists() {
+                if let Err(e) = std::fs::create_dir_all(output_dir) {
+                    eprintln!("Failed to create island output directory: {}", e);
+                } else {
+                    println!("Created island output directory: {}", output_dir.display());
+                }
+            }
+
+            println!("\nExporting {} islands to {}...", filtered_islands.len(), output_dir.display());
+
+            // Configure export: PNG images + metadata by default
+            let export_config = islands::IslandExportConfig {
+                export_biomes: true,
+                export_heightmap: true,
+                export_csv: false,
+                export_metadata: true,
+            };
+
+            for island in &filtered_islands {
+                let exported = islands::export_island(&world_data, &island_map, island, args.island_padding);
+
+                match islands::export_island_files(&exported, output_dir, &export_config) {
+                    Ok(files) => {
+                        for file in files {
+                            println!("  Exported: {}", file);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("  Failed to export island {}: {}", island.id.0, e);
+                    }
+                }
+            }
+
+            println!("Island export complete!");
+        }
+
+        // Export island grid
+        if args.export_island_grid && !filtered_islands.is_empty() {
+            let output_dir = std::path::Path::new(&args.island_output_dir);
+            if !output_dir.exists() {
+                let _ = std::fs::create_dir_all(output_dir);
+            }
+
+            // Export all filtered islands
+            let exported_islands: Vec<_> = filtered_islands.iter()
+                .map(|island| islands::export_island(&world_data, &island_map, island, args.island_padding))
+                .collect();
+
+            // Biome grid
+            let biome_grid_path = output_dir.join("islands_grid_biomes.png");
+            match islands::export_islands_grid(&exported_islands, &biome_grid_path, 4, args.island_grid_columns) {
+                Ok(()) => println!("Exported island grid (biomes): {}", biome_grid_path.display()),
+                Err(e) => eprintln!("Failed to export biome grid: {}", e),
+            }
+
+            // Heightmap grid
+            let height_grid_path = output_dir.join("islands_grid_heightmap.png");
+            match islands::export_islands_grid_heightmap(&exported_islands, &height_grid_path, 4, args.island_grid_columns) {
+                Ok(()) => println!("Exported island grid (heightmap): {}", height_grid_path.display()),
+                Err(e) => eprintln!("Failed to export heightmap grid: {}", e),
+            }
+        }
+
+        // Export complete island WorldData
+        if args.export_island_data && !filtered_islands.is_empty() {
+            let base_output_dir = std::path::Path::new(&args.island_output_dir);
+
+            println!("\nExporting complete WorldData for {} islands...", filtered_islands.len());
+
+            let export_config = islands::IslandDataExportConfig {
+                binary_format: !args.island_data_csv,
+                png_images: true,
+                ..Default::default()
+            };
+
+            for island in &filtered_islands {
+                let exported = islands::export_island(&world_data, &island_map, island, args.island_padding);
+
+                // Create subdirectory for each island
+                let island_dir = base_output_dir.join(format!("island_{}_{}tiles", island.id.0, island.tile_count));
+
+                match islands::export_island_world_data(&exported, &island_dir, &export_config) {
+                    Ok(files) => {
+                        println!("Island {} ({} tiles): {} files exported to {}",
+                            island.id.0, island.tile_count, files.len(), island_dir.display());
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to export island {} data: {}", island.id.0, e);
+                    }
+                }
+            }
+
+            println!("Island data export complete!");
+        }
+    }
+
+    // Export world data if requested
+    if args.export_world_data {
+        let output_dir = std::path::Path::new(&args.world_data_dir);
+        println!("\nExporting world data to {}...", output_dir.display());
+
+        let export_config = world_export::WorldExportConfig {
+            binary_arrays: !args.world_data_csv,
+            per_tile_details: args.world_data_per_tile,
+            ..Default::default()
+        };
+
+        match world_export::export_world_data(&world_data, output_dir, &export_config) {
+            Ok(files) => {
+                println!("Exported {} files:", files.len());
+                for file in files {
+                    println!("  {}", file);
+                }
+            }
+            Err(e) => eprintln!("Failed to export world data: {}", e),
         }
     }
 

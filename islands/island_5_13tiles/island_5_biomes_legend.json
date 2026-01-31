@@ -1,0 +1,10 @@
+{
+  "biomes": [
+    { "id": 0, "name": "DeepOcean", "color": [20, 40, 80] },
+    { "id": 1, "name": "Ocean", "color": [30, 60, 120] },
+    { "id": 5, "name": "BorealForest", "color": [50, 80, 50] },
+    { "id": 7, "name": "TemperateForest", "color": [40, 100, 40] },
+    { "id": 8, "name": "TemperateRainforest", "color": [30, 80, 50] },
+    { "id": 92, "name": "AbyssalPlain", "color": [25, 35, 55] }
+  ]
+}

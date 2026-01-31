@@ -1,0 +1,46 @@
+{
+  "format_version": "1.0",
+  "island_id": 1,
+  "tile_count": 56759,
+  "width": 499,
+  "height": 224,
+  "world_offset_x": 0,
+  "world_offset_y": 27,
+  "bounds": {
+    "min_x": 9,
+    "min_y": 37,
+    "max_x": 488,
+    "max_y": 240
+  },
+  "center": {
+    "x": 252.6,
+    "y": 149.2
+  },
+  "elevation": {
+    "min": -4854.2,
+    "max": 2082.2,
+    "island_min": 0.0,
+    "island_max": 2082.2,
+    "island_avg": 127.8
+  },
+  "temperature": {
+    "min": -29.0,
+    "max": 30.0
+  },
+  "land_tiles": 56870,
+  "ocean_tiles": 54906,
+  "touches_north": false,
+  "touches_south": false,
+  "is_true_island": true,
+  "size_category": "Continent",
+  "data_format": {
+    "heightmap": "f32 little-endian, row-major (y * width + x)",
+    "temperature": "f32 little-endian, row-major (Celsius)",
+    "moisture": "f32 little-endian, row-major (0.0-1.0)",
+    "biomes": "u8 row-major (see biomes_legend.json)",
+    "stress": "f32 little-endian (-1.0 to +1.0)",
+    "plates": "u8 row-major (plate ID)",
+    "water_depth": "f32 little-endian (meters)",
+    "flow": "f32 little-endian (drainage area)"
+  }
+}

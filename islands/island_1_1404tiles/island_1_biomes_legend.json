@@ -1,0 +1,17 @@
+{
+  "biomes": [
+    { "id": 0, "name": "DeepOcean", "color": [20, 40, 80] },
+    { "id": 1, "name": "Ocean", "color": [30, 60, 120] },
+    { "id": 2, "name": "CoastalWater", "color": [60, 100, 160] },
+    { "id": 3, "name": "Ice", "color": [240, 250, 255] },
+    { "id": 19, "name": "SnowyPeaks", "color": [255, 255, 255] },
+    { "id": 31, "name": "FrozenLake", "color": [200, 230, 250] },
+    { "id": 35, "name": "Ashlands", "color": [80, 80, 85] },
+    { "id": 50, "name": "AuroraWastes", "color": [100, 200, 180] },
+    { "id": 89, "name": "ContinentalShelf", "color": [45, 70, 110] },
+    { "id": 92, "name": "AbyssalPlain", "color": [25, 35, 55] },
+    { "id": 95, "name": "BrinePool", "color": [35, 45, 60] },
+    { "id": 97, "name": "LeviathanGraveyard", "color": [180, 175, 160] },
+    { "id": 102, "name": "FrozenAbyss", "color": [150, 180, 200] }
+  ]
+}
