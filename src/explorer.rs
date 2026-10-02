@@ -24,6 +24,8 @@ use crate::heightmap::{LavaState, VolcanoType};
 use crate::world::{WorldData, generate_world};
 use crate::weather_zones::ExtremeWeatherType;
 use crate::region::{RegionMap, RegionCache};
+use crate::region::zoom::{generate_zoom, ZoomParams, ZoomRegion};
+use crate::map_export::get_family_color;
 use crate::underground_water::SpringType;
 use crate::history::world_state::WorldHistory;
 use crate::history::{FactionId, SettlementId, LegendaryCreatureId};
@@ -185,6 +187,16 @@ struct Explorer {
     settlement_positions: HashMap<(usize, usize), SettlementId>,
     /// Position-indexed legendary creature lair lookup for O(1) per-pixel access
     creature_lair_positions: HashMap<(usize, usize), LegendaryCreatureId>,
+    /// Show the world minimap in the corner of the map view
+    show_minimap: bool,
+    /// Per-tile minimap colours, keyed by world seed
+    minimap_colors: Option<(u64, Vec<[u8; 3]>)>,
+    /// Last generated high-resolution zoom region (kept for reuse)
+    zoom_view: Option<ZoomView>,
+    /// Whether the zoom view is currently shown instead of the world map
+    zoom_active: bool,
+    /// A zoom was requested; it is generated after the "generating" frame is drawn
+    zoom_pending: bool,
 }
 
 impl Explorer {
@@ -229,6 +241,11 @@ impl Explorer {
             needs_redraw: true,
             settlement_positions,
             creature_lair_positions,
+            show_minimap: true,
+            minimap_colors: None,
+            zoom_view: None,
+            zoom_active: false,
+            zoom_pending: false,
         }
     }
 
@@ -795,6 +812,10 @@ impl Explorer {
             "Other:",
             "  I / Tab - Toggle info panel",
             "  M - Toggle region map panel",
+            "  N - Toggle minimap",
+            "  Z - Zoom: simulate the region around the cursor",
+            "      (in zoom: arrows pan, +/- scale, F fit,",
+            "       X save PNG, Esc/Z back)",
             "  L - Legends mode (browse history)",
             "  R - Regenerate world (new seed)",
             "  E - Export current view as PNG",
@@ -1248,6 +1269,262 @@ impl Explorer {
 }
 
 /// Convert HSV to RGB
+
+/// Full-screen view of a re-simulated high-resolution region (see `region::zoom`).
+struct ZoomView {
+    region: ZoomRegion,
+    rgb: Vec<[u8; 3]>,
+    /// World seed and centre tile it was generated for (reused when unchanged).
+    world_seed: u64,
+    tile: (usize, usize),
+    /// View centre in region cells.
+    center_x: f32,
+    center_y: f32,
+    /// Region cells per screen pixel (each character cell shows 1x2 pixels).
+    scale: f32,
+}
+
+impl ZoomView {
+    /// Scale and centre so the whole region fits in `area`.
+    fn fit(&mut self, area: Rect) {
+        let px_w = area.width.max(1) as f32;
+        let px_h = area.height.max(1) as f32 * 2.0;
+        self.scale = (self.region.width as f32 / px_w).max(self.region.height as f32 / px_h);
+        self.center_x = self.region.width as f32 / 2.0;
+        self.center_y = self.region.height as f32 / 2.0;
+    }
+
+    fn pan(&mut self, dx_px: f32, dy_px: f32) {
+        self.center_x = (self.center_x + dx_px * self.scale).clamp(0.0, self.region.width as f32);
+        self.center_y = (self.center_y + dy_px * self.scale).clamp(0.0, self.region.height as f32);
+    }
+
+    fn rescale(&mut self, factor: f32) {
+        self.scale = (self.scale * factor).clamp(0.125, 16.0);
+    }
+
+    /// Colour of the screen pixel centred on region position (x, y). When zoomed out, a few
+    /// stratified samples are averaged so thin rivers don't flicker in and out.
+    fn sample(&self, x: f32, y: f32) -> Option<[u8; 3]> {
+        let (w, h) = (self.region.width, self.region.height);
+        if x < 0.0 || y < 0.0 || x >= w as f32 || y >= h as f32 {
+            return None;
+        }
+        let n = (self.scale.ceil() as usize).clamp(1, 3);
+        let mut acc = [0u32; 3];
+        for sy in 0..n {
+            for sx in 0..n {
+                let fx = x + ((sx as f32 + 0.5) / n as f32 - 0.5) * self.scale.max(1.0);
+                let fy = y + ((sy as f32 + 0.5) / n as f32 - 0.5) * self.scale.max(1.0);
+                let ix = (fx.max(0.0) as usize).min(w - 1);
+                let iy = (fy.max(0.0) as usize).min(h - 1);
+                let c = self.rgb[iy * w + ix];
+                for k in 0..3 { acc[k] += c[k] as u32; }
+            }
+        }
+        let m = (n * n) as u32;
+        Some([(acc[0] / m) as u8, (acc[1] / m) as u8, (acc[2] / m) as u8])
+    }
+}
+
+impl Explorer {
+    /// Top-left world tile of the map viewport (same rule as `render_map`).
+    fn viewport_origin(&self, area: Rect) -> (usize, usize) {
+        let vw = area.width as usize * self.zoom;
+        let vh = area.height as usize * self.zoom;
+        (self.cursor_x.saturating_sub(vw / 2), self.cursor_y.saturating_sub(vh / 2))
+    }
+
+    fn ensure_minimap_colors(&mut self) {
+        let seed = self.world.seed();
+        if self.minimap_colors.as_ref().map(|(s, _)| *s == seed).unwrap_or(false) {
+            return;
+        }
+        let (w, h) = (self.world.width, self.world.height);
+        let hm = &self.world.heightmap;
+        let mut colors = Vec::with_capacity(w * h);
+        for y in 0..h {
+            for x in 0..w {
+                let e = *hm.get(x, y);
+                let c = if e <= 0.0 {
+                    let t = (-e / 5000.0).clamp(0.0, 1.0).sqrt();
+                    [(70.0 - 60.0 * t) as u8, (140.0 - 110.0 * t) as u8, (200.0 - 115.0 * t) as u8]
+                } else {
+                    let (r, g, b) = get_family_color(*self.world.biomes.get(x, y));
+                    // Light from the west: brighten west-facing slopes, darken east-facing.
+                    let dx = *hm.get((x + w - 1) % w, y) - *hm.get((x + 1) % w, y);
+                    let shade = (1.0 + dx / 2500.0).clamp(0.7, 1.3);
+                    let f = |v: u8| (v as f32 * shade).min(255.0) as u8;
+                    [f(r), f(g), f(b)]
+                };
+                colors.push(c);
+            }
+        }
+        self.minimap_colors = Some((seed, colors));
+    }
+
+    /// World minimap in the bottom-right corner of `area`, with the visible viewport outlined
+    /// and the zoom window around the cursor marked.
+    fn render_minimap(&mut self, area: Rect, buf: &mut Buffer) {
+        let (ww, wh) = (self.world.width, self.world.height);
+        let px_w = ((area.width as usize).saturating_sub(4) / 3).min(72);
+        if px_w < 16 {
+            return;
+        }
+        let mut px_h = (px_w * wh / ww).max(2);
+        px_h += px_h % 2;
+        let ch_h = px_h / 2;
+        if ch_h + 2 > area.height as usize / 2 {
+            return;
+        }
+        self.ensure_minimap_colors();
+        let colors = &self.minimap_colors.as_ref().unwrap().1;
+
+        // Average world tiles into minimap pixels.
+        let mut px = vec![[0u8; 3]; px_w * px_h];
+        for py in 0..px_h {
+            let (y0, y1) = (py * wh / px_h, ((py + 1) * wh / px_h).max(py * wh / px_h + 1));
+            for pxx in 0..px_w {
+                let (x0, x1) = (pxx * ww / px_w, ((pxx + 1) * ww / px_w).max(pxx * ww / px_w + 1));
+                let mut acc = [0u32; 3];
+                let mut cnt = 0u32;
+                for y in y0..y1.min(wh) {
+                    for x in x0..x1.min(ww) {
+                        let c = colors[y * ww + x];
+                        for k in 0..3 { acc[k] += c[k] as u32; }
+                        cnt += 1;
+                    }
+                }
+                let cnt = cnt.max(1);
+                px[py * px_w + pxx] = [(acc[0] / cnt) as u8, (acc[1] / cnt) as u8, (acc[2] / cnt) as u8];
+            }
+        }
+
+        // Overlays: viewport outline (yellow) and zoom window (white) around the cursor.
+        let to_px = |x: i64, y: i64| -> (usize, usize) {
+            let xr = x.rem_euclid(ww as i64) as usize;
+            let yr = y.clamp(0, wh as i64 - 1) as usize;
+            (xr * px_w / ww, (yr * px_h / wh).min(px_h - 1))
+        };
+        let outline = |x0: i64, y0: i64, x1: i64, y1: i64, color: [u8; 3], px: &mut Vec<[u8; 3]>| {
+            let (ax, ay) = to_px(x0, y0);
+            let (bx, by) = to_px(x1, y1);
+            let span_x = if bx >= ax { bx - ax } else { bx + px_w - ax };
+            for i in 0..=span_x {
+                let xx = (ax + i) % px_w;
+                px[ay * px_w + xx] = color;
+                px[by * px_w + xx] = color;
+            }
+            for yy in ay.min(by)..=ay.max(by) {
+                px[yy * px_w + ax] = color;
+                px[yy * px_w + bx] = color;
+            }
+        };
+        let (sx, sy) = self.viewport_origin(area);
+        // Clamp to the world so a view wider than the map doesn't wrap the frame onto itself.
+        let vw = (area.width as i64 * self.zoom as i64).min(ww as i64);
+        let vh = (area.height as i64 * self.zoom as i64).min(wh as i64);
+        if (vw as usize) < ww || (vh as usize) < wh {
+            outline(sx as i64, sy as i64, sx as i64 + vw - 1, sy as i64 + vh - 1, [240, 210, 60], &mut px);
+        }
+        let half = (ZoomParams::default().tiles / 2) as i64;
+        let (cx, cy) = (self.cursor_x as i64, self.cursor_y as i64);
+        outline(cx - half, cy - half, cx + half - 1, cy + half - 1, [255, 255, 255], &mut px);
+
+        // Frame and half-block pixels (upper half = fg, lower half = bg).
+        let box_w = px_w as u16 + 2;
+        let box_h = ch_h as u16 + 2;
+        let rect = Rect::new(area.x + area.width - box_w, area.y + area.height - box_h, box_w, box_h);
+        Clear.render(rect, buf);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Map (N) ")
+            .border_style(Style::default().fg(Color::Gray));
+        let inner = block.inner(rect);
+        block.render(rect, buf);
+        for row in 0..ch_h {
+            for col in 0..px_w {
+                let top = px[(2 * row) * px_w + col];
+                let bot = px[(2 * row + 1) * px_w + col];
+                buf[(inner.x + col as u16, inner.y + row as u16)]
+                    .set_char('▀')
+                    .set_fg(Color::Rgb(top[0], top[1], top[2]))
+                    .set_bg(Color::Rgb(bot[0], bot[1], bot[2]));
+            }
+        }
+    }
+
+    /// Generate (or reuse) the zoom region around the cursor and switch to the zoom view.
+    fn run_pending_zoom(&mut self, content: Rect) {
+        self.zoom_pending = false;
+        let seed = self.world.seed();
+        let tile = (self.cursor_x, self.cursor_y);
+        let reuse = matches!(&self.zoom_view, Some(z) if z.world_seed == seed && z.tile == tile);
+        if !reuse {
+            let t0 = std::time::Instant::now();
+            let params = ZoomParams { center_x: tile.0, center_y: tile.1, seed, ..Default::default() };
+            let region = generate_zoom(&self.world, &params);
+            let rgb = region.render_rgb();
+            let mut view = ZoomView { region, rgb, world_seed: seed, tile, center_x: 0.0, center_y: 0.0, scale: 1.0 };
+            view.fit(content);
+            self.zoom_view = Some(view);
+            self.message = Some(format!("Region simulated in {:.1}s", t0.elapsed().as_secs_f32()));
+        }
+        self.zoom_active = true;
+        self.needs_redraw = true;
+    }
+
+    fn render_zoom_view(&self, area: Rect, buf: &mut Buffer) {
+        let Some(z) = self.zoom_view.as_ref() else { return };
+        let half_w = area.width as f32 / 2.0;
+        let half_h = area.height as f32; // in pixels: 2 per row
+        for row in 0..area.height {
+            for col in 0..area.width {
+                let rx = z.center_x + (col as f32 + 0.5 - half_w) * z.scale;
+                let ry_top = z.center_y + (2.0 * row as f32 + 0.5 - half_h) * z.scale;
+                let ry_bot = z.center_y + (2.0 * row as f32 + 1.5 - half_h) * z.scale;
+                let top = z.sample(rx, ry_top).unwrap_or([12, 12, 16]);
+                let bot = z.sample(rx, ry_bot).unwrap_or([12, 12, 16]);
+                buf[(area.x + col, area.y + row)]
+                    .set_char('▀')
+                    .set_fg(Color::Rgb(top[0], top[1], top[2]))
+                    .set_bg(Color::Rgb(bot[0], bot[1], bot[2]));
+            }
+        }
+        // Crosshair at the probe point.
+        let (cx, cy) = (area.x + area.width / 2, area.y + area.height / 2);
+        buf[(cx, cy)].set_char('+').set_fg(Color::Rgb(255, 60, 60));
+    }
+
+    fn zoom_status(&self) -> String {
+        let Some(z) = self.zoom_view.as_ref() else { return String::new() };
+        let r = &z.region;
+        let (ix, iy) = (
+            (z.center_x as usize).min(r.width - 1),
+            (z.center_y as usize).min(r.height - 1),
+        );
+        let k = iy * r.width + ix;
+        let e = r.elevation_m[k];
+        let water = if e <= 0.0 {
+            format!("sea {:.0} m deep", -e)
+        } else if r.lake_depth_m[k] > 0.0 {
+            format!("lake {:.0} m deep", r.lake_depth_m[k])
+        } else if r.river_width_m[k] > 0.0 {
+            format!("river ~{:.0} m wide", r.river_width_m[k])
+        } else {
+            "dry land".to_string()
+        };
+        let km = r.cell_m / 1000.0;
+        let msg = self.message.as_ref().map(|m| format!(" | {m}")).unwrap_or_default();
+        format!(
+            " ZOOM tile ({},{}) | {}x{} @ {:.0} m | pos {:.1},{:.1} km | {:.0} m, {} | {:.1}°C, moist {:.2} | 1px={:.2} cells | arrows:pan +/-:scale F:fit X:PNG Esc:back{}",
+            z.tile.0, z.tile.1, r.width, r.height, r.cell_m,
+            ix as f32 * km, iy as f32 * km, e, water,
+            r.temperature_c[k], r.moisture[k], z.scale, msg,
+        )
+    }
+}
+
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
     let c = v * s;
     let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
@@ -1587,14 +1864,14 @@ pub fn export_freshwater_network_image(
                 .map(|fa| *fa.get(x, y))
                 .unwrap_or(0.0);
 
-            // Check Bezier river network as fallback
-            let river_width = if let Some(ref river_network) = world.river_network {
-                river_network.get_width_at(x as f32, y as f32, 1.0)
-            } else {
-                0.0
-            };
+            // Check precomputed river tile cache (ground truth from river network)
+            let is_in_river_cache = world.river_tile_cache.as_ref()
+                .map(|cache| *cache.get(x, y));
 
-            let is_river = flow_acc > RIVER_THRESHOLD || river_width > 0.0;
+            let is_river = match is_in_river_cache {
+                Some(cached) => cached,
+                None => flow_acc > RIVER_THRESHOLD,
+            };
 
             let (r, g, b) = if is_river {
                 // River on land - bright cyan, intensity based on flow
@@ -1691,11 +1968,18 @@ pub fn export_base_map_image(
             let h = *world.heightmap.get(x, y);
             let water_depth = *world.water_depth.get(x, y);
 
-            // Check for river
-            let flow_acc = world.flow_accumulation.as_ref()
-                .map(|fa| *fa.get(x, y))
-                .unwrap_or(0.0);
-            let is_river = flow_acc > RIVER_THRESHOLD;
+            // Check for river (only on land)
+            let is_in_river_cache = world.river_tile_cache.as_ref()
+                .map(|cache| *cache.get(x, y));
+            let is_river = h >= 0.0 && match is_in_river_cache {
+                Some(cached) => cached,
+                None => {
+                    let flow_acc = world.flow_accumulation.as_ref()
+                        .map(|fa| *fa.get(x, y))
+                        .unwrap_or(0.0);
+                    flow_acc > RIVER_THRESHOLD
+                }
+            };
 
             // Get hillshade factor (no shading for water)
             let is_water = h < 0.0 || is_river || water_depth > 0.5;
@@ -1706,15 +1990,9 @@ pub fn export_base_map_image(
             // h >= 0 = land, lake, or river (above sea level)
             let (r, g, b) = if h < 0.0 {
                 // OCEAN - below sea level
-                if is_river && h >= -100.0 {
-                    // River mouth in shallow coastal water
-                    (60, 140, 220)
-                } else {
-                    // Ocean depth gradient
-                    let depth_factor = ((-h) / 500.0).min(1.0);
-                    let blue = (120.0 + depth_factor * 80.0) as u8;
-                    (20, (40.0 + depth_factor * 40.0) as u8, blue)
-                }
+                let depth_factor = ((-h) / 500.0).min(1.0);
+                let blue = (120.0 + depth_factor * 80.0) as u8;
+                (20, (40.0 + depth_factor * 40.0) as u8, blue)
             } else {
                 // ABOVE SEA LEVEL - can only be land, lake, or river (never ocean)
                 if is_river {
@@ -1783,6 +2061,14 @@ pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(
             let content_area = main_chunks[0];
             let status_area = main_chunks[1];
 
+            if explorer.zoom_active && explorer.zoom_view.is_some() {
+                explorer.render_zoom_view(content_area, f.buffer_mut());
+                let status_para = Paragraph::new(explorer.zoom_status())
+                    .style(Style::default().bg(Color::DarkGray).fg(Color::White));
+                f.render_widget(status_para, status_area);
+                return;
+            }
+
             // Content layout: map + side panel on right (panel is optional)
             // When region map is shown, make the panel wider to fit it
             let panel_width = if explorer.show_region_map { 68 } else { 28 };
@@ -1830,6 +2116,19 @@ pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(
 
             // Render map
             explorer.render_map(map_area, f.buffer_mut());
+            if explorer.show_minimap {
+                explorer.render_minimap(map_area, f.buffer_mut());
+            }
+            if explorer.zoom_pending {
+                let text = format!(" Simulating region around ({}, {})... ", explorer.cursor_x, explorer.cursor_y);
+                let w = (text.len() as u16 + 2).min(map_area.width);
+                let rect = Rect::new(map_area.x + (map_area.width - w) / 2, map_area.y + map_area.height / 2, w, 3);
+                f.render_widget(Clear, rect);
+                f.render_widget(
+                    Paragraph::new(text).block(Block::default().borders(Borders::ALL)).style(Style::default().fg(Color::Yellow)),
+                    rect,
+                );
+            }
 
             // Render status bar
             let zoom_str = if explorer.zoom > 1 { format!(" | Zoom:{}x", explorer.zoom) } else { String::new() };
@@ -1869,7 +2168,7 @@ pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(
 
             let legends_hint = if explorer.history.is_some() { "  L:Legends" } else { "" };
             let status = format!(
-                " ({},{}) | {}{}{}{}{}{}{} | V:View  M:Region{}  [/]:Season  ?:Help{}  Q:Quit | {:.1}ms (avg:{:.1})",
+                " ({},{}) | {}{}{}{}{}{}{} | V:View  M:Region  Z:Zoom  N:Map{}  [/]:Season  ?:Help{}  Q:Quit | {:.1}ms (avg:{:.1})",
                 explorer.cursor_x,
                 explorer.cursor_y,
                 explorer.view_mode.name(),
@@ -1908,12 +2207,50 @@ pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(
         explorer.needs_redraw = false;
         } // end if needs_redraw
 
+        // A zoom was requested: the "simulating" frame is on screen now, so do the work.
+        if explorer.zoom_pending {
+            let size = terminal.size()?;
+            let content = Rect::new(0, 0, size.width, size.height.saturating_sub(1));
+            explorer.run_pending_zoom(content);
+            continue;
+        }
+
         // Handle input
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
             explorer.needs_redraw = true;
             match event {
                 Event::Key(key) => {
+                    // Zoom view has its own controls
+                    if explorer.zoom_active {
+                        let size = terminal.size()?;
+                        let content = Rect::new(0, 0, size.width, size.height.saturating_sub(1));
+                        let step = (size.width as f32 / 6.0).max(4.0);
+                        if let Some(z) = explorer.zoom_view.as_mut() {
+                            match key.code {
+                                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('z') | KeyCode::Char('Z') => {
+                                    explorer.zoom_active = false;
+                                }
+                                KeyCode::Up | KeyCode::Char('w') | KeyCode::Char('k') => z.pan(0.0, -step),
+                                KeyCode::Down | KeyCode::Char('s') | KeyCode::Char('j') => z.pan(0.0, step),
+                                KeyCode::Left | KeyCode::Char('a') | KeyCode::Char('h') => z.pan(-step, 0.0),
+                                KeyCode::Right | KeyCode::Char('d') | KeyCode::Char('l') => z.pan(step, 0.0),
+                                KeyCode::Char('+') | KeyCode::Char('=') => z.rescale(0.5),
+                                KeyCode::Char('-') | KeyCode::Char('_') => z.rescale(2.0),
+                                KeyCode::Char('f') | KeyCode::Char('F') => z.fit(content),
+                                KeyCode::Char('x') | KeyCode::Char('X') => {
+                                    let name = format!("zoom_{}_{}_{}.png", z.world_seed, z.tile.0, z.tile.1);
+                                    explorer.message = Some(match z.region.save_png(std::path::Path::new(&name)) {
+                                        Ok(()) => format!("Saved {name}"),
+                                        Err(e) => format!("Save failed: {e}"),
+                                    });
+                                }
+                                _ => {}
+                            }
+                        }
+                        continue;
+                    }
+
                     // Handle legends mode input first
                     if explorer.legends_mode.is_some() {
                         let size = terminal.size()?;
@@ -2004,20 +2341,20 @@ pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(
                             }
                         }
 
-                        // Export water network (rivers + lakes on black)
-                        KeyCode::Char('w') => {
-                            let filename = format!("water_network_{}.png", explorer.world.seed());
-                            match export_water_network_image(&explorer.world, &filename) {
+                        // Export freshwater network (rivers + lakes)
+                        KeyCode::Char('W') => {
+                            let filename = format!("freshwater_{}.png", explorer.world.seed());
+                            match export_freshwater_network_image(&explorer.world, &filename) {
                                 Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
                                 Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
                             }
                         }
 
-                        // Export freshwater only (rivers + alpine lakes, no ocean)
-                        KeyCode::Char('W') => {
-                            let filename = format!("freshwater_{}.png", explorer.world.seed());
-                            match export_freshwater_network_image(&explorer.world, &filename) {
-                                Ok(_) => explorer.message = Some(format!("Exported: {}", filename)),
+                        // Export antique old paper cartography map
+                        KeyCode::Char('o') | KeyCode::Char('O') | KeyCode::Char('p') | KeyCode::Char('P') => {
+                            let filename = format!("world_cartography_{}.png", explorer.world.seed());
+                            match crate::cartography::export_cartography_image(&explorer.world, &filename, None) {
+                                Ok(_) => explorer.message = Some(format!("Exported Cartography: {}", filename)),
                                 Err(e) => explorer.message = Some(format!("Export failed: {}", e)),
                             }
                         }
@@ -2072,6 +2409,16 @@ pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(
                             }
                         }
 
+                        // Minimap toggle
+                        KeyCode::Char('n') | KeyCode::Char('N') => {
+                            explorer.show_minimap = !explorer.show_minimap;
+                        }
+
+                        // Zoom: re-simulate the region around the cursor at high resolution
+                        KeyCode::Char('z') | KeyCode::Char('Z') => {
+                            explorer.zoom_pending = true;
+                        }
+
                         // Region map panel toggle
                         KeyCode::Char('m') | KeyCode::Char('M') => {
                             explorer.show_region_map = !explorer.show_region_map;
@@ -2083,6 +2430,7 @@ pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(
                         _ => {}
                     }
                 }
+                Event::Mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), .. }) if explorer.zoom_active => {}
                 Event::Mouse(MouseEvent { kind: MouseEventKind::Down(MouseButton::Left), column, row, .. }) => {
                     // Click to move cursor
                     let size = terminal.size()?;
@@ -2123,4 +2471,59 @@ pub fn run_explorer(world: WorldData, history: Option<WorldHistory>) -> Result<(
     terminal.show_cursor()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Convert a rendered buffer into an image (half-block cells -> 2 pixels: fg over bg).
+    fn buffer_to_image(buf: &Buffer) -> image::RgbImage {
+        let area = buf.area;
+        let rgb = |c: Color, fallback: [u8; 3]| match c {
+            Color::Rgb(r, g, b) => [r, g, b],
+            _ => fallback,
+        };
+        ImageBuffer::from_fn(area.width as u32, area.height as u32 * 2, |x, y| {
+            let cell = &buf[(area.x + x as u16, area.y + (y / 2) as u16)];
+            let bg = rgb(cell.bg, [0, 0, 0]);
+            let fg = rgb(cell.fg, [220, 220, 220]);
+            let px = match cell.symbol() {
+                "▀" => if y % 2 == 0 { fg } else { bg },
+                " " => bg,
+                _ => fg,
+            };
+            Rgb(px)
+        })
+    }
+
+    #[test]
+    fn minimap_and_zoom_view_render() {
+        let world = crate::world::generate_world_with_style(128, 64, 7, crate::plates::WorldStyle::Earthlike);
+        let mut ex = Explorer::new(world, None);
+        let area = Rect::new(0, 0, 160, 48);
+
+        let mut buf = Buffer::empty(area);
+        ex.render_map(area, &mut buf);
+        ex.render_minimap(area, &mut buf);
+        let half_blocks = |b: &Buffer| b.content().iter().filter(|c| c.symbol() == "▀").count();
+        assert!(half_blocks(&buf) > 100, "minimap should be drawn");
+
+        let (cx, cy) = crate::region::zoom::pick_interesting_window(&ex.world, ZoomParams::default().tiles);
+        ex.cursor_x = cx;
+        ex.cursor_y = cy;
+        ex.zoom_pending = true;
+        ex.run_pending_zoom(area);
+        assert!(ex.zoom_active && ex.zoom_view.is_some());
+        let mut zbuf = Buffer::empty(area);
+        ex.render_zoom_view(area, &mut zbuf);
+        assert!(half_blocks(&zbuf) > (160 * 48) / 2, "zoom view should fill the screen");
+        assert!(!ex.zoom_status().is_empty());
+
+        if let Ok(dir) = std::env::var("EXPLORER_SNAPSHOT_DIR") {
+            buffer_to_image(&buf).save(format!("{dir}/explorer_minimap.png")).unwrap();
+            buffer_to_image(&zbuf).save(format!("{dir}/explorer_zoom.png")).unwrap();
+            println!("{}", ex.zoom_status());
+        }
+    }
 }

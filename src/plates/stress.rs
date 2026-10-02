@@ -7,92 +7,65 @@ use super::types::{Plate, PlateId};
 /// Calculate the tectonic stress at each cell based on plate velocities.
 /// Stress width is proportional to relative velocity of converging plates.
 pub fn calculate_stress(plate_map: &Tilemap<PlateId>, plates: &[Plate]) -> Tilemap<f32> {
-    use std::collections::HashMap;
-
     let width = plate_map.width;
     let height = plate_map.height;
 
-    // Calculate stress and spread width between each pair of continental plates
-    // (stress_value, spread_radius)
-    let mut plate_pair_info: HashMap<(u8, u8), (f32, usize)> = HashMap::new();
-
-    for (i, plate_a) in plates.iter().enumerate() {
-        for (j, plate_b) in plates.iter().enumerate() {
-            if i >= j {
-                continue;
-            }
-
-            // Calculate stress for all plate boundaries
-
-            // Relative velocity
-            let rel_vx = plate_a.velocity.x - plate_b.velocity.x;
-            let rel_vy = plate_a.velocity.y - plate_b.velocity.y;
-            let rel_speed = (rel_vx * rel_vx + rel_vy * rel_vy).sqrt();
-
-            // Use the angle between velocities to determine convergent/divergent
-            let dot = plate_a.velocity.x * plate_b.velocity.x + plate_a.velocity.y * plate_b.velocity.y;
-            let mag_a = plate_a.velocity.length();
-            let mag_b = plate_b.velocity.length();
-
-            let stress = if mag_a > 0.01 && mag_b > 0.01 {
-                let cos_angle = dot / (mag_a * mag_b);
-                -cos_angle * rel_speed
-            } else {
-                rel_speed * 0.5
-            };
-
-            // Spread radius based on relative velocity (faster = wider mountains)
-            // Scale: velocity 1.0 -> ~8 pixels, velocity 3.0 -> ~24 pixels
-            let base_spread = (width / 64).max(4);
-            let spread_radius = (base_spread as f32 * rel_speed * 0.8) as usize;
-            let spread_radius = spread_radius.clamp(2, width / 16);
-
-            plate_pair_info.insert((i as u8, j as u8), (stress, spread_radius));
-        }
-    }
-
-    // First pass: mark boundary cells with their stress and spread info
     let mut boundary_cells: Vec<(usize, usize, f32, usize)> = Vec::new();
 
     for y in 0..height {
         for x in 0..width {
             let my_plate_id = *plate_map.get(x, y);
-            if my_plate_id.is_none() {
+            if my_plate_id.is_none() || (my_plate_id.0 as usize) >= plates.len() {
                 continue;
             }
+            let my_plate = &plates[my_plate_id.0 as usize];
 
             for (nx, ny) in plate_map.neighbors(x, y) {
                 let neighbor_plate_id = *plate_map.get(nx, ny);
-                if neighbor_plate_id.is_none() || neighbor_plate_id == my_plate_id {
+                if neighbor_plate_id.is_none() || neighbor_plate_id == my_plate_id || (neighbor_plate_id.0 as usize) >= plates.len() {
                     continue;
                 }
+                let neighbor_plate = &plates[neighbor_plate_id.0 as usize];
 
-                let (id_a, id_b) = if my_plate_id.0 < neighbor_plate_id.0 {
-                    (my_plate_id.0, neighbor_plate_id.0)
+                // Compute boundary normal pointing from cell (x, y) to neighbor (nx, ny) with X wrapping
+                let mut dx = nx as f32 - x as f32;
+                if dx > width as f32 * 0.5 { dx -= width as f32; }
+                if dx < -(width as f32 * 0.5) { dx += width as f32; }
+                let dy = ny as f32 - y as f32;
+                let len = (dx * dx + dy * dy).sqrt().max(0.001);
+                let norm_x = dx / len;
+                let norm_y = dy / len;
+
+                // Relative velocity vector: v_rel = v_my - v_neighbor
+                let rel_vx = my_plate.velocity.x - neighbor_plate.velocity.x;
+                let rel_vy = my_plate.velocity.y - neighbor_plate.velocity.y;
+                let rel_speed = (rel_vx * rel_vx + rel_vy * rel_vy).sqrt();
+
+                // Normal velocity: vn > 0 => plates colliding (convergent); vn < 0 => pulling apart (divergent)
+                let vn = rel_vx * norm_x + rel_vy * norm_y;
+
+                // Stress is proportional to normal collision/rifting intensity
+                let stress = if vn.abs() > 0.02 {
+                    vn.clamp(-1.0, 1.0) * rel_speed.max(0.2)
                 } else {
-                    (neighbor_plate_id.0, my_plate_id.0)
+                    // Strike-slip transform faulting
+                    rel_speed * 0.15
                 };
 
-                if let Some(&(stress, spread)) = plate_pair_info.get(&(id_a, id_b)) {
-                    // Include both convergent (positive) and divergent (negative) stress
-                    if stress.abs() > 0.01 {
-                        boundary_cells.push((x, y, stress, spread));
-                        break; // Only add once per cell
-                    }
-                }
+                let base_spread = (width / 64).max(4);
+                let spread_radius = (base_spread as f32 * rel_speed.max(0.3) * 0.8) as usize;
+                let spread_radius = spread_radius.clamp(2, width / 16);
+
+                boundary_cells.push((x, y, stress, spread_radius));
+                break; // One boundary sample per cell
             }
         }
     }
 
-    // Second pass: mark boundary cells with stress values
-    // Using Gaussian blur approach instead of direct spreading (O(n × kernel) vs O(boundary × spread²))
+    // Mark boundary cells with stress values and apply high frequency texture
     let mut stress_map = Tilemap::new_with(width, height, 0.0f32);
-
-    // High frequency noise for texture
     let noise = Perlin::new(1).set_seed(42);
 
-    // First, mark all boundary cells with their stress values
-    // Apply noise modulation at marking time
     for (bx, by, stress, _spread) in &boundary_cells {
         let nx_val = *bx as f64 / width as f64;
         let ny_val = *by as f64 / height as f64;
@@ -102,14 +75,11 @@ pub fn calculate_stress(plate_map: &Tilemap<PlateId>, plates: &[Plate]) -> Tilem
         let cell_stress = stress * noise_factor;
         let current = *stress_map.get(*bx, *by);
 
-        // Keep maximum magnitude stress
-        if (*stress > 0.0 && cell_stress > current) ||
-           (*stress < 0.0 && cell_stress < current) {
+        if (*stress > 0.0 && cell_stress > current) || (*stress < 0.0 && cell_stress < current) {
             stress_map.set(*bx, *by, cell_stress);
         }
     }
 
-    // Calculate average spread for Gaussian blur radius
     let avg_spread = if !boundary_cells.is_empty() {
         boundary_cells.iter().map(|(_, _, _, s)| *s).sum::<usize>() / boundary_cells.len()
     } else {
@@ -118,10 +88,7 @@ pub fn calculate_stress(plate_map: &Tilemap<PlateId>, plates: &[Plate]) -> Tilem
     let blur_radius = avg_spread.max(4);
     let sigma = blur_radius as f32 * 0.7;
 
-    // Apply separable Gaussian blur to spread stress (O(n × kernel_size) instead of O(boundary × spread²))
-    let stress_map = smooth_stress(&stress_map, blur_radius, sigma);
-
-    stress_map
+    smooth_stress(&stress_map, blur_radius, sigma)
 }
 
 /// Smoothstep interpolation for gentle falloff

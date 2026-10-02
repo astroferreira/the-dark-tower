@@ -14,6 +14,7 @@ use crate::coastline;
 use crate::erosion::{self, ErosionPreset};
 use crate::heightmap;
 use crate::plates::{self, WorldStyle};
+use crate::scale::MapScale;
 use crate::seeds::WorldSeeds;
 use crate::tilemap::Tilemap;
 
@@ -71,6 +72,8 @@ fn generate_world_image(
     // Generate heightmap
     let _land_mask = heightmap::generate_land_mask(&plate_map, &plates, seeds.heightmap);
     let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
+    let map_scale = MapScale::default();
+    heightmap::apply_inland_uplift(&mut heightmap, &stress_map, &map_scale);
 
     // Generate climate with config
     let temperature = climate::generate_temperature_with_config(
@@ -82,7 +85,8 @@ fn generate_world_image(
 
     // Apply erosion if not None
     if erosion_preset != ErosionPreset::None {
-        let erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
+        let mut erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
+        erosion_params.tune_for_heightmap(&heightmap);
         let mut erosion_rng = ChaCha8Rng::seed_from_u64(seeds.erosion);
 
         let _ = erosion::simulate_erosion(
@@ -104,6 +108,9 @@ fn generate_world_image(
 
     // Apply terrain noise
     heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
+
+    // Enforce coastal beach strips near sea level
+    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale);
 
     // Generate moisture with config
     let moisture = climate::generate_moisture_with_config(
@@ -339,6 +346,7 @@ pub fn export_climate_grid(config: &GridExportConfig, filename: &str) -> Result<
         let climate_config = ClimateConfig {
             mode,
             rainfall: RainfallLevel::Normal,
+            ..Default::default()
         };
         let world_img = generate_world_image(config, erosion_preset, &climate_config);
 
@@ -385,6 +393,7 @@ pub fn export_rainfall_grid(config: &GridExportConfig, filename: &str) -> Result
         let climate_config = ClimateConfig {
             mode: ClimateMode::Globe,
             rainfall: level,
+            ..Default::default()
         };
         let world_img = generate_world_image(config, erosion_preset, &climate_config);
 
@@ -457,6 +466,7 @@ pub fn export_full_grid(config: &GridExportConfig, filename: &str) -> Result<(),
             let climate_config = ClimateConfig {
                 mode,
                 rainfall: RainfallLevel::Normal,
+                ..Default::default()
             };
             let world_img = generate_world_image(config, erosion, &climate_config);
 

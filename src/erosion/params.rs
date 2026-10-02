@@ -1,5 +1,7 @@
 //! Erosion simulation parameters and configuration
 
+use crate::tilemap::Tilemap;
+
 /// Erosion intensity preset
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ErosionPreset {
@@ -328,5 +330,62 @@ impl ErosionParams {
                 ..Default::default()
             },
         }
+    }
+
+    /// Adapt erosion parameters based on map size and current heightmap relief.
+    pub fn tune_for_heightmap(&mut self, heightmap: &Tilemap<f32>) {
+        let mut min_h = f32::MAX;
+        let mut max_h = f32::MIN;
+        for (_, _, &h) in heightmap.iter() {
+            if h < min_h { min_h = h; }
+            if h > max_h { max_h = h; }
+        }
+
+        let max_land = max_h.max(0.0);
+        let area = (heightmap.width * heightmap.height) as f32;
+        let area_scale = (area / (512.0 * 256.0)).max(0.1);
+
+        let relief_scale: f32 = if max_land < 200.0 {
+            0.12
+        } else if max_land < 400.0 {
+            0.20
+        } else if max_land < 700.0 {
+            0.35
+        } else if max_land < 1200.0 {
+            0.55
+        } else if max_land < 1800.0 {
+            0.75
+        } else {
+            1.0
+        };
+
+        let iter_scale = relief_scale.max(0.12);
+        self.hydraulic_iterations =
+            ((self.hydraulic_iterations as f32) * iter_scale).round() as usize;
+        self.hydraulic_iterations = self.hydraulic_iterations.max(50_000);
+
+        self.glacial_timesteps =
+            ((self.glacial_timesteps as f32) * (0.5 + 0.5 * relief_scale)).round() as usize;
+        self.glacial_timesteps = self.glacial_timesteps.max(50);
+
+        self.droplet_erosion_rate *= relief_scale;
+        self.river_erosion_rate *= relief_scale.max(0.5);
+        self.river_max_erosion *= relief_scale.max(0.5);
+
+        let target_scale = if area_scale < 0.15 {
+            1
+        } else if area_scale < 0.5 {
+            2
+        } else {
+            self.simulation_scale
+        };
+        self.simulation_scale = self.simulation_scale.min(target_scale);
+
+        let acc_scale = area_scale.sqrt().clamp(0.4, 1.0);
+        let target_accumulation = 20.0 * acc_scale;
+        self.river_source_min_accumulation =
+            self.river_source_min_accumulation.min(target_accumulation);
+
+        self.river_source_min_elevation = (max_land * 0.25).clamp(20.0, 200.0);
     }
 }

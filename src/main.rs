@@ -11,6 +11,7 @@ use rand_chacha::ChaCha8Rng;
 mod ascii;
 mod biome_feathering;
 mod biomes;
+mod cartography;
 mod climate;
 mod coastline;
 mod erosion;
@@ -37,6 +38,7 @@ mod world_export;
 
 use menu::{MenuResult, WorldConfig};
 use seeds::WorldSeeds;
+use tilemap::Tilemap;
 
 #[derive(Parser, Debug)]
 #[command(name = "planet_generator")]
@@ -62,6 +64,32 @@ struct Args {
     /// Options: earthlike, archipelago, islands, pangaea, continental, waterworld
     #[arg(short = 'w', long, default_value = "earthlike")]
     world_style: String,
+
+    /// Re-simulate a window of world tiles at high resolution (rivers, lakes, valleys).
+    /// Value: "X,Y" = world tile at the window centre (as shown by the explorer's W:(x,y)),
+    /// or "auto" to pick a river-rich, mountainous window.
+    #[arg(long)]
+    zoom: Option<String>,
+
+    /// Zoom window size in world tiles
+    #[arg(long, default_value = "8")]
+    zoom_tiles: usize,
+
+    /// Cells per world tile in the zoomed region
+    #[arg(long, default_value = "128")]
+    zoom_scale: usize,
+
+    /// Landscape-evolution (stream-power erosion) iterations for the zoomed region
+    #[arg(long, default_value = "40")]
+    zoom_erosion: usize,
+
+    /// Use the legacy static-plate + noise terrain instead of the tectonic simulation
+    #[arg(long)]
+    legacy_tectonics: bool,
+
+    /// Simulated tectonic history in millions of years (longer = more collisions and rifting)
+    #[arg(long, default_value = "200")]
+    tectonic_myr: f32,
 
     // === Individual seed overrides ===
 
@@ -136,6 +164,18 @@ struct Args {
     /// Export base map image (flat biome colors + rivers) before launching explorer
     #[arg(long)]
     export_base_map: bool,
+
+    /// Export antique old paper cartography map image
+    #[arg(long)]
+    export_cartography: bool,
+
+    /// Visual style for antique cartography export (parchment, atlas, copperplate, patina)
+    #[arg(long, default_value = "parchment")]
+    cartography_style: String,
+
+    /// Force CPU software shader rendering for cartography (bypass GPU)
+    #[arg(long)]
+    cartography_cpu: bool,
 
     /// Skip launching the explorer (for batch/headless export)
     #[arg(long)]
@@ -252,6 +292,10 @@ struct Args {
     /// Include per-tile detailed JSON (large file, for debugging)
     #[arg(long)]
     world_data_per_tile: bool,
+
+    /// Upscaling factor for exported maps (1 = native, 2 = 2x, 4 = 4x, etc.)
+    #[arg(long, default_value = "1")]
+    upscale_factor: usize,
 }
 
 fn main() {
@@ -350,6 +394,7 @@ fn main() {
                 let climate_config = climate::ClimateConfig {
                     mode: config.climate_mode,
                     rainfall: config.rainfall,
+                    ..Default::default()
                 };
                 (
                     config.width,
@@ -401,30 +446,41 @@ fn main() {
         println!("  Materials: {}", seeds.materials);
     }
 
-    // Initialize RNG for tectonics (plates need RNG)
-    let mut tectonic_rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
-
-    // Generate tectonic plates
-    println!("Generating tectonic plates...");
-    let (plate_map, plates) = plates::generate_plates(width, height, plates_count, world_style, &mut tectonic_rng);
-    let continental_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Continental).count();
-    let oceanic_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Oceanic).count();
-    println!("Created {} plates ({} continental, {} oceanic)", plates.len(), continental_count, oceanic_count);
-
-    // Calculate stress at plate boundaries
-    println!("Calculating plate stress...");
-    let stress_map = plates::calculate_stress(&plate_map, &plates);
-
     // Create map scale for coordinate scaling (used throughout generation)
     let map_scale = scale::MapScale::default();
 
-    // Generate heightmap
-    println!("Generating heightmap...");
-    let land_mask = heightmap::generate_land_mask(&plate_map, &plates, seeds.heightmap);
-    let land_count = (0..height).flat_map(|y| (0..width).map(move |x| (x, y)))
-        .filter(|&(x, y)| *land_mask.get(x, y)).count();
-    println!("Land mask: {} cells are land ({:.1}%)", land_count, 100.0 * land_count as f64 / (width * height) as f64);
-    let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
+    let (plate_map, plates, stress_map, mut heightmap) = if args.legacy_tectonics {
+        // Legacy path: static Voronoi-like plates, boundary stress and noise-driven terrain.
+        let mut tectonic_rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
+        println!("Generating tectonic plates (legacy)...");
+        let (plate_map, plates) = plates::generate_plates(width, height, plates_count, world_style, &mut tectonic_rng);
+        let continental_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Continental).count();
+        let oceanic_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Oceanic).count();
+        println!("Created {} plates ({} continental, {} oceanic)", plates.len(), continental_count, oceanic_count);
+
+        println!("Calculating plate stress...");
+        let stress_map = plates::calculate_stress(&plate_map, &plates);
+
+        println!("Generating heightmap...");
+        let land_mask = heightmap::generate_land_mask(&plate_map, &plates, seeds.heightmap);
+        let land_count = (0..height).flat_map(|y| (0..width).map(move |x| (x, y)))
+            .filter(|&(x, y)| *land_mask.get(x, y)).count();
+        println!("Land mask: {} cells are land ({:.1}%)", land_count, 100.0 * land_count as f64 / (width * height) as f64);
+        let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
+        heightmap::apply_inland_uplift(&mut heightmap, &stress_map, &map_scale);
+        (plate_map, plates, stress_map, heightmap)
+    } else {
+        // Tectonic simulation: plates drift on a sphere, collide, subduct and rift; terrain
+        // follows from crustal thickness (isostasy) and seafloor age.
+        println!("Simulating plate tectonics ({} Myr)...", args.tectonic_myr);
+        let params = plates::TectonicParams { total_myr: args.tectonic_myr, ..Default::default() };
+        let t = plates::generate_tectonic_terrain(width, height, plates_count, world_style, &seeds, &params);
+        let continental_count = t.plates.iter().filter(|p| p.plate_type == plates::PlateType::Continental).count();
+        let oceanic_count = t.plates.len() - continental_count;
+        println!("Tectonic history complete: {} plates survive ({} continental, {} oceanic)", t.plates.len(), continental_count, oceanic_count);
+        // (Interior seaward slope is built into the tectonic terrain itself, before sea level.)
+        (t.plate_map, t.plates, t.stress_map, t.heightmap)
+    };
     let mut min_h = f32::MAX;
     let mut max_h = f32::MIN;
     for (_, _, &h) in heightmap.iter() {
@@ -436,10 +492,11 @@ fn main() {
     println!("Heightmap range: {:.1}m to {:.1}m ({:.1}% above sea level)", min_h, max_h,
         100.0 * above_sea as f64 / (width * height) as f64);
 
-    // Generate climate with domain warping for organic zone boundaries
-    println!("Generating climate (mode: {}, rainfall: {})...", climate_config.mode, climate_config.rainfall);
-    let temperature = climate::generate_temperature_with_seed(&heightmap, width, height, climate_config.mode, seeds.climate);
-    let moisture = climate::generate_moisture_with_config_and_seed(&heightmap, width, height, &climate_config, seeds.climate);
+    // Generate physical climate (energy balance, 3-cell circulation, winds, ocean currents, moisture advection)
+    println!("Simulating physical climate (mode: {}, rainfall: {})...", climate_config.mode, climate_config.rainfall);
+    let climate_sim = climate::run_climate_simulation(&heightmap, &climate_config, seeds.climate);
+    let temperature = climate_sim.mean_temperature.clone();
+    let moisture = climate_sim.mean_moisture.clone();
 
     // Report climate stats
     let mut min_temp = f32::MAX;
@@ -448,11 +505,19 @@ fn main() {
         if t < min_temp { min_temp = t; }
         if t > max_temp { max_temp = t; }
     }
+    let mut min_precip = f32::MAX;
+    let mut max_precip = f32::MIN;
+    for (_, _, &p) in climate_sim.annual_precipitation.iter() {
+        if p < min_precip { min_precip = p; }
+        if p > max_precip { max_precip = p; }
+    }
     println!("Temperature range: {:.1}°C to {:.1}°C", min_temp, max_temp);
+    println!("Precipitation range: {:.0}mm to {:.0}mm/yr", min_precip, max_precip);
 
     // Apply erosion
     println!("Simulating erosion (preset: {})...", erosion_preset);
     let mut erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
+    erosion_params.tune_for_heightmap(&heightmap);
 
     // Override simulation_scale if --no-hires flag is set
     if args.no_hires {
@@ -502,35 +567,26 @@ fn main() {
     println!("Applying terrain noise layers...");
     heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
 
-    // Apply archipelago pass to add islands in shallow ocean near stress zones
-    println!("Applying archipelago pass...");
-    heightmap::apply_archipelago_pass(&mut heightmap, &stress_map, seeds.heightmap);
-
-    // Expand single-tile islands into proper multi-tile islands
-    println!("Expanding island clusters...");
-    heightmap::expand_island_clusters(&mut heightmap, &stress_map, seeds.heightmap);
 
     // Apply volcano pass to add volcanic cones based on tectonic stress
     println!("Placing volcanoes...");
     let volcanoes = heightmap::apply_volcano_pass(&mut heightmap, &stress_map, seeds.heightmap);
 
+    // Enforce coastal beach strips near sea level (except high-stress cliffs)
+    println!("Applying coastal beach pass...");
+    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale);
+
     // Generate lava for active volcanoes
     println!("Generating lava flows...");
     let lava_map = heightmap::generate_lava_map(&heightmap, &volcanoes, seeds.heightmap);
 
-    // CRITICAL: Final depression fill to ensure river connectivity
-    // Post-processing steps (coastline, noise) may have created new pits
-    println!("Final depression fill for river connectivity...");
-    let filled = erosion::rivers::fill_depressions_public(&heightmap);
-    for y in 0..height {
-        for x in 0..width {
-            heightmap.set(x, y, *filled.get(x, y));
-        }
-    }
+    // Use mean surface temperature from climate simulation (including Rossby waves, continentality, and maritime moderation)
+    let temperature = climate_sim.mean_temperature.clone();
 
-    // Detect water bodies (lakes, rivers, ocean) with water depth
-    println!("Detecting water bodies...");
-    let (water_body_map, water_bodies_list, water_depth) = water_bodies::detect_water_bodies(&heightmap);
+    // Detect water bodies (lakes, rivers, ocean) with water depth and climate coupling
+    println!("Detecting water bodies with hydrological routing...");
+    let (water_body_map, water_bodies_list, water_depth, flow_acc, flow_dir) =
+        water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture);
     let lake_count = water_bodies::count_lakes(&water_bodies_list);
     let wb_stats = water_bodies::water_body_stats(&water_bodies_list);
     println!("Found {} lakes, {} river tiles, {} ocean tiles",
@@ -605,8 +661,16 @@ fn main() {
 
     // Launch explorer
     println!("Launching terminal explorer...");
-    // Generate Bezier river network
-    let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seeds.rivers);
+    // Generate Bezier river network with true flow accumulation and lake connectivity
+    let river_network = crate::erosion::trace_bezier_rivers_with_flow(
+        &heightmap,
+        &flow_acc,
+        &flow_dir,
+        Some(&water_body_map),
+        Some(&water_bodies_list),
+        None,
+        seeds.rivers,
+    );
 
     // Calculate region handshakes for hierarchical zoom
     println!("Calculating region handshakes...");
@@ -668,8 +732,10 @@ fn main() {
     );
     world_data.handshakes = Some(world_handshakes);
     world_data.underground_water = Some(underground_water_features);
-    world_data.set_flow_accumulation(flow_accumulation);
+    world_data.set_flow_accumulation(flow_acc);
     world_data.set_volcanic_features(lava_map, volcanoes);
+    let seasonal_climate = seasons::SeasonalClimate::from_simulation(&climate_sim, &world_data.heightmap);
+    world_data.seasonal_climate = Some(seasonal_climate);
 
     // Export freshwater network if requested
     if args.export_rivers {
@@ -684,6 +750,23 @@ fn main() {
         let filename = format!("world_base_{}.png", master_seed);
         if let Err(e) = explorer::export_base_map_image(&world_data, &filename) {
             eprintln!("Failed to export base map: {}", e);
+        }
+    }
+
+    // Export antique old paper cartography map if requested
+    if args.export_cartography {
+        let filename = format!("world_cartography_{}.png", master_seed);
+        let mut params = cartography::CartographyParams::default();
+        params.use_gpu = !args.cartography_cpu;
+        params.style = match args.cartography_style.to_lowercase().as_str() {
+            "atlas" => cartography::PaperStyle::Atlas17thCentury,
+            "copperplate" | "engraving" => cartography::PaperStyle::CopperplateEngraving,
+            "patina" | "antiquarian" => cartography::PaperStyle::AntiquarianPatina,
+            _ => cartography::PaperStyle::AgedParchment,
+        };
+
+        if let Err(e) = cartography::export_cartography_image(&world_data, &filename, Some(&params)) {
+            eprintln!("Failed to export cartography map: {}", e);
         }
     }
 
@@ -729,10 +812,60 @@ fn main() {
             hillshade_intensity: 0.6,
             height_exaggeration: 0.035,
             lut_biome_blend: 0.35, // 35% biome color, 65% LUT for smooth natural look
+            upscale_factor: args.upscale_factor,
+            target_resolution: None,
         };
 
         if let Err(e) = map_export::export_all_maps(&world_data, output_dir, master_seed, &config) {
             eprintln!("Failed to export maps: {}", e);
+        }
+    }
+
+    // High-resolution zoom of a window of world tiles
+    if let Some(spec) = &args.zoom {
+        let tiles = args.zoom_tiles.max(1);
+        let center = if spec.eq_ignore_ascii_case("auto") {
+            Some(region::zoom::pick_interesting_window(&world_data, tiles))
+        } else {
+            let parts: Vec<_> = spec.split(',').map(|p| p.trim().parse::<usize>()).collect();
+            match parts.as_slice() {
+                [Ok(x), Ok(y)] if *x < width && *y < height => Some((*x, *y)),
+                _ => {
+                    eprintln!("--zoom expects \"X,Y\" (world tile inside {}x{}) or \"auto\", got '{}'", width, height, spec);
+                    None
+                }
+            }
+        };
+        if let Some((cx, cy)) = center {
+            let params = region::zoom::ZoomParams {
+                center_x: cx,
+                center_y: cy,
+                tiles,
+                cells_per_tile: args.zoom_scale,
+                erosion_iterations: args.zoom_erosion,
+                seed: master_seed,
+            };
+            println!(
+                "Zooming into {}x{} world tiles centred on ({}, {}) at {} cells/tile...",
+                tiles, tiles, cx, cy, args.zoom_scale
+            );
+            let t0 = std::time::Instant::now();
+            let zoom = region::zoom::generate_zoom(&world_data, &params);
+            let (river_cells, lake_cells) = zoom.stats();
+            println!(
+                "  {}x{} cells, {:.0} m/cell, {} river cells, {} lake cells ({:.1}s)",
+                zoom.width, zoom.height, zoom.cell_m, river_cells, lake_cells, t0.elapsed().as_secs_f32()
+            );
+            let dir = std::path::Path::new(&args.map_output_dir);
+            let stem = format!("zoom_{}_{}_{}", master_seed, cx, cy);
+            match zoom.save_png(&dir.join(format!("{stem}.png"))) {
+                Ok(()) => println!("  Saved {}", dir.join(format!("{stem}.png")).display()),
+                Err(e) => eprintln!("  Failed to save zoom image: {e}"),
+            }
+            match zoom.save_heightmap16(&dir.join(format!("{stem}_height16.png"))) {
+                Ok((lo, hi)) => println!("  Saved 16-bit heightmap ({:.0} m .. {:.0} m)", lo, hi),
+                Err(e) => eprintln!("  Failed to save zoom heightmap: {e}"),
+            }
         }
     }
 

@@ -86,6 +86,18 @@ impl Default for RiverErosionParams {
     }
 }
 
+/// Get the D8 direction (0..8) from (from_x, from_y) to (to_x, to_y).
+pub fn direction_between(from_x: usize, from_y: usize, to_x: usize, to_y: usize, width: usize) -> Option<u8> {
+    for dir in 0..8u8 {
+        let nx = (from_x as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+        let ny = from_y as i32 + DY[dir as usize];
+        if nx == to_x && ny == to_y as i32 {
+            return Some(dir);
+        }
+    }
+    None
+}
+
 /// Compute flow direction for each cell using D8 algorithm.
 /// NOTE: This uses raw heightmap. For pit-free routing, use compute_flow_direction_filled().
 pub fn compute_flow_direction(heightmap: &Tilemap<f32>) -> Tilemap<u8> {
@@ -101,6 +113,10 @@ fn compute_flow_direction_internal(heightmap: &Tilemap<f32>) -> Tilemap<u8> {
     for y in 0..height {
         for x in 0..width {
             let current_height = *heightmap.get(x, y);
+            // Ocean cells are terminal base-level sinks. Water does not route along the ocean floor.
+            if current_height < 0.0 {
+                continue;
+            }
 
             let mut steepest_dir: Option<u8> = None;
             let mut steepest_drop: f32 = 0.0;
@@ -139,10 +155,25 @@ fn compute_flow_direction_internal(heightmap: &Tilemap<f32>) -> Tilemap<u8> {
 /// This ensures ALL cells can flow to the ocean - no pits/puddles.
 /// Returns (flow_direction, filled_heightmap) so accumulation can use the filled map.
 pub fn compute_flow_direction_filled(heightmap: &Tilemap<f32>) -> (Tilemap<u8>, Tilemap<f32>) {
-    // Fill depressions so water can overflow pits
-    let filled = fill_depressions(heightmap);
-    // Compute flow on the filled map - guarantees connectivity
-    let flow_dir = compute_flow_direction_internal(&filled);
+    let (filled, flat_dir) = fill_depressions_and_route(heightmap);
+    let mut flow_dir = compute_flow_direction_internal(&filled);
+
+    // For land cells that ended up on a flat lake bed or plateau where steepest_drop was 0,
+    // use the exact spillway flow direction tracked during Priority-Flood.
+    for y in 0..heightmap.height {
+        for x in 0..heightmap.width {
+            if *heightmap.get(x, y) >= 0.0 {
+                let d = *flow_dir.get(x, y);
+                if d == NO_FLOW {
+                    let fd = *flat_dir.get(x, y);
+                    if fd != NO_FLOW {
+                        flow_dir.set(x, y, fd);
+                    }
+                }
+            }
+        }
+    }
+
     (flow_dir, filled)
 }
 
@@ -154,46 +185,123 @@ pub fn compute_flow_with_filled_routing(heightmap: &Tilemap<f32>) -> (Tilemap<u8
     (flow_dir, flow_acc, filled)
 }
 
+/// Compute flow accumulation using a depression-filled heightmap and optional climate-aware runoff.
+pub fn compute_flow_with_runoff(
+    heightmap: &Tilemap<f32>,
+    runoff: Option<&Tilemap<f32>>,
+) -> (Tilemap<u8>, Tilemap<f32>, Tilemap<f32>) {
+    let (flow_dir, filled) = compute_flow_direction_filled(heightmap);
+    let flow_acc = compute_flow_accumulation_with_runoff(&filled, &flow_dir, runoff);
+    (flow_dir, flow_acc, filled)
+}
+
+/// Compute flow accumulation for each cell with optional climate-driven runoff weighting.
+/// Land cells start with runoff (or 1.0 default); ocean cells start at 0.0 and terminate flow.
+pub fn compute_flow_accumulation_with_runoff(
+    heightmap: &Tilemap<f32>,
+    flow_dir: &Tilemap<u8>,
+    runoff: Option<&Tilemap<f32>>,
+) -> Tilemap<f32> {
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    let mut accumulation = Tilemap::new_with(width, height, 0.0f32);
+    let mut in_degree = vec![0u16; width * height];
+
+    for y in 0..height {
+        for x in 0..width {
+            let h = *heightmap.get(x, y);
+            if h >= 0.0 {
+                let init = runoff.map(|r| *r.get(x, y)).unwrap_or(1.0f32);
+                accumulation.set(x, y, init);
+
+                let dir = *flow_dir.get(x, y);
+                if dir < 8 {
+                    let nx = (x as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+                    let ny = y as i32 + DY[dir as usize];
+                    if ny >= 0 && ny < height as i32 {
+                        let target_h = *heightmap.get(nx, ny as usize);
+                        // Ocean terminates routing
+                        if target_h >= 0.0 {
+                            let idx = (ny as usize) * width + nx;
+                            in_degree[idx] = in_degree[idx].saturating_add(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut queue = std::collections::VecDeque::new();
+    for y in 0..height {
+        for x in 0..width {
+            if *heightmap.get(x, y) >= 0.0 && in_degree[y * width + x] == 0 {
+                queue.push_back((x, y));
+            }
+        }
+    }
+
+    let mut processed = 0;
+    while let Some((x, y)) = queue.pop_front() {
+        processed += 1;
+        let dir = *flow_dir.get(x, y);
+        if dir < 8 {
+            let nx = (x as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+            let ny = y as i32 + DY[dir as usize];
+            if ny >= 0 && ny < height as i32 {
+                let ny_u = ny as usize;
+                let current_acc = *accumulation.get(x, y);
+                let downstream_acc = *accumulation.get(nx, ny_u);
+                accumulation.set(nx, ny_u, downstream_acc + current_acc);
+
+                if *heightmap.get(nx, ny_u) >= 0.0 {
+                    let n_idx = ny_u * width + nx;
+                    if in_degree[n_idx] > 0 {
+                        in_degree[n_idx] -= 1;
+                        if in_degree[n_idx] == 0 {
+                            queue.push_back((nx, ny_u));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback for any cells with remaining in-degree (e.g. cycles in non-filled maps)
+    if processed < width * height {
+        let mut remaining = Vec::new();
+        for y in 0..height {
+            for x in 0..width {
+                if *heightmap.get(x, y) >= 0.0 && in_degree[y * width + x] > 0 {
+                    remaining.push((x, y, *heightmap.get(x, y)));
+                }
+            }
+        }
+        remaining.sort_unstable_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        for (x, y, _) in remaining {
+            let dir = *flow_dir.get(x, y);
+            if dir < 8 {
+                let nx = (x as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+                let ny = y as i32 + DY[dir as usize];
+                if ny >= 0 && ny < height as i32 {
+                    let ny_u = ny as usize;
+                    let current_acc = *accumulation.get(x, y);
+                    let downstream_acc = *accumulation.get(nx, ny_u);
+                    accumulation.set(nx, ny_u, downstream_acc + current_acc);
+                }
+            }
+        }
+    }
+
+    accumulation
+}
+
 /// Compute flow accumulation for each cell.
 pub fn compute_flow_accumulation(
     heightmap: &Tilemap<f32>,
     flow_dir: &Tilemap<u8>,
 ) -> Tilemap<f32> {
-    let width = heightmap.width;
-    let height = heightmap.height;
-
-    let mut accumulation = Tilemap::new_with(width, height, 1.0f32);
-
-    // Sort cells by elevation, highest first
-    let mut cells: Vec<(usize, usize, f32)> = Vec::with_capacity(width * height);
-    for y in 0..height {
-        for x in 0..width {
-            cells.push((x, y, *heightmap.get(x, y)));
-        }
-    }
-    cells.sort_unstable_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Process cells from highest to lowest
-    for (x, y, _) in cells {
-        let dir = *flow_dir.get(x, y);
-        if dir == NO_FLOW {
-            continue;
-        }
-
-        let nx = (x as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
-        let ny = y as i32 + DY[dir as usize];
-
-        if ny < 0 || ny >= height as i32 {
-            continue;
-        }
-        let ny = ny as usize;
-
-        let current_acc = *accumulation.get(x, y);
-        let downstream_acc = *accumulation.get(nx, ny);
-        accumulation.set(nx, ny, downstream_acc + current_acc);
-    }
-
-    accumulation
+    compute_flow_accumulation_with_runoff(heightmap, flow_dir, None)
 }
 
 /// Find potential river source points.
@@ -401,10 +509,9 @@ fn calculate_river_width(flow: f32, base_width: usize, source_threshold: f32) ->
     let flow_ratio = (flow / source_threshold).max(1.0);
     let width_multiplier = flow_ratio.sqrt();
 
-    // Base width at source, grows with flow
-    // Clamp to reasonable range (1 to 8 pixels half-width)
-    let dynamic_width = (base_width as f32 * width_multiplier).round() as usize;
-    dynamic_width.clamp(1, 8)
+    // Scale channel half-width for planetary tilemap: 0 (1 tile), 1 (3 tiles), 2 (5 tiles max)
+    let dynamic_width = (base_width as f32 * width_multiplier * 0.4).round() as usize;
+    dynamic_width.clamp(0, 2)
 }
 
 /// Apply V-shaped erosion perpendicular to flow direction.
@@ -779,28 +886,112 @@ fn breach_river_barriers(
     }
 }
 
-/// Fill depressions using a simplified Planchon-Darboux algorithm.
-/// Ensures that every cell can flow to the ocean (height < 0.0) or map edge.
-/// Public wrapper for use after erosion.
-pub fn fill_depressions_public(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
-    fill_depressions(heightmap)
+/// Basin information for a detected topographic depression
+#[derive(Clone, Debug)]
+pub struct DepressionBasin {
+    pub tiles: Vec<(usize, usize)>,
+    pub min_elevation: f32,
+    pub spillway_elevation: f32,
+    pub spillway_tile: (usize, usize),
+    pub max_depth: f32,
+    pub area: usize,
 }
 
-/// Fill depressions using the Priority-Flood algorithm.
-/// This is O(n log n) instead of the iterative O(k × n) approach.
-/// Ensures that every cell can flow to the ocean (height < 0.0) or map edge.
-fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
+/// Detect and analyze all closed depressions in the heightmap.
+pub fn analyze_depression_basins(
+    heightmap: &Tilemap<f32>,
+    filled: &Tilemap<f32>,
+    flow_dir: &Tilemap<u8>,
+) -> Vec<DepressionBasin> {
+    let width = heightmap.width;
+    let height = heightmap.height;
+    let mut visited = Tilemap::new_with(width, height, false);
+    let mut basins = Vec::new();
+
+    for y in 0..height {
+        for x in 0..width {
+            let h = *heightmap.get(x, y);
+            let fh = *filled.get(x, y);
+
+            if (fh - h) > 0.05 && !*visited.get(x, y) {
+                let mut tiles = Vec::new();
+                let mut queue = std::collections::VecDeque::new();
+                let mut min_elev = f32::MAX;
+                let mut max_depth = 0.0f32;
+                let spillway_elev = fh;
+
+                queue.push_back((x, y));
+                visited.set(x, y, true);
+
+                while let Some((cx, cy)) = queue.pop_front() {
+                    let ch = *heightmap.get(cx, cy);
+                    let cfh = *filled.get(cx, cy);
+                    tiles.push((cx, cy));
+                    min_elev = min_elev.min(ch);
+                    max_depth = max_depth.max(cfh - ch);
+
+                    for dir in 0..8 {
+                        let nx = (cx as i32 + DX[dir]).rem_euclid(width as i32) as usize;
+                        let ny = cy as i32 + DY[dir];
+                        if ny < 0 || ny >= height as i32 {
+                            continue;
+                        }
+                        let ny = ny as usize;
+
+                        let nh = *heightmap.get(nx, ny);
+                        let nfh = *filled.get(nx, ny);
+
+                        if (nfh - nh) > 0.05 && (nfh - spillway_elev).abs() < 0.1 && !*visited.get(nx, ny) {
+                            visited.set(nx, ny, true);
+                            queue.push_back((nx, ny));
+                        }
+                    }
+                }
+
+                // Identify the spillway tile: the cell in the basin that routes outside
+                let mut spillway_tile = (x, y);
+                for &(tx, ty) in &tiles {
+                    let dir = *flow_dir.get(tx, ty);
+                    if dir < 8 {
+                        let nx = (tx as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+                        let ny = (ty as i32 + DY[dir as usize]).clamp(0, height as i32 - 1) as usize;
+                        let nh = *heightmap.get(nx, ny);
+                        let nfh = *filled.get(nx, ny);
+                        if (nfh - nh) <= 0.05 || (nfh - spillway_elev).abs() >= 0.1 {
+                            spillway_tile = (tx, ty);
+                            break;
+                        }
+                    }
+                }
+
+                basins.push(DepressionBasin {
+                    area: tiles.len(),
+                    tiles,
+                    min_elevation: min_elev,
+                    spillway_elevation: spillway_elev,
+                    spillway_tile,
+                    max_depth,
+                });
+            }
+        }
+    }
+
+    basins
+}
+
+/// Fill depressions using the Priority-Flood algorithm and determine exact flow directions across flats.
+/// This prevents artificial epsilon elevation accumulation while guaranteeing pit-free drainage to the sea.
+pub fn fill_depressions_and_route(heightmap: &Tilemap<f32>) -> (Tilemap<f32>, Tilemap<u8>) {
     use std::collections::BinaryHeap;
     use std::cmp::Ordering;
 
     let width = heightmap.width;
     let height = heightmap.height;
-    let epsilon = 1e-4; // Tiny drop to ensure flow
 
-    // Priority queue entry: we want minimum elevation first, so we negate
+    // Priority queue entry: minimum elevation first, so we negate
     #[derive(Copy, Clone)]
     struct Cell {
-        neg_elevation: f32, // Negated for min-heap behavior
+        neg_elevation: f32,
         x: usize,
         y: usize,
     }
@@ -810,44 +1001,73 @@ fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
             self.neg_elevation == other.neg_elevation
         }
     }
-
     impl Eq for Cell {}
-
     impl PartialOrd for Cell {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             Some(self.cmp(other))
         }
     }
-
     impl Ord for Cell {
         fn cmp(&self, other: &Self) -> Ordering {
-            // Compare negated elevations for min-heap behavior
-            self.neg_elevation.partial_cmp(&other.neg_elevation)
-                .unwrap_or(Ordering::Equal)
+            self.neg_elevation.partial_cmp(&other.neg_elevation).unwrap_or(Ordering::Equal)
         }
     }
 
     let mut water = Tilemap::new_with(width, height, f32::MAX);
     let mut visited = Tilemap::new_with(width, height, false);
+    let mut flat_dir = Tilemap::new_with(width, height, NO_FLOW);
     let mut heap: BinaryHeap<Cell> = BinaryHeap::with_capacity(width * height / 4);
 
-    // Initialize with ocean cells (below sea level)
-    for y in 0..height {
-        for x in 0..width {
+    // Initialize with true ocean cells (connected to polar edges at or below sea level)
+    let mut ocean_queue = std::collections::VecDeque::new();
+    for x in 0..width {
+        for &y in &[0, height - 1] {
             let h = *heightmap.get(x, y);
-            if h < 0.0 {
-                water.set(x, y, h);
+            if h <= 0.0 && !*visited.get(x, y) {
                 visited.set(x, y, true);
-                heap.push(Cell { neg_elevation: -h, x, y });
+                ocean_queue.push_back((x, y));
             }
         }
     }
 
-    // Priority-Flood: process cells in order of increasing elevation
+    while let Some((ox, oy)) = ocean_queue.pop_front() {
+        let h = *heightmap.get(ox, oy);
+        water.set(ox, oy, h);
+        heap.push(Cell { neg_elevation: -h, x: ox, y: oy });
+
+        for dir in 0..8 {
+            let nx = (ox as i32 + DX[dir]).rem_euclid(width as i32) as usize;
+            let ny = oy as i32 + DY[dir];
+            if ny < 0 || ny >= height as i32 {
+                continue;
+            }
+            let ny = ny as usize;
+            let nh = *heightmap.get(nx, ny);
+            if nh <= 0.0 && !*visited.get(nx, ny) {
+                visited.set(nx, ny, true);
+                ocean_queue.push_back((nx, ny));
+            }
+        }
+    }
+
+    // Fallback if no ocean cells exist (seed from perimeter)
+    if heap.is_empty() {
+        for x in 0..width {
+            for &y in &[0, height - 1] {
+                let h = *heightmap.get(x, y);
+                if !*visited.get(x, y) {
+                    water.set(x, y, h);
+                    visited.set(x, y, true);
+                    heap.push(Cell { neg_elevation: -h, x, y });
+                }
+            }
+        }
+    }
+
+    // Priority-Flood wavefront
     while let Some(cell) = heap.pop() {
         let current_water = *water.get(cell.x, cell.y);
 
-        // Check all 8 neighbors
         for dir in 0..8 {
             let nx = (cell.x as i32 + DX[dir]).rem_euclid(width as i32) as usize;
             let ny = cell.y as i32 + DY[dir];
@@ -864,17 +1084,24 @@ fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
             visited.set(nx, ny, true);
             let neighbor_terrain = *heightmap.get(nx, ny);
 
-            // Water level is max(terrain, current_water + epsilon)
-            // This ensures water can flow from neighbor to current cell
-            let neighbor_water = neighbor_terrain.max(current_water + epsilon);
+            // Water surface level is max(terrain, current_water)
+            // No epsilon drift!
+            let neighbor_water = neighbor_terrain.max(current_water);
             water.set(nx, ny, neighbor_water);
+
+            // If neighbor was submerged (terrain <= current_water),
+            // its drainage path towards the spillway points directly back to cell.
+            if neighbor_terrain <= current_water {
+                if let Some(back_dir) = direction_between(nx, ny, cell.x, cell.y, width) {
+                    flat_dir.set(nx, ny, back_dir);
+                }
+            }
 
             heap.push(Cell { neg_elevation: -neighbor_water, x: nx, y: ny });
         }
     }
 
-    // Handle any cells not reachable from ocean (shouldn't happen in normal maps)
-    // Set them to their terrain height
+    // Handle any unreachable cells
     for y in 0..height {
         for x in 0..width {
             if !*visited.get(x, y) {
@@ -883,7 +1110,18 @@ fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
         }
     }
 
-    water
+    (water, flat_dir)
+}
+
+/// Fill depressions using the Priority-Flood algorithm without artificial epsilon drift.
+/// Public wrapper for use after erosion and during lake detection.
+pub fn fill_depressions_public(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
+    let (filled, _) = fill_depressions_and_route(heightmap);
+    filled
+}
+
+fn fill_depressions(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
+    fill_depressions_public(heightmap)
 }
 
 /// Get the flow accumulation map for visualization.

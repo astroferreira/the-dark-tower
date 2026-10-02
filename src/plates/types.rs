@@ -48,7 +48,7 @@ impl WorldStyle {
     /// Minimum number of continental plates
     pub fn min_continental_plates(&self) -> usize {
         match self {
-            Self::Earthlike => 1,
+            Self::Earthlike => 3,  // Multiple continents (e.g. 3-5)
             Self::Archipelago => 4,  // Many small ones
             Self::Islands => 3,
             Self::Pangaea => 1,
@@ -60,11 +60,11 @@ impl WorldStyle {
     /// Maximum continental plate size as fraction of total area (0.0 = no limit)
     pub fn max_continental_plate_fraction(&self) -> f64 {
         match self {
-            Self::Earthlike => 0.0,      // No limit
+            Self::Earthlike => 0.24,     // Multiple continents: no single continent dominates the entire globe
             Self::Archipelago => 0.08,   // Small islands only
             Self::Islands => 0.15,       // Medium islands max
             Self::Pangaea => 0.0,        // No limit, encourage big
-            Self::Continental => 0.30,   // Large but not dominant
+            Self::Continental => 0.35,   // Large but not dominant
             Self::Waterworld => 0.03,    // Tiny islands only
         }
     }
@@ -77,11 +77,11 @@ impl WorldStyle {
     /// Suggested plate count range (min, max)
     pub fn suggested_plate_count(&self) -> (usize, usize) {
         match self {
-            Self::Earthlike => (6, 15),
+            Self::Earthlike => (8, 16),
             Self::Archipelago => (12, 20),  // More plates = more potential islands
             Self::Islands => (10, 18),
             Self::Pangaea => (5, 10),       // Fewer plates
-            Self::Continental => (6, 12),
+            Self::Continental => (7, 14),
             Self::Waterworld => (15, 25),   // Many tiny plates
         }
     }

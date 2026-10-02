@@ -201,7 +201,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 }
 
 /// Get family-based color for a biome with variation
-fn get_family_color(biome: ExtendedBiome) -> (u8, u8, u8) {
+pub(crate) fn get_family_color(biome: ExtendedBiome) -> (u8, u8, u8) {
     let (family, sat_mod, val_mod) = get_biome_family(biome);
     let (h, s, v) = family.base_hsv();
     hsv_to_rgb(h, (s + sat_mod).clamp(0.0, 1.0), (v + val_mod).clamp(0.0, 1.0))
@@ -209,7 +209,7 @@ fn get_family_color(biome: ExtendedBiome) -> (u8, u8, u8) {
 
 /// Sample color from a programmatic LUT based on temperature and moisture
 /// This creates smooth, natural-looking transitions between climate zones
-fn sample_lut(temperature: f32, moisture: f32, elevation: f32) -> (u8, u8, u8) {
+pub(crate) fn sample_lut(temperature: f32, moisture: f32, elevation: f32) -> (u8, u8, u8) {
     // Normalize inputs to 0-1 range
     // Temperature: -30 to 30 -> 0 to 1
     let t = ((temperature + 30.0) / 60.0).clamp(0.0, 1.0);
@@ -218,16 +218,16 @@ fn sample_lut(temperature: f32, moisture: f32, elevation: f32) -> (u8, u8, u8) {
     // Elevation factor for mountain colors (0 to 1, higher = more mountain influence)
     let e = (elevation / 3000.0).clamp(0.0, 1.0);
 
-    // Base hue: transitions from blue (cold) through green to yellow/brown (hot)
-    let base_hue = if t < 0.3 {
-        // Cold: blue to cyan
-        200.0 + t * 100.0  // 200-230
-    } else if t < 0.6 {
-        // Temperate: green range
-        80.0 + (t - 0.3) * 150.0  // 80-125
+    // Base hue: smoothly transitions from polar cyan/blue (200) -> boreal/temperate green (135-75) -> warm golden/desert (35)
+    let base_hue = if t < 0.35 {
+        let s = t / 0.35;
+        200.0 - s * 65.0
+    } else if t < 0.65 {
+        let s = (t - 0.35) / 0.30;
+        135.0 - s * 60.0
     } else {
-        // Hot: yellow to brown
-        60.0 - (t - 0.6) * 75.0  // 60-30
+        let s = ((t - 0.65) / 0.35).clamp(0.0, 1.0);
+        75.0 - s * 40.0
     };
 
     // Moisture affects saturation: dry = desaturated, wet = saturated
@@ -329,6 +329,10 @@ pub struct MapExportConfig {
     pub height_exaggeration: f32,
     /// Blend LUT with biome colors (0.0 = pure LUT, 1.0 = pure biome)
     pub lut_biome_blend: f32,
+    /// Integer upscaling factor (1 = native, 2 = 2x, 4 = 4x, etc.)
+    pub upscale_factor: usize,
+    /// Explicit target resolution (width, height) overriding upscale_factor if specified
+    pub target_resolution: Option<(usize, usize)>,
 }
 
 impl Default for MapExportConfig {
@@ -341,6 +345,8 @@ impl Default for MapExportConfig {
             hillshade_intensity: 0.5,
             height_exaggeration: 0.035,
             lut_biome_blend: 0.4, // 40% biome color, 60% LUT
+            upscale_factor: 1,
+            target_resolution: None,
         }
     }
 }
@@ -461,48 +467,204 @@ fn compute_water_specular(
     spec.powf(16.0)
 }
 
-/// Export the visual map (the pretty version with shading and blending)
+/// 1D Catmull-Rom cubic spline interpolation
+#[inline(always)]
+fn catmull_rom_1d(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    0.5 * ((2.0 * p1) +
+           (-p0 + p2) * t +
+           (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 +
+           (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
+}
+
+/// Sample continuous sub-pixel field using Catmull-Rom bicubic spline with seamless X-wrapping
+#[inline(always)]
+fn sample_tilemap_catmull_rom(map: &Tilemap<f32>, u: f32, v: f32) -> f32 {
+    let w = map.width as i32;
+    let h = map.height as i32;
+
+    let x0 = u.floor() as i32;
+    let y0 = v.floor() as i32;
+    let tx = u - x0 as f32;
+    let ty = v - y0 as f32;
+
+    let mut col_vals = [0.0f32; 4];
+    for (j, dy) in (-1..=2).enumerate() {
+        let y_sample = (y0 + dy).clamp(0, h - 1) as usize;
+        let p0 = *map.get((x0 - 1).rem_euclid(w) as usize, y_sample);
+        let p1 = *map.get(x0.rem_euclid(w) as usize, y_sample);
+        let p2 = *map.get((x0 + 1).rem_euclid(w) as usize, y_sample);
+        let p3 = *map.get((x0 + 2).rem_euclid(w) as usize, y_sample);
+        col_vals[j] = catmull_rom_1d(p0, p1, p2, p3, tx);
+    }
+
+    catmull_rom_1d(col_vals[0], col_vals[1], col_vals[2], col_vals[3], ty)
+}
+
+/// Biome family colour at fractional simulation coordinates, bilinearly blended between the
+/// four surrounding cells (cell centres sit at integer coordinates; x wraps).
+pub(crate) fn bilinear_biome_color(biomes: &Tilemap<ExtendedBiome>, u: f32, v: f32) -> (u8, u8, u8) {
+    let (w, h) = (biomes.width as i64, biomes.height as i64);
+    let (x0, y0) = (u.floor(), v.floor());
+    let (tx, ty) = (u - x0, v - y0);
+    let xi = |dx: i64| ((x0 as i64 + dx).rem_euclid(w)) as usize;
+    let yi = |dy: i64| ((y0 as i64 + dy).clamp(0, h - 1)) as usize;
+    let c = |dx: i64, dy: i64| get_family_color(*biomes.get(xi(dx), yi(dy)));
+    let (c00, c10, c01, c11) = (c(0, 0), c(1, 0), c(0, 1), c(1, 1));
+    let mix = |a: u8, b: u8, cc: u8, d: u8| {
+        let top = a as f32 * (1.0 - tx) + b as f32 * tx;
+        let bot = cc as f32 * (1.0 - tx) + d as f32 * tx;
+        (top * (1.0 - ty) + bot * ty) as u8
+    };
+    (
+        mix(c00.0, c10.0, c01.0, c11.0),
+        mix(c00.1, c10.1, c01.1, c11.1),
+        mix(c00.2, c10.2, c01.2, c11.2),
+    )
+}
+
+/// Rasterize the Bezier river network at output resolution as anti-aliased strokes.
+/// Returns per-pixel river opacity (0 = none). Rivers keep their curved shape at any
+/// upscale instead of becoming the stair-stepped blocks of their simulation cells, and
+/// width/opacity follow discharge so headwaters fade in rather than starting abruptly.
+fn rasterize_rivers_hires(
+    network: &crate::erosion::RiverNetwork,
+    sim_w: usize,
+    sim_h: usize,
+    out_w: usize,
+    out_h: usize,
+) -> Vec<f32> {
+    const MIN_DRAW_FLOW: f32 = 25.0;
+    const FULL_DRAW_FLOW: f32 = 60.0;
+    let sx = out_w as f32 / sim_w as f32;
+    let sy = out_h as f32 / sim_h as f32;
+    let mut cov = vec![0.0f32; out_w * out_h];
+
+    for seg in &network.segments {
+        if seg.p0.flow_accumulation.max(seg.p3.flow_accumulation) < MIN_DRAW_FLOW {
+            continue;
+        }
+        let len_px = seg.approximate_length(8) * sx.max(sy);
+        let samples = (len_px / 0.35).ceil() as usize + 2;
+        for i in 0..=samples {
+            let pt = seg.evaluate(i as f32 / samples as f32);
+            let fade = ((pt.flow_accumulation - MIN_DRAW_FLOW) / (FULL_DRAW_FLOW - MIN_DRAW_FLOW)).clamp(0.0, 1.0);
+            if fade <= 0.0 {
+                continue;
+            }
+            let size = ((pt.flow_accumulation / MIN_DRAW_FLOW).ln() / 500.0f32.ln()).clamp(0.0, 1.0);
+            let strength = fade * (0.55 + 0.35 * size);
+            let r = (pt.width * sx * 0.5).max(0.45);
+            let cx = pt.world_x * sx;
+            let cy = pt.world_y * sy;
+            let (x0, x1) = ((cx - r - 1.0).floor() as i64, (cx + r + 1.0).ceil() as i64);
+            let (y0, y1) = ((cy - r - 1.0).floor() as i64, (cy + r + 1.0).ceil() as i64);
+            for py in y0..=y1 {
+                if py < 0 || py >= out_h as i64 {
+                    continue;
+                }
+                for px in x0..=x1 {
+                    let dx = px as f32 + 0.5 - cx;
+                    let dy = py as f32 + 0.5 - cy;
+                    let c = (r + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0) * strength;
+                    if c > 0.0 {
+                        let idx = py as usize * out_w + px.rem_euclid(out_w as i64) as usize;
+                        if c > cov[idx] {
+                            cov[idx] = c;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    cov
+}
+
+/// Export the visual map (the pretty version with shading, blending, and optional procedural super-resolution)
 pub fn export_visual_map(
     world: &WorldData,
     filename: &str,
     config: &MapExportConfig,
 ) -> Result<(), Box<dyn Error>> {
-    let width = world.heightmap.width;
-    let height = world.heightmap.height;
+    let sim_w = world.heightmap.width;
+    let sim_h = world.heightmap.height;
     const RIVER_THRESHOLD: f32 = 50.0;
 
-    let hillshade = if config.hillshade {
-        compute_hillshade(&world.heightmap, config.height_exaggeration)
-    } else {
-        vec![1.0; width * height]
+    let upscale_factor = config.upscale_factor.max(1);
+    let (out_w, out_h) = match config.target_resolution {
+        Some((tw, th)) => (tw.max(16), th.max(16)),
+        None => (sim_w * upscale_factor, sim_h * upscale_factor),
     };
 
     let mut rng = ChaCha8Rng::seed_from_u64(config.dither_seed);
-    let mut img = ImageBuffer::new(width as u32, height as u32);
+    let mut img = ImageBuffer::new(out_w as u32, out_h as u32);
 
-    for y in 0..height {
-        for x in 0..width {
-            let biome = *world.biomes.get(x, y);
-            let h = *world.heightmap.get(x, y);
-            let temp = *world.temperature.get(x, y);
-            let moist = *world.moisture.get(x, y);
-            let water_depth = *world.water_depth.get(x, y);
+    let upscaled = out_w > sim_w || out_h > sim_h;
+
+    let river_cov = world
+        .river_network
+        .as_ref()
+        .map(|net| rasterize_rivers_hires(net, sim_w, sim_h, out_w, out_h));
+
+    let light_dir = (-0.6_f32, -0.6_f32, 0.5_f32);
+    let light_len = (light_dir.0 * light_dir.0 + light_dir.1 * light_dir.1 + light_dir.2 * light_dir.2).sqrt();
+    let light_dir = (light_dir.0 / light_len, light_dir.1 / light_len, light_dir.2 / light_len);
+
+    for y_out in 0..out_h {
+        let sim_v = ((y_out as f32 + 0.5) / out_h as f32) * (sim_h as f32);
+        for x_out in 0..out_w {
+            let sim_u = ((x_out as f32 + 0.5) / out_w as f32) * (sim_w as f32);
+
+            let nearest_x = (sim_u.round() as usize).rem_euclid(sim_w);
+            let nearest_y = (sim_v.round() as usize).clamp(0, sim_h - 1);
+
+            let biome = *world.biomes.get(nearest_x, nearest_y);
+            let h = sample_tilemap_catmull_rom(&world.heightmap, sim_u, sim_v);
+            let temp = sample_tilemap_catmull_rom(&world.temperature, sim_u, sim_v);
+            let moist = sample_tilemap_catmull_rom(&world.moisture, sim_u, sim_v);
+            let water_depth = sample_tilemap_catmull_rom(&world.water_depth, sim_u, sim_v);
 
             let flow_acc = world.flow_accumulation.as_ref()
-                .map(|fa| *fa.get(x, y))
+                .map(|fa| *fa.get(nearest_x, nearest_y))
                 .unwrap_or(0.0);
-            let is_river = flow_acc > RIVER_THRESHOLD;
+            // Prefer the smooth Bezier network; fall back to per-cell flow accumulation.
+            let river_opacity = match &river_cov {
+                Some(cov) => cov[y_out * out_w + x_out],
+                None if flow_acc > RIVER_THRESHOLD => 0.5 + (flow_acc / 200.0).min(1.0) * 0.35,
+                None => 0.0,
+            };
+            let is_river = h >= 0.0 && river_opacity > 0.02;
+            // Thin anti-aliased rivers keep the terrain's hillshade underneath them.
+            let is_water = h < 0.0 || water_depth > 0.5 || (river_cov.is_none() && is_river);
 
-            let is_water = h < 0.0 || is_river || water_depth > 0.5;
             let shade = if is_water || !config.hillshade {
                 1.0
             } else {
-                let base_shade = hillshade[y * width + x];
-                // Reduce hillshade effect by intensity
+                let delta = 0.5f32;
+                let h_l = sample_tilemap_catmull_rom(&world.heightmap, sim_u - delta, sim_v);
+                let h_r = sample_tilemap_catmull_rom(&world.heightmap, sim_u + delta, sim_v);
+                let h_u = sample_tilemap_catmull_rom(&world.heightmap, sim_u, sim_v - delta);
+                let h_d = sample_tilemap_catmull_rom(&world.heightmap, sim_u, sim_v + delta);
+
+                let dzdx = (h_r - h_l) * config.height_exaggeration / (2.0 * delta);
+                let dzdy = (h_d - h_u) * config.height_exaggeration / (2.0 * delta);
+
+                let nx = -dzdx;
+                let ny = -dzdy;
+                let nz = 1.0f32;
+                let n_len = (nx * nx + ny * ny + nz * nz).sqrt();
+                let nx = nx / n_len;
+                let ny = ny / n_len;
+                let nz = nz / n_len;
+
+                let n_dot_l = nx * light_dir.0 + ny * light_dir.1 + nz * light_dir.2;
+                let half_lambert = (n_dot_l * 0.5 + 0.5).powi(2);
+                let base_shade = (0.25 + half_lambert * 0.75).clamp(0.2, 1.15);
                 1.0 + (base_shade - 1.0) * config.hillshade_intensity
             };
 
-            // First, compute the terrain color (even for water, we'll blend it)
+            // First, compute terrain color
             let terrain_color = {
                 let lut_color = if config.use_lut {
                     sample_lut(temp, moist, h.max(0.0))
@@ -510,12 +672,19 @@ pub fn export_visual_map(
                     get_family_color(biome)
                 };
 
-                let biome_color = get_family_color(biome);
+                // When upscaling, blend biome colours bilinearly between the surrounding cells so
+                // biome borders stay smooth instead of becoming one block per simulation cell.
+                let biome_color = if upscaled {
+                    bilinear_biome_color(&world.biomes, sim_u, sim_v)
+                } else {
+                    get_family_color(biome)
+                };
                 let mut color = blend_colors(lut_color, biome_color, config.lut_biome_blend);
 
-                // Apply dithering at borders
-                if config.dithering {
-                    if let Some((neighbor_biome, _)) = get_border_blend(&world.biomes, x, y, &mut rng) {
+                // Apply dithering at borders (native resolution only: upscaled, it paints
+                // whole simulation cells and looks blocky)
+                if config.dithering && !upscaled {
+                    if let Some((neighbor_biome, _)) = get_border_blend(&world.biomes, nearest_x, nearest_y, &mut rng) {
                         let neighbor_color = get_family_color(neighbor_biome);
                         color = blend_colors(color, neighbor_color, 0.3);
                     }
@@ -531,14 +700,13 @@ pub fn export_visual_map(
             let (r, g, b) = if h < 0.0 {
                 // Ocean - depth-based color with subtle specular
                 let depth_factor = ((-h) / 500.0).min(1.0);
-                let spec = compute_water_specular(&world.heightmap, x, y) * 0.3;
+                let spec = compute_water_specular(&world.heightmap, nearest_x, nearest_y) * 0.3;
 
                 // Deep ocean is darker, shallow is lighter
                 let base_r = 15.0 + depth_factor * 15.0;
                 let base_g = 40.0 + depth_factor * 40.0;
                 let base_b = 90.0 + depth_factor * 110.0;
 
-                // Add specular highlight
                 let r = (base_r + spec * 200.0).clamp(0.0, 255.0) as u8;
                 let g = (base_g + spec * 200.0).clamp(0.0, 255.0) as u8;
                 let b = (base_b + spec * 150.0).clamp(0.0, 255.0) as u8;
@@ -546,18 +714,12 @@ pub fn export_visual_map(
                 (r, g, b)
             } else if is_river {
                 // River - semi-transparent over terrain with specular highlight
-                let river_base = (50, 120, 180); // Slightly darker river blue
+                let river_base = (50, 120, 180);
+                let opacity = river_opacity;
 
-                // River width affects opacity (wider rivers = more opaque)
-                let river_width = (flow_acc / 200.0).min(1.0);
-                let opacity = 0.5 + river_width * 0.35; // 50-85% opacity
-
-                // Blend river color with terrain beneath
                 let blended = blend_colors(terrain_color, river_base, opacity);
-
-                // Add specular highlight for wet look
-                let spec = compute_water_specular(&world.heightmap, x, y);
-                let spec_intensity = 0.6; // Strong specular for rivers
+                let spec = compute_water_specular(&world.heightmap, nearest_x, nearest_y);
+                let spec_intensity = 0.6;
 
                 let r = (blended.0 as f32 + spec * spec_intensity * 255.0).clamp(0.0, 255.0) as u8;
                 let g = (blended.1 as f32 + spec * spec_intensity * 255.0).clamp(0.0, 255.0) as u8;
@@ -567,12 +729,10 @@ pub fn export_visual_map(
             } else if water_depth > 0.5 {
                 // Lake - semi-transparent with specular
                 let lake_base = (60, 110, 170);
-                let opacity = 0.6 + (water_depth / 10.0).min(0.3); // 60-90% opacity
+                let opacity = 0.6 + (water_depth / 10.0).min(0.3);
 
                 let blended = blend_colors(terrain_color, lake_base, opacity);
-
-                // Specular highlight
-                let spec = compute_water_specular(&world.heightmap, x, y);
+                let spec = compute_water_specular(&world.heightmap, nearest_x, nearest_y);
                 let spec_intensity = 0.5;
 
                 let r = (blended.0 as f32 + spec * spec_intensity * 255.0).clamp(0.0, 255.0) as u8;
@@ -581,11 +741,10 @@ pub fn export_visual_map(
 
                 (r, g, b)
             } else {
-                // Land - use pre-computed terrain color
                 terrain_color
             };
 
-            img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
+            img.put_pixel(x_out as u32, y_out as u32, Rgb([r, g, b]));
         }
     }
 

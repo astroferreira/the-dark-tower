@@ -457,17 +457,17 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
     }
 
     let seeds = WorldSeeds::from_master(seed);
-    let mut rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
     let scale = MapScale::default();
 
-    // Generate tectonic plates
-    let (plate_map, plates) = plates::generate_plates(width, height, None, world_style, &mut rng);
-
-    // Calculate stress at plate boundaries
-    let stress_map = plates::calculate_stress(&plate_map, &plates);
-
-    // Generate heightmap
-    let heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
+    // Simulate plate tectonics (plates drift, collide, subduct and rift) and derive terrain
+    // from the resulting crust.
+    let terrain = plates::generate_tectonic_terrain(
+        width, height, None, world_style, &seeds, &plates::TectonicParams::default(),
+    );
+    let plates::TectonicTerrain { plate_map, plates, stress_map, mut heightmap, .. } = terrain;
+    heightmap::apply_fjord_incisions(&mut heightmap, seeds.heightmap, &scale);
+    heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
+    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &scale);
 
     // Generate climate with domain warping for organic zone boundaries
     let temperature = climate::generate_temperature_with_seed(
@@ -486,8 +486,9 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
         seeds.biomes,
     );
 
-    // Detect water bodies with water depth
-    let (water_body_map, water_bodies_list, water_depth) = water_bodies::detect_water_bodies(&heightmap);
+    // Detect water bodies with climate coupling
+    let (water_body_map, water_bodies_list, water_depth, flow_acc, flow_dir) =
+        water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture);
 
     // Apply rare biome replacements
     biomes::apply_biome_replacements(
@@ -524,8 +525,16 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
         seeds.biomes,
     );
 
-    // Generate Bezier river network
-    let river_network = crate::erosion::trace_bezier_rivers(&heightmap, None, seeds.rivers);
+    // Generate Bezier river network with true flow accumulation and lake connectivity
+    let river_network = crate::erosion::trace_bezier_rivers_with_flow(
+        &heightmap,
+        &flow_acc,
+        &flow_dir,
+        Some(&water_body_map),
+        Some(&water_bodies_list),
+        None,
+        seeds.rivers,
+    );
 
     // Calculate region handshakes for hierarchical zoom
     let handshake_input = region::HandshakeInput {
@@ -614,8 +623,9 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
         Some(underground_water_features),
     );
 
-    // Attach region handshakes
+    // Attach region handshakes and flow accumulation
     world.handshakes = Some(world_handshakes);
+    world.set_flow_accumulation(flow_acc);
 
     world
 }
@@ -686,3 +696,4 @@ pub fn generate_test_world() -> WorldData {
         volcanoes: Vec::new(),
     }
 }
+

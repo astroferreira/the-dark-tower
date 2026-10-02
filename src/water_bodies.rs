@@ -7,7 +7,11 @@
 use std::collections::VecDeque;
 use crate::tilemap::Tilemap;
 use crate::biomes::ExtendedBiome;
-use crate::erosion::rivers::{compute_flow_direction, compute_flow_accumulation};
+use crate::erosion::rivers::{
+    compute_flow_direction, compute_flow_accumulation, compute_flow_accumulation_with_runoff,
+    fill_depressions_and_route, analyze_depression_basins, NO_FLOW,
+};
+use crate::climate::compute_effective_runoff;
 
 /// Type of water body
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -64,6 +68,14 @@ pub struct WaterBody {
     pub touches_south_edge: bool,
     /// Bounding box (min_x, min_y, max_x, max_y)
     pub bounds: (usize, usize, usize, usize),
+    /// Surface water level
+    pub water_level: f32,
+    /// Maximum water depth
+    pub max_depth: f32,
+    /// Whether this is an endorheic terminal basin (salt lake / playa)
+    pub is_endorheic: bool,
+    /// Spillway sill outlet coordinate if exorheic lake
+    pub spillway: Option<(usize, usize)>,
 }
 
 impl WaterBody {
@@ -78,6 +90,10 @@ impl WaterBody {
             touches_north_edge: false,
             touches_south_edge: false,
             bounds: (usize::MAX, usize::MAX, 0, 0),
+            water_level: 0.0,
+            max_depth: 0.0,
+            is_endorheic: false,
+            spillway: None,
         }
     }
 
@@ -134,24 +150,243 @@ const SEA_LEVEL: f32 = 0.0;
 /// Epsilon for floating point comparisons
 const WATER_EPSILON: f32 = 1e-4;
 
-/// Detect and classify all water bodies in the world.
+/// Hydrologically accurate water body detection and classification.
 ///
-/// Algorithm:
-/// 1. Use water_level map to find submerged tiles (water_level > terrain)
-/// 2. Flood-fill from map edges to identify ocean (below sea level + connected)
-/// 3. Remaining submerged tiles are lakes (including alpine lakes)
-/// 4. Use flow accumulation to detect rivers on DRY land
+/// 1. Runs Priority-Flood without epsilon elevation accumulation and routes flat lake beds to spillway sills.
+/// 2. Integrates climate runoff (P - E) into flow accumulation.
+/// 3. Analyzes closed depression basins:
+///    - Shallow puddles / river valley channel steps (D_max < 1.0m or Area < 4) are not lakes;
+///      rivers flow through them without creating fake water bodies.
+///    - Exorheic Lakes (Q_in > E_pot): Fill to the spillway sill elevation Z_sill,
+///      submerging the depression floor up to the sill, and overflow at the spillway outlet.
+///    - Endorheic Lakes (Q_in <= E_pot): Water cannot reach the sill; only the lowest
+///      equilibrium area A_eq = Q_in / E_rate is submerged, forming a terminal basin.
+/// 4. Identifies ocean by flood-filling below-sea-level tiles from polar map edges.
+/// 5. Classifies dry-land river channels using flow accumulation.
+pub fn detect_water_bodies_hydrological(
+    heightmap: &Tilemap<f32>,
+    temperature: Option<&Tilemap<f32>>,
+    moisture: Option<&Tilemap<f32>>,
+) -> (
+    Tilemap<WaterBodyId>,
+    Vec<WaterBody>,
+    Tilemap<f32>,
+    Tilemap<f32>,
+    Tilemap<u8>,
+) {
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    // 1. Calculate effective runoff
+    let runoff = if let (Some(temp), Some(moist)) = (temperature, moisture) {
+        compute_effective_runoff(heightmap, temp, moist)
+    } else {
+        let mut r = Tilemap::new_with(width, height, 0.0f32);
+        for y in 0..height {
+            for x in 0..width {
+                if *heightmap.get(x, y) >= 0.0 {
+                    r.set(x, y, 1.0);
+                }
+            }
+        }
+        r
+    };
+
+    // 2. Priority-Flood depression filling and flat routing
+    let (filled, flat_dir) = fill_depressions_and_route(heightmap);
+    let mut flow_dir = compute_flow_direction(&filled);
+    for y in 0..height {
+        for x in 0..width {
+            let fd = *flat_dir.get(x, y);
+            if fd != NO_FLOW {
+                flow_dir.set(x, y, fd);
+            }
+        }
+    }
+
+    // 3. Flow accumulation with runoff
+    let flow_acc = compute_flow_accumulation_with_runoff(&filled, &flow_dir, Some(&runoff));
+
+    // 4. Basin analysis
+    let basins = analyze_depression_basins(heightmap, &filled, &flow_dir);
+
+    // Output structures
+    let mut water_map = Tilemap::new_with(width, height, WaterBodyId::NONE);
+    let mut water_depth = Tilemap::new_with(width, height, 0.0f32);
+    let mut water_bodies = Vec::new();
+    let mut visited = Tilemap::new_with(width, height, false);
+
+    // Step A: Ocean detection - flood fill from polar edges (y = 0 and y = height - 1)
+    let mut ocean = WaterBody::new(WaterBodyId::OCEAN, WaterBodyType::Ocean);
+    let mut queue = VecDeque::new();
+
+    for x in 0..width {
+        if *heightmap.get(x, 0) <= SEA_LEVEL {
+            queue.push_back((x, 0));
+            visited.set(x, 0, true);
+        }
+        if *heightmap.get(x, height - 1) <= SEA_LEVEL {
+            queue.push_back((x, height - 1));
+            visited.set(x, height - 1, true);
+        }
+    }
+
+    while let Some((x, y)) = queue.pop_front() {
+        water_map.set(x, y, WaterBodyId::OCEAN);
+        let h = *heightmap.get(x, y);
+        ocean.add_tile(x, y, h, height);
+        water_depth.set(x, y, (-h).max(0.0));
+
+        for (nx, ny) in heightmap.neighbors(x, y) {
+            let nh = *heightmap.get(nx, ny);
+            if nh <= SEA_LEVEL && !*visited.get(nx, ny) {
+                visited.set(nx, ny, true);
+                queue.push_back((nx, ny));
+            }
+        }
+    }
+
+    if ocean.tile_count > 0 {
+        water_bodies.push(ocean);
+    }
+
+    // Step B: Lake identification from depression basins
+    let mut next_id = 2u16;
+
+    for basin in basins {
+        // Filter out tiny puddles and shallow river valley channel steps
+        // (minimum depth 1.0m and minimum area 3 tiles)
+        if basin.max_depth < 1.0 || basin.area < 3 {
+            continue;
+        }
+
+        // Calculate water budget
+        let q_in = *flow_acc.get(basin.spillway_tile.0, basin.spillway_tile.1);
+
+        let avg_t = if let Some(temp) = temperature {
+            basin.tiles.iter().map(|&(tx, ty)| *temp.get(tx, ty)).sum::<f32>() / basin.area as f32
+        } else {
+            15.0
+        };
+        let avg_m = if let Some(moist) = moisture {
+            basin.tiles.iter().map(|&(tx, ty)| *moist.get(tx, ty)).sum::<f32>() / basin.area as f32
+        } else {
+            0.5
+        };
+
+        // Evaporation rate per unit area (higher in hot, arid zones)
+        let evap_rate = (0.5 * (avg_t / 15.0).max(0.2) * (1.2 - avg_m).max(0.2)).max(0.1);
+        let pot_evap = evap_rate * basin.area as f32;
+
+        // Only evaluate endorheic water budgets when climate data is present
+        let is_endorheic = if temperature.is_some() && moisture.is_some() {
+            q_in <= pot_evap
+        } else {
+            false
+        };
+
+        let (submerged_tiles, lake_water_level) = if !is_endorheic {
+            // Exorheic: fills to spillway elevation
+            let level = basin.spillway_elevation;
+            let tiles: Vec<(usize, usize)> = basin.tiles
+                .into_iter()
+                .filter(|&(tx, ty)| *heightmap.get(tx, ty) < level - 0.05)
+                .collect();
+            (tiles, level)
+        } else {
+            // Endorheic: fills to equilibrium surface area
+            let eq_area = ((q_in / evap_rate).round() as usize).clamp(1, basin.area);
+            let mut sorted_tiles = basin.tiles;
+            sorted_tiles.sort_by(|a, b| {
+                heightmap.get(a.0, a.1).partial_cmp(heightmap.get(b.0, b.1)).unwrap()
+            });
+            let submerged = sorted_tiles[..eq_area.min(sorted_tiles.len())].to_vec();
+            let level = if let Some(last) = submerged.last() {
+                *heightmap.get(last.0, last.1) + 0.1
+            } else {
+                basin.spillway_elevation
+            };
+            (submerged, level)
+        };
+
+        if submerged_tiles.is_empty() {
+            continue;
+        }
+
+        let lake_id = WaterBodyId(next_id);
+        next_id += 1;
+
+        let mut lake = WaterBody::new(lake_id, WaterBodyType::Lake);
+        lake.water_level = lake_water_level;
+        lake.is_endorheic = is_endorheic;
+        lake.spillway = if is_endorheic { None } else { Some(basin.spillway_tile) };
+
+        let mut max_d = 0.0f32;
+        for &(tx, ty) in &submerged_tiles {
+            if *water_map.get(tx, ty) == WaterBodyId::NONE {
+                let th = *heightmap.get(tx, ty);
+                let d = (lake_water_level - th).max(0.0);
+                water_map.set(tx, ty, lake_id);
+                water_depth.set(tx, ty, d);
+                max_d = max_d.max(d);
+                lake.add_tile(tx, ty, th, height);
+                visited.set(tx, ty, true);
+            }
+        }
+        lake.max_depth = max_d;
+
+        if lake.tile_count > 0 {
+            water_bodies.push(lake);
+        }
+    }
+
+    // Step C: River detection - DRY LAND tiles with high flow accumulation
+    let river_id = WaterBodyId(next_id);
+    let mut river = WaterBody::new(river_id, WaterBodyType::River);
+
+    for y in 0..height {
+        for x in 0..width {
+            if water_map.get(x, y).is_none() && *heightmap.get(x, y) >= 0.0 {
+                let flow = *flow_acc.get(x, y);
+                if flow >= RIVER_FLOW_THRESHOLD {
+                    water_map.set(x, y, river_id);
+                    river.add_tile(x, y, *heightmap.get(x, y), height);
+                }
+            }
+        }
+    }
+
+    if river.tile_count > 0 {
+        water_bodies.push(river);
+    }
+
+    (water_map, water_bodies, water_depth, flow_acc, flow_dir)
+}
+
+/// Detect water bodies with climate coupling (temperature and moisture).
+pub fn detect_water_bodies_climate(
+    heightmap: &Tilemap<f32>,
+    temperature: &Tilemap<f32>,
+    moisture: &Tilemap<f32>,
+) -> (
+    Tilemap<WaterBodyId>,
+    Vec<WaterBody>,
+    Tilemap<f32>,
+    Tilemap<f32>,
+    Tilemap<u8>,
+) {
+    detect_water_bodies_hydrological(heightmap, Some(temperature), Some(moisture))
+}
+
+/// Detect and classify all water bodies in the world.
 ///
 /// Returns a tilemap of water body IDs, a list of water body info, and the water depth map.
 pub fn detect_water_bodies(
     heightmap: &Tilemap<f32>,
 ) -> (Tilemap<WaterBodyId>, Vec<WaterBody>, Tilemap<f32>) {
-    // Compute water level (fills depressions to find lake surfaces)
-    let water_level = compute_water_level(heightmap);
-    // Compute flow for river detection
-    let flow_dir = compute_flow_direction(heightmap);
-    let flow_acc = compute_flow_accumulation(heightmap, &flow_dir);
-    detect_water_bodies_full(heightmap, &water_level, &flow_acc)
+    let (water_map, water_bodies, water_depth, _, _) =
+        detect_water_bodies_hydrological(heightmap, None, None);
+    (water_map, water_bodies, water_depth)
 }
 
 /// Compute water surface level using depression filling.
@@ -512,8 +747,10 @@ pub fn determine_lake_fantasy_biome(
     avg_stress: f32,
     rng_value: f32, // 0.0-1.0 random value for this lake
 ) -> Option<ExtendedBiome> {
-    // Only convert some lakes (based on rng_value and conditions)
-    // Higher chance for more extreme conditions
+    // Endorheic terminal lake in warm/arid climate -> Salt Flats
+    if water_body.is_endorheic && avg_temp > 5.0 {
+        return Some(ExtendedBiome::SaltFlats);
+    }
 
     // Frozen Lake: Very cold regions
     if avg_temp < -5.0 && rng_value < 0.7 {

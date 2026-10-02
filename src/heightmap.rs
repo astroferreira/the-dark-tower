@@ -13,6 +13,103 @@ fn seed_to_z(seed: u64, offset: f64) -> f64 {
     hash + offset
 }
 
+/// Convert 2D map coordinates (normalized nx in [0, 1], ny in [0, 1]) to 3D cylindrical coordinates
+/// to guarantee seamless periodic wrapping across longitude (X) without grid-plane resonance.
+#[inline]
+fn cylindrical_coords(nx: f64, ny: f64, radius: f64) -> [f64; 3] {
+    let angle = nx * std::f64::consts::TAU;
+    let cx = angle.cos() * radius;
+    let cz = angle.sin() * radius;
+    let cy = (ny - 0.5) * radius * 2.0;
+
+    // Rotate slightly so equator and parallels never align with Cartesian integer lattice planes
+    let cos_a = 0.93969; // cos(20 deg)
+    let sin_a = 0.34202; // sin(20 deg)
+    let rx = cx;
+    let ry = cy * cos_a - cz * sin_a + 17.382;
+    let rz = cy * sin_a + cz * cos_a + 31.914;
+    [rx + 11.234, ry, rz]
+}
+
+/// Fractional Brownian Motion in 3D
+fn fbm_3d(
+    noise: &Perlin,
+    p: [f64; 3],
+    octaves: u32,
+    persistence: f64,
+    lacunarity: f64,
+) -> f64 {
+    let mut total = 0.0;
+    let mut amplitude = 1.0;
+    let mut frequency = 1.0;
+    let mut max_value = 0.0;
+
+    for _ in 0..octaves {
+        total += amplitude * noise.get([p[0] * frequency, p[1] * frequency, p[2] * frequency]);
+        max_value += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    total / max_value
+}
+
+/// Multi-octave Ridged Multifractal noise in 3D (sharp alpine crests, arêtes, and cordilleras)
+fn ridged_fbm_3d(
+    noise: &Perlin,
+    p: [f64; 3],
+    octaves: u32,
+    persistence: f64,
+    lacunarity: f64,
+    power: f64,
+) -> f32 {
+    let mut total = 0.0;
+    let mut amplitude = 1.0;
+    let mut frequency = 1.0;
+    let mut max_val = 0.0;
+
+    for i in 0..octaves {
+        let n = noise.get([
+            p[0] * frequency,
+            p[1] * frequency,
+            p[2] * frequency + i as f64 * 30.0,
+        ]);
+        let ridge = (1.0 - n.abs()).max(0.0).powf(power);
+        total += amplitude * ridge;
+        max_val += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    (total / max_val) as f32
+}
+
+/// Domain warping in 3D
+fn domain_warp_cylindrical(
+    p: [f64; 3],
+    warp_noise: &Perlin,
+    warp_strength: f64,
+    warp_frequency: f64,
+) -> [f64; 3] {
+    let wx = warp_noise.get([p[0] * warp_frequency, p[1] * warp_frequency, p[2] * warp_frequency]);
+    let wy = warp_noise.get([
+        p[0] * warp_frequency + 100.0,
+        p[1] * warp_frequency + 100.0,
+        p[2] * warp_frequency + 100.0,
+    ]);
+    let wz = warp_noise.get([
+        p[0] * warp_frequency + 200.0,
+        p[1] * warp_frequency + 200.0,
+        p[2] * warp_frequency + 200.0,
+    ]);
+
+    [
+        p[0] + wx * warp_strength,
+        p[1] + wy * warp_strength,
+        p[2] + wz * warp_strength,
+    ]
+}
+
 // =============================================================================
 // TERRAIN PARAMETERS
 // =============================================================================
@@ -530,8 +627,24 @@ pub fn apply_noise_stack(
 // Continental elevations (meters)
 const CONTINENTAL_MIN: f32 = 50.0;       // Lowland plains
 const CONTINENTAL_MAX: f32 = 600.0;      // Base highland plateaus (increased)
-const COASTAL_HEIGHT: f32 = 5.0;         // Beach level
+const COASTAL_HEIGHT: f32 = 8.0;         // Beach level
 const SHELF_DEPTH: f32 = -150.0;         // Continental shelf
+
+// Coastal beach shaping parameters
+const BEACH_WIDTH_KM: f32 = 8.0;         // Target beach/shore strip width in km
+const BEACH_MAX_RISE: f32 = 120.0;       // Max elevation at inner beach edge (m)
+const BEACH_CAP_EXPONENT: f32 = 1.5;     // Curve for beach rise inland
+const BEACH_CLIFF_STRESS_MIN: f32 = 0.25; // Start preserving cliffs at this stress
+const BEACH_CLIFF_STRESS_MAX: f32 = 0.45; // Full cliff preservation at this stress
+const BEACH_WATER_WIDTH_KM: f32 = 12.0;  // Nearshore shallow water width in km
+const BEACH_WATER_SHORE_DEPTH: f32 = -3.0; // Depth right at shore (m)
+const BEACH_WATER_OUTER_DEPTH: f32 = -80.0; // Depth at outer edge of nearshore shelf (m)
+
+// Inland relief uplift parameters
+const INLAND_UPLIFT_DISTANCE_KM: f32 = 300.0; // Distance inland where uplift reaches full strength
+const INLAND_UPLIFT_BASE: f32 = 300.0;        // Base uplift at interior (m)
+const INLAND_UPLIFT_STRESS: f32 = 700.0;      // Stress-weighted uplift at interior (m)
+const INLAND_UPLIFT_EXPONENT: f32 = 1.2;      // Curve for inland uplift ramp
 
 // Oceanic elevations
 const OCEAN_FLOOR: f32 = -5000.0;        // Deep ocean baseline (was -4000)
@@ -615,9 +728,9 @@ pub fn generate_heightmap_scaled(
     let warp_noise = Perlin::new(1).set_seed(seed as u32 + 1111);
     let ridge_noise = Perlin::new(1).set_seed(seed as u32 + 2222);
     let detail_noise = Perlin::new(1).set_seed(seed as u32 + 3333);
-    let coast_noise = Perlin::new(1).set_seed(seed as u32 + 4444);  // For fractal coastlines
+    let coast_noise = Perlin::new(1).set_seed(seed as u32 + 4444);
     
-    // Pre-compute continental distance field for smooth blending
+    // Pre-compute continental distance field
     let continental_distance = compute_continental_distance(plate_map, plates);
     
     // Pre-compute distance from coast for gradient
@@ -628,7 +741,7 @@ pub fn generate_heightmap_scaled(
     for y in 0..height {
         for x in 0..width {
             let plate_id = *plate_map.get(x, y);
-            if plate_id.is_none() {
+            if plate_id.is_none() || (plate_id.0 as usize) >= plates.len() {
                 heightmap.set(x, y, OCEAN_FLOOR);
                 continue;
             }
@@ -638,77 +751,97 @@ pub fn generate_heightmap_scaled(
             let cont_dist = *continental_distance.get(x, y);
             let raw_coast_dist = *coast_distance.get(x, y);
             
-            // Normalize coordinates for noise sampling
             let nx = x as f64 / width as f64;
             let ny = y as f64 / height as f64;
             
-            // Apply domain warping for organic shapes
-            let (warped_x, warped_y) = apply_domain_warp(
-                nx, ny, &warp_noise, params.warp_strength, seed
-            );
+            let p = cylindrical_coords(nx, ny, 1.0);
+            let wp_macro = domain_warp_cylindrical(p, &warp_noise, 0.75, 0.85);
+            let wp_meso = domain_warp_cylindrical(wp_macro, &detail_noise, 0.35, 2.4);
+
+            // 1. Macro-scale continental craton morphology (deep oceanic indentations, sweeping arcs)
+            let craton_macro = fbm_3d(&terrain_noise, [wp_macro[0] * 1.1, wp_macro[1] * 1.1, wp_macro[2] * 1.1], 5, 0.55, 2.0);
             
-            // Scale noise frequencies and distances based on map scale
-            let coast_fractal_freq = scale_frequency(COAST_FRACTAL_SCALE * 100.0, map_scale);
-            let coast_perturb_range = scale_distance(50.0, map_scale);
-            let coast_perturb_mag = scale_distance(25.0, map_scale);
+            // 2. Meso-scale peninsulas, capes, and horns
+            let lobes_meso = fbm_3d(&detail_noise, [wp_meso[0] * 3.0, wp_meso[1] * 3.0, wp_meso[2] * 3.0], 4, 0.52, 2.0);
 
-            // Fractal perturbation for coastline - creates jagged edges
-            let coast_fractal = fbm(
-                &coast_noise,
-                nx * coast_fractal_freq,
-                ny * coast_fractal_freq,
-                COAST_FRACTAL_OCTAVES,
-                0.6,
-                2.2
-            ) as f32;
+            // 3. Micro-scale coastal fractal rias, headlands, and coves
+            let coast_fractal = fbm_3d(&coast_noise, [p[0] * 14.0, p[1] * 14.0, p[2] * 14.0], 4, 0.60, 2.0);
 
-            // Perturb coast distance - larger perturbation near coast
-            let coast_perturbation = if raw_coast_dist.abs() < coast_perturb_range {
-                coast_fractal * coast_perturb_mag * (1.0 - raw_coast_dist.abs() / coast_perturb_range)
+            // Base effective coast before geological modifiers
+            let mut effective_coast = raw_coast_dist 
+                + (craton_macro as f32 * 80.0) 
+                + (lobes_meso as f32 * 42.0) 
+                + (coast_fractal as f32 * 16.0);
+
+            // 4. Inland seas, continental rifting, and Mediterranean/Baltic/Hudson Bay style embayments
+            let rift_basin = fbm_3d(&ridge_noise, [wp_macro[0] * 1.8, wp_macro[1] * 1.8, wp_macro[2] * 1.8], 3, 0.5, 2.0);
+            if rift_basin < -0.30 && raw_coast_dist > 15.0 {
+                let basin_cut = ((-rift_basin - 0.30) / 0.50).min(1.2) * 85.0;
+                effective_coast -= basin_cut as f32;
+            }
+
+            // Continental rifting: divergent stress on land pulls crust apart into flooded rift channels
+            if stress < -0.04 && raw_coast_dist > -40.0 {
+                let rift = ((-stress - 0.04) / 0.35).min(1.2) * 65.0;
+                effective_coast -= rift;
+            }
+
+            // Orogenic uplift & peninsular extrusion on active collision margins
+            if stress > 0.04 {
+                let uplift = ((stress - 0.04) / 0.35).min(1.2) * 35.0;
+                effective_coast += uplift;
+            }
+
+            // Polar ocean taper: ensure all continents are completely surrounded by water (polar oceans)
+            // and never cut off by northern or southern map borders with organic fractal shorelines.
+            let pole_noise = fbm_3d(&coast_noise, [wp_macro[0] * 4.0, wp_macro[1] * 4.0, wp_macro[2] * 4.0], 3, 0.5, 2.0) as f32 * 0.05;
+            let pole_dist = ((ny.min(1.0 - ny)) as f32 + pole_noise).max(0.0);
+            let polar_margin = 0.12f32;
+            if pole_dist < polar_margin {
+                let t = (pole_dist / polar_margin).clamp(0.0, 1.0);
+                let smooth_t = t * t * (3.0 - 2.0 * t);
+                effective_coast = effective_coast * smooth_t - (1.0 - smooth_t) * 55.0;
+            }
+
+            let elevation = if effective_coast > 0.0 {
+                generate_continental_elevation(
+                    nx, ny,
+                    wp_macro,
+                    effective_coast,
+                    stress,
+                    &terrain_noise,
+                    &ridge_noise,
+                    &detail_noise,
+                    &params,
+                    seed,
+                    map_scale,
+                )
             } else {
-                0.0
-            };
-            let coast_dist = raw_coast_dist + coast_perturbation;
+                let stress_dx = if x > 0 && x < width - 1 {
+                    *stress_map.get(x + 1, y) - *stress_map.get(x - 1, y)
+                } else { 0.0 };
+                let stress_dy = if y > 0 && y < height - 1 {
+                    *stress_map.get(x, y + 1) - *stress_map.get(x, y - 1)
+                } else { 0.0 };
+                let stress_gradient = (stress_dx, stress_dy);
 
-            // Base elevation depends on plate type
-            let elevation = match plate.plate_type {
-                PlateType::Continental => {
-                    generate_continental_elevation(
-                        warped_x, warped_y,
-                        coast_dist,
-                        stress,
-                        &terrain_noise,
-                        &ridge_noise,
-                        &detail_noise,
-                        &params,
-                        seed,
-                        map_scale,
-                    )
-                }
-                PlateType::Oceanic => {
-                    // Compute stress gradient for island arc alignment
-                    // This tells us the boundary direction for curving island chains
-                    let stress_dx = if x > 0 && x < width - 1 {
-                        *stress_map.get(x + 1, y) - *stress_map.get(x - 1, y)
-                    } else { 0.0 };
-                    let stress_dy = if y > 0 && y < height - 1 {
-                        *stress_map.get(x, y + 1) - *stress_map.get(x, y - 1)
-                    } else { 0.0 };
-                    let stress_gradient = (stress_dx, stress_dy);
+                let is_continental_plate = plate.plate_type == PlateType::Continental;
 
-                    // Use original coordinates for ocean/islands - no domain warping
-                    generate_oceanic_elevation(
-                        nx, ny,
-                        cont_dist,
-                        stress,
-                        stress_gradient,
-                        &terrain_noise,
-                        &detail_noise,
-                        &params,
-                        seed,
-                        map_scale,
-                    )
-                }
+                generate_oceanic_elevation(
+                    nx, ny,
+                    p,
+                    is_continental_plate,
+                    effective_coast,
+                    cont_dist,
+                    stress,
+                    stress_gradient,
+                    &terrain_noise,
+                    &detail_noise,
+                    &coast_noise,
+                    &params,
+                    seed,
+                    map_scale,
+                )
             };
             
             heightmap.set(x, y, elevation);
@@ -723,11 +856,13 @@ pub fn generate_heightmap_scaled(
 // CONTINENTAL TERRAIN
 // =============================================================================
 
-/// Generate elevation for continental plates
+/// Generate elevation for continental plates, including Andean-style coastal cordilleras,
+/// collision mountain belts (Himalayas), plateaus (Altiplano), ancient fold belts, and rift valleys.
 fn generate_continental_elevation(
-    x: f64,
-    y: f64,
-    coast_distance: f32,
+    nx: f64,
+    ny: f64,
+    p: [f64; 3],
+    effective_coast: f32,
     stress: f32,
     terrain_noise: &Perlin,
     ridge_noise: &Perlin,
@@ -736,316 +871,262 @@ fn generate_continental_elevation(
     seed: u64,
     map_scale: &MapScale,
 ) -> f32 {
-    // Scale distance and elevation thresholds
-    let shelf_blend_dist = scale_distance(50.0, map_scale);
-    let coastal_grad_dist = scale_distance(150.0, map_scale);
-    let ridge_height = scale_elevation(RIDGE_HEIGHT, map_scale);
-    let detail_height = scale_elevation(50.0, map_scale);
-    let tectonic_scale = scale_elevation(TECTONIC_SCALE, map_scale);
-    let detail_freq = scale_frequency(25.0, map_scale);
-
-    // Underwater continental shelf - with island generation checks
-    if coast_distance < 0.0 {
-        // Check for continental fragmentation islands first (archipelago-like scatter)
-        let frag_island = generate_continental_fragmentation(
-            x, y, coast_distance, terrain_noise, detail_noise, seed, map_scale
-        );
-
-        if frag_island > 0.0 {
-            // Fragmented archipelago island rises above sea level
-            return frag_island;
-        }
-
-        // Check for barrier islands (they rise above sea level)
-        let barrier_island = generate_barrier_islands(
-            x, y, coast_distance, terrain_noise, detail_noise, seed, map_scale
-        );
-
-        if barrier_island > 0.0 {
-            // Barrier island rises above sea level
-            return barrier_island;
-        }
-
-        // Normal shelf depth
-        let shelf_blend = (-coast_distance / shelf_blend_dist).min(1.0);
-        let shelf_noise = fbm(terrain_noise, x * 2.0, y * 2.0, 3, 0.5, 2.0) as f32;
-        return SHELF_DEPTH * shelf_blend + shelf_noise * scale_elevation(20.0, map_scale);
-    }
-
-    // Distance-based gradient (still use for blending, but less restrictive)
-    let distance_factor = (coast_distance / coastal_grad_dist).min(1.0);
+    let coastal_grad_dist = scale_distance(100.0, map_scale);
+    let distance_factor = (effective_coast / coastal_grad_dist).clamp(0.0, 1.0);
     let coastal_gradient = smooth_step(0.0, 1.0, distance_factor);
 
-    // Scale base frequency for terrain
-    let base_freq = scale_frequency(params.base_frequency * 80.0, map_scale);
+    // 1. Base Continental Lowlands, Plains, Prairies & Sedimentary Basins
+    // Low-frequency, gentle rolling relief for vast flat plains and open basins
+    let plains_fbm = fbm_3d(terrain_noise, [p[0] * 1.5, p[1] * 1.5, p[2] * 1.5], 4, 0.50, 2.0) as f32;
+    // Flatten the lowlands using power curve to create expansive flat plains (pampas, steppes, prairies)
+    let plains_norm = (plains_fbm * 0.5 + 0.5).clamp(0.0, 1.0);
+    let gentle_plains = plains_norm.powf(1.6) * scale_elevation(220.0, map_scale);
 
-    // Multi-octave fBm for base terrain - always present, not just inland
-    let base_fbm = fbm(
-        terrain_noise,
-        x * base_freq,
-        y * base_freq,
-        params.octaves,
-        params.persistence,
-        params.lacunarity,
-    ) as f32;
+    // 2. Structural Orogenic Belts & Ancient Fold Corridors
+    // Mountain ranges exist along discrete tectonic corridors, leaving the rest of the continent as open plains and broad river valleys.
+    let orogen_corridor = fbm_3d(ridge_noise, [p[0] * 1.3, p[1] * 1.3, p[2] * 1.3], 3, 0.5, 2.0) as f32;
+    let mountain_belt_mask = smooth_step(0.08, 0.48, orogen_corridor);
 
-    // Normalize fBm to 0-1 range
-    let base_terrain = (base_fbm + 1.0) * 0.5;
+    // Alpine Mountain Ridges within the mountain corridors
+    let alpine_spines = ridged_fbm_3d(ridge_noise, [p[0] * 4.5, p[1] * 4.5, p[2] * 4.5], 5, 0.52, 2.0, 2.0);
+    let alpine_detail = ridged_fbm_3d(detail_noise, [p[0] * 9.0, p[1] * 9.0, p[2] * 9.0], 3, 0.5, 2.0, 1.8);
+    let mountain_ridge = alpine_spines * 0.70 + alpine_detail * 0.30;
 
-    // PURE ISOLATED PEAKS - no ridged noise at all
-    // Completely eliminates "wormy" continuous ridge patterns
-    // Mountains are formed ONLY from isolated peak clusters
+    // Interior mountain ranges (only in orogenic belt corridors)
+    let interior_mountains = mountain_ridge * mountain_belt_mask * scale_elevation(2200.0, map_scale) * (0.20 + coastal_gradient * 0.80);
 
-    // Isolated peak noise - ONLY mountain source
-    let isolated_peaks = generate_isolated_peaks(x, y, detail_noise, map_scale);
+    // Foothills / rolling hills transitioning from mountain ranges to plains
+    let foothills_noise = fbm_3d(detail_noise, [p[0] * 3.5, p[1] * 3.5, p[2] * 3.5], 3, 0.5, 2.0) as f32;
+    let foothills = (foothills_noise * 0.5 + 0.5) * mountain_belt_mask * scale_elevation(380.0, map_scale);
 
-    // Add some additional peak variation at different scale for variety
-    let peaks_fine = generate_isolated_peaks(x * 1.7, y * 1.7, ridge_noise, map_scale);
-    let peaks_coarse = generate_isolated_peaks(x * 0.6, y * 0.6, terrain_noise, map_scale);
+    // Secondary Ancient Highlands & Rolling Uplands (e.g. Appalachians, Brazilian Highlands, Massif Central)
+    let highland_fbm = fbm_3d(terrain_noise, [p[0] * 2.2 + 37.0, p[1] * 2.2 + 19.0, p[2] * 2.2], 3, 0.5, 2.0) as f32;
+    let highland_mask = smooth_step(0.12, 0.46, highland_fbm);
+    let highland_hills = fbm_3d(detail_noise, [p[0] * 5.0, p[1] * 5.0, p[2] * 5.0], 3, 0.5, 2.0) as f32 * 0.5 + 0.5;
+    let uplands = highland_mask * highland_hills * scale_elevation(360.0, map_scale) * coastal_gradient;
 
-    // Blend peak layers for multi-scale mountains
-    let combined_peaks = (isolated_peaks * 0.5 + peaks_fine * 0.3 + peaks_coarse * 0.3).min(1.0);
-
-    // Sharp peaks
-    let ridge_squared = combined_peaks * combined_peaks;
-
-    // Ridges are present everywhere but slightly higher inland
-    let ridge_contribution = ridge_squared * ridge_height * (0.5 + coastal_gradient * 0.5);
-
-    // Fine detail noise for texture
-    let detail = fbm(detail_noise, x * detail_freq, y * detail_freq, 4, 0.6, 2.0) as f32;
-    let detail_contribution = detail * detail_height;
-
-    // High-frequency mountain roughness - adds jagged crags to break smooth ridges
-    // This layer kicks in proportionally to ridge height
-    let roughness_freq = scale_frequency(100.0, map_scale);  // Higher frequency for finer crags
-    let roughness_raw = fbm(detail_noise, x * roughness_freq, y * roughness_freq, 6, 0.6, 2.0) as f32;
-    // Roughness amplitude scales with ridge contribution (more rough = more jagged peaks)
-    let roughness_amplitude = scale_elevation(400.0, map_scale);  // Up to 400m of roughness
-    // Apply roughness to all elevated terrain, not just ridges
-    let elevation_factor = (ridge_squared + coastal_gradient * 0.3).min(1.0);
-    let roughness_contribution = roughness_raw * roughness_amplitude * elevation_factor;
-    
-    // Scale frequencies for tectonic noise
-    let peak_freq = scale_frequency(150.0, map_scale);
-    let chain_freq = scale_frequency(40.0, map_scale);
-    let rift_freq = scale_frequency(60.0, map_scale);
-
-    // Tectonic stress contribution (mountains at plate boundaries)
-    // Uses isolated peaks instead of ridged noise to avoid "wormy" appearance
-    let tectonic = if stress > 0.05 {
-        // Isolated peaks for tectonic mountains - creates distinct peaks, not ridges
-        let tectonic_peaks = generate_isolated_peaks(x * 1.3, y * 1.3, detail_noise, map_scale);
-
-        // High-frequency detail for individual peak variation
-        let peak_variation = detail_noise.get([x * peak_freq, y * peak_freq, 0.5]) as f32;
-        let peak_factor = 0.6 + peak_variation * 0.4; // 0.2 to 1.0 range
-
-        // Combine: stress provides envelope, peaks create variation
-        let base_height = stress.sqrt() * tectonic_scale;
-        let peak_modulation = 0.4 + tectonic_peaks * 0.6; // 0.4 to 1.0
-        let organic_height = base_height * peak_modulation * peak_factor;
-
-        // Add some extra height for strong peak areas
-        let dramatic_peaks = if tectonic_peaks > 0.6 {
-            base_height * 0.25 * (tectonic_peaks - 0.6) / 0.4
-        } else {
-            0.0
-        };
-
-        organic_height + dramatic_peaks
+    // 3. Active Tectonic Orogeny (Andes-style Coastal Cordilleras & Collision Belts)
+    let tectonic_orogeny = if stress > 0.04 {
+        let stress_factor = ((stress - 0.04) / 0.22).min(1.6);
+        let cordillera_base = stress_factor.powf(0.8) * scale_elevation(2800.0, map_scale);
+        let cordillera_peaks = mountain_ridge.powf(1.2) * stress_factor * scale_elevation(3400.0, map_scale);
+        cordillera_base * 0.35 + cordillera_peaks
     } else if stress < -0.05 {
-        // Enhanced rift valleys at divergent continental boundaries
-        // Creates deep, linear depressions like the East African Rift
+        // Continental Rifting
         let rift_strength = (-stress - 0.05).min(0.5);
-
-        // Low-frequency noise for linear rift coherence (elongated pattern)
-        let rift_linear = terrain_noise.get([x * 0.03, y * 0.03, 2.0]) as f32;
-
-        // High-frequency detail for rift floor variation
-        let rift_detail = detail_noise.get([x * rift_freq, y * rift_freq, 2.5]) as f32;
-
-        // Deeper rifts (0.6 scale vs old 0.2) with linear pattern
-        let rift_depth = rift_strength * tectonic_scale * 0.6;
-        let rift_floor = 0.7 + rift_linear * 0.3; // 70-100% of full depth
-
-        // Final rift elevation (negative = depression)
-        -rift_depth * rift_floor * (0.8 + rift_detail * 0.2)
+        let rift_depth = rift_strength * scale_elevation(1200.0, map_scale);
+        let rift_trough = (1.0 - mountain_ridge).max(0.0);
+        -rift_depth * rift_trough
     } else {
         0.0
     };
-    
-    // Combine all layers:
-    // - Base elevation provides underlying terrain variation (always present)
-    // - Coastal gradient mainly affects minimum elevation
+
+    // 4. Subtle micro-relief for plains (very small, smooth, natural)
+    let fine_noise = fbm_3d(detail_noise, [p[0] * 12.0, p[1] * 12.0, p[2] * 12.0], 2, 0.5, 2.0) as f32;
+    let fine_relief = fine_noise * scale_elevation(30.0, map_scale);
+
     let min_elevation = COASTAL_HEIGHT + CONTINENTAL_MIN * coastal_gradient;
-    let base_variation = base_terrain * CONTINENTAL_MAX * (0.3 + coastal_gradient * 0.7);
 
-    // roughness_contribution adds jagged detail to mountain ridges
-    min_elevation + base_variation + ridge_contribution + detail_contribution + roughness_contribution + tectonic
-}
-
-/// Generate small coastal islands near continental edges
-fn generate_coastal_islands(
-    x: f64,
-    y: f64,
-    coast_distance: f32,
-    coast_noise: &Perlin,
-    detail_noise: &Perlin,
-    seed: u64,
-) -> f32 {
-    // Island probability increases closer to coast, peaks around -25 distance
-    // Extended range for more offshore islands
-    let distance_factor = (-coast_distance - 5.0) / 80.0; // Extended range
-    let proximity_factor = if coast_distance > -40.0 {
-        // Peak probability near coast (extended)
-        1.0 - ((-coast_distance - 20.0).abs() / 20.0).min(1.0)
-    } else {
-        // Decreasing further out
-        1.0 - distance_factor.min(1.0)
-    };
-
-    // Multi-scale noise for island clusters - lower frequencies for larger clusters
-    let large_cluster = coast_noise.get([
-        x * 90.0,
-        y * 90.0,
-        seed_to_z(seed, 2.1),
-    ]);
-
-    let medium_cluster = coast_noise.get([
-        x * 200.0 + 5.2,
-        y * 200.0 + 3.1,
-        seed_to_z(seed, 2.2),
-    ]);
-
-    let small_peaks = detail_noise.get([
-        x * 400.0,
-        y * 400.0,
-        seed_to_z(seed, 2.3),
-    ]);
-
-    // Combine scales - larger features guide smaller ones
-    let combined = (large_cluster * 0.4 + medium_cluster * 0.35 + small_peaks * 0.25 + 0.5) as f32;
-
-    // Lower threshold for island formation - more islands
-    let base_threshold = 0.55;
-    let threshold = base_threshold - proximity_factor * 0.18;
-
-    if combined < threshold {
-        return f32::MIN; // No island - return very low so it doesn't override ocean
-    }
-
-    // Island height - taller islands possible
-    let peak_factor = ((combined - threshold) / (1.0 - threshold)).min(1.0);
-    let max_height = 250.0 * proximity_factor; // Taller islands possible
-
-    // Some islands are just rocks, some are proper islands
-    let height = 8.0 + peak_factor * max_height;
-
-    height
+    (min_elevation + gentle_plains + uplands + foothills + interior_mountains + tectonic_orogeny + fine_relief).max(COASTAL_HEIGHT)
 }
 
 // =============================================================================
-// OCEANIC TERRAIN
+// OCEANIC TERRAIN & ISLAND SYSTEMS
 // =============================================================================
 
-/// Generate elevation for oceanic plates
+/// Generate elevation for oceanic and shelf areas, including the 4 geological island systems:
+/// 1. Coastal shelf archipelagos & rias
+/// 2. Barrier islands
+/// 3. Subduction volcanic island arcs
+/// 4. Mantle plume hotspot chains
 fn generate_oceanic_elevation(
-    x: f64,
-    y: f64,
+    nx: f64,
+    ny: f64,
+    p: [f64; 3],
+    is_continental_plate: bool,
+    effective_coast: f32, // negative: 0.0 at shoreline to -300+ in deep ocean
     continental_distance: f32,
     stress: f32,
-    stress_gradient: (f32, f32),  // Gradient for island arc alignment
+    stress_gradient: (f32, f32),
     terrain_noise: &Perlin,
     detail_noise: &Perlin,
+    coast_noise: &Perlin,
     params: &TerrainParams,
     seed: u64,
     map_scale: &MapScale,
 ) -> f32 {
-    // Scale parameters
-    let ocean_freq = scale_frequency(params.base_frequency * 50.0, map_scale);
-    let shelf_blend_dist = scale_distance(15.0, map_scale);  // Reduced from 100 - shelf transition is narrow
-    let ocean_variation = scale_elevation(1500.0, map_scale);  // Increased from 500 for more depth variety
-    let shelf_noise_height = scale_elevation(50.0, map_scale);
+    let shelf_blend_dist = scale_distance(18.0, map_scale);
+    let shelf_noise_height = scale_elevation(35.0, map_scale);
 
-    // Base ocean floor with variation
-    let base_fbm = fbm(
-        terrain_noise,
-        x * ocean_freq,
-        y * ocean_freq,
-        4,
-        0.5,
-        2.0,
-    ) as f32;
+    // If this is on a continental plate (inland lake, flooded rift basin, or drowned valley),
+    // keep it as shallow continental freshwater/fjord depth, never deep oceanic abyss or oceanic volcanoes.
+    if is_continental_plate {
+        let lake_depth = (effective_coast * 1.5).clamp(-60.0, -2.0);
+        let detail = fbm_3d(terrain_noise, [p[0] * 4.0, p[1] * 4.0, p[2] * 4.0], 3, 0.5, 2.0) as f32;
+        return lake_depth + detail * 8.0;
+    }
 
-    let variation = base_fbm * ocean_variation;
-    let base = OCEAN_FLOOR + variation;
+    // Base ocean bathymetry (shelf near coast, abyssal plain + ridges + trenches in deep water)
+    let base_ocean = if effective_coast >= -shelf_blend_dist {
+        let shelf_blend = (-effective_coast / shelf_blend_dist).clamp(0.0, 1.0);
+        let base_shelf = SHELF_DEPTH * shelf_blend;
 
-    // Mid-ocean ridges with visible linear structure (spreading centers)
-    // Real ridges have: elevated terrain, parallel ridge peaks, and central axial valley
-    let ridge_contribution = if stress < -0.1 {
-        let ridge_strength = (-stress - 0.1).min(1.0);
-        let base_lift = (OCEAN_RIDGE - OCEAN_FLOOR) * ridge_strength;
+        // Nearshore Coastal Archipelagos & drowned rias (smooth, moderate frequency)
+        let arch_noise = fbm_3d(coast_noise, [p[0] * 4.2, p[1] * 4.2, p[2] * 4.2], 4, 0.55, 2.0) as f32;
+        let detail_arch = fbm_3d(detail_noise, [p[0] * 8.0, p[1] * 8.0, p[2] * 8.0], 3, 0.5, 2.0) as f32;
+        let island_potential = arch_noise * 0.70 + detail_arch * 0.30;
 
-        // Linear ridge texture - creates parallel peaks perpendicular to spreading
-        let ridge_texture = terrain_noise.get([x * 0.08, y * 0.08, 5.0]) as f32;
-        let ridge_peaks = (ridge_texture * std::f32::consts::PI).sin().abs();
+        // Drowned continental margin topography creates shelf islands with natural coastal straits
+        let shelf_topography = base_shelf + (island_potential + 0.15) * scale_elevation(260.0, map_scale);
 
-        // Central axial rift valley along ridge axis (characteristic of mid-ocean ridges)
-        let axial_noise = detail_noise.get([x * 0.15, y * 0.15, 6.0]) as f32;
-        let axial_valley = if axial_noise.abs() < 0.15 { 200.0 } else { 0.0 };
-
-        // Combine: base elevation lift + ridge peaks - central valley
-        base_lift + ridge_peaks * 300.0 * ridge_strength - axial_valley * ridge_strength
+        if shelf_topography > 0.0 {
+            shelf_topography
+        } else {
+            let shelf_detail = fbm_3d(terrain_noise, [p[0] * 4.0, p[1] * 4.0, p[2] * 4.0], 3, 0.5, 2.0) as f32;
+            base_shelf + shelf_detail * shelf_noise_height
+        }
     } else {
-        0.0
+        // Deep Ocean Zone
+        let ocean_variation = scale_elevation(1000.0, map_scale);
+        let abyssal_hills = fbm_3d(terrain_noise, [p[0] * 5.0, p[1] * 5.0, p[2] * 5.0], 3, 0.5, 2.0) as f32 * ocean_variation;
+        let ocean_floor = OCEAN_FLOOR + abyssal_hills;
+
+        // Mid-Ocean Spreading Ridges (divergent oceanic boundaries)
+        let ridge_contribution = if stress < -0.06 {
+            let ridge_strength = (-stress - 0.06).min(0.5) / 0.5;
+            let base_lift = (OCEAN_RIDGE - OCEAN_FLOOR) * ridge_strength;
+            let axial_noise = fbm_3d(detail_noise, [p[0] * 10.0, p[1] * 10.0, p[2] * 10.0], 3, 0.5, 2.0) as f32;
+            let axial_rift = if axial_noise.abs() < 0.15 { scale_elevation(250.0, map_scale) } else { 0.0 };
+            base_lift - axial_rift * ridge_strength
+        } else {
+            0.0
+        };
+
+        // Subduction Trenches (convergent oceanic boundaries)
+        let trench_contribution = if stress > 0.12 {
+            let trench_strength = ((stress - 0.12) / 0.45).min(1.0);
+            -trench_strength * scale_elevation(TRENCH_SCALE, map_scale)
+        } else {
+            0.0
+        };
+
+        let deep_ocean = ocean_floor + ridge_contribution + trench_contribution;
+        // Smooth transition from continental shelf edge to deep ocean floor
+        let deep_blend_dist = scale_distance(25.0, map_scale);
+        let dist_beyond_shelf = -effective_coast - shelf_blend_dist;
+        let t = (dist_beyond_shelf / deep_blend_dist).clamp(0.0, 1.0);
+        SHELF_DEPTH * (1.0 - t) + deep_ocean * t
     };
 
-    // Oceanic trenches at convergent boundaries (subduction zones)
-    // High positive stress in ocean = deep trenches (like Mariana, Puerto Rico)
-    let trench_contribution = if stress > 0.25 {
-        let trench_strength = ((stress - 0.25) / 0.5).min(1.0);
-        -trench_strength * TRENCH_SCALE  // Negative = deeper
-    } else {
-        0.0
-    };
-
-    // Calculate base ocean elevation
-    let ocean_elevation = base + ridge_contribution + trench_contribution;
-
-    // Island arcs at convergent boundaries (subduction zones)
-    // Creates curving volcanic chains parallel to trenches (like Japan, Aleutians, Caribbean)
+    // Volcanic Island Arcs (subduction zones in ocean)
     let volcanic_elevation = if stress > VOLCANIC_THRESHOLD {
-        let v = generate_island_arc(
-            x, y, stress, stress_gradient, terrain_noise, detail_noise, seed, map_scale
-        );
-        v
+        generate_island_arc_3d(p, stress, stress_gradient, terrain_noise, detail_noise, seed, map_scale)
     } else {
         f32::MIN
     };
 
-    // Hotspot archipelagos - independent of plate stress
-    // Creates Hawaii-like or Faroe-like island chains in open ocean
-    let hotspot_elevation = generate_hotspot_archipelago(
-        x, y, continental_distance, terrain_noise, detail_noise, seed, map_scale
-    );
+    // Hotspot Volcanic Chains (mantle plumes in deep ocean)
+    let hotspot_elevation = generate_hotspot_archipelago_3d(p, continental_distance, terrain_noise, detail_noise, seed, map_scale);
 
-    // Use the higher of ocean floor, volcanic island, or hotspot island
-    let final_ocean = ocean_elevation.max(volcanic_elevation).max(hotspot_elevation);
+    let raw_ocean = base_ocean.max(volcanic_elevation).max(hotspot_elevation);
 
-    // Transition zone near continental shelf
-    let shelf_blend = if continental_distance < shelf_blend_dist {
-        let t = continental_distance / shelf_blend_dist;
-        smooth_step(0.0, 1.0, t)
+    // Polar ocean taper: ensures no islands or land touch the extreme polar map borders
+    let pole_noise = fbm_3d(detail_noise, [p[0] * 4.0, p[1] * 4.0, p[2] * 4.0], 3, 0.5, 2.0) as f32 * 0.03;
+    let pole_dist = ((ny.min(1.0 - ny)) as f32 + pole_noise).max(0.0);
+    let polar_margin = 0.06f32;
+    if pole_dist < polar_margin && raw_ocean > 0.0 {
+        let t = (pole_dist / polar_margin).clamp(0.0, 1.0);
+        let smooth_t = t * t * (3.0 - 2.0 * t);
+        raw_ocean * smooth_t - (1.0 - smooth_t) * 150.0
     } else {
-        1.0
-    };
-
-    // Blend from shelf depth to ocean floor
-    let shelf_elevation = SHELF_DEPTH + base_fbm * shelf_noise_height;
-
-    shelf_elevation * (1.0 - shelf_blend) + final_ocean * shelf_blend
+        raw_ocean
+    }
 }
+
+/// Generate volcanic island arcs at subduction zones
+fn generate_island_arc_3d(
+    p: [f64; 3],
+    stress: f32,
+    stress_gradient: (f32, f32),
+    terrain_noise: &Perlin,
+    detail_noise: &Perlin,
+    seed: u64,
+    map_scale: &MapScale,
+) -> f32 {
+    if stress < 0.035 {
+        return f32::MIN;
+    }
+
+    let grad_mag = (stress_gradient.0 * stress_gradient.0 + stress_gradient.1 * stress_gradient.1).sqrt();
+    if grad_mag < 0.001 {
+        return f32::MIN;
+    }
+
+    let stress_factor = ((stress - 0.035) / 0.18).clamp(0.0, 1.0);
+
+    // Submarine volcanic arc platform (lifts from deep ocean to shallow submarine ridge)
+    let arc_platform = scale_elevation(-220.0, map_scale) + scale_elevation(160.0, map_scale) * stress_factor.powf(0.7);
+
+    // Volcanic centers along the curving arc
+    let arc_chain = fbm_3d(terrain_noise, [p[0] * 4.5, p[1] * 4.5, p[2] * 4.5], 3, 0.55, 2.0) as f32;
+    let volcanic_cones = fbm_3d(detail_noise, [p[0] * 8.5, p[1] * 8.5, p[2] * 8.5], 3, 0.5, 2.0) as f32;
+
+    let combo = arc_chain * 0.65 + volcanic_cones * 0.35;
+
+    // Volcanic edifices rise on top of the arc platform
+    let edifice_height = (combo + 0.12).max(0.0) * scale_elevation(650.0, map_scale) * (0.4 + stress_factor * 0.6);
+
+    arc_platform + edifice_height
+}
+
+/// Generate hotspot island chains (like Hawaii) formed by stationary mantle plumes
+fn generate_hotspot_archipelago_3d(
+    p: [f64; 3],
+    continental_distance: f32,
+    terrain_noise: &Perlin,
+    detail_noise: &Perlin,
+    seed: u64,
+    map_scale: &MapScale,
+) -> f32 {
+    // Only in deep ocean far from continents
+    if continental_distance < scale_distance(14.0, map_scale) {
+        return f32::MIN;
+    }
+
+    // Mantle plume swell regions: broad regions in deep ocean
+    let plume_noise = fbm_3d(terrain_noise, [p[0] * 2.2 + 50.0, p[1] * 2.2 + 50.0, p[2] * 2.2 + 50.0], 3, 0.5, 2.0) as f32;
+    if plume_noise < 0.10 {
+        return f32::MIN;
+    }
+    let plume_strength = ((plume_noise - 0.10) / 0.70).min(1.0);
+
+    // Directional hotspot chain / track (aligned linear volcanic trail)
+    let track_noise = fbm_3d(terrain_noise, [p[0] * 4.5 + 120.0, p[1] * 2.2 + 120.0, p[2] * 4.5 + 120.0], 3, 0.5, 2.0) as f32;
+    let track_dist = track_noise.abs();
+    if track_dist > 0.28 {
+        return f32::MIN;
+    }
+    let track_factor = (1.0 - (track_dist / 0.28)).powf(1.2);
+
+    // Discrete volcanic shield centers along the track
+    let shield_noise = fbm_3d(detail_noise, [p[0] * 6.5 + 200.0, p[1] * 6.5 + 200.0, p[2] * 6.5 + 200.0], 3, 0.5, 2.0) as f32;
+    let cone_noise = fbm_3d(detail_noise, [p[0] * 12.0 + 300.0, p[1] * 12.0 + 300.0, p[2] * 12.0 + 300.0], 2, 0.5, 2.0) as f32;
+    let shield_combo = shield_noise * 0.75 + cone_noise * 0.25;
+
+    // Plume swell elevates deep ocean floor to a broad submarine plateau
+    let swell_base = scale_elevation(-350.0, map_scale) + scale_elevation(250.0, map_scale) * plume_strength * track_factor;
+
+    // Volcanic shield edifice rises above sea level
+    let shield_height = (shield_combo + 0.10).max(0.0) * scale_elevation(750.0, map_scale) * track_factor;
+
+    let total_elev = swell_base + shield_height;
+    if total_elev > OCEAN_FLOOR + 500.0 {
+        total_elev
+    } else {
+        f32::MIN
+    }
+}
+
 
 /// Generate island arc chains parallel to subduction trenches
 /// Creates curving volcanic chains like Japan, Aleutians, Caribbean island arcs
@@ -2110,7 +2191,7 @@ fn compute_coast_distance(
 // POST-PROCESSING
 // =============================================================================
 
-/// Apply smoothing to reduce harsh transitions
+/// Apply edge-preserving bilateral smoothing to reduce harsh transitions while keeping mountain peaks sharp
 fn smooth_heightmap(heightmap: &Tilemap<f32>, radius: usize) -> Tilemap<f32> {
     let width = heightmap.width;
     let height = heightmap.height;
@@ -2118,6 +2199,13 @@ fn smooth_heightmap(heightmap: &Tilemap<f32>, radius: usize) -> Tilemap<f32> {
     
     for y in 0..height {
         for x in 0..width {
+            let center_h = *heightmap.get(x, y);
+            // Alpine terrain: preserve crisp mountain peaks, arêtes, and deep valleys
+            if center_h > 180.0 {
+                result.set(x, y, center_h);
+                continue;
+            }
+
             let mut sum = 0.0f32;
             let mut count = 0.0f32;
             
@@ -2126,16 +2214,23 @@ fn smooth_heightmap(heightmap: &Tilemap<f32>, radius: usize) -> Tilemap<f32> {
                     let nx = ((x as i32 + dx).rem_euclid(width as i32)) as usize;
                     let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
                     
+                    let sample_h = *heightmap.get(nx, ny);
+                    let h_diff = (sample_h - center_h).abs();
+                    // Don't blur across steep coastal cliffs or fjord walls
+                    if h_diff > 60.0 {
+                        continue;
+                    }
+
                     let dist = ((dx * dx + dy * dy) as f32).sqrt();
                     if dist <= radius as f32 {
-                        let weight = 1.0 - dist / (radius as f32 + 1.0);
-                        sum += *heightmap.get(nx, ny) * weight;
+                        let weight = (1.0 - dist / (radius as f32 + 1.0)) / (1.0 + h_diff * 0.05);
+                        sum += sample_h * weight;
                         count += weight;
                     }
                 }
             }
             
-            result.set(x, y, sum / count);
+            result.set(x, y, if count > 0.0 { sum / count } else { center_h });
         }
     }
     
@@ -2176,16 +2271,17 @@ pub fn normalize_heightmap(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
 pub fn generate_land_mask(
     plate_map: &Tilemap<PlateId>,
     plates: &[Plate],
-    _seed: u64,
+    seed: u64,
 ) -> Tilemap<bool> {
     let width = plate_map.width;
     let height = plate_map.height;
+    let dummy_stress = Tilemap::new_with(width, height, 0.0f32);
+    let heightmap = generate_heightmap(plate_map, plates, &dummy_stress, seed);
     let mut land_mask = Tilemap::new_with(width, height, false);
 
     for y in 0..height {
         for x in 0..width {
-            let plate_id = *plate_map.get(x, y);
-            if !plate_id.is_none() && plates[plate_id.0 as usize].plate_type == PlateType::Continental {
+            if *heightmap.get(x, y) > 0.0 {
                 land_mask.set(x, y, true);
             }
         }
@@ -2351,7 +2447,16 @@ pub fn apply_regional_noise_stacks(
                     fbm_simple(&forest_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
                 };
 
-                row_contributions.push((x, y, elevation + noise_contribution));
+                // Shoreline preservation: fade noise smoothly near sea level and preserve land/ocean sign
+                let coast_fade = (elevation.abs() / 20.0).min(1.0);
+                let scaled_noise = noise_contribution * coast_fade;
+                let new_elevation = if elevation > 0.0 {
+                    (elevation + scaled_noise).max(0.1)
+                } else {
+                    (elevation + scaled_noise).min(-0.1)
+                };
+
+                row_contributions.push((x, y, new_elevation));
             }
             row_contributions
         })
@@ -2398,244 +2503,179 @@ fn fbm_simple(noise: &noise::Perlin, x: f64, y: f64, octaves: usize) -> f64 {
 /// Apply archipelago pass - creates islands guided by tectonic stress patterns.
 /// Islands form preferentially near plate boundaries and stressed zones.
 pub fn apply_archipelago_pass(
-    heightmap: &mut Tilemap<f32>,
-    stress_map: &Tilemap<f32>,
-    seed: u64,
+    _heightmap: &mut Tilemap<f32>,
+    _stress_map: &Tilemap<f32>,
+    _seed: u64,
 ) {
-    use noise::{NoiseFn, Perlin, Seedable};
-    use rayon::prelude::*;
-
-    let width = heightmap.width;
-    let height = heightmap.height;
-
-    // Create noise generators with unique seed offsets
-    let cluster_noise = Perlin::new(1).set_seed((seed + 5555) as u32);
-    let shape_noise = Perlin::new(1).set_seed((seed + 6666) as u32);
-
-    // Ocean depth thresholds
-    const OCEAN_MIN: f32 = -2000.0;  // Not too deep
-    const OCEAN_MAX: f32 = -10.0;    // Must be underwater
-
-    // Lower frequencies = larger island clusters (not single tiles)
-    const CLUSTER_FREQ: f64 = 0.03;   // Very low - creates large island groups
-    const SHAPE_FREQ: f64 = 0.08;     // Low - creates smooth island shapes
-
-    // Compute island modifications in parallel
-    let islands: Vec<(usize, usize, f32)> = (0..height)
-        .into_par_iter()
-        .flat_map(|y| {
-            let mut row_islands = Vec::new();
-            for x in 0..width {
-                let elevation = *heightmap.get(x, y);
-
-                // Only affect ocean areas
-                if elevation < OCEAN_MIN || elevation > OCEAN_MAX {
-                    continue;
-                }
-
-                // Get tectonic stress at this location
-                let stress = stress_map.get(x, y).abs();
-
-                // Islands much more likely in stressed areas (near plate boundaries)
-                // Minimum stress threshold - no islands in completely calm ocean
-                if stress < 0.02 {
-                    continue;
-                }
-
-                let stress_factor = (stress / 0.3).min(1.0); // Normalize stress
-
-                let nx = x as f64 / width as f64;
-                let ny = y as f64 / height as f64;
-
-                // Large-scale cluster pattern - determines island group locations
-                let cluster = cluster_noise.get([
-                    nx * CLUSTER_FREQ * 100.0,
-                    ny * CLUSTER_FREQ * 100.0,
-                    seed_to_z(seed, 50.0)
-                ]) as f32;
-
-                // Shape pattern - determines island boundaries within clusters
-                let shape = shape_noise.get([
-                    nx * SHAPE_FREQ * 100.0,
-                    ny * SHAPE_FREQ * 100.0,
-                    seed_to_z(seed, 51.0)
-                ]) as f32;
-
-                // Combined pattern favoring larger connected features
-                let combined = cluster * 0.6 + shape * 0.4;
-
-                // Threshold depends on stress - higher stress = more islands
-                // Base threshold is high, stress lowers it significantly
-                let threshold = 0.35 - stress_factor * 0.30;
-
-                if combined < threshold {
-                    continue;
-                }
-
-                // Depth factor: shallower water = easier to form islands
-                let depth_factor = 1.0 - (elevation.abs() / 2000.0);
-                let depth_factor = depth_factor.max(0.2).min(1.0);
-
-                // Calculate island height
-                let strength = ((combined - threshold) / (1.0 - threshold)).min(1.0);
-
-                // Height based on strength and stress (volcanic = taller)
-                let base_height = 30.0 + strength * 200.0 * depth_factor;
-                let stress_bonus = stress_factor * 150.0; // Volcanic islands are taller
-
-                let island_height = base_height + stress_bonus;
-
-                row_islands.push((x, y, island_height));
-            }
-            row_islands
-        })
-        .collect();
-
-    // Apply islands to heightmap
-    let islands_created = islands.len();
-    for (x, y, new_height) in islands {
-        heightmap.set(x, y, new_height);
-    }
-
-    if islands_created > 0 {
-        println!("  Created {} archipelago island tiles", islands_created);
-    }
+    // Islands are synthesized physically and continuously during initial heightmap synthesis
+    // (in generate_oceanic_elevation) to maintain natural seamount bathymetry and prevent
+    // artificial post-processing square water box artifacts.
 }
 
-/// Expand small islands into larger clusters (minimum 3 tiles).
-/// Uses stress patterns to guide expansion direction.
+/// Expand small islands into larger clusters (deprecated: islands are continuously generated).
 pub fn expand_island_clusters(
-    heightmap: &mut Tilemap<f32>,
-    stress_map: &Tilemap<f32>,
-    seed: u64,
+    _heightmap: &mut Tilemap<f32>,
+    _stress_map: &Tilemap<f32>,
+    _seed: u64,
 ) {
-    use noise::{NoiseFn, Perlin, Seedable};
-
-    let width = heightmap.width;
-    let height = heightmap.height;
-
-    let shape_noise = Perlin::new(1).set_seed((seed + 3333) as u32);
-
-    // Find all small islands (land tiles surrounded mostly by water)
-    let mut island_seeds: Vec<(usize, usize, f32)> = Vec::new();
-
-    for y in 0..height {
-        for x in 0..width {
-            let elevation = *heightmap.get(x, y);
-
-            // Only consider land tiles
-            if elevation <= 0.0 {
-                continue;
-            }
-
-            // Count water neighbors
-            let mut water_neighbors = 0;
-            let mut land_neighbors = 0;
-
-            for dy in -1i32..=1 {
-                for dx in -1i32..=1 {
-                    if dx == 0 && dy == 0 {
-                        continue;
-                    }
-                    let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
-                    let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
-                    if *heightmap.get(nx, ny) <= 0.0 {
-                        water_neighbors += 1;
-                    } else {
-                        land_neighbors += 1;
-                    }
-                }
-            }
-
-            // Island seed: land tile with mostly water neighbors (isolated)
-            // This identifies small islands that need expansion
-            if water_neighbors >= 5 && land_neighbors <= 3 {
-                island_seeds.push((x, y, elevation));
-            }
-        }
-    }
-
-    // Expand each island seed into a larger cluster
-    let mut expansions: Vec<(usize, usize, f32)> = Vec::new();
-
-    for (ix, iy, base_elevation) in &island_seeds {
-        let stress = stress_map.get(*ix, *iy).abs();
-        let stress_factor = (stress / 0.2).min(1.0);
-
-        // Expansion radius based on stress (higher stress = bigger volcanic islands)
-        let base_radius = 2;
-        let stress_radius = (stress_factor * 3.0) as i32;
-        let radius = base_radius + stress_radius;
-
-        let nx_base = *ix as f64 / width as f64;
-        let ny_base = *iy as f64 / height as f64;
-
-        // Expand in a radius around the island seed
-        for dy in -radius..=radius {
-            for dx in -radius..=radius {
-                let dist_sq = dx * dx + dy * dy;
-                let max_dist_sq = radius * radius;
-
-                if dist_sq > max_dist_sq {
-                    continue;
-                }
-
-                let nx = ((*ix as i32) + dx).rem_euclid(width as i32) as usize;
-                let ny = ((*iy as i32) + dy).clamp(0, height as i32 - 1) as usize;
-
-                // Only expand into water
-                if *heightmap.get(nx, ny) > 0.0 {
-                    continue;
-                }
-
-                // Use noise to create natural irregular shapes
-                let sample_x = nx as f64 / width as f64;
-                let sample_y = ny as f64 / height as f64;
-
-                let shape = shape_noise.get([
-                    sample_x * 15.0 * 100.0,
-                    sample_y * 15.0 * 100.0,
-                    seed_to_z(seed, 60.0)
-                ]) as f32;
-
-                // Distance falloff - closer to center = more likely to be land
-                let dist = (dist_sq as f32).sqrt();
-                let dist_factor = 1.0 - (dist / radius as f32);
-
-                // Combined probability for this cell to become land
-                let prob = dist_factor * 0.7 + (shape * 0.5 + 0.5) * 0.3;
-
-                // Higher stress = fill in more of the island shape
-                let threshold = 0.4 - stress_factor * 0.2;
-
-                if prob > threshold {
-                    // Height decreases toward edges
-                    let edge_factor = dist_factor.powf(0.5);
-                    let new_height = base_elevation * edge_factor * 0.8 + 20.0;
-
-                    expansions.push((nx, ny, new_height.max(15.0)));
-                }
-            }
-        }
-    }
-
-    // Apply expansions
-    let expanded_count = expansions.len();
-    for (x, y, new_height) in expansions {
-        // Only expand if still water (don't overwrite other expansions with lower values)
-        if *heightmap.get(x, y) <= 0.0 {
-            heightmap.set(x, y, new_height);
-        }
-    }
-
-    if expanded_count > 0 {
-        println!("  Expanded {} island tiles from {} seeds", expanded_count, island_seeds.len());
-    }
+    // Deprecated: natural multi-tile islands are synthesized organically in generate_oceanic_elevation.
 }
 
 // =============================================================================
 // FJORD INCISION SYSTEM
 // =============================================================================
+
+/// Mark ocean water (water connected to the map edges).
+fn compute_ocean_mask(heightmap: &Tilemap<f32>) -> Tilemap<bool> {
+    use std::collections::VecDeque;
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    let mut is_ocean = Tilemap::new_with(width, height, false);
+    let mut queue: VecDeque<(usize, usize)> = VecDeque::with_capacity(width * 2);
+
+    let mut push_if_water = |x: usize, y: usize, queue: &mut VecDeque<(usize, usize)>| {
+        if *heightmap.get(x, y) < 0.0 && !*is_ocean.get(x, y) {
+            is_ocean.set(x, y, true);
+            queue.push_back((x, y));
+        }
+    };
+
+    // Seed from boundary water tiles
+    for x in 0..width {
+        push_if_water(x, 0, &mut queue);
+        push_if_water(x, height - 1, &mut queue);
+    }
+    for y in 0..height {
+        push_if_water(0, y, &mut queue);
+        push_if_water(width - 1, y, &mut queue);
+    }
+
+    // If no boundary water, treat all water as ocean (closed basins)
+    if queue.is_empty() {
+        for y in 0..height {
+            for x in 0..width {
+                push_if_water(x, y, &mut queue);
+            }
+        }
+    }
+
+    // Flood-fill ocean water
+    while let Some((x, y)) = queue.pop_front() {
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+                let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+                if *heightmap.get(nx, ny) < 0.0 && !*is_ocean.get(nx, ny) {
+                    is_ocean.set(nx, ny, true);
+                    queue.push_back((nx, ny));
+                }
+            }
+        }
+    }
+
+    is_ocean
+}
+
+/// Compute distance from each cell to nearest ocean water using BFS.
+/// Ocean water is any water connected to the map edges.
+fn compute_distance_to_ocean(heightmap: &Tilemap<f32>, max_dist: f32) -> Tilemap<f32> {
+    use std::collections::VecDeque;
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    let is_ocean = compute_ocean_mask(heightmap);
+    let mut distance = Tilemap::new_with(width, height, f32::MAX);
+    let mut queue: VecDeque<(usize, usize)> = VecDeque::with_capacity(width * height / 4);
+
+    for y in 0..height {
+        for x in 0..width {
+            if *is_ocean.get(x, y) {
+                distance.set(x, y, 0.0);
+                queue.push_back((x, y));
+            }
+        }
+    }
+
+    while let Some((x, y)) = queue.pop_front() {
+        let current_dist = *distance.get(x, y);
+        if current_dist >= max_dist {
+            continue;
+        }
+
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+
+                let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+                let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+                let step = if dx != 0 && dy != 0 { 1.414 } else { 1.0 };
+                let new_dist = current_dist + step;
+
+                if new_dist < *distance.get(nx, ny) {
+                    distance.set(nx, ny, new_dist);
+                    queue.push_back((nx, ny));
+                }
+            }
+        }
+    }
+
+    distance
+}
+
+/// Compute distance from each cell to nearest land using BFS.
+fn compute_distance_to_land(heightmap: &Tilemap<f32>, max_dist: f32) -> Tilemap<f32> {
+    use std::collections::VecDeque;
+
+    let width = heightmap.width;
+    let height = heightmap.height;
+    let mut distance = Tilemap::new_with(width, height, f32::MAX);
+    let mut queue: VecDeque<(usize, usize)> = VecDeque::with_capacity(width * height / 4);
+
+    // Initialize: all land tiles have distance 0
+    for y in 0..height {
+        for x in 0..width {
+            if *heightmap.get(x, y) > 0.0 {
+                distance.set(x, y, 0.0);
+                queue.push_back((x, y));
+            }
+        }
+    }
+
+    while let Some((x, y)) = queue.pop_front() {
+        let current_dist = *distance.get(x, y);
+        if current_dist >= max_dist {
+            continue;
+        }
+
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+
+                let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+                let ny = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+                let step = if dx != 0 && dy != 0 { 1.414 } else { 1.0 };
+                let new_dist = current_dist + step;
+
+                if new_dist < *distance.get(nx, ny) {
+                    distance.set(nx, ny, new_dist);
+                    queue.push_back((nx, ny));
+                }
+            }
+        }
+    }
+
+    distance
+}
 
 /// Compute distance from each cell to nearest water using BFS
 /// Returns a tilemap with distance values (0.0 for water, increasing for land)
@@ -2690,9 +2730,110 @@ fn compute_distance_to_water(heightmap: &Tilemap<f32>, max_dist: f32) -> Tilemap
     distance
 }
 
+/// Apply an inland uplift pass to restore macro relief away from coastlines.
+/// Uses distance to ocean and tectonic stress to scale uplift.
+pub fn apply_inland_uplift(
+    heightmap: &mut Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    map_scale: &MapScale,
+) {
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    let max_dist = scale_distance(INLAND_UPLIFT_DISTANCE_KM, map_scale).max(1.0);
+    let base_uplift = scale_elevation(INLAND_UPLIFT_BASE, map_scale);
+    let stress_uplift = scale_elevation(INLAND_UPLIFT_STRESS, map_scale);
+
+    let ocean_distance = compute_distance_to_ocean(heightmap, max_dist + 2.0);
+
+    for y in 0..height {
+        for x in 0..width {
+            let elevation = *heightmap.get(x, y);
+            if elevation <= 0.0 {
+                continue;
+            }
+
+            let dist = *ocean_distance.get(x, y);
+            if dist <= 0.0 {
+                continue;
+            }
+
+            let t = (dist / max_dist).clamp(0.0, 1.0);
+            let inland = smooth_step(0.0, 1.0, t).powf(INLAND_UPLIFT_EXPONENT);
+
+            let stress = (*stress_map.get(x, y)).max(0.0);
+            let uplift = base_uplift * inland + stress_uplift * inland * stress.powf(0.6);
+            heightmap.set(x, y, elevation + uplift);
+        }
+    }
+}
+
+/// Apply a coastal beach/shore strip near sea level for most coastlines.
+/// High-stress convergent coastlines can preserve steep cliffs.
+pub fn apply_coastal_beaches(
+    heightmap: &mut Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    map_scale: &MapScale,
+) {
+    let width = heightmap.width;
+    let height = heightmap.height;
+
+    let beach_width = scale_distance(BEACH_WIDTH_KM, map_scale).max(1.0);
+    let beach_water_width = scale_distance(BEACH_WATER_WIDTH_KM, map_scale).max(1.0);
+    let beach_rise = scale_elevation(BEACH_MAX_RISE, map_scale);
+    let beach_level = scale_elevation(COASTAL_HEIGHT, map_scale);
+    let shore_depth = scale_elevation(BEACH_WATER_SHORE_DEPTH, map_scale);
+    let outer_depth = scale_elevation(BEACH_WATER_OUTER_DEPTH, map_scale);
+
+    let ocean_distance = compute_distance_to_ocean(heightmap, beach_width + 2.0);
+    let land_distance = compute_distance_to_land(heightmap, beach_water_width + 2.0);
+    let ocean_mask = compute_ocean_mask(heightmap);
+
+    for y in 0..height {
+        for x in 0..width {
+            let elevation = *heightmap.get(x, y);
+
+            if elevation > 0.0 {
+                let dist = *ocean_distance.get(x, y);
+                if dist <= 0.0 || dist > beach_width {
+                    continue;
+                }
+
+                let t = (dist / beach_width).clamp(0.0, 1.0);
+                let cap = beach_level + beach_rise * t.powf(BEACH_CAP_EXPONENT);
+
+                if elevation <= cap {
+                    continue;
+                }
+
+                let stress = *stress_map.get(x, y);
+                let cliff_factor = if stress > BEACH_CLIFF_STRESS_MIN {
+                    smooth_step(BEACH_CLIFF_STRESS_MIN, BEACH_CLIFF_STRESS_MAX, stress)
+                } else {
+                    0.0
+                };
+
+                let adjusted = cap + (elevation - cap) * cliff_factor;
+                heightmap.set(x, y, adjusted);
+            } else if *ocean_mask.get(x, y) {
+                let water_dist = *land_distance.get(x, y);
+                if water_dist <= 0.0 || water_dist > beach_water_width {
+                    continue;
+                }
+
+                let t = (water_dist / beach_water_width).clamp(0.0, 1.0);
+                let target_depth = shore_depth + (outer_depth - shore_depth) * t.powf(1.2);
+
+                if elevation < target_depth {
+                    heightmap.set(x, y, target_depth);
+                }
+            }
+        }
+    }
+}
+
 /// Apply fjord-like channel incisions to coastal terrain
-/// This is a post-processing pass that carves narrow inlets into existing coastlines
-/// Creates features like Norwegian fjords, Scottish sea lochs, Faroe Island sounds
+/// Creates features like Chilean Patagonian fjords, Norwegian fjords, Scottish sea lochs
 pub fn apply_fjord_incisions(
     heightmap: &mut Tilemap<f32>,
     seed: u64,
@@ -2702,108 +2843,80 @@ pub fn apply_fjord_incisions(
     let height = heightmap.height;
 
     let channel_noise = Perlin::new(1).set_seed((seed + 8001) as u32);
-    let direction_noise = Perlin::new(1).set_seed((seed + 8002) as u32);
+    let warp_noise = Perlin::new(1).set_seed((seed + 8002) as u32);
     let detail_noise = Perlin::new(1).set_seed((seed + 8003) as u32);
 
-    // Scale parameters
-    let zone_freq = scale_frequency(FJORD_ZONE_FREQ * 100.0, map_scale);
-    let channel_long = scale_frequency(FJORD_CHANNEL_LONG_FREQ * 100.0, map_scale);
-    let channel_narrow = scale_frequency(FJORD_CHANNEL_NARROW_FREQ * 100.0, map_scale);
-    let max_depth = scale_elevation(FJORD_MAX_DEPTH, map_scale);
-    let min_elev = scale_elevation(FJORD_MIN_ELEVATION, map_scale);
-    let max_elev = scale_elevation(FJORD_MAX_ELEVATION, map_scale);
-
-    let check_radius = 12.0f32;
-
-    // Pre-compute distance to water using BFS - O(n) instead of O(n * r^2)
+    let check_radius = 24.0f32;
     let water_distance = compute_distance_to_water(heightmap, check_radius + 1.0);
 
     let mut fjords_carved = 0;
 
     for y in 0..height {
+        let ny = y as f64 / height as f64;
+        // Glacial latitudes: Patagonian/Chilean south (> 38°S, ny > 0.71) or Norwegian/Alaskan north (> 38°N, ny < 0.29)
+        let lat_deg = ((ny - 0.5).abs() * 180.0) as f32;
+        let is_glacial_latitude = lat_deg > 36.0;
+
         for x in 0..width {
             let elevation = *heightmap.get(x, y);
 
-            // Only affect land in the right elevation range
-            if elevation < min_elev || elevation > max_elev {
+            // Only carve land within reasonable elevation range
+            if elevation <= 0.0 || elevation > scale_elevation(3000.0, map_scale) {
                 continue;
             }
 
-            // O(1) lookup instead of O(625) neighbor search
-            let min_water_dist = *water_distance.get(x, y);
-            if min_water_dist > check_radius || min_water_dist == 0.0 {
-                continue;  // Too far from water or is water
+            let water_dist = *water_distance.get(x, y);
+            if water_dist > check_radius || water_dist == 0.0 {
+                continue;
             }
 
-            // Normalized coordinates for noise sampling
+            // High mountains near coast also qualify for alpine glacial fjords even at mid-latitudes
+            let is_coastal_mountain = elevation > scale_elevation(600.0, map_scale);
+            if !is_glacial_latitude && !is_coastal_mountain {
+                continue;
+            }
+
             let nx = x as f64 / width as f64;
-            let ny = y as f64 / height as f64;
+            let p = cylindrical_coords(nx, ny, 1.0);
+            let wp = domain_warp_cylindrical(p, &warp_noise, 0.40, 3.5);
 
-            // FJORD ZONE: low-frequency noise determines which coastal stretches get fjords
-            let fjord_zone = channel_noise.get([
-                nx * zone_freq,
-                ny * zone_freq,
-                seed_to_z(seed, 90.0),
-            ]) as f32;
+            // Fjord zone noise: selects fjord districts (like Western Norway or Chilean Patagonia)
+            let fjord_zone = fbm_3d(&channel_noise, [wp[0] * 3.0, wp[1] * 3.0, wp[2] * 3.0], 3, 0.5, 2.0);
+            if fjord_zone < 0.05 {
+                continue;
+            }
+            let zone_strength = ((fjord_zone - 0.05) / 0.65).clamp(0.0, 1.0) as f32;
 
-            if fjord_zone < 0.25 {
+            // Fjord valley network: ridged multifractal troughs cutting perpendicular/oblique to coast
+            let trough = ridged_fbm_3d(&channel_noise, [wp[0] * 12.0, wp[1] * 6.5, wp[2] * 12.0], 3, 0.5, 2.0, 1.6);
+            let cross_trough = ridged_fbm_3d(&detail_noise, [wp[0] * 6.0, wp[1] * 12.0, wp[2] * 6.0], 2, 0.5, 2.0, 1.6);
+            let fjord_network = trough.max(cross_trough * 0.7);
+
+            // Fjord threshold: creates narrow, deep U-shaped valleys
+            if fjord_network < 0.62 {
                 continue;
             }
 
-            let zone_strength = ((fjord_zone - 0.25) / 0.75).min(1.0);
+            let channel_strength = ((fjord_network - 0.62) / 0.38).powf(1.4);
+            let dist_factor = (1.0 - water_dist / check_radius).powf(0.8);
 
-            // DIRECTION: varies smoothly across the map for natural fjord orientations
-            let dir_angle = direction_noise.get([
-                nx * zone_freq * 0.5,
-                ny * zone_freq * 0.5,
-                seed_to_z(seed, 91.0),
-            ]) as f32 * std::f32::consts::PI;
+            // Max incision depth: up to 650m incision
+            let max_depth = scale_elevation(650.0, map_scale);
+            let incision = max_depth * zone_strength * channel_strength * dist_factor;
 
-            let cos_d = dir_angle.cos() as f64;
-            let sin_d = dir_angle.sin() as f64;
-
-            // Rotated coordinates for elongated channel pattern
-            let u = nx * cos_d + ny * sin_d;
-            let v = -nx * sin_d + ny * cos_d;
-
-            // CHANNEL PATTERN: anisotropic noise creates elongated channels
-            let channel_pattern = channel_noise.get([
-                u * channel_long * 100.0,
-                v * channel_narrow * 100.0,
-                seed_to_z(seed, 92.0),
-            ]) as f32;
-
-            if channel_pattern < 0.40 {
+            if incision < 15.0 {
                 continue;
             }
 
-            let channel_strength = (channel_pattern - 0.40) / 0.60;
+            let new_elev = elevation - incision;
+            // If the fjord gouges below sea level, it becomes a saltwater fjord channel (-15m to -120m)
+            let final_elev = if new_elev < 0.0 {
+                (new_elev * 0.4).clamp(-120.0, -12.0)
+            } else {
+                new_elev
+            };
 
-            // Distance factor - channels more likely/deeper closer to existing water
-            let dist_factor = 1.0 - (min_water_dist / check_radius).min(1.0);
-
-            // Elevation factor - deeper channels at lower elevations
-            let elev_normalized = (elevation - min_elev) / (max_elev - min_elev);
-            let elev_factor = 1.0 - elev_normalized * 0.6;
-
-            // Combined incision depth
-            let incision = max_depth * zone_strength * channel_strength * dist_factor * elev_factor;
-
-            if incision < 5.0 {
-                continue;
-            }
-
-            // Add detail noise for irregular channel floor
-            let detail = detail_noise.get([
-                nx * channel_narrow * 50.0,
-                ny * channel_narrow * 50.0,
-                seed_to_z(seed, 93.0),
-            ]) as f32;
-            let varied_incision = incision * (0.75 + detail.abs() * 0.25);
-
-            // Carve the channel
-            let new_elev = (elevation - varied_incision).max(-150.0);
-            heightmap.set(x, y, new_elev);
+            heightmap.set(x, y, final_elev);
             fjords_carved += 1;
         }
     }
@@ -2986,16 +3099,38 @@ pub fn mark_volcano_tiles(
     heightmap: &mut Tilemap<f32>,
     volcanoes: &[VolcanoLocation],
 ) -> usize {
+    let width = heightmap.width;
+    let height = heightmap.height;
     let mut tiles_modified = 0;
 
     for volcano in volcanoes {
-        let current = *heightmap.get(volcano.x, volcano.y);
+        let base_peak = volcano.peak_height;
+        let radius = 3.0f32;
 
-        // Add volcano peak height to existing elevation
-        // This represents the volcanic mountain rising above the terrain
-        let new_elevation = current + volcano.peak_height;
-        heightmap.set(volcano.x, volcano.y, new_elevation);
-        tiles_modified += 1;
+        for dy in -3i32..=3 {
+            let ny = volcano.y as i32 + dy;
+            if ny < 0 || ny >= height as i32 {
+                continue;
+            }
+            let uy = ny as usize;
+
+            for dx in -3i32..=3 {
+                let r = ((dx * dx + dy * dy) as f32).sqrt();
+                if r > radius {
+                    continue;
+                }
+
+                let ux = ((volcano.x as i32 + dx).rem_euclid(width as i32)) as usize;
+                let current = *heightmap.get(ux, uy);
+
+                // Conical / Gaussian volcanic profile
+                let cone_profile = (-(r / 1.5).powi(2)).exp();
+                let boost = base_peak * cone_profile;
+
+                heightmap.set(ux, uy, current + boost);
+                tiles_modified += 1;
+            }
+        }
     }
 
     tiles_modified

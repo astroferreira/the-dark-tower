@@ -183,11 +183,11 @@ impl Default for UndergroundWaterParams {
             min_porosity: 0.3,
             min_moisture_for_recharge: 0.2,
             depth_scale: 0.5,
-            spring_gradient_threshold: 15.0, // meters drop per tile
-            spring_flow_threshold: 30.0,
+            spring_gradient_threshold: 40.0, // meters drop per tile
+            spring_flow_threshold: 20.0,
             waterfall_min_drop: 20.0,
             waterfall_min_flow: 50.0,
-            thermal_stress_threshold: 0.3,
+            thermal_stress_threshold: 0.75,
         }
     }
 }
@@ -396,35 +396,33 @@ fn check_spring_conditions(
         }
     }
 
-    // Condition 1: Thermal spring - high tectonic stress
-    if stress > params.thermal_stress_threshold && aquifer.is_present() {
+    // Condition 1: Thermal spring - high tectonic stress hotspot
+    if stress > params.thermal_stress_threshold && aquifer.is_present() && aquifer.yield_potential > 0.3 {
         let flow_rate = aquifer.yield_potential * (0.5 + stress);
         let temp_mod = stress * 30.0; // Hotter with more stress
         return Some(SpringInfo::new(SpringType::Thermal, flow_rate.min(1.0), temp_mod));
     }
 
     // Condition 2: Artesian spring - confined aquifer meets surface at low point
-    if aquifer.aquifer_type == AquiferType::Confined && aquifer.depth < 5.0 {
+    if aquifer.aquifer_type == AquiferType::Confined && aquifer.depth < 2.0 && aquifer.yield_potential > 0.4 {
         let flow_rate = aquifer.yield_potential * 0.8;
         return Some(SpringInfo::new(SpringType::Artesian, flow_rate, 0.0));
     }
 
-    // Condition 3: Seepage spring - elevation break with uphill aquifer
-    if max_uphill > params.spring_gradient_threshold && uphill_aquifer_yield > 0.2 {
+    // Condition 3: Seepage spring - steep elevation break with uphill aquifer
+    if max_uphill > params.spring_gradient_threshold && uphill_aquifer_yield > 0.4 {
         let flow_rate = uphill_aquifer_yield * 0.5;
         return Some(SpringInfo::new(SpringType::Seepage, flow_rate, 0.0));
     }
 
-    // Condition 4: Valley floor spring - high flow accumulation with shallow aquifer
-    if flow > params.spring_flow_threshold && aquifer.is_present() && aquifer.depth < 15.0 {
-        let flow_rate = (flow / 200.0).min(1.0) * aquifer.yield_potential;
-        if flow_rate > 0.1 {
-            return Some(SpringInfo::new(SpringType::Seepage, flow_rate, 0.0));
-        }
+    // Condition 4: Headwater source spring - emerging stream source from shallow aquifer
+    if flow >= 5.0 && flow <= params.spring_flow_threshold && aquifer.is_present() && aquifer.depth < 5.0 && aquifer.yield_potential > 0.4 {
+        let flow_rate = aquifer.yield_potential * 0.6;
+        return Some(SpringInfo::new(SpringType::Seepage, flow_rate, 0.0));
     }
 
-    // Condition 5: Karst spring - perched aquifer with high porosity
-    if aquifer.aquifer_type == AquiferType::Perched && aquifer.recharge_rate > 0.3 {
+    // Condition 5: Karst spring - perched aquifer with high recharge
+    if aquifer.aquifer_type == AquiferType::Perched && aquifer.recharge_rate > 0.5 && aquifer.yield_potential > 0.4 {
         let flow_rate = aquifer.yield_potential * 0.6;
         return Some(SpringInfo::new(SpringType::Karst, flow_rate, 0.0));
     }

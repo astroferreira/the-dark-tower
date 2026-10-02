@@ -19,7 +19,7 @@ pub use materials::{RockType, generate_material_map, generate_hardness_map};
 pub use params::{ErosionParams, ErosionPreset};
 pub use rivers::{RiverErosionParams, RiverWidthStats, ConnectivityStats,
                  measure_river_widths, check_river_connectivity, print_river_validation};
-pub use river_geometry::{RiverNetwork, RiverNetworkParams, trace_bezier_rivers};
+pub use river_geometry::{RiverNetwork, RiverNetworkParams, trace_bezier_rivers, trace_bezier_rivers_with_flow};
 
 use crate::tilemap::Tilemap;
 use crate::plates::{Plate, PlateId};

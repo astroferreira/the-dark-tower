@@ -64,6 +64,8 @@ pub struct BezierRiverSegment {
     pub tributaries: Vec<usize>,
     /// Unique ID for this segment
     pub id: usize,
+    /// Strahler stream order (1 for headwaters, increasing at confluences)
+    pub stream_order: usize,
 }
 
 impl BezierRiverSegment {
@@ -188,15 +190,15 @@ pub struct RiverNetworkParams {
 impl Default for RiverNetworkParams {
     fn default() -> Self {
         Self {
-            source_threshold: 100.0,
-            source_max_threshold: 300.0,
-            min_source_elevation: 50.0,
-            points_per_segment: 6,
-            meander_amplitude: 0.5,
-            meander_frequency: 0.15,
+            source_threshold: 12.0,
+            source_max_threshold: 50000.0,
+            min_source_elevation: 5.0,
+            points_per_segment: 5,
+            meander_amplitude: 0.30,
+            meander_frequency: 0.12,
             max_curvature: 0.3,
-            base_width: 1.0,
-            width_exponent: 0.5,
+            base_width: 0.35,
+            width_exponent: 0.45,
         }
     }
 }
@@ -325,6 +327,8 @@ pub fn generate_river_network(
     heightmap: &Tilemap<f32>,
     flow_accumulation: &Tilemap<f32>,
     flow_direction: &Tilemap<u8>,
+    water_map: Option<&Tilemap<crate::water_bodies::WaterBodyId>>,
+    water_bodies: Option<&[crate::water_bodies::WaterBody]>,
     params: &RiverNetworkParams,
     seed: u64,
 ) -> RiverNetwork {
@@ -333,17 +337,33 @@ pub fn generate_river_network(
     let width = heightmap.width;
     let height = heightmap.height;
 
-    // Find river sources (headwaters)
-    let sources = find_river_sources(heightmap, flow_accumulation, params);
+    // Find true river sources (headwaters where channels initiate)
+    let mut sources = find_river_sources(heightmap, flow_accumulation, flow_direction, params);
+
+    // Also include lake spillway outlets for exorheic lakes
+    if let Some(bodies) = water_bodies {
+        for body in bodies {
+            if body.body_type == crate::water_bodies::WaterBodyType::Lake && !body.is_endorheic {
+                if let Some(spillway) = body.spillway {
+                    if !sources.contains(&spillway) && *heightmap.get(spillway.0, spillway.1) >= 0.0 {
+                        sources.push(spillway);
+                    }
+                }
+            }
+        }
+    }
+
     network.sources = sources.clone();
 
-    // Track which cells have been assigned to a segment
-    let mut visited: Tilemap<bool> = Tilemap::new_with(width, height, false);
+    // Track which simulation cells have been claimed by existing river segments (storing the segment ID)
+    let mut cell_to_segment: Tilemap<Option<usize>> = Tilemap::new_with(width, height, None);
+    let mut tributary_links: Vec<(usize, usize)> = Vec::new(); // (downstream_seg_id, incoming_trib_id)
+    let mut confluences: Vec<ConfluencePoint> = Vec::new();
     let mut segment_id = 0;
 
-    // Trace each river from source to ocean/confluence
+    // Trace each river from source to ocean/confluence/lake
     for (sx, sy) in &sources {
-        if *visited.get(*sx, *sy) {
+        if cell_to_segment.get(*sx, *sy).is_some() {
             continue;
         }
 
@@ -351,27 +371,40 @@ pub fn generate_river_network(
             heightmap,
             flow_accumulation,
             flow_direction,
+            water_map,
             *sx, *sy,
             params,
             &noise,
             seed,
-            &mut visited,
+            &mut cell_to_segment,
             &mut segment_id,
+            &mut confluences,
+            &mut tributary_links,
         );
 
         network.segments.extend(segments);
     }
 
-    // Find confluence points
-    network.confluences = find_confluences(&network.segments, heightmap.width, heightmap.height);
+    // Connect tributary links into the downstream segments' tributaries lists
+    for &(target_id, trib_id) in &tributary_links {
+        if let Some(target_seg) = network.segments.iter_mut().find(|s| s.id == target_id) {
+            if !target_seg.tributaries.contains(&trib_id) {
+                target_seg.tributaries.push(trib_id);
+            }
+        }
+    }
+
+    network.confluences = confluences;
+    compute_strahler_orders(&mut network.segments);
 
     network
 }
 
-/// Find river source points (headwaters)
+/// Find true river source points (headwaters where channels initiate)
 fn find_river_sources(
     heightmap: &Tilemap<f32>,
     flow_acc: &Tilemap<f32>,
+    flow_dir: &Tilemap<u8>,
     params: &RiverNetworkParams,
 ) -> Vec<(usize, usize)> {
     let width = heightmap.width;
@@ -383,18 +416,35 @@ fn find_river_sources(
             let h = *heightmap.get(x, y);
             let acc = *flow_acc.get(x, y);
 
-            // Must be above sea level with sufficient accumulation
-            // but not too much (avoid starting mid-river)
             if h >= params.min_source_elevation
                 && acc >= params.source_threshold
                 && acc < params.source_max_threshold
             {
-                sources.push((x, y));
+                // Check if any upstream neighbor cell flows into (x, y) with accumulation >= source_threshold
+                let mut has_upstream_channel = false;
+                for (nx, ny) in heightmap.neighbors_8(x, y) {
+                    let dir = *flow_dir.get(nx, ny);
+                    if dir != NO_FLOW && (dir as usize) < 8 {
+                        let target_x = (nx as i32 + DX[dir as usize]).rem_euclid(width as i32) as usize;
+                        let target_y = ny as i32 + DY[dir as usize];
+                        if target_x == x && target_y == y as i32 {
+                            if *flow_acc.get(nx, ny) >= params.source_threshold {
+                                has_upstream_channel = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if !has_upstream_channel {
+                    sources.push((x, y));
+                }
             }
         }
     }
 
-    // Sort by accumulation (larger first)
+    // Sort by accumulation descending: trace major drainage basins first
+    // so tributaries terminate into existing trunks seamlessly
     sources.sort_by(|a, b| {
         let acc_a = *flow_acc.get(a.0, a.1);
         let acc_b = *flow_acc.get(b.0, b.1);
@@ -404,37 +454,45 @@ fn find_river_sources(
     sources
 }
 
-/// Trace a single river from source to ocean, creating Bezier segments
+/// Trace a single river from source to ocean, lake, or existing river confluence
 fn trace_river_bezier(
     heightmap: &Tilemap<f32>,
     flow_acc: &Tilemap<f32>,
     flow_dir: &Tilemap<u8>,
+    water_map: Option<&Tilemap<crate::water_bodies::WaterBodyId>>,
     start_x: usize,
     start_y: usize,
     params: &RiverNetworkParams,
     noise: &Perlin,
     seed: u64,
-    visited: &mut Tilemap<bool>,
+    cell_to_segment: &mut Tilemap<Option<usize>>,
     segment_id: &mut usize,
+    confluences: &mut Vec<ConfluencePoint>,
+    tributary_links: &mut Vec<(usize, usize)>,
 ) -> Vec<BezierRiverSegment> {
     let width = heightmap.width;
     let height = heightmap.height;
     let mut segments = Vec::new();
 
-    // Collect raw path points
-    let mut path_points: Vec<RiverControlPoint> = Vec::new();
+    // Collect raw path points, splitting into contiguous subpaths at periodic X wrap boundary
+    let mut all_paths: Vec<Vec<RiverControlPoint>> = Vec::new();
+    let mut current_path: Vec<RiverControlPoint> = Vec::new();
+    let mut local_visited = std::collections::HashSet::new();
     let mut x = start_x;
     let mut y = start_y;
     let max_steps = width * height;
+    let mut joined_segment_id: Option<usize> = None;
 
-    for _ in 0..max_steps {
-        visited.set(x, y, true);
+    for step in 0..max_steps {
+        if !local_visited.insert((x, y)) {
+            break;
+        }
 
         let h = *heightmap.get(x, y);
         let acc = *flow_acc.get(x, y);
         let river_width = calculate_river_width(acc, params);
 
-        path_points.push(RiverControlPoint::new(
+        current_path.push(RiverControlPoint::new(
             x as f32,
             y as f32,
             acc,
@@ -442,9 +500,32 @@ fn trace_river_bezier(
             h,
         ));
 
-        // Reached ocean?
-        if h < 0.0 {
+        // Reached ocean coastline? (Coastline is at 0.0)
+        if h <= 0.0 {
             break;
+        }
+
+        // Reached a lake? (Only stop if step > 0 to allow spillway sources to emerge)
+        if step > 0 {
+            if let Some(wm) = water_map {
+                if wm.get(x, y).is_lake() {
+                    break;
+                }
+            }
+        }
+
+        // Reached an existing river channel? (Confluence!)
+        if step > 0 {
+            if let Some(existing_seg_id) = *cell_to_segment.get(x, y) {
+                joined_segment_id = Some(existing_seg_id);
+                confluences.push(ConfluencePoint {
+                    x: x as f32,
+                    y: y as f32,
+                    segment_indices: vec![existing_seg_id],
+                    combined_flow: acc,
+                });
+                break;
+            }
         }
 
         // Get flow direction
@@ -462,39 +543,106 @@ fn trace_river_bezier(
         }
         let ny = ny as usize;
 
+        // Check if next step (nx, ny) flows into an existing river channel (confluence)
+        if step > 0 {
+            if let Some(existing_seg_id) = *cell_to_segment.get(nx, ny) {
+                let next_h = *heightmap.get(nx, ny);
+                let next_acc = *flow_acc.get(nx, ny);
+                let next_w = calculate_river_width(next_acc, params);
+                current_path.push(RiverControlPoint::new(
+                    nx as f32,
+                    ny as f32,
+                    next_acc,
+                    next_w,
+                    next_h,
+                ));
+                joined_segment_id = Some(existing_seg_id);
+                confluences.push(ConfluencePoint {
+                    x: nx as f32,
+                    y: ny as f32,
+                    segment_indices: vec![existing_seg_id],
+                    combined_flow: next_acc,
+                });
+                break;
+            }
+        }
+
+        // If crossing periodic boundary (e.g. x=0 <-> x=width-1), split into separate subpath
+        if (nx as i32 - x as i32).abs() > 1 {
+            if current_path.len() >= 2 {
+                all_paths.push(std::mem::take(&mut current_path));
+            } else {
+                current_path.clear();
+            }
+        }
+
         x = nx;
         y = ny;
     }
 
-    // Convert path points to Bezier segments
-    if path_points.len() < 2 {
-        return segments;
+    if current_path.len() >= 2 {
+        all_paths.push(current_path);
     }
 
-    // Apply meandering noise to path points
-    let meander_points = apply_meander(&path_points, params, noise, seed);
+    let num_paths = all_paths.len();
+    let mut prev_subseg_id: Option<usize> = None;
 
-    // Create Bezier segments from points
-    let points_per_seg = params.points_per_segment.max(2);
-    let mut i = 0;
-
-    while i + 1 < meander_points.len() {
-        let end_i = (i + points_per_seg).min(meander_points.len() - 1);
-
-        if end_i <= i {
-            break;
+    for (path_idx, path_points) in all_paths.into_iter().enumerate() {
+        if path_points.len() < 2 {
+            continue;
         }
 
-        let segment = create_bezier_segment(
-            &meander_points,
-            i,
-            end_i,
-            *segment_id,
-        );
+        // Apply meandering noise to path points
+        let meander_points = apply_meander(&path_points, params, noise, seed);
 
-        segments.push(segment);
-        *segment_id += 1;
-        i = end_i;
+        // Create Bezier segments from points
+        let points_per_seg = params.points_per_segment.max(2);
+        let mut i = 0;
+
+        while i + 1 < meander_points.len() {
+            let end_i = (i + points_per_seg).min(meander_points.len() - 1);
+
+            if end_i <= i {
+                break;
+            }
+
+            let mut segment = create_bezier_segment(
+                &meander_points,
+                i,
+                end_i,
+                *segment_id,
+            );
+
+            // Connect upstream segment of the same path as incoming stream
+            if let Some(prev_id) = prev_subseg_id {
+                segment.tributaries.push(prev_id);
+            }
+
+            // Register exact simulation grid cells covered by this segment in cell_to_segment
+            for pt in &path_points[i..=end_i] {
+                let cx = (pt.world_x.round() as usize).rem_euclid(width);
+                let cy = (pt.world_y.round() as usize).clamp(0, height - 1);
+                cell_to_segment.set(cx, cy, Some(segment.id));
+            }
+
+            // If this is the final segment of the final subpath and we joined an existing river:
+            let is_final = path_idx == num_paths - 1 && end_i == meander_points.len() - 1;
+            if is_final {
+                if let Some(target_seg_id) = joined_segment_id {
+                    tributary_links.push((target_seg_id, segment.id));
+                    if let Some(conf) = confluences.last_mut() {
+                        if !conf.segment_indices.contains(&segment.id) {
+                            conf.segment_indices.push(segment.id);
+                        }
+                    }
+                }
+            }
+
+            prev_subseg_id = Some(segment.id);
+            segments.push(segment);
+            *segment_id += 1;
+            i = end_i;
+        }
     }
 
     segments
@@ -593,18 +741,18 @@ fn create_bezier_segment(
         p3,
         tributaries: Vec::new(),
         id,
+        stream_order: 1,
     }
 }
 
 /// Calculate river width from flow accumulation using hydraulic geometry
 fn calculate_river_width(flow_acc: f32, params: &RiverNetworkParams) -> f32 {
-    // Width scales with flow^exponent (typically 0.5 for natural rivers)
-    // w = w0 * (Q/Q0)^b where Q is discharge (proxy: flow accumulation)
+    // Width scales with flow^exponent (typically 0.45 for natural rivers)
     let flow_ratio = (flow_acc / params.source_threshold).max(1.0);
     let width = params.base_width * flow_ratio.powf(params.width_exponent);
 
-    // Clamp to reasonable range
-    width.clamp(0.5, 12.0)
+    // Clamp: 0.35 (capillary brook) to 3.5 tiles max width (major trunk)
+    width.clamp(0.35, 3.5)
 }
 
 /// Find confluence points where rivers merge
@@ -614,13 +762,10 @@ fn find_confluences(
     _height: usize,
 ) -> Vec<ConfluencePoint> {
     let mut confluences = Vec::new();
-    let merge_threshold = 3.0; // Distance threshold for considering points as same confluence
+    let merge_threshold = 3.0;
 
-    // Group segment endpoints
     for (i, seg_i) in segments.iter().enumerate() {
         let end_pt = &seg_i.p3;
-
-        // Check if this endpoint is near another segment's start/end
         for (j, seg_j) in segments.iter().enumerate() {
             if i >= j {
                 continue;
@@ -632,10 +777,7 @@ fn find_confluences(
             let dist = (dx * dx + dy * dy).sqrt();
 
             if dist < merge_threshold {
-                // Found a confluence
                 let combined_flow = end_pt.flow_accumulation + start_j.flow_accumulation;
-
-                // Check if we already have a confluence near here
                 let existing = confluences.iter_mut().find(|c: &&mut ConfluencePoint| {
                     let cdx = c.x - end_pt.world_x;
                     let cdy = c.y - end_pt.world_y;
@@ -663,6 +805,58 @@ fn find_confluences(
     }
 
     confluences
+}
+
+/// Compute exact Horton-Strahler stream orders across all segments in the network
+fn compute_strahler_orders(segments: &mut [BezierRiverSegment]) {
+    for _ in 0..20 {
+        let mut changed = false;
+        let prev_orders: std::collections::HashMap<usize, usize> =
+            segments.iter().map(|s| (s.id, s.stream_order)).collect();
+
+        for seg in segments.iter_mut() {
+            if seg.tributaries.is_empty() {
+                if seg.stream_order != 1 {
+                    seg.stream_order = 1;
+                    changed = true;
+                }
+            } else {
+                let mut max_order = 1;
+                let mut count_max = 0;
+                for &trib_id in &seg.tributaries {
+                    let trib_order = prev_orders.get(&trib_id).copied().unwrap_or(1);
+                    if trib_order > max_order {
+                        max_order = trib_order;
+                        count_max = 1;
+                    } else if trib_order == max_order {
+                        count_max += 1;
+                    }
+                }
+
+                let new_order = if count_max >= 2 { max_order + 1 } else { max_order };
+                if new_order != seg.stream_order {
+                    seg.stream_order = new_order;
+                    changed = true;
+                }
+            }
+        }
+
+        if !changed {
+            break;
+        }
+    }
+
+    // Ensure stream order reflects both branching topology and massive accumulated discharge
+    for seg in segments.iter_mut() {
+        let max_acc = seg.p3.flow_accumulation.max(seg.p0.flow_accumulation);
+        if max_acc > 1200.0 {
+            seg.stream_order = seg.stream_order.max(4);
+        } else if max_acc > 250.0 {
+            seg.stream_order = seg.stream_order.max(3);
+        } else if max_acc > 50.0 {
+            seg.stream_order = seg.stream_order.max(2);
+        }
+    }
 }
 
 // =============================================================================
@@ -720,20 +914,48 @@ fn rasterize_segment(segment: &BezierRiverSegment, river_map: &mut Tilemap<f32>)
 // INTEGRATION HELPERS
 // =============================================================================
 
+/// Trace rivers with pre-computed flow accumulation and direction, respecting lakes and terrain boundaries.
+pub fn trace_bezier_rivers_with_flow(
+    heightmap: &Tilemap<f32>,
+    flow_accumulation: &Tilemap<f32>,
+    flow_direction: &Tilemap<u8>,
+    water_map: Option<&Tilemap<crate::water_bodies::WaterBodyId>>,
+    water_bodies: Option<&[crate::water_bodies::WaterBody]>,
+    params: Option<RiverNetworkParams>,
+    seed: u64,
+) -> RiverNetwork {
+    let params = params.unwrap_or_default();
+    generate_river_network(
+        heightmap,
+        flow_accumulation,
+        flow_direction,
+        water_map,
+        water_bodies,
+        &params,
+        seed,
+    )
+}
+
 /// Trace rivers from heightmap and create a Bezier network
-/// This is the main entry point for integration with the world generation pipeline
+/// This is the convenience entry point for integration with the world generation pipeline
 pub fn trace_bezier_rivers(
     heightmap: &Tilemap<f32>,
     params: Option<RiverNetworkParams>,
     seed: u64,
 ) -> RiverNetwork {
     let params = params.unwrap_or_default();
-
-    // Compute flow direction and accumulation
-    let flow_dir = compute_flow_direction(heightmap);
-    let flow_acc = compute_flow_accumulation(heightmap, &flow_dir);
-
-    generate_river_network(heightmap, &flow_acc, &flow_dir, &params, seed)
+    let (filled, flat_dir) = super::rivers::fill_depressions_and_route(heightmap);
+    let mut flow_dir = compute_flow_direction(&filled);
+    for y in 0..heightmap.height {
+        for x in 0..heightmap.width {
+            let fd = *flat_dir.get(x, y);
+            if fd != NO_FLOW {
+                flow_dir.set(x, y, fd);
+            }
+        }
+    }
+    let flow_acc = compute_flow_accumulation(&filled, &flow_dir);
+    trace_bezier_rivers_with_flow(heightmap, &flow_acc, &flow_dir, None, None, Some(params), seed)
 }
 
 #[cfg(test)]
@@ -754,6 +976,7 @@ mod tests {
             p3,
             tributaries: vec![],
             id: 0,
+            stream_order: 1,
         };
 
         // Test endpoints

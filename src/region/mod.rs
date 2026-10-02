@@ -7,6 +7,7 @@ pub mod handshake;
 pub mod rivers;
 pub mod generator;
 pub mod cache;
+pub mod zoom;
 
 pub use handshake::{
     TileHandshake, RegionHandshake, WorldHandshakes,

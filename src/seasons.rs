@@ -147,11 +147,87 @@ pub struct SeasonalClimate {
     pub moisture_phase: Tilemap<f32>,
     /// Climate season type per tile
     pub climate_type: Tilemap<ClimateSeasonType>,
+    /// Simulated seasonal temperatures: [Spring, Summer, Autumn, Winter] in Celsius
+    pub seasonal_temperatures: Option<[Tilemap<f32>; 4]>,
+    /// Simulated seasonal moistures: [Spring, Summer, Autumn, Winter] in [0.0, 1.0]
+    pub seasonal_moistures: Option<[Tilemap<f32>; 4]>,
 }
 
 impl SeasonalClimate {
+    /// Create SeasonalClimate directly from physical climate simulation
+    pub fn from_simulation(sim: &crate::climate::ClimateSimulation, heightmap: &Tilemap<f32>) -> Self {
+        let width = heightmap.width;
+        let height = heightmap.height;
+        let mut climate_type = Tilemap::new_with(width, height, ClimateSeasonType::Continental);
+
+        for y in 0..height {
+            let lat_normalized = (y as f32 / height as f32 - 0.5).abs() * 2.0;
+            let lat_deg = lat_normalized * 90.0;
+
+            for x in 0..width {
+                let elev = *heightmap.get(x, y);
+                if elev <= 0.0 {
+                    climate_type.set(x, y, ClimateSeasonType::Oceanic);
+                    continue;
+                }
+
+                let base_t = *sim.mean_temperature.get(x, y);
+                let base_m = *sim.mean_moisture.get(x, y);
+                let m_phase = *sim.moisture_phase.get(x, y);
+                let m_amp = *sim.moisture_amplitude.get(x, y);
+
+                let ct = if lat_deg > 66.0 || base_t < -10.0 {
+                    ClimateSeasonType::Polar
+                } else if lat_deg < 15.0 && base_t > 20.0 {
+                    ClimateSeasonType::Equatorial
+                } else if m_phase > 2.0 {
+                    ClimateSeasonType::Mediterranean
+                } else if m_amp > 0.15 && base_t > 16.0 {
+                    ClimateSeasonType::Tropical
+                } else if m_amp < 0.08 && base_m > 0.55 {
+                    ClimateSeasonType::Oceanic
+                } else {
+                    ClimateSeasonType::Continental
+                };
+
+                climate_type.set(x, y, ct);
+            }
+        }
+
+        Self {
+            base_temperature: sim.mean_temperature.clone(),
+            base_moisture: sim.mean_moisture.clone(),
+            temp_amplitude: sim.temp_amplitude.clone(),
+            moisture_amplitude: sim.moisture_amplitude.clone(),
+            moisture_phase: sim.moisture_phase.clone(),
+            climate_type,
+            seasonal_temperatures: Some([
+                sim.seasonal_temperatures[0].clone(),
+                sim.seasonal_temperatures[1].clone(),
+                sim.seasonal_temperatures[2].clone(),
+                sim.seasonal_temperatures[3].clone(),
+            ]),
+            seasonal_moistures: Some([
+                sim.seasonal_moistures[0].clone(),
+                sim.seasonal_moistures[1].clone(),
+                sim.seasonal_moistures[2].clone(),
+                sim.seasonal_moistures[3].clone(),
+            ]),
+        }
+    }
+
     /// Get temperature for a specific season
     pub fn get_temperature(&self, x: usize, y: usize, season: Season, is_northern_hemisphere: bool) -> f32 {
+        if let Some(ref temps) = self.seasonal_temperatures {
+            let s_idx = match (season, is_northern_hemisphere) {
+                (Season::Spring, true) | (Season::Autumn, false) => 0,
+                (Season::Summer, true) | (Season::Winter, false) => 1,
+                (Season::Autumn, true) | (Season::Spring, false) => 2,
+                (Season::Winter, true) | (Season::Summer, false) => 3,
+            };
+            return *temps[s_idx].get(x, y);
+        }
+
         let base = *self.base_temperature.get(x, y);
         let amplitude = *self.temp_amplitude.get(x, y);
 
@@ -173,6 +249,16 @@ impl SeasonalClimate {
 
     /// Get moisture for a specific season
     pub fn get_moisture(&self, x: usize, y: usize, season: Season, is_northern_hemisphere: bool) -> f32 {
+        if let Some(ref moists) = self.seasonal_moistures {
+            let s_idx = match (season, is_northern_hemisphere) {
+                (Season::Spring, true) | (Season::Autumn, false) => 0,
+                (Season::Summer, true) | (Season::Winter, false) => 1,
+                (Season::Autumn, true) | (Season::Spring, false) => 2,
+                (Season::Winter, true) | (Season::Summer, false) => 3,
+            };
+            return *moists[s_idx].get(x, y);
+        }
+
         let base = *self.base_moisture.get(x, y);
         let amplitude = *self.moisture_amplitude.get(x, y);
         let phase_offset = *self.moisture_phase.get(x, y);
@@ -222,81 +308,18 @@ impl SeasonalClimate {
 // SEASONAL CLIMATE GENERATION
 // =============================================================================
 
-/// Generate seasonal climate data from base climate maps
+/// Generate seasonal climate data from physical climate simulation with axial tilt
 pub fn generate_seasonal_climate(
-    base_temperature: &Tilemap<f32>,
-    base_moisture: &Tilemap<f32>,
+    _base_temperature: &Tilemap<f32>,
+    _base_moisture: &Tilemap<f32>,
     heightmap: &Tilemap<f32>,
 ) -> SeasonalClimate {
-    let width = base_temperature.width;
-    let height = base_temperature.height;
-
-    let mut temp_amplitude = Tilemap::new_with(width, height, 0.0f32);
-    let mut moisture_amplitude = Tilemap::new_with(width, height, 0.0f32);
-    let mut moisture_phase = Tilemap::new_with(width, height, 0.0f32);
-    let mut climate_type = Tilemap::new_with(width, height, ClimateSeasonType::Continental);
-
-    for y in 0..height {
-        // Calculate latitude (0 = equator, 1 = pole)
-        let latitude_normalized = (y as f32 / height as f32 - 0.5).abs() * 2.0;
-        let latitude_degrees = latitude_normalized * 90.0;
-
-        for x in 0..width {
-            let elevation = *heightmap.get(x, y);
-            let base_temp = *base_temperature.get(x, y);
-            let base_moist = *base_moisture.get(x, y);
-
-            // Skip ocean (minimal seasonal variation in surface temp)
-            if elevation <= 0.0 {
-                temp_amplitude.set(x, y, 2.0); // Ocean has low variation
-                moisture_amplitude.set(x, y, 0.02);
-                climate_type.set(x, y, ClimateSeasonType::Oceanic);
-                continue;
-            }
-
-            // Determine climate season type based on location and climate
-            let ct = classify_climate_type(latitude_degrees, base_temp, base_moist, elevation);
-            climate_type.set(x, y, ct);
-
-            // Temperature amplitude increases with latitude
-            // Near equator: ~2°C variation, at 60°: ~15°C, polar: ~20°C
-            let lat_temp_amp = if latitude_normalized < 0.2 {
-                2.0 + latitude_normalized * 10.0
-            } else if latitude_normalized < 0.7 {
-                4.0 + (latitude_normalized - 0.2) * 22.0 // 4 to 15
-            } else {
-                15.0 + (latitude_normalized - 0.7) * 16.7 // 15 to 20
-            };
-
-            // Continental interiors have higher amplitude than coastal
-            // (approximated by base moisture - drier = more continental)
-            let continental_factor = 1.0 + (1.0 - base_moist) * 0.3;
-
-            // High elevation reduces amplitude slightly
-            let elevation_factor = if elevation > 2000.0 {
-                0.85
-            } else if elevation > 1000.0 {
-                0.92
-            } else {
-                1.0
-            };
-
-            temp_amplitude.set(x, y, lat_temp_amp * continental_factor * elevation_factor);
-
-            // Moisture amplitude and phase from climate type
-            moisture_amplitude.set(x, y, ct.moisture_amplitude() * base_moist);
-            moisture_phase.set(x, y, ct.moisture_phase());
-        }
-    }
-
-    SeasonalClimate {
-        base_temperature: base_temperature.clone(),
-        base_moisture: base_moisture.clone(),
-        temp_amplitude,
-        moisture_amplitude,
-        moisture_phase,
-        climate_type,
-    }
+    let sim = crate::climate::run_climate_simulation(
+        heightmap,
+        &crate::climate::ClimateConfig::default(),
+        0,
+    );
+    SeasonalClimate::from_simulation(&sim, heightmap)
 }
 
 /// Classify climate season type based on conditions

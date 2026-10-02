@@ -32,6 +32,8 @@ OPTIONS:
   -H, --height <N>    Map height in tiles [default: 256]
   -s, --seed <N>      Random seed (random if not specified)
   -p, --plates <N>    Number of tectonic plates (random 6-15 if omitted)
+      --tectonic-myr <N>   Simulated tectonic history in Myr [default: 200]
+      --legacy-tectonics   Use the old static-plate + noise terrain (no simulation)
 ```
 
 ---
@@ -51,6 +53,12 @@ OPTIONS:
 - **Moisture** - Moisture/precipitation
 - **Plates** - Tectonic plate boundaries
 - **Stress** - Tectonic stress (mountain building)
+
+### Minimap and zoom
+- `N` - Toggle the world minimap (bottom-right; yellow = visible area, white = zoom window)
+- `Z` - Simulate the 8x8-tile region around the cursor at 128 cells/tile (~5 s) and show it
+  full-screen. In the zoom view: arrows/WASD pan, `+`/`-` scale, `F` fit, `X` save PNG to the
+  current directory, `Esc`/`Z` back. Zooming the same tile again reuses the cached region.
 
 ### Other
 - `?` - Help
@@ -75,8 +83,10 @@ src/
 │
 ├── plates/           # Tectonic plates
 │   ├── types.rs      # Plate, PlateType, velocity
-│   ├── generation.rs # BFS flood-fill plate generation
-│   └── stress.rs     # Boundary stress calculation
+│   ├── generation.rs # BFS flood-fill plate generation (initial plate layout)
+│   ├── simulation.rs # Time-stepped sphere simulation (Euler poles, subduction, rifting)
+│   ├── crust.rs      # Isostasy + seafloor-age terrain, sea level, generate_tectonic_terrain()
+│   └── stress.rs     # Legacy boundary stress (used by --legacy-tectonics)
 │
 └── erosion/          # Terrain erosion
     ├── hydraulic.rs  # Water droplet erosion
@@ -90,9 +100,10 @@ src/
 
 ## World Generation Pipeline
 
-1. **Tectonic Plates** - BFS flood-fill creates 6-15 plates
-2. **Plate Stress** - Calculate convergent/divergent boundaries
-3. **Heightmap** - Generate terrain from plate interactions
+1. **Tectonic Plates** - BFS flood-fill creates 6-15 initial plates
+2. **Tectonic Simulation** - Plates rotate about Euler poles on a sphere for ~200 Myr; the
+   simulation yields final plates, crust thickness/age, and a `stress_map` (see below)
+3. **Heightmap** - Derived from crust: Airy isostasy on land, age-depth law at sea, solved sea level
 4. **Erosion** - Hydraulic and glacial erosion sculpts terrain
 5. **Climate** - Temperature (latitude + elevation) and moisture
 6. **Biomes** - 50+ biome types based on climate
@@ -102,10 +113,51 @@ src/
 
 ## Key Systems
 
-### Tectonic Plates
-- Continental plates: Higher elevation, thicker crust
-- Oceanic plates: Lower elevation, thinner crust
-- Plate boundaries create mountains (convergent) or rifts (divergent)
+### Tectonic Simulation (`plates/simulation.rs`, `plates/crust.rs`)
+- Each plate is a rigid body rotating about its own Euler pole; its crust (thickness, age,
+  volcanic edifices) lives in the plate's *body frame*, so motion never blurs the crust.
+- Each step, every map cell asks which plates cover it: **overlap** = convergence (oceanic
+  subducts under continental, older under younger, builds an arc; continent-continent
+  collisions thicken crust), **gap** = divergence (new age-0 oceanic crust: ridges and rifts).
+- Slab pull speeds plates up, continental collision locks them. Mantle hotspots are fixed in
+  the global frame and leave volcanic chains. Mountains relax by erosion (tau = 140 Myr).
+- Elevation: Airy isostasy (continents), Parsons-Sclater sqrt(age) law (ocean), trenches from
+  recent subduction, then procedural detail. Sea level is solved for the style's land
+  fraction but cannot drop below -300 m (continental area is seeded to make that sufficient).
+- Initial continents are the zero contour of a noise-perturbed spherical signed-distance field;
+  each continent and its shelf belongs to one plate, plate borders are domain-warped, and
+  detached plate fragments are absorbed (otherwise they plough trails through continents).
+- Continental collision polarity is decided by each plate's continental area, so island arcs
+  are accreted as terranes instead of drilling through continents.
+- Step count scales with map width (`steps` is calibrated for 512 wide); deposit kernels and
+  stress/trench memory are tuned so moving boundaries don't leave stripes.
+- Terrain: interior seaward dome, drainage integration (priority-flood from the open ocean before
+  detail noise; hollows shallower than 50 m filled afterwards), coastline roughness confined to
+  a band around the shore, and a polar margin that keeps the map's top/bottom rows oceanic
+  (flow routing needs ocean connected to those edges).
+- `stress_map` is derived from simulated convergence/divergence + standing orogens, scaled to
+  the range downstream passes expect (0.15 volcanic, 0.3 mountain building).
+- Preview tool: `cargo run --release --bin tectonic_preview -- <seed> <w> <h> <style> <myr> <steps> <out_dir>`
+  writes `final.png` (plates | thickness | age | elevation | stress), `timelapse.png`, and
+  `basins_sim.png` / `basins_legacy.png` (land trapped in closed basins, with % printed).
+
+### Zoomed regions (`region/zoom.rs`)
+- `--zoom X,Y` (world tile at the window centre, as the explorer's `W:(x,y)` shows) or
+  `--zoom auto`; `--zoom-tiles N` (default 8), `--zoom-scale S` cells per world tile (default
+  128, ~610 m/cell on a 512-wide world), `--zoom-erosion I` iterations (default 40).
+  Writes `zoom_<seed>_<x>_<y>.png` and a 16-bit heightmap into `--map-output-dir`.
+- Pipeline: bicubic world heights + relief-scaled fractal detail -> world Bezier rivers carve
+  valleys and inject upstream area where they enter -> shallow hollows filled -> implicit
+  stream-power erosion + hillslope diffusion on a priority-flood drainage tree -> lakes and
+  rivers (moisture-dependent threshold, width ~ 0.8 sqrt(A km2) m). A one-tile margin is
+  simulated and cropped. Takes a few seconds for 1024x1024.
+- Render uses the climate colour LUT only (world biome colours and raw world climate are
+  tile-blocky when upsampled; climate is smoothed over ~1 tile first).
+
+### Map export
+- `--export-maps --upscale-factor N` renders at N× the simulation size; rivers are drawn from
+  the Bezier river network as anti-aliased strokes at output resolution (width/opacity follow
+  discharge), not from per-cell flow accumulation.
 
 ### Erosion
 - **Hydraulic**: Water droplets carve valleys and deposit sediment
