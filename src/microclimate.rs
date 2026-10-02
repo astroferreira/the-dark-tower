@@ -52,6 +52,7 @@ impl Default for MicroclimateConfig {
 // =============================================================================
 
 /// Per-tile microclimate modifiers that adjust base climate values
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug, Default)]
 pub struct MicroclimateModifiers {
     /// Temperature adjustment (Celsius)

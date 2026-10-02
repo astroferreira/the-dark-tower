@@ -4,6 +4,7 @@
 pub mod atlas;
 pub mod classify;
 pub mod render;
+pub mod text;
 pub mod viewer;
 
 pub use atlas::{Atlas, TileKind};

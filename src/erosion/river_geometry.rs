@@ -12,6 +12,7 @@ use noise::{NoiseFn, Perlin, Seedable};
 // =============================================================================
 
 /// A control point along a river's Bezier path
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct RiverControlPoint {
     /// World X coordinate (can be fractional for smooth interpolation)
@@ -50,6 +51,7 @@ impl RiverControlPoint {
 }
 
 /// A cubic Bezier segment of a river
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct BezierRiverSegment {
     /// Start point (P0)
@@ -140,6 +142,7 @@ impl BezierRiverSegment {
 }
 
 /// A confluence point where rivers merge
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct ConfluencePoint {
     /// World position
@@ -152,6 +155,7 @@ pub struct ConfluencePoint {
 }
 
 /// The complete river network
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct RiverNetwork {
     /// All Bezier segments in the network
@@ -165,6 +169,7 @@ pub struct RiverNetwork {
 }
 
 /// Parameters for river network generation
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct RiverNetworkParams {
     /// Minimum flow accumulation to be considered a river source

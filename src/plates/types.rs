@@ -125,6 +125,7 @@ impl std::fmt::Display for WorldStyle {
 }
 
 /// Unique identifier for a tectonic plate.
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct PlateId(pub u8);
 
@@ -137,6 +138,7 @@ impl PlateId {
 }
 
 /// Type of tectonic plate.
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlateType {
     /// Oceanic plates are denser and sit lower.
@@ -146,6 +148,7 @@ pub enum PlateType {
 }
 
 /// A 2D velocity vector.
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug)]
 pub struct Vec2 {
     pub x: f32,
@@ -179,6 +182,7 @@ impl Vec2 {
 }
 
 /// A tectonic plate with its properties.
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct Plate {
     pub id: PlateId,

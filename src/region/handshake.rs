@@ -19,6 +19,7 @@ pub const FLOW_W: u8 = 6;
 pub const FLOW_NW: u8 = 7;
 
 /// Vegetation distribution pattern
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum VegetationPattern {
     /// Evenly distributed vegetation
@@ -35,6 +36,7 @@ pub enum VegetationPattern {
 }
 
 /// Geological layer in the rock stack
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RockLayer {
     /// Rock type for this layer
@@ -45,6 +47,7 @@ pub struct RockLayer {
 
 /// Handshake data for a single world tile
 /// Contains all information needed to generate a seamless 64x64 region
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct TileHandshake {
     // === Existing fields ===
@@ -112,6 +115,7 @@ impl Default for TileHandshake {
 }
 
 /// Complete handshake data for a region including river crossings
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct RegionHandshake {
     /// Base tile handshake data
@@ -130,6 +134,7 @@ impl Default for RegionHandshake {
 }
 
 /// World-wide handshake data storage
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone)]
 pub struct WorldHandshakes {
     /// Handshake data per tile

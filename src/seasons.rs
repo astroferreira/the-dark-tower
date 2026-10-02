@@ -90,6 +90,7 @@ impl Season {
 // =============================================================================
 
 /// Climate type affecting moisture seasonality
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClimateSeasonType {
     /// Equatorial - minimal seasonal variation
@@ -133,6 +134,7 @@ impl ClimateSeasonType {
 }
 
 /// Precomputed seasonal climate data for efficient runtime queries
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone)]
 pub struct SeasonalClimate {
     /// Base temperature (annual mean)

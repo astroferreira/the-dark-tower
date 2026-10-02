@@ -28,6 +28,7 @@ pub mod heightmap;
 pub mod history;
 pub mod islands;
 pub mod local;
+pub mod lore;
 pub mod map_export;
 pub mod microclimate;
 pub mod plates;

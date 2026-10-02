@@ -14,6 +14,7 @@ pub const EDGE_S: u8 = 2;
 pub const EDGE_W: u8 = 3;
 
 /// A river crossing at a region boundary edge
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct RiverEdgeCrossing {
     /// Which edge (N=0, E=1, S=2, W=3)

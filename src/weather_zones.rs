@@ -10,6 +10,7 @@ use crate::tilemap::Tilemap;
 // =============================================================================
 
 /// Types of extreme weather that can affect a region
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ExtremeWeatherType {
     /// Tropical cyclones - form over warm ocean water, 5-30° latitude
@@ -70,6 +71,7 @@ impl ExtremeWeatherType {
 // =============================================================================
 
 /// Information about extreme weather risk at a location
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct WeatherZone {
     /// Primary extreme weather type

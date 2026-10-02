@@ -23,6 +23,9 @@ pub struct ZoomCamera {
 const OFF_MAP: u32 = 0x0010_1014;
 const RIVER: [f32; 3] = [58.0, 118.0, 190.0];
 const FOAM: [f32; 3] = [210.0, 232.0, 240.0];
+const ICE: [f32; 3] = [196.0, 222.0, 238.0];
+const ROAD: [f32; 3] = [168.0, 132.0, 86.0];
+const ROAD_HALF_WIDTH: f32 = 0.05;
 
 #[inline]
 fn pack(c: [f32; 3]) -> u32 {
@@ -96,7 +99,17 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
             let (gt, gs) = atlas.tile_for(tw.ground[i], var, src_px);
             let (gx, gy) = (((u * gs as f32) as usize).min(gs - 1), ((v * gs as f32) as usize).min(gs - 1));
             let gp = gt[gy * gs + gx];
-            let mut col = [gp[0] as f32 * shade, gp[1] as f32 * shade, gp[2] as f32 * shade];
+            let tint = tw.season_tint[i];
+            let mut col = [gp[0] as f32 * shade * tint[0], gp[1] as f32 * shade * tint[1], gp[2] as f32 * shade * tint[2]];
+            let frozen = tw.season_frozen[i];
+            let snow = tw.season_snow[i];
+            if frozen && tw.ground[i].is_water() {
+                col = mix(col, ICE, 0.78);
+            } else if snow > 0.0 {
+                // Snow settles in a light, slightly mottled layer.
+                let mottle = 0.9 + 0.1 * (((tx * 7 + ty * 13 + gx * 3 + gy * 5) % 5) as f32 / 4.0);
+                col = mix(col, [236.0 * shade.min(1.1), 242.0 * shade.min(1.1), 250.0 * shade.min(1.1)], (snow * 0.88 * mottle).min(0.95));
+            }
 
             // Coastline foam on water tiles next to land.
             let shore = tw.shore[i];
@@ -148,7 +161,49 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                 let aa = 1.0 / t;
                 let cover = ((aa - edge) / (2.0 * aa)).clamp(0.0, 1.0);
                 if cover > 0.0 {
-                    col = mix(col, RIVER, cover);
+                    col = mix(col, if frozen { ICE } else { RIVER }, cover);
+                }
+            }
+
+            // Roads: thin dirt tracks, drawn like rivers but narrower.
+            if tw.road_near[i] && t >= 3.0 {
+                let mut edge = f32::MAX;
+                for oy in -1i64..=1 {
+                    let ny = ty as i64 + oy;
+                    if ny < 0 || ny >= tw.height as i64 { continue; }
+                    for ox in -1i64..=1 {
+                        let nx = (tx as i64 + ox).rem_euclid(tw.width as i64) as usize;
+                        let mask = tw.road[ny as usize * tw.width + nx];
+                        if mask == 0 { continue; }
+                        let (lu, lv) = (u - ox as f32, v - oy as f32);
+                        for (b, dir) in DIRS.iter().enumerate() {
+                            if mask & (1 << b) != 0 { edge = edge.min(seg_dist(lu, lv, *dir) - ROAD_HALF_WIDTH); }
+                        }
+                    }
+                }
+                let aa = 1.0 / t;
+                let cover = ((aa - edge) / (2.0 * aa)).clamp(0.0, 1.0);
+                if cover > 0.0 && !tw.ground[i].is_water() {
+                    col = mix(col, ROAD, cover * 0.9);
+                }
+            }
+
+            // Territory borders: a dotted line along edges between different owners.
+            let own = tw.owner[i];
+            if own != u64::MAX && t >= 10.0 {
+                let band = (1.6 / t).max(0.06);
+                let mut border = false;
+                for (dx, dy, near) in [(-1i64, 0i64, u < band), (1, 0, u > 1.0 - band), (0, -1, v < band), (0, 1, v > 1.0 - band)] {
+                    if !near { continue; }
+                    let ny = ty as i64 + dy;
+                    if ny < 0 || ny >= tw.height as i64 { continue; }
+                    let nx = (tx as i64 + dx).rem_euclid(tw.width as i64) as usize;
+                    if tw.owner[ny as usize * tw.width + nx] != own { border = true; }
+                }
+                let dot = (((u + v) * t) as i64 / 2) % 2 == 0;
+                if border && dot {
+                    let c = super::classify::faction_color(own);
+                    col = mix(col, [((c >> 16) & 255) as f32, ((c >> 8) & 255) as f32, (c & 255) as f32], 0.85);
                 }
             }
 
@@ -158,7 +213,10 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                 let p = st[py * ss + px];
                 if p[3] > 0 {
                     let a = p[3] as f32 / 255.0;
-                    col = mix(col, [p[0] as f32 * shade, p[1] as f32 * shade, p[2] as f32 * shade], a);
+                    let mut sc = [p[0] as f32 * shade * tint[0], p[1] as f32 * shade * tint[1], p[2] as f32 * shade * tint[2]];
+                    // Trees and rooftops carry some snow too.
+                    if snow > 0.0 { sc = mix(sc, [240.0, 244.0, 250.0], snow * 0.45); }
+                    col = mix(col, sc, a);
                 }
             }
 
@@ -294,9 +352,12 @@ fn cell_tiles(c: &Cell) -> (TileKind, [f32; 3], Option<TileKind>) {
     match c.shape {
         Shape::Wall => {
             let kind = match c.material {
+                Material::Wood => TileKind::WoodWall,
+                Material::Block(_) => TileKind::BlockWall,
                 Material::Rock(_) | Material::Ice => TileKind::StoneWall,
                 _ => TileKind::SoilWall,
             };
+            let tint = if matches!(c.material, Material::Wood | Material::Block(_)) { [1.0; 3] } else { tint };
             (kind, tint, None)
         }
         _ => {
@@ -308,7 +369,8 @@ fn cell_tiles(c: &Cell) -> (TileKind, [f32; 3], Option<TileKind>) {
                 Material::Gravel => TileKind::Gravel,
                 Material::Snow => TileKind::Snow,
                 Material::Ice => TileKind::SeaIce,
-                Material::Rock(_) => TileKind::StoneFloor,
+                Material::Rock(_) | Material::Block(_) => TileKind::StoneFloor,
+                Material::Wood => TileKind::WoodFloor,
                 Material::Air => TileKind::Dirt,
             };
             let ground_tint = if matches!(ground, TileKind::Grass | TileKind::Sand | TileKind::Snow | TileKind::SeaIce) { [1.0; 3] } else { tint };
@@ -318,6 +380,7 @@ fn cell_tiles(c: &Cell) -> (TileKind, [f32; 3], Option<TileKind>) {
                 match c.plant {
                     Plant::Tree(t) => Some(tree_kind(t)),
                     Plant::Shrub => Some(TileKind::Shrub),
+                    Plant::Crop(_) => Some(TileKind::Crops),
                     _ if c.boulder => Some(TileKind::Boulder),
                     _ => None,
                 }
@@ -357,7 +420,13 @@ pub fn render_local(map: &LocalMap, atlas: &Atlas, cam: &LocalCamera, buf: &mut 
 
             // Which cell to draw, and how much to dim it (looking down through open space).
             let mut dim = 1.0f32;
-            let mut draw_z = if cam.surface_view { sz } else { cam.z };
+            // Surface view shows the top of whatever stands on the ground (walls of buildings).
+            let top = {
+                let mut z = sz;
+                while (z + 1) < map.depth as i32 && z < sz + 3 && map.cell(tx, ty, (z + 1) as usize).shape == Shape::Wall { z += 1; }
+                z
+            };
+            let mut draw_z = if cam.surface_view { top } else { cam.z };
             let mut water_levels = 0.0f32;
             if cam.surface_view {
                 let mut z = sz + 1;
@@ -463,6 +532,8 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
                 Material::Snow => [240, 244, 250],
                 Material::Ice => [190, 220, 240],
                 Material::Rock(_) | Material::Air => [125, 120, 115],
+                Material::Wood => [140, 96, 54],
+                Material::Block(_) => [180, 176, 168],
             };
             let t = material_tint(c.material);
             let f = if c.shape == Shape::Wall { 1.0 } else { 1.15 };

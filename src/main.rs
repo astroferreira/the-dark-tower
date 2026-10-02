@@ -22,6 +22,7 @@ mod heightmap;
 mod history;
 mod islands;
 mod local;
+mod lore;
 mod map_export;
 mod menu;
 mod microclimate;
@@ -70,6 +71,26 @@ struct Args {
     /// Fantasy/special biome intensity, 0 (fully natural) to 1 (full fantasy)
     #[arg(long, default_value_t = biomes::DEFAULT_FANTASY_INTENSITY)]
     fantasy: f32,
+
+    /// Save the generated world (and history, if simulated) to this file
+    #[arg(long)]
+    save_world: Option<String>,
+
+    /// Load a world saved with --save-world instead of generating one (seconds, not minutes)
+    #[arg(long)]
+    load_world: Option<String>,
+
+    /// Season for tile-viewer snapshots: spring, summer, autumn or winter
+    #[arg(long, default_value = "summer")]
+    season: String,
+
+    /// Don't simulate history for the tile viewer (no settlements, roads or ruins)
+    #[arg(long)]
+    no_history: bool,
+
+    /// Print the named geography (rivers, ranges, seas, regions...) after history
+    #[arg(long)]
+    gazetteer: bool,
 
     /// Print the land-biome mix and fragmentation after biome generation
     #[arg(long)]
@@ -334,6 +355,9 @@ struct Args {
     upscale_factor: usize,
 }
 
+/// Years of history the tile viewer simulates when --history-years isn't given.
+const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
+
 fn main() {
     let args = Args::parse();
 
@@ -401,9 +425,32 @@ fn main() {
         return;
     }
 
+    // A saved world replaces generation entirely.
+    let mut loaded_history: Option<history::world_state::WorldHistory> = None;
+    let loaded_world: Option<world::WorldData> = match &args.load_world {
+        Some(path) => {
+            let t0 = std::time::Instant::now();
+            match world::load_world(std::path::Path::new(path)) {
+                Ok((w, h)) => {
+                    eprintln!("Loaded world {} ({}x{}, seed {}{}) in {:.1}s", path, w.width, w.height, w.seed(),
+                        if h.is_some() { ", with history" } else { "" }, t0.elapsed().as_secs_f32());
+                    loaded_history = h;
+                    Some(w)
+                }
+                Err(e) => {
+                    eprintln!("Could not load world {path}: {e}");
+                    return;
+                }
+            }
+        }
+        None => None,
+    };
+
     // Determine configuration: use menu if no seed provided (interactive mode),
     // otherwise use CLI args directly (batch mode)
-    let (width, height, master_seed, plates_count, world_style, erosion_preset, climate_config) = if args.seed.is_some() {
+    let (width, height, master_seed, plates_count, world_style, erosion_preset, climate_config) = if let Some(w) = &loaded_world {
+        (w.width, w.height, w.seed(), None, plates::WorldStyle::default(), erosion::ErosionPreset::Normal, climate::ClimateConfig::default())
+    } else if args.seed.is_some() {
         // Batch mode: use CLI args directly (use defaults for new options)
         let world_style = plates::WorldStyle::from_str(&args.world_style).unwrap_or_else(|| {
             eprintln!("Unknown world style '{}'. Available options:", args.world_style);
@@ -460,6 +507,10 @@ fn main() {
         }
     };
 
+    let mut world_data = 'build: {
+        if let Some(w) = loaded_world {
+            break 'build w;
+        }
     // Build seeds from master seed with optional overrides
     let mut builder = WorldSeeds::builder(master_seed);
 
@@ -789,6 +840,9 @@ fn main() {
     let seasonal_climate = seasons::SeasonalClimate::from_simulation(&climate_sim, &world_data.heightmap);
     world_data.seasonal_climate = Some(seasonal_climate);
 
+    world_data
+    };
+
     // Export freshwater network if requested
     if args.export_rivers {
         let filename = format!("freshwater_{}.png", master_seed);
@@ -1115,7 +1169,10 @@ fn main() {
     }
 
     // Load or simulate history
-    let history = if let Some(ref load_path) = args.load_history {
+    let wants_tiles = args.tiles || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
+    let history = if loaded_history.is_some() {
+        loaded_history.take()
+    } else if let Some(ref load_path) = args.load_history {
         eprintln!("Loading history from {}...", load_path);
         match history::persistence::load_history(std::path::Path::new(load_path)) {
             Ok(loaded) => {
@@ -1128,15 +1185,17 @@ fn main() {
                 None
             }
         }
-    } else if args.history_years > 0 {
+    } else if args.history_years > 0 || (wants_tiles && !args.no_history) {
         let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
+        // The tile viewer shows history on the land, so it simulates some by default.
+        let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
         let config = history::config::HistoryConfig {
-            simulation_years: args.history_years,
+            simulation_years: years,
             ..history::config::HistoryConfig::default()
         };
         // Load game data (embedded defaults + optional data/ directory overrides)
         let game_data = history::data::GameData::load_from(std::path::Path::new("data"));
-        eprintln!("Simulating {} years of history (seed: {})...", args.history_years, history_seed);
+        eprintln!("Simulating {} years of history (seed: {})...", years, history_seed);
         let mut engine = history::simulation::HistoryEngine::new(history_seed);
         let hist = engine.simulate_with_data(&world_data, config, &game_data);
         let summary = hist.summary();
@@ -1145,6 +1204,44 @@ fn main() {
     } else {
         None
     };
+
+    if args.gazetteer {
+        let t0 = std::time::Instant::now();
+        let gaz = lore::build_gazetteer(&world_data, history.as_ref(), master_seed);
+        println!("Gazetteer: {} named features in {:.2}s", gaz.features.len(), t0.elapsed().as_secs_f32());
+        if let Some(h) = history.as_ref() {
+            let living = h.settlements.values().filter(|s| !s.is_destroyed()).count();
+            let ruins = h.settlements.len() - living;
+            let roads = (0..width * height).filter(|&i| h.tile_history.has_road(i % width, i / width)).count();
+            let owned = (0..width * height).filter(|&i| h.tile_history.get(i % width, i / width).current_owner.is_some()).count();
+            let named = gaz.features.iter().filter(|f| f.named_by.is_some()).count();
+            println!("History on the map: {} living settlements, {} ruins, {} road tiles, {} claimed tiles; {} features named by a living culture",
+                living, ruins, roads, owned, named);
+        }
+        let mut by_kind: std::collections::BTreeMap<String, Vec<&lore::Feature>> = Default::default();
+        for f in &gaz.features {
+            by_kind.entry(format!("{:?}", f.kind)).or_default().push(f);
+        }
+        for (kind, mut fs) in by_kind {
+            fs.sort_by_key(|f| std::cmp::Reverse(f.size));
+            let sample: Vec<String> = fs.iter().take(6).map(|f| {
+                let by = f.named_by.and_then(|id| history.as_ref().and_then(|h| h.factions.get(&id)).map(|fa| fa.name.clone()));
+                match by { Some(b) => format!("{} [{}]", f.name, b), None => f.name.clone() }
+            }).collect();
+            println!("  {:>14} x{:<4} {}", kind, fs.len(), sample.join("; "));
+        }
+    }
+
+    if let Some(path) = &args.save_world {
+        let t0 = std::time::Instant::now();
+        match world::save_world(&world_data, history.as_ref(), std::path::Path::new(path)) {
+            Ok(()) => {
+                let mb = std::fs::metadata(path).map(|m| m.len() as f64 / 1.0e6).unwrap_or(0.0);
+                eprintln!("Saved world to {} ({:.0} MB) in {:.1}s", path, mb, t0.elapsed().as_secs_f32());
+            }
+            Err(e) => eprintln!("Failed to save world: {e}"),
+        }
+    }
 
     // Save history if requested
     if let (Some(ref hist), Some(ref save_path)) = (&history, &args.save_history) {
@@ -1202,20 +1299,25 @@ fn main() {
             }
         });
         if let Some(prefix) = &args.local_snapshot {
-            match tiles::viewer::save_local_snapshots(&world_data, &atlas, center, prefix) {
+            match tiles::viewer::save_local_snapshots(&world_data, history.as_ref(), &atlas, center, prefix) {
                 Ok(files) => println!("Saved playable-area snapshots: {}", files.join(", ")),
                 Err(e) => eprintln!("Playable-area snapshot failed: {e}"),
             }
             return;
         }
         if let Some(prefix) = &args.tiles_snapshot {
-            match tiles::viewer::save_snapshots(&world_data, &atlas, prefix, center) {
+            match tiles::viewer::save_snapshots(&world_data, history.as_ref(), &atlas, prefix, center, match args.season.to_lowercase().as_str() {
+                "spring" => seasons::Season::Spring,
+                "autumn" | "fall" => seasons::Season::Autumn,
+                "winter" => seasons::Season::Winter,
+                _ => seasons::Season::Summer,
+            }) {
                 Ok(files) => println!("Saved tile snapshots: {}", files.join(", ")),
                 Err(e) => eprintln!("Tile snapshot failed: {e}"),
             }
             return;
         }
-        if let Err(e) = tiles::run_tile_viewer(&world_data, atlas, center) {
+        if let Err(e) = tiles::run_tile_viewer(&world_data, history.as_ref(), atlas, center) {
             eprintln!("Tile viewer error: {}", e);
         }
         return;

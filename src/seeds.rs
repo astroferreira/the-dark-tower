@@ -10,6 +10,7 @@ use std::collections::hash_map::DefaultHasher;
 ///
 /// Each system gets its own seed, derived from a master seed by default.
 /// Individual seeds can be overridden for experimentation.
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct WorldSeeds {
     /// Master seed (used for display/reference)

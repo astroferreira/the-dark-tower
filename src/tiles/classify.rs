@@ -35,6 +35,33 @@ pub struct TileWorld {
     pub shore: Vec<u8>,
     /// Flat colour per tile (minimap, far zoom).
     pub color: Vec<[u8; 3]>,
+    /// Bitmask over `DIRS`: road links (history overlay).
+    pub road: Vec<u8>,
+    /// Owning faction per tile (`u64::MAX` = unclaimed), for border lines.
+    pub owner: Vec<u64>,
+    /// Settlement (living, else most recent ruin) per tile.
+    pub settlement: Vec<Option<crate::history::SettlementId>>,
+    /// Whether this tile or a neighbour carries a road.
+    pub road_near: Vec<bool>,
+    /// Current season's snow cover 0..1, foliage tint (multiplier) and frozen-water flag.
+    pub season_snow: Vec<f32>,
+    pub season_tint: Vec<[f32; 3]>,
+    pub season_frozen: Vec<bool>,
+}
+
+/// Distinct, muted colour for a faction's border.
+pub fn faction_color(id: u64) -> u32 {
+    let hue = (hash(id as usize, 7) % 360) as f32;
+    let (r, g, b) = hsv(hue, 0.65, 0.95);
+    ((r as u32) << 16) | ((g as u32) << 8) | b as u32
+}
+
+fn hsv(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = v - c;
+    let (r, g, b) = match (h / 60.0) as u32 { 0 => (c, x, 0.0), 1 => (x, c, 0.0), 2 => (0.0, c, x), 3 => (0.0, x, c), 4 => (x, 0.0, c), _ => (c, 0.0, x) };
+    (((r + m) * 255.0) as u8, ((g + m) * 255.0) as u8, ((b + m) * 255.0) as u8)
 }
 
 fn hash(x: usize, y: usize) -> u64 {
@@ -149,6 +176,13 @@ impl TileWorld {
             river_near: vec![false; n],
             shore: vec![0; n],
             color: Vec::with_capacity(n),
+            road: vec![0; n],
+            owner: vec![u64::MAX; n],
+            settlement: vec![None; n],
+            road_near: vec![false; n],
+            season_snow: vec![0.0; n],
+            season_tint: vec![[1.0; 3]; n],
+            season_frozen: vec![false; n],
         };
 
         for y in 0..h {
@@ -322,5 +356,133 @@ impl TileWorld {
             }
         }
         tw
+    }
+
+    /// Recompute snow cover, foliage colour and frozen water for a season.
+    pub fn set_season(&mut self, world: &WorldData, season: crate::seasons::Season) {
+        use crate::seasons::Season;
+        let (w, h) = (self.width, self.height);
+        let sc = world.seasonal_climate.as_ref();
+        let sm = |a: f32, b: f32, x: f32| { let t = ((x - a) / (b - a)).clamp(0.0, 1.0); t * t * (3.0 - 2.0 * t) };
+        for y in 0..h {
+            let north = y < h / 2;
+            for x in 0..w {
+                let i = y * w + x;
+                let t = sc.map(|c| c.get_temperature(x, y, season, north)).unwrap_or(*world.temperature.get(x, y));
+                let m = sc.map(|c| c.get_moisture(x, y, season, north)).unwrap_or(*world.moisture.get(x, y));
+                let ground = self.ground[i];
+                let water = ground.is_water() || ground == TileKind::SeaIce;
+                self.season_frozen[i] = t < -4.0;
+                // Snow lies on land when it is cold and there is moisture to fall as snow.
+                self.season_snow[i] = if water { 0.0 } else { sm(1.0, -7.0, t) * sm(0.04, 0.2, m).max(0.35) };
+                // Foliage: spring flush, summer drought on dry grass, autumn colour, winter dullness.
+                let sprite = self.sprite[i];
+                let leafy = matches!(sprite, Some(TileKind::Deciduous | TileKind::Acacia));
+                let grassy = matches!(ground, TileKind::Grass | TileKind::Steppe | TileKind::Savanna);
+                let dry = (0.35 - m).max(0.0) * 2.0;
+                let tint = match season {
+                    Season::Spring => if grassy || leafy { [0.94, 1.10, 0.90] } else { [1.0; 3] },
+                    Season::Summer => if grassy { [1.0 + 0.18 * dry, 1.0 + 0.04 * dry, 1.0 - 0.18 * dry] } else { [1.0; 3] },
+                    Season::Autumn => if leafy { [1.35, 0.92, 0.62] } else if grassy { [1.12, 1.0, 0.78] } else { [1.0; 3] },
+                    Season::Winter => if leafy || grassy { [0.93, 0.93, 0.96] } else { [0.97, 0.98, 1.0] },
+                };
+                self.season_tint[i] = tint;
+            }
+        }
+    }
+
+    /// Overlay what history left on the land: settlements and ruins as sprites, roads, and
+    /// territory ownership.
+    pub fn apply_history(&mut self, world: &WorldData, history: &crate::history::world_state::WorldHistory, atlas: &Atlas) {
+        use crate::history::civilizations::settlement::SettlementType;
+        let (w, h) = (self.width, self.height);
+        for y in 0..h {
+            for x in 0..w {
+                let t = history.tile_history.get(x, y);
+                if let Some(f) = t.current_owner { self.owner[y * w + x] = f.0; }
+                if t.has_road { self.road[y * w + x] = 0x80; } // marker, links resolved below
+            }
+        }
+        // Claims are scattered tile by tile; a few majority-filter passes turn them into
+        // coherent territories so borders read as outlines, not a lattice.
+        for _ in 0..3 {
+            let prev = self.owner.clone();
+            for y in 0..h {
+                for x in 0..w {
+                    let mut votes: [(u64, u8); 9] = [(u64::MAX, 0); 9];
+                    let mut n = 0;
+                    for dy in -1i64..=1 {
+                        let ny = y as i64 + dy;
+                        if ny < 0 || ny >= h as i64 { continue; }
+                        for dx in -1i64..=1 {
+                            let o = prev[ny as usize * w + (x as i64 + dx).rem_euclid(w as i64) as usize];
+                            match votes[..n].iter_mut().find(|v| v.0 == o) {
+                                Some(v) => v.1 += 1,
+                                None => { votes[n] = (o, 1); n += 1; }
+                            }
+                        }
+                    }
+                    let best = votes[..n].iter().max_by_key(|v| v.1).unwrap();
+                    if best.1 >= 5 { self.owner[y * w + x] = best.0; }
+                }
+            }
+        }
+        // Settlements: ruins first so a living settlement on the same tile wins.
+        let mut list: Vec<_> = history.settlements.values().collect();
+        list.sort_by_key(|s| (!s.is_destroyed(), s.id.0));
+        for s in list {
+            let (x, y) = s.location;
+            if x >= w || y >= h { continue; }
+            let i = y * w + x;
+            let kind = if s.is_destroyed() {
+                TileKind::Ruins
+            } else {
+                match s.settlement_type {
+                    SettlementType::Capital | SettlementType::Fort => TileKind::Castle,
+                    SettlementType::City | SettlementType::Port => TileKind::City,
+                    SettlementType::Town | SettlementType::Temple | SettlementType::Mine => TileKind::Town,
+                    _ => TileKind::Village,
+                }
+            };
+            self.sprite[i] = Some(kind);
+            self.settlement[i] = Some(s.id);
+            self.color[i] = atlas.average(kind, 0);
+            self.road[i] |= 0x80;
+        }
+        // Road links between neighbouring road/settlement tiles; diagonals only where no
+        // orthogonal step already joins the pair (keeps lines one tile wide).
+        let at = |x: i64, y: i64| -> Option<usize> {
+            if y < 0 || y >= h as i64 { None } else { Some(y as usize * w + x.rem_euclid(w as i64) as usize) }
+        };
+        let marked: Vec<bool> = self.road.iter().map(|&r| r & 0x80 != 0).collect();
+        for y in 0..h as i64 {
+            for x in 0..w as i64 {
+                let i = y as usize * w + x as usize;
+                if !marked[i] { continue; }
+                let mut mask = 0u8;
+                for (b, (dx, dy)) in DIRS.iter().enumerate() {
+                    let Some(j) = at(x + *dx as i64, y + *dy as i64) else { continue };
+                    if !marked[j] { continue; }
+                    if dx.abs() + dy.abs() == 2 {
+                        let a = at(x + *dx as i64, y).map(|k| marked[k]).unwrap_or(false);
+                        let c = at(x, y + *dy as i64).map(|k| marked[k]).unwrap_or(false);
+                        if a || c { continue; }
+                    }
+                    mask |= 1 << b;
+                }
+                self.road[i] = mask;
+            }
+        }
+        for y in 0..h as i64 {
+            for x in 0..w as i64 {
+                if self.road[y as usize * w + x as usize] == 0 { continue; }
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        if let Some(j) = at(x + dx, y + dy) { self.road_near[j] = true; }
+                    }
+                }
+            }
+        }
+        let _ = world;
     }
 }

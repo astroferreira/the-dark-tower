@@ -5,4 +5,4 @@
 
 pub mod serialize;
 
-pub use serialize::{save_history, load_history, export_legends_text, export_legends_markdown};
+pub use serialize::{rebuild_id_generators, save_history, load_history, export_legends_text, export_legends_markdown};

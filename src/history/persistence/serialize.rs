@@ -97,7 +97,7 @@ pub fn load_history(path: &Path) -> io::Result<LoadedHistory> {
 }
 
 /// Rebuild ID generators so they start after the highest existing IDs.
-fn rebuild_id_generators(history: &mut WorldHistory) {
+pub fn rebuild_id_generators(history: &mut WorldHistory) {
     let gens = &mut history.id_generators;
 
     gens.faction = IdGenerator::starting_at(

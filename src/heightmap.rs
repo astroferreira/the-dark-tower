@@ -2935,6 +2935,7 @@ pub fn apply_fjord_incisions(
 // The detailed volcano structure is generated at region map scale.
 
 /// Represents a volcano location with properties for region map generation.
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct VolcanoLocation {
     /// Tile x coordinate
@@ -2950,6 +2951,7 @@ pub struct VolcanoLocation {
 }
 
 /// Type of volcano - affects region map generation
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VolcanoType {
     /// Shield volcano - broad, gentle slopes (like Hawaii)
@@ -3175,6 +3177,7 @@ pub fn apply_volcano_pass(
 // - Tiles at flow edge = cooled basalt
 
 /// Lava tile state
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum LavaState {
     /// No lava present

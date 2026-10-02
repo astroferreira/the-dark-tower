@@ -63,9 +63,17 @@ pub enum TileKind {
     BigBroadleaf,
     BigConifer,
     BigJungle,
+    Village,
+    Town,
+    City,
+    Castle,
+    WoodWall,
+    BlockWall,
+    WoodFloor,
+    Crops,
 }
 
-pub const ALL_KINDS: [TileKind; 42] = [
+pub const ALL_KINDS: [TileKind; 50] = [
     TileKind::DeepOcean, TileKind::Ocean, TileKind::Shallows, TileKind::Lake, TileKind::SeaIce,
     TileKind::Grass, TileKind::Steppe, TileKind::Savanna, TileKind::Sand, TileKind::Salt,
     TileKind::Tundra, TileKind::Snow, TileKind::Swamp, TileKind::JungleFloor, TileKind::Rock,
@@ -76,6 +84,8 @@ pub const ALL_KINDS: [TileKind; 42] = [
     TileKind::Mushroom, TileKind::Crystal, TileKind::Ruins,
     TileKind::Shrub, TileKind::Boulder, TileKind::Ramp,
     TileKind::BigBroadleaf, TileKind::BigConifer, TileKind::BigJungle,
+    TileKind::Village, TileKind::Town, TileKind::City, TileKind::Castle,
+    TileKind::WoodWall, TileKind::BlockWall, TileKind::WoodFloor, TileKind::Crops,
 ];
 
 impl TileKind {
@@ -137,6 +147,14 @@ impl TileKind {
             BigBroadleaf => (5, [80, 170, 60], [0, 0, 0]),
             BigConifer => (24, [45, 120, 70], [0, 0, 0]),
             BigJungle => (6, [60, 180, 70], [0, 0, 0]),
+            Village => (127, [200, 160, 110], [0, 0, 0]),
+            Town => (127, [230, 190, 130], [0, 0, 0]),
+            City => (15, [240, 220, 170], [0, 0, 0]),
+            Castle => (35, [220, 210, 200], [0, 0, 0]),
+            WoodWall => (219, [150, 100, 56], [60, 40, 20]),
+            BlockWall => (219, [190, 186, 178], [70, 68, 64]),
+            WoodFloor => (43, [170, 120, 70], [100, 68, 38]),
+            Crops => (34, [210, 190, 90], [0, 0, 0]),
         }
     }
 }
@@ -393,6 +411,19 @@ impl Canvas {
             }
         }
     }
+}
+
+/// A little house: wall block with a lit left side and a pitched roof.
+fn house(c: &mut Canvas, x: i32, y: i32, w: i32, hgt: i32, wall: Px, roof: Px) {
+    let shade = [wall[0].saturating_sub(40), wall[1].saturating_sub(40), wall[2].saturating_sub(40), 255];
+    for dy in 0..hgt {
+        for dx in 0..w { c.set(x + dx, y + dy, if dx < w / 2 { wall } else { shade }); }
+    }
+    let roof_d = [roof[0].saturating_sub(40), roof[1].saturating_sub(30), roof[2].saturating_sub(20), 255];
+    for r in 0..2 {
+        c.hline(x - 1 + r, x + w - r, y - 1 - r, if r == 0 { roof_d } else { roof });
+    }
+    c.set(x + w / 2 - 1, y + hgt - 1, rgb(60, 44, 30));
 }
 
 fn paint(kind: TileKind, c: &mut Canvas) {
@@ -687,6 +718,90 @@ fn paint(kind: TileKind, c: &mut Canvas) {
             let (x, y) = (s / 2 + c.range(-1, 1), s / 2 + c.range(-1, 1));
             c.ball(x - 2, y + 1, 5, rgb(22, 78, 30), rgb(40, 128, 46), rgb(80, 172, 62));
             c.ball(x + 2, y - 1, 5, rgb(22, 78, 30), rgb(44, 134, 50), rgb(88, 180, 66));
+        }
+        WoodWall => {
+            // Logs seen from above: horizontal planks with dark seams.
+            for y in 0..s {
+                let seam = y % 4 == 3;
+                for x in 0..s {
+                    let grain = ((x * 7 + y * 3) % 5 == 0) as u8 * 12;
+                    let c0 = if seam { rgb(70, 46, 24) } else { rgb(142 - grain, 96 - grain, 54) };
+                    c.set(x, y, c0);
+                }
+            }
+            c.hline(0, s - 1, 0, rgb(176, 124, 74));
+        }
+        BlockWall => {
+            // Coursed ashlar: offset rows of blocks.
+            for y in 0..s {
+                for x in 0..s {
+                    let row = y / 4;
+                    let joint = y % 4 == 3 || (x + if row % 2 == 0 { 0 } else { 3 }) % 6 == 5;
+                    c.set(x, y, if joint { rgb(96, 92, 86) } else { rgb(176, 172, 164) });
+                }
+            }
+            c.hline(0, s - 1, 0, rgb(206, 202, 194));
+        }
+        WoodFloor => {
+            for y in 0..s {
+                for x in 0..s {
+                    let seam = x % 4 == 3;
+                    let knot = (x * 13 + y * 7) % 23 == 0;
+                    c.set(x, y, if seam { rgb(110, 74, 42) } else if knot { rgb(120, 82, 46) } else { rgb(164, 116, 68) });
+                }
+            }
+        }
+        Crops => {
+            // A row of grain: little upright stalks with heads.
+            for x in (1..s).step_by(3) {
+                let top = c.range(3, 6);
+                c.line(x, s - 3, x, top + 2, rgb(150, 160, 70));
+                c.set(x, top + 1, rgb(214, 190, 90));
+                c.set(x, top, rgb(230, 206, 104));
+            }
+        }
+        Village => {
+            // Two or three small houses with pitched roofs.
+            let n = c.range(2, 3);
+            for k in 0..n {
+                let x = 2 + k * 5 + c.range(0, 1);
+                let y = 8 + c.range(-2, 2) + if k % 2 == 1 { -2 } else { 0 };
+                house(c, x, y, 4, 3, rgb(190, 160, 120), rgb(150, 70, 50));
+            }
+        }
+        Town => {
+            for (x, y) in [(1, 5), (6, 3), (11, 6), (3, 10), (9, 10)] {
+                house(c, x, y, 4, 3, rgb(205, 180, 140), rgb(160, 70, 50));
+            }
+            // Tower
+            for y in 1..9 { c.set(8, y, rgb(170, 165, 160)); c.set(9, y, rgb(120, 116, 112)); }
+            c.set(8, 0, rgb(160, 70, 50));
+            c.set(9, 0, rgb(130, 55, 40));
+        }
+        City => {
+            // Walls around a dense centre.
+            let wall = rgb(160, 156, 150);
+            let wall_d = rgb(100, 96, 92);
+            for i in 1..s - 1 { c.set(i, 2, wall); c.set(i, s - 2, wall_d); c.set(1, i, wall); c.set(s - 2, i, wall_d); }
+            for (x, y) in [(3, 4), (8, 4), (3, 9), (8, 9)] {
+                house(c, x, y, 4, 3, rgb(215, 195, 155), rgb(170, 75, 55));
+            }
+            for y in 3..12 { c.set(7, y, rgb(190, 185, 178)); }
+        }
+        Castle => {
+            let stone = rgb(170, 166, 160);
+            let dark = rgb(104, 100, 96);
+            for y in 6..s - 2 {
+                for x in 3..s - 3 { c.set(x, y, if x < s / 2 { stone } else { dark }); }
+            }
+            for x in (3..s - 3).step_by(2) { c.set(x, 5, stone); }
+            for (tx, top) in [(2, 2), (s - 4, 2)] {
+                for y in top..s - 2 { c.set(tx, y, stone); c.set(tx + 1, y, dark); }
+                c.set(tx, top - 1, stone);
+            }
+            for y in 9..s - 2 { c.set(s / 2 - 1, y, rgb(60, 44, 30)); c.set(s / 2, y, rgb(60, 44, 30)); }
+            c.set(s / 2, 1, rgb(200, 40, 40));
+            c.line(s / 2 - 1, 1, s / 2 - 1, 5, rgb(90, 80, 70));
         }
         Ruins => {
             let stone = rgb(150, 144, 134);

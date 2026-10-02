@@ -35,6 +35,7 @@ impl WaterBodyType {
 }
 
 /// Water body identifier (0 = land/none, 1+ = water body ID)
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct WaterBodyId(pub u16);
 
@@ -56,6 +57,7 @@ impl WaterBodyId {
 }
 
 /// Information about a water body
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct WaterBody {
     pub id: WaterBodyId,

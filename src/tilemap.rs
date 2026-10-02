@@ -1,4 +1,5 @@
 /// A 2D tilemap grid with equirectangular projection (wraps horizontally).
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone)]
 pub struct Tilemap<T> {
     pub width: usize,

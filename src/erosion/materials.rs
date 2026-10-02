@@ -10,6 +10,7 @@ use crate::tilemap::Tilemap;
 use noise::{NoiseFn, Perlin, Seedable};
 
 /// Rock/material type affecting erosion resistance
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum RockType {
     /// Volcanic rock, very hard (oceanic crust, volcanic islands)

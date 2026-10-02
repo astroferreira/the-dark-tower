@@ -22,6 +22,7 @@ use crate::water_bodies::{self, WaterBody, WaterBodyId, WaterBodyType};
 use crate::weather_zones::{self, WeatherZone};
 
 /// All generated world data bundled together
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct WorldData {
     /// Seeds used for generation (allows recreation)
     pub seeds: WorldSeeds,
@@ -698,3 +699,87 @@ pub fn generate_test_world() -> WorldData {
     }
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// Save / load
+// ---------------------------------------------------------------------------------------------
+
+const WORLD_FILE_MAGIC: &[u8; 8] = b"PGWORLD1";
+/// Bump when the serialized layout changes; older files are rejected with a clear message.
+const WORLD_FILE_VERSION: u32 = 1;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct WorldFile {
+    version: u32,
+    world: WorldData,
+    history: Option<crate::history::world_state::WorldHistory>,
+}
+
+/// Save a world (and its history, if any) to a single file.
+pub fn save_world(
+    world: &WorldData,
+    history: Option<&crate::history::world_state::WorldHistory>,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::io::Write;
+    // Serialize by reference to avoid cloning the whole world.
+    #[derive(serde::Serialize)]
+    struct WorldFileRef<'a> {
+        version: u32,
+        world: &'a WorldData,
+        history: Option<&'a crate::history::world_state::WorldHistory>,
+    }
+    let bytes = bincode::serialize(&WorldFileRef { version: WORLD_FILE_VERSION, world, history })
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("serialize failed: {e}")))?;
+    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
+    f.write_all(WORLD_FILE_MAGIC)?;
+    f.write_all(&bytes)?;
+    f.flush()
+}
+
+/// Load a world saved with `save_world`.
+pub fn load_world(
+    path: &std::path::Path,
+) -> std::io::Result<(WorldData, Option<crate::history::world_state::WorldHistory>)> {
+    let bytes = std::fs::read(path)?;
+    if bytes.len() < 8 || &bytes[..8] != WORLD_FILE_MAGIC {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "not a planet world file"));
+    }
+    let file: WorldFile = bincode::deserialize(&bytes[8..])
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("corrupt or outdated world file: {e}")))?;
+    if file.version != WORLD_FILE_VERSION {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("world file version {} (this build reads {})", file.version, WORLD_FILE_VERSION),
+        ));
+    }
+    let mut history = file.history;
+    if let Some(h) = history.as_mut() {
+        crate::history::persistence::rebuild_id_generators(h);
+    }
+    Ok((file.world, history))
+}
+
+#[cfg(test)]
+mod save_tests {
+    use super::*;
+
+    #[test]
+    fn world_file_round_trips() {
+        let world = generate_world_with_style(96, 48, 13, plates::WorldStyle::Earthlike);
+        let path = std::env::temp_dir().join(format!("world_rt_{}.world", std::process::id()));
+        save_world(&world, None, &path).unwrap();
+        let (loaded, history) = load_world(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        assert!(history.is_none());
+        assert_eq!((loaded.width, loaded.height, loaded.seed()), (world.width, world.height, world.seed()));
+        assert!(loaded.heightmap.iter().zip(world.heightmap.iter()).all(|(a, b)| a.2.to_bits() == b.2.to_bits()));
+        assert!(loaded.biomes.iter().zip(world.biomes.iter()).all(|(a, b)| a.2 == b.2));
+        assert_eq!(loaded.river_network.is_some(), world.river_network.is_some());
+        assert_eq!(loaded.handshakes.is_some(), world.handshakes.is_some());
+        // A truncated or foreign file is rejected, not mis-read.
+        std::fs::write(&path, b"nope").unwrap();
+        assert!(load_world(&path).is_err());
+        std::fs::remove_file(&path).ok();
+    }
+}

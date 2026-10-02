@@ -3,6 +3,7 @@
 //! Supports scales from local (1 km/tile) to planetary (50 km/tile).
 
 /// Map scale configuration
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug)]
 pub struct MapScale {
     /// Physical distance one tile represents (in kilometers)

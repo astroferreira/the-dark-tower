@@ -68,6 +68,7 @@ impl SpringType {
 }
 
 /// Information about aquifer at a tile
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AquiferInfo {
     /// Type of aquifer
@@ -100,6 +101,7 @@ impl AquiferInfo {
 }
 
 /// Information about a spring at a tile
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SpringInfo {
     /// Type of spring
@@ -129,6 +131,7 @@ impl SpringInfo {
 }
 
 /// Information about a waterfall at a tile
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct WaterfallInfo {
     /// Whether a waterfall is present
@@ -494,6 +497,7 @@ pub fn detect_waterfalls(
 }
 
 /// All underground water features for a world
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct UndergroundWater {
     pub aquifers: Tilemap<AquiferInfo>,
     pub springs: Tilemap<SpringInfo>,

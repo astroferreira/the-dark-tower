@@ -54,6 +54,20 @@ OPTIONS:
 - **Plates** - Tectonic plate boundaries
 - **Stress** - Tectonic stress (mountain building)
 
+### Saving worlds
+- `--save-world worlds/x.world` writes the generated world plus any simulated history (bincode,
+  ~170 MB at 512x256); `--load-world worlds/x.world` loads it in ~0.1 s instead of regenerating
+  (~3 min world + ~6 min history). The tile viewer simulates 250 years of history by default
+  (`--no-history` to skip), so save once with history and reload from then on.
+- The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`); bump it when any
+  serialized type changes. `worlds/` is gitignored-worthy local data.
+
+### Seasons in the tile viewer
+`T` steps Spring/Summer/Autumn/Winter, `C` cycles them automatically. Snow cover (cold + moisture),
+foliage colour (spring flush, summer drought, autumn orange), and frozen lakes/rivers/shallows
+come from the seasonal climate; `--season` picks the season for `--tiles-snapshot`. Not yet applied
+to zoomed regions or embarks.
+
 ### Graphical tile viewer (`src/tiles/`)
 `cargo run --release -- --seed 42 --tiles` opens a window (minifb) that draws the world with
 pixel-art tiles instead of the terminal explorer.

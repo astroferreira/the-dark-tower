@@ -14,6 +14,7 @@ use crate::tilemap::Tilemap;
 // =============================================================================
 
 /// Configuration for biome feathering
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone, Debug)]
 pub struct FeatherConfig {
     /// Gaussian sigma for border depth variance (0.5-2.0)
@@ -48,6 +49,7 @@ impl Default for FeatherConfig {
 // =============================================================================
 
 /// Precomputed feathering data for efficient runtime lookup
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Clone)]
 pub struct BiomeFeatherMap {
     /// Distance to nearest biome boundary (0 at edge, positive inland)

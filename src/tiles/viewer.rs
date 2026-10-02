@@ -10,7 +10,10 @@ use std::error::Error;
 
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 
+use crate::history::world_state::WorldHistory;
+use crate::lore::{build_gazetteer, FeatureKind, Gazetteer};
 use crate::region::zoom::{generate_zoom, ZoomParams, ZoomRegion};
+use super::text::{place_labels, Label};
 use crate::world::WorldData;
 
 use super::atlas::Atlas;
@@ -19,6 +22,8 @@ use super::render::{render_local, render_minimap, render_world, render_zoom, scr
 use crate::local::{generate_local, LocalMap, Plant, Shape, LOCAL_SIZE, TILE_M};
 
 const MIN_TILE_PX: f32 = 1.0;
+/// Seconds per season when the automatic year cycle is on.
+const SEASON_SECONDS: f32 = 3.0;
 const MAX_TILE_PX: f32 = 64.0;
 /// Start prefetching the next region when the player is this many world tiles from an edge.
 const PREFETCH_EDGE_TILES: f64 = 2.5;
@@ -34,20 +39,99 @@ struct ZoomState {
     origin: (i64, i64),
     /// World tile the region is centred on.
     tile: (usize, usize),
+    /// Settlements, fields and roads placed in this region.
+    lore: Option<crate::lore::RegionLore>,
 }
 
 fn cells_per_tile() -> i64 {
     (ZoomParams::default().cells_per_tile.max(8) & !1) as i64
 }
 
-/// Generate (or assemble from cached chunks) the region centred on `tile`.
-fn load_region(world: &WorldData, tile: (usize, usize), seed: u64) -> ZoomState {
+/// Generate (or assemble from cached chunks) the region centred on `tile`, with history
+/// (settlements, fields, roads) painted on when available.
+fn load_region(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), seed: u64) -> ZoomState {
     let params = ZoomParams { center_x: tile.0, center_y: tile.1, seed, ..ZoomParams::default() };
     let region = generate_zoom(world, &params);
-    let rgb = region.render_rgb();
+    let mut rgb = region.render_rgb();
+    let lore = history.map(|h| crate::lore::region_lore(world, h, &region));
+    if let Some(l) = &lore { crate::lore::paint_region(l, &region, &mut rgb); }
     let s = cells_per_tile();
     let origin = (region.world_x0 * s, region.world_y0 * s);
-    ZoomState { region, rgb, origin, tile }
+    ZoomState { region, rgb, origin, tile, lore }
+}
+
+/// Everything named on the world map: geographic features and settlements, highest rank first.
+fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazetteer) -> Vec<Label> {
+    use crate::history::civilizations::settlement::SettlementType;
+    let mut labels = Vec::new();
+    for f in &gaz.features {
+        let (min_tile_px, color) = match f.kind {
+            FeatureKind::Ocean | FeatureKind::Continent => (0.0, if f.kind.is_water() { 0x009C_C8EE } else { 0x00F2_E6C8 }),
+            FeatureKind::Sea | FeatureKind::MountainRange | FeatureKind::Desert | FeatureKind::IceField => (2.0, if f.kind.is_water() { 0x009C_C8EE } else { 0x00F2_E6C8 }),
+            FeatureKind::Forest | FeatureKind::Jungle | FeatureKind::Plains | FeatureKind::Tundra | FeatureKind::Gulf => (4.0, if f.kind.is_water() { 0x009C_C8EE } else { 0x00E6_DCC0 }),
+            FeatureKind::River | FeatureKind::Island => (6.0, if f.kind.is_water() { 0x00A8_D4F4 } else { 0x00E6_DCC0 }),
+            FeatureKind::Lake | FeatureKind::Marsh => (10.0, if f.kind.is_water() { 0x00A8_D4F4 } else { 0x00E6_DCC0 }),
+            FeatureKind::Peak => (10.0, 0x00FF_FFFF),
+        };
+        let text = if f.kind == FeatureKind::Peak { format!("{} {:.0}m", f.name, f.height_m) } else { f.name.clone() };
+        // Bigger features of a kind rank above smaller ones.
+        let rank = f.kind.rank() * 10 + ((f.size as f32).log2() as u32).min(9);
+        labels.push(Label { x: f.anchor.0 as f32 + 0.5, y: f.anchor.1 as f32 + 0.5, text, rank, min_tile_px, color });
+    }
+    if let Some(h) = history {
+        for s in h.settlements.values() {
+            let (base, min_px) = if s.is_destroyed() {
+                (300, 20.0)
+            } else {
+                match s.settlement_type {
+                    SettlementType::Capital => (900, 5.0),
+                    SettlementType::City | SettlementType::Port => (850, 8.0),
+                    SettlementType::Town | SettlementType::Fort => (700, 12.0),
+                    _ => (400, 20.0),
+                }
+            };
+            let text = if s.is_destroyed() { format!("ruins of {}", s.name) } else { s.name.clone() };
+            let color = if s.is_destroyed() { 0x00A0_9890 } else { 0x00FF_E08A };
+            labels.push(Label { x: s.location.0 as f32 + 0.5, y: s.location.1 as f32 + 1.4, text, rank: base + (s.population / 2000).min(99), min_tile_px: min_px, color });
+        }
+    }
+    let _ = world;
+    labels.sort_by_key(|l| std::cmp::Reverse(l.rank));
+    labels
+}
+
+/// Place labels for the current world camera (wrapping around the date line).
+fn draw_labels(labels: &[Label], cam: &Camera, world_w: usize, buf: &mut [u32], w: usize, h: usize) {
+    let ww = world_w as f32;
+    place_labels(labels, cam.tile_px, w, h, buf, |x, y| {
+        let mut dx = x - cam.cx;
+        if dx > ww / 2.0 { dx -= ww; }
+        if dx < -ww / 2.0 { dx += ww; }
+        (w as f32 / 2.0 + dx * cam.tile_px, h as f32 / 2.0 + (y - cam.cy) * cam.tile_px)
+    });
+}
+
+/// What is known about a world tile: place names, owner, settlement or ruin.
+fn describe_tile(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazetteer, tw: &TileWorld, x: usize, y: usize) -> String {
+    let mut parts = Vec::new();
+    if let (Some(h), Some(sid)) = (history, tw.settlement[y * tw.width + x]) {
+        if let Some(s) = h.settlements.get(&sid) {
+            let faction = h.factions.get(&s.faction).map(|f| f.name.as_str()).unwrap_or("?");
+            parts.push(match s.destroyed {
+                Some(d) => format!("ruins of {} (fell in year {})", s.name, d.year),
+                None => format!("{} - {:?} of {}, pop {}", s.name, s.settlement_type, faction, s.population),
+            });
+        }
+    }
+    let place = gaz.describe(x, y);
+    if !place.is_empty() { parts.push(place); }
+    if let Some(h) = history {
+        if let Some(f) = h.tile_history.get(x, y).current_owner.and_then(|id| h.factions.get(&id)) {
+            parts.push(format!("held by {}", f.name));
+        }
+    }
+    let _ = world;
+    parts.join(" | ")
 }
 
 /// Player marker: white ring around a red dot, centred at (cx, cy).
@@ -90,9 +174,17 @@ fn save_rgb_png(path: &str, w: usize, h: usize, pixel: impl Fn(usize, usize) -> 
 }
 
 /// Open the viewer window and run until it is closed (Q / Esc / window close).
-pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, usize)>) -> Result<(), Box<dyn Error>> {
+pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas: Atlas, start: Option<(usize, usize)>) -> Result<(), Box<dyn Error>> {
     println!("Building tile map...");
-    let tw = TileWorld::build(world, &atlas);
+    let mut tw = TileWorld::build(world, &atlas);
+    if let Some(h) = history { tw.apply_history(world, h, &atlas); }
+    let gaz = build_gazetteer(world, history, world.seed());
+    let labels = build_labels(world, history, &gaz);
+    let mut show_labels = true;
+    // Seasons: T steps through them, C toggles an automatic year cycle.
+    let mut season = crate::seasons::Season::Summer;
+    let mut auto_season: Option<std::time::Instant> = None;
+    tw.set_season(world, season);
     let seed = world.seed();
     let zoom_tiles = ZoomParams::default().tiles;
     let s = cells_per_tile();
@@ -205,6 +297,7 @@ pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, us
                                 Plant::Tree(t) => format!(", {:?} tree", t),
                                 Plant::Shrub => ", shrub".to_string(),
                                 Plant::Grass => ", grass".to_string(),
+                                Plant::Crop(k) => format!(", {} crop", ["wheat", "barley", "flax"][k as usize % 3]),
                                 Plant::None => String::new(),
                             };
                             format!("{:?} {}{}{}", c.material, if c.shape == Shape::Ramp { "ramp" } else { "floor" }, plant, if c.boulder { ", boulder" } else { "" })
@@ -268,7 +361,7 @@ pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, us
                     (player.1.div_euclid(s as f64) as i64).clamp(0, world.height as i64 - 1) as usize,
                 );
                 if near_edge && pending.is_none() && player_tile != z.tile {
-                    pending = Some(scope.spawn(move || load_region(world, player_tile, seed)));
+                    pending = Some(scope.spawn(move || load_region(world, history, player_tile, seed)));
                     dirty = true;
                 }
                 if pressed(Key::X) {
@@ -283,7 +376,7 @@ pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, us
                     // Embark: the playable area is centred on the walker.
                     window.set_title("Generating playable area...");
                     let t0 = std::time::Instant::now();
-                    let map = generate_local(world, &z.region, player.0 - z.origin.0 as f64, player.1 - z.origin.1 as f64);
+                    let map = generate_local(world, &z.region, z.lore.as_ref(), player.0 - z.origin.0 as f64, player.1 - z.origin.1 as f64);
                     let cz = map.surface_z[(map.height / 2) * map.width + map.width / 2];
                     let lcam = LocalCamera { cx: map.width as f32 / 2.0, cy: map.height as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: false };
                     status = format!("embarked in {:.2}s", t0.elapsed().as_secs_f32());
@@ -303,10 +396,28 @@ pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, us
                     else { format!("{:.0} m", e) };
                 let km = r.cell_m as f64 / 1000.0;
                 let loading = if pending.is_some() { " | loading next region..." } else { "" };
+                // Where am I: a settlement here, else the named features of this world tile.
+                let near = z.lore.as_ref().and_then(|l| {
+                    l.sites.iter().filter_map(|site| {
+                        let d = ((site.x - lx).powi(2) + (site.y - ly).powi(2)).sqrt() * r.cell_m as f64;
+                        let label = if site.destroyed_year.is_some() {
+                            (d < site.core_m as f64 + 300.0).then(|| format!("ruins of {} (fell in year {})", site.name, site.destroyed_year.unwrap_or(0)))
+                        } else if d < site.core_m as f64 {
+                            Some(format!("in {}, a {:?} of {} ({} people)", site.name, site.kind, site.faction_name, site.population))
+                        } else if d < site.fields_m as f64 {
+                            Some(format!("the fields of {}", site.name))
+                        } else {
+                            None
+                        };
+                        label.map(|t| (d, t))
+                    }).min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).map(|(_, t)| t)
+                });
+                let place = near.unwrap_or_else(|| gaz.describe(player_tile.0, player_tile.1));
                 let title = format!(
-                    "Walking: tile ({},{}) | {:.1} km E, {:.1} km S | {} | {:.1}°C | arrows/WASD walk, Shift run, wheel zoom, Enter embark, X save, Esc map{} | {}",
-                    player_tile.0, player_tile.1, player.0 * km, player.1 * km, ground, r.temperature_c[k], loading, status
+                    "{} | {} | {:.1}°C | arrows/WASD walk, Shift run, wheel zoom, Enter embark, X save, Esc map{} | {}",
+                    place, ground, r.temperature_c[k], loading, status
                 );
+                let _ = km;
                 if title != last_title { window.set_title(&title); last_title = title; }
             } else {
                 if pressed(Key::Escape) || pressed(Key::Q) {
@@ -370,7 +481,7 @@ pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, us
                         window.update_with_buffer(&buf, w, h)?;
                         let t0 = std::time::Instant::now();
                         if let Some(p) = pending.take() { let _ = p.join(); }
-                        zoom = Some(load_region(world, tile, seed));
+                        zoom = Some(load_region(world, history, tile, seed));
                         status = format!("simulated in {:.1}s", t0.elapsed().as_secs_f32());
                     }
                     player = target;
@@ -379,12 +490,24 @@ pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, us
                     continue;
                 }
 
-                let i = tile.1 * tw.width + tile.0;
-                let biome = world.biomes.get(tile.0, tile.1);
+                if pressed(Key::L) { show_labels = !show_labels; dirty = true; }
+                if pressed(Key::C) {
+                    auto_season = if auto_season.is_some() { None } else { Some(std::time::Instant::now()) };
+                }
+                let step_season = pressed(Key::T)
+                    || auto_season.map(|t| t.elapsed().as_secs_f32() > SEASON_SECONDS).unwrap_or(false);
+                if step_season {
+                    season = season.next();
+                    tw.set_season(world, season);
+                    if auto_season.is_some() { auto_season = Some(std::time::Instant::now()); }
+                    dirty = true;
+                }
+                let place = describe_tile(world, history, &gaz, &tw, tile.0, tile.1);
                 let title = format!(
-                    "Tile ({},{}) {:?} | {:.0} m, {:.1}°C | {:?}{} | {}",
-                    tile.0, tile.1, biome, world.heightmap.get(tile.0, tile.1), world.temperature.get(tile.0, tile.1),
-                    tw.ground[i], tw.sprite[i].map(|s| format!(" + {:?}", s)).unwrap_or_default(), status
+                    "({},{}) {} | {:.0} m | {} {}°C | T season, C auto{}, L labels | {}",
+                    tile.0, tile.1, place, world.heightmap.get(tile.0, tile.1), season.name(),
+                    format!("{:.1}", world.seasonal_climate.as_ref().map(|c| c.get_temperature(tile.0, tile.1, season, tile.1 < tw.height / 2)).unwrap_or(*world.temperature.get(tile.0, tile.1))),
+                    if auto_season.is_some() { " ON" } else { "" }, status
                 );
                 if title != last_title { window.set_title(&title); last_title = title; }
             }
@@ -407,6 +530,9 @@ pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, us
                     draw_marker(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, (px_per_cell * 0.6).clamp(4.0, 10.0));
                 } else {
                     render_world(&tw, &atlas, &cam, &mut buf, w, h);
+                    if show_labels {
+                        draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
+                    }
                     minimap_rect = if show_minimap {
                         let (hx, hy) = screen_to_world(&cam, mouse.0, mouse.1, w, h);
                         render_minimap(&tw, &cam, Some((hx, hy, zoom_tiles as f32 / 2.0)), &mut buf, w, h)
@@ -430,8 +556,12 @@ pub fn run_tile_viewer(world: &WorldData, atlas: Atlas, start: Option<(usize, us
 /// Render viewer frames headlessly (no window): the whole map, then 16 and 32 px/tile close-ups
 /// around `center` (or the most interesting region). Writes `<prefix>_overview.png`, `<prefix>_16px.png`,
 /// `<prefix>_32px.png`.
-pub fn save_snapshots(world: &WorldData, atlas: &Atlas, prefix: &str, center: Option<(usize, usize)>) -> Result<Vec<String>, Box<dyn Error>> {
-    let tw = TileWorld::build(world, atlas);
+pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, prefix: &str, center: Option<(usize, usize)>, season: crate::seasons::Season) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut tw = TileWorld::build(world, atlas);
+    tw.set_season(world, season);
+    if let Some(h) = history { tw.apply_history(world, h, atlas); }
+    let gaz = build_gazetteer(world, history, world.seed());
+    let labels = build_labels(world, history, &gaz);
     let (cx, cy) = center.unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
     let (w, h) = (1280usize, 800usize);
     let fit = (w as f32 / tw.width as f32).min(h as f32 / tw.height as f32);
@@ -444,6 +574,7 @@ pub fn save_snapshots(world: &WorldData, atlas: &Atlas, prefix: &str, center: Op
     let mut buf = vec![0u32; w * h];
     for (name, cam) in shots {
         render_world(&tw, atlas, &cam, &mut buf, w, h);
+        draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
         render_minimap(&tw, &cam, Some((cx as f32, cy as f32, ZoomParams::default().tiles as f32 / 2.0)), &mut buf, w, h);
         let path = format!("{prefix}_{name}.png");
         let img = image::RgbImage::from_fn(w as u32, h as u32, |x, y| {
@@ -477,19 +608,37 @@ pub fn pick_embark_spot(region: &ZoomRegion) -> (f64, f64) {
 
 /// Render a playable area headlessly: surface view, the floor level at the centre, a level a few
 /// z below it, and a cross-section through the middle row.
-pub fn save_local_snapshots(world: &WorldData, atlas: &Atlas, center: Option<(usize, usize)>, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, center: Option<(usize, usize)>, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
     use super::render::{render_cross_section, render_local, LocalCamera};
-    let tile = center.unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
-    let region = load_region(world, tile, world.seed()).region;
-    let (ex, ey) = pick_embark_spot(&region);
+    // Default: the largest living settlement (else the most interesting terrain).
+    let biggest = history.and_then(|h| h.settlements.values().filter(|s| !s.is_destroyed()).max_by_key(|s| s.population).map(|s| s.location));
+    let tile = center.or(biggest).unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
+    let zs = load_region(world, history, tile, world.seed());
+    let mut written = Vec::new();
+    {
+        let path = format!("{prefix}_region.png");
+        let (rw, rh) = (zs.region.width, zs.region.height);
+        image::RgbImage::from_fn(rw as u32, rh as u32, |x, y| image::Rgb(zs.rgb[y as usize * rw + x as usize])).save(&path)?;
+        written.push(path);
+    }
+    // Embark on the settlement in this tile if there is one, else by a river.
+    let s = cells_per_tile() as f64;
+    let target = zs.lore.as_ref().and_then(|l| {
+        let (tx, ty) = (zs.region.world_x0 as f64 * s, zs.region.world_y0 as f64 * s);
+        l.sites.iter().find(|site| {
+            let (gx, gy) = (site.x + tx, site.y + ty);
+            (gx / s) as usize == tile.0 && (gy / s) as usize == tile.1
+        }).map(|site| (site.x, site.y))
+    });
+    let (ex, ey) = target.unwrap_or_else(|| pick_embark_spot(&zs.region));
+    let region = &zs.region;
     let t0 = std::time::Instant::now();
-    let map = crate::local::generate_local(world, &region, ex, ey);
+    let map = crate::local::generate_local(world, region, zs.lore.as_ref(), ex, ey);
     println!("Playable area: {}x{} tiles x {} z-levels, biome {:?}, generated in {:.2}s", map.width, map.height, map.depth, map.biome, t0.elapsed().as_secs_f32());
     let n = map.width;
     let cz = map.surface_z[(n / 2) * n + n / 2];
     let (w, h) = (n * 6, n * 6);
     let mut buf = vec![0u32; w * h];
-    let mut written = Vec::new();
     let mut save = |name: &str, buf: &[u32]| -> Result<(), Box<dyn Error>> {
         let path = format!("{prefix}_{name}.png");
         let img = image::RgbImage::from_fn(w as u32, h as u32, |x, y| {
@@ -534,8 +683,8 @@ mod tests {
     fn region_swap_is_invisible() {
         let world = crate::world::generate_world_with_style(128, 64, 5, crate::plates::WorldStyle::Earthlike);
         let (cx, cy) = crate::region::zoom::pick_interesting_window(&world, 8);
-        let a = load_region(&world, (cx, cy), 9);
-        let b = load_region(&world, (cx + 3, cy), 9);
+        let a = load_region(&world, None, (cx, cy), 9);
+        let b = load_region(&world, None, (cx + 3, cy), 9);
         let s = cells_per_tile();
         assert_eq!(b.origin.0 - a.origin.0, 3 * s, "regions are positioned in shared global cells");
         // Overlap in global cells, skipping the one-cell border where hillshading is clamped.

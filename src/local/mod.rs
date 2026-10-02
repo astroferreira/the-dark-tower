@@ -16,6 +16,8 @@
 //! All noise and object placement use absolute world positions, so the same spot always
 //! generates the same way (neighbouring embarks would match).
 
+pub mod structures;
+
 use noise::{NoiseFn, Perlin};
 
 use crate::climate::biomes::Biome;
@@ -51,6 +53,10 @@ pub enum Material {
     Snow,
     Ice,
     Rock(RockType),
+    /// Constructed: timber.
+    Wood,
+    /// Constructed: dressed stone blocks.
+    Block(RockType),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -81,6 +87,8 @@ pub enum Plant {
     Grass,
     Shrub,
     Tree(TreeKind),
+    /// Cultivated crop row (variety 0-2).
+    Crop(u8),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -291,7 +299,7 @@ fn river_segments(region: &ZoomRegion, cx: f64, cy: f64, radius: i64) -> Vec<Riv
 // ---------------------------------------------------------------------------------------------
 
 /// Generate the playable area centred on region cell coordinates (`cx`, `cy`).
-pub fn generate_local(world: &WorldData, region: &ZoomRegion, cx: f64, cy: f64) -> LocalMap {
+pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crate::lore::RegionLore>, cx: f64, cy: f64) -> LocalMap {
     let (n, rw, rh) = (LOCAL_SIZE, region.width, region.height);
     let cell_m = region.cell_m as f64;
     let s = (region.params.cells_per_tile.max(8) & !1) as i64;
@@ -512,6 +520,11 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, cx: f64, cy: f64) 
         }
     }
 
+    // What history left here: settlements, ruins, fields and roads.
+    if let Some(lore) = lore {
+        structures::apply(&mut map, region, lore, cx, cy);
+    }
+
     // Ramps: a floor next to ground exactly one level higher leads up (DF style).
     for j in 0..n {
         for i in 0..n {
@@ -521,7 +534,9 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, cx: f64, cy: f64) 
                 x >= 0 && y >= 0 && x < n as i64 && y < n as i64 && map.surface_z[y as usize * n + x as usize] == sz + 1
             });
             let k = map.idx(i, j, sz as usize);
-            if up && map.cells[k].plant == Plant::None && map.cells[k].water == 0 {
+            let built_over = (sz as usize + 1) < map.depth && map.cells[map.idx(i, j, sz as usize + 1)].shape == Shape::Wall;
+            let paved = matches!(map.cells[k].material, Material::Wood | Material::Block(_));
+            if up && map.cells[k].plant == Plant::None && map.cells[k].water == 0 && !built_over && !paved {
                 map.cells[k].shape = Shape::Ramp;
             }
         }
@@ -541,7 +556,7 @@ mod tests {
         let (cx, cy) = crate::region::zoom::pick_interesting_window(&world, 4);
         let params = crate::region::zoom::ZoomParams { center_x: cx, center_y: cy, tiles: 4, cells_per_tile: 32, erosion_iterations: 10, seed: 3 };
         let region = crate::region::zoom::generate_zoom(&world, &params);
-        let map = generate_local(&world, &region, region.width as f64 / 2.0, region.height as f64 / 2.0);
+        let map = generate_local(&world, &region, None, region.width as f64 / 2.0, region.height as f64 / 2.0);
         assert_eq!(map.cells.len(), LOCAL_SIZE * LOCAL_SIZE * map.depth);
         for y in 0..map.height {
             for x in 0..map.width {
@@ -550,7 +565,9 @@ mod tests {
                     let c = map.cell(x, y, z);
                     if z < sz { assert!(c.shape == Shape::Wall || c.water > 0, "solid (or frozen-over water) below the surface"); }
                     if z == sz { assert!(matches!(c.shape, Shape::Floor | Shape::Ramp)); }
-                    if z > sz { assert_eq!(c.shape, Shape::Empty, "open above the surface"); }
+                    if z > sz && c.shape != Shape::Empty {
+                        assert!(matches!(c.material, Material::Wood | Material::Block(_) | Material::Clay | Material::Ice), "only buildings or ice above the surface");
+                    }
                     if c.water > 0 { assert_eq!(c.shape, Shape::Empty, "water only in open cells"); }
                 }
             }

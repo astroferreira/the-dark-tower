@@ -17,6 +17,7 @@ use crate::history::civilizations::military::{War, WarCause};
 use crate::history::objects::artifacts::{Artifact, ArtifactType, ArtifactQuality, AcquisitionMethod};
 use crate::history::objects::monuments::{Monument, MonumentType, MonumentPurpose};
 use crate::history::civilizations::economy::{TradeRoute, ResourceType};
+use crate::history::civilizations::settlement::{Settlement, SettlementType};
 use crate::history::naming::styles::NamingStyle;
 use crate::history::naming::generator::NameGenerator;
 use crate::history::religion::worship::{Religion, Doctrine};
@@ -38,6 +39,9 @@ pub fn simulate_step(
 
     // 2.5 Territory expansion
     step_territory_expansion(history, world, rng);
+
+    // 2.6 Colonization (new villages) and abandonment of dying settlements
+    step_colonization(history, world, game_data, rng);
 
 
     // 3. Opinion friction (border disputes, rivalries)
@@ -2017,7 +2021,7 @@ fn find_trade_path(
         let river_penalty = if has_river { 15 } else { 0 };
 
         // Impassable terrain
-        if h > 0.85 { return 0; } // Very high mountains
+        if h > 3500.0 { return 0; } // Very high mountains (heights are metres)
         if matches!(biome, ExtendedBiome::Ocean | ExtendedBiome::DeepOcean | ExtendedBiome::AbyssalPlain) {
             return 0; // Deep water - impassable
         }
@@ -2102,7 +2106,7 @@ fn find_trade_path(
         let noise_cost = (noise_val.abs() * 4.0) as u32;
         
         // Height penalty for hills (not mountains)
-        let height_penalty = if h > 0.6 { 8 } else if h > 0.5 { 4 } else { 0 };
+        let height_penalty = if h > 2000.0 { 8 } else if h > 1200.0 { 4 } else { 0 };
         
         base_cost + river_penalty + height_penalty + parallel_penalty + noise_cost
     };
@@ -2953,7 +2957,36 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
         let def_name = history.factions.get(&defender)
             .map(|f| f.name.clone()).unwrap_or_default();
 
-        if success {
+        // Some conquerors raze what they take; capitals are kept as prizes.
+        let is_capital = history.settlements.get(&target)
+            .map_or(false, |s| s.settlement_type == SettlementType::Capital);
+        let razed = success && !is_capital && rng.gen::<f32>() < RAZE_CHANCE;
+
+        if razed {
+            if let Some(loser_f) = history.factions.get_mut(&defender) {
+                loser_f.remove_settlement(target);
+            }
+            let loc = destroy_settlement(history, target, date);
+            let event_id = history.id_generators.next_event();
+            let mut event = Event::new(
+                event_id,
+                EventType::SettlementDestroyed,
+                date,
+                format!("{} razed by {}", target_name, att_name),
+                format!("{} stormed {} after a siege of {} seasons and burned it to the ground.",
+                    att_name, target_name, duration),
+            )
+            .with_faction(attacker)
+            .with_faction(defender)
+            .with_participant(EntityId::Settlement(target));
+            if let Some((x, y)) = loc {
+                event = event.at_location(x, y);
+                history.tile_history.record_event(x, y, event_id);
+            }
+            history.chronicle.record(event);
+        }
+
+        if success && !razed {
             // Transfer settlement to attacker
             if let Some(loser_f) = history.factions.get_mut(&defender) {
                 loser_f.remove_settlement(target);
@@ -3030,6 +3063,8 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
             .with_faction(defender)
             .with_participant(EntityId::Settlement(target));
             history.chronicle.record(event);
+        } else if razed {
+            dissolve_if_landless(history, defender, &def_name, date);
         } else {
             // Siege failed — attacker withdraws
             let event_id = history.id_generators.next_event();
@@ -3783,7 +3818,7 @@ fn step_territory_expansion(
                      let is_water = *world.water_depth.get(x, y) > 0.0 || h < 0.0;
                      
                      // Claim land tiles (including rivers, but not oceans/lakes if significant)
-                     if !is_water && h < 0.9 {
+                     if !is_water && h < 3000.0 {
                          claims.push((x, y, faction_id));
                      }
                 }
@@ -3795,6 +3830,177 @@ fn step_territory_expansion(
     let date = history.current_date;
     for (x, y, faction_id) in claims {
          history.tile_history.set_owner(x, y, faction_id, date);
+    }
+}
+
+// =========================================================================
+// Settlement lifecycle: colonization, abandonment, razing
+// =========================================================================
+
+/// Chance that a successfully besieged (non-capital) settlement is razed rather than taken.
+const RAZE_CHANCE: f32 = 0.3;
+/// Per-season chance that a faction with a crowded settlement sends out colonists.
+const COLONIZE_CHANCE: f32 = 0.06;
+/// Minimum distance (tiles) between living settlements.
+const SETTLEMENT_SPACING: i64 = 4;
+
+/// Mark a settlement destroyed and clear it from the map. Returns its location.
+fn destroy_settlement(history: &mut WorldHistory, id: SettlementId, date: Date) -> Option<(usize, usize)> {
+    let loc = {
+        let s = history.settlements.get_mut(&id)?;
+        if s.destroyed.is_some() { return None; }
+        s.destroyed = Some(date);
+        s.population = 0;
+        s.location
+    };
+    let t = history.tile_history.get_mut(loc.0, loc.1);
+    if t.settlement == Some(id) { t.settlement = None; }
+    if !t.former_settlements.contains(&id) { t.former_settlements.push(id); }
+    Some(loc)
+}
+
+/// Dissolve a faction that has lost its last settlement.
+fn dissolve_if_landless(history: &mut WorldHistory, faction: FactionId, name: &str, date: Date) {
+    let left = history.factions.get(&faction).map(|f| f.settlements.len()).unwrap_or(1);
+    let active = history.factions.get(&faction).map_or(false, |f| f.is_active());
+    if left > 0 || !active { return; }
+    if let Some(f) = history.factions.get_mut(&faction) { f.dissolve(date); }
+    let event_id = history.id_generators.next_event();
+    let event = Event::new(
+        event_id,
+        EventType::FactionDestroyed,
+        date,
+        format!("{} destroyed", name),
+        format!("{} has been destroyed after losing their last settlement.", name),
+    )
+    .with_faction(faction);
+    history.chronicle.record(event);
+}
+
+/// Crowded settlements send colonists to found villages on good nearby land (rivers, coasts,
+/// flat ground); tiny outlying settlements that never took hold are abandoned.
+fn step_colonization(history: &mut WorldHistory, world: &WorldData, game_data: &GameData, rng: &mut impl Rng) {
+    let date = history.current_date;
+    let (w, h) = (world.width, world.height);
+    let living: Vec<(SettlementId, (usize, usize))> = history.settlements.values()
+        .filter(|s| !s.is_destroyed())
+        .map(|s| (s.id, s.location))
+        .collect();
+    let too_close = |x: usize, y: usize, extra: &[(usize, usize)]| {
+        living.iter().map(|(_, l)| *l).chain(extra.iter().copied()).any(|(sx, sy)| {
+            let dx = (x as i64 - sx as i64).abs();
+            let dx = dx.min(w as i64 - dx);
+            dx.max((y as i64 - sy as i64).abs()) < SETTLEMENT_SPACING
+        })
+    };
+    let site_score = |x: usize, y: usize| -> f32 {
+        let e = *world.heightmap.get(x, y);
+        if e <= 0.0 || e > 2500.0 || world.water_body_map.get(x, y).is_lake() { return f32::MIN; }
+        let biome = *world.biomes.get(x, y);
+        if matches!(biome, crate::biomes::ExtendedBiome::Ice | crate::biomes::ExtendedBiome::SnowyPeaks) { return f32::MIN; }
+        let mut score = 1.0 - e / 2500.0;
+        let flow = world.flow_accumulation.as_ref().map(|f| *f.get(x, y)).unwrap_or(0.0);
+        if flow > 50.0 { score += 1.5; } else if flow > 15.0 { score += 0.6; }
+        let coast = (-1i64..=1).any(|dy| (-1i64..=1).any(|dx| {
+            let ny = y as i64 + dy;
+            ny >= 0 && ny < h as i64 && *world.heightmap.get((x as i64 + dx).rem_euclid(w as i64) as usize, ny as usize) <= 0.0
+        }));
+        if coast { score += 0.8; }
+        let t = *world.temperature.get(x, y);
+        if t < -5.0 { score -= 1.0; }
+        score
+    };
+
+    let faction_ids: Vec<FactionId> = history.factions.values().filter(|f| f.is_active()).map(|f| f.id).collect();
+    let mut founded: Vec<(usize, usize)> = Vec::new();
+    for fid in faction_ids {
+        if rng.gen::<f32>() >= COLONIZE_CHANCE { continue; }
+        let (race_id, faction_name, parents) = {
+            let f = &history.factions[&fid];
+            (f.race_id, f.name.clone(), f.settlements.clone())
+        };
+        // The most crowded settlement sends the colonists.
+        let parent = parents.iter()
+            .filter_map(|id| history.settlements.get(id))
+            .filter(|s| !s.is_destroyed() && s.population >= 400)
+            .max_by_key(|s| s.population)
+            .map(|s| (s.id, s.location, s.name.clone()));
+        let Some((parent_id, (px, py), parent_name)) = parent else { continue };
+        if parents.len() >= 12 { continue; }
+
+        // Best of a handful of candidate sites 4-10 tiles away, on own or unclaimed land.
+        let mut best: Option<(usize, usize, f32)> = None;
+        for _ in 0..24 {
+            let r = rng.gen_range(SETTLEMENT_SPACING as f32..10.0);
+            let a = rng.gen_range(0.0..std::f32::consts::TAU);
+            let ny = py as i64 + (a.sin() * r).round() as i64;
+            if ny < 0 || ny >= h as i64 { continue; }
+            let (nx, ny) = ((px as i64 + (a.cos() * r).round() as i64).rem_euclid(w as i64) as usize, ny as usize);
+            let owner = history.tile_history.get(nx, ny).current_owner;
+            if owner.is_some() && owner != Some(fid) { continue; }
+            if too_close(nx, ny, &founded) { continue; }
+            let sc = site_score(nx, ny) + rng.gen_range(0.0..0.3);
+            if sc > best.map(|b| b.2).unwrap_or(0.2) { best = Some((nx, ny, sc)); }
+        }
+        let Some((sx, sy, _)) = best else { continue };
+
+        let style = naming_style_for_race(history, race_id, game_data);
+        let name = NameGenerator::place_name(&style, rng);
+        let sid = history.id_generators.next_settlement();
+        let biome = *world.biomes.get(sx, sy);
+        let mut settlement = Settlement::new(sid, name.clone(), SettlementType::Village, (sx, sy), fid, date, ResourceType::from_biome(biome));
+        settlement.population = 40;
+        history.settlements.insert(sid, settlement);
+        if let Some(p) = history.settlements.get_mut(&parent_id) { p.population = p.population.saturating_sub(40); }
+        if let Some(f) = history.factions.get_mut(&fid) { f.add_settlement(sid); }
+        history.tile_history.set_owner(sx, sy, fid, date);
+        history.tile_history.get_mut(sx, sy).settlement = Some(sid);
+        founded.push((sx, sy));
+
+        let event_id = history.id_generators.next_event();
+        let event = Event::new(
+            event_id,
+            EventType::SettlementFounded,
+            date,
+            format!("{} founded", name),
+            format!("Settlers from {} of {} founded the village of {}.", parent_name, faction_name, name),
+        )
+        .at_location(sx, sy)
+        .with_faction(fid)
+        .with_participant(EntityId::Settlement(sid));
+        history.tile_history.record_event(sx, sy, event_id);
+        history.chronicle.record(event);
+    }
+
+    // Abandonment: villages and outposts that dwindled away.
+    let dying: Vec<(SettlementId, FactionId, String)> = history.settlements.values()
+        .filter(|s| !s.is_destroyed()
+            && s.population < 15
+            && !matches!(s.settlement_type, SettlementType::Capital | SettlementType::City)
+            && date.year.saturating_sub(s.founded.year) > 20)
+        .map(|s| (s.id, s.faction, s.name.clone()))
+        .collect();
+    for (sid, fid, name) in dying {
+        if rng.gen::<f32>() > 0.25 { continue; }
+        if let Some(f) = history.factions.get_mut(&fid) { f.remove_settlement(sid); }
+        let loc = destroy_settlement(history, sid, date);
+        let event_id = history.id_generators.next_event();
+        let mut event = Event::new(
+            event_id,
+            EventType::SettlementDestroyed,
+            date,
+            format!("{} abandoned", name),
+            format!("The last families left {}, and it fell to ruin.", name),
+        )
+        .with_faction(fid)
+        .with_participant(EntityId::Settlement(sid));
+        if let Some((x, y)) = loc {
+            event = event.at_location(x, y);
+            history.tile_history.record_event(x, y, event_id);
+        }
+        history.chronicle.record(event);
+        let fname = history.factions.get(&fid).map(|f| f.name.clone()).unwrap_or_default();
+        dissolve_if_landless(history, fid, &fname, date);
     }
 }
 
