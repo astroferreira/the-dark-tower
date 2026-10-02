@@ -59,7 +59,7 @@ impl BiomeFamily {
 }
 
 /// Get the biome family and variation parameters for a biome
-fn get_biome_family(biome: ExtendedBiome) -> (BiomeFamily, f32, f32) {
+pub(crate) fn get_biome_family(biome: ExtendedBiome) -> (BiomeFamily, f32, f32) {
     use ExtendedBiome::*;
 
     // Returns (family, saturation_modifier, value_modifier)

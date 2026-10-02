@@ -33,6 +33,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 base64 = "0.22"
 exr = "1.7"
 smallvec = "1.11"
+minifb = "0.28"
 
 [dev-dependencies]
 tempfile = "3.10"

@@ -54,6 +54,27 @@ OPTIONS:
 - **Plates** - Tectonic plate boundaries
 - **Stress** - Tectonic stress (mountain building)
 
+### Graphical tile viewer (`src/tiles/`)
+`cargo run --release -- --seed 42 --tiles` opens a window (minifb) that draws the world with
+pixel-art tiles instead of the terminal explorer.
+- Mouse wheel / `+` `-` zoom (1-64 px per tile, around the cursor); drag or arrows/WASD pan;
+  click the minimap to jump; `N` minimap; `P` screenshot; `Q`/`Esc` quit. Hover info is shown
+  in the window title.
+- `Z` walks into the high-resolution region under the mouse: arrows/WASD walk (Shift runs),
+  wheel zooms, `F` resets zoom, `X` saves the region PNG, `Esc`/`Z` returns to the map (centred
+  where you walked to). Near a region edge the next region is generated on a background thread
+  and swapped in; zoom terrain is seamless, so you can walk across the world.
+- `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/16px/32px
+  frames to PNG without a window (for checking rendering).
+- Tiles: `atlas.rs` draws a 16x16 pixel-art atlas (ground kinds + transparent sprites, 4
+  variants each). `--export-tileset atlas.png` writes it (one row per kind, in `ALL_KINDS`
+  order) for editing; `--tileset file.png` loads an edited atlas or a Dwarf Fortress style
+  16x16 CP437 sheet (glyphs tinted with per-kind fg/bg colours, magenta = background).
+- `classify.rs` maps world data to tiles (biome -> ground + sprite, relief overrides,
+  beaches, lakes >= 4 tiles, rivers from D8 flow, one-tile-wide water strips drawn as river
+  channels); `render.rs` is pure software rendering (river strokes and coastline foam are
+  drawn per pixel, relief shading interpolated between tiles).
+
 ### Minimap and zoom
 - `N` - Toggle the world minimap (bottom-right; yellow = visible area, white = zoom window)
 - `Z` - Simulate the 8x8-tile region around the cursor at 128 cells/tile (~5 s) and show it
@@ -141,16 +162,44 @@ src/
   writes `final.png` (plates | thickness | age | elevation | stress), `timelapse.png`, and
   `basins_sim.png` / `basins_legacy.png` (land trapped in closed basins, with % printed).
 
+### Playable areas (`src/local/`)
+Dwarf Fortress style embarks: 192x192 tiles of 2 m with 2 m z-levels, generated (~20 ms) from
+the zoomed region around a point.
+- In the tile viewer's walking mode a yellow box shows the area; `Enter` embarks. Inside:
+  `<` / `>` (or PgUp/PgDn) change z-level, `V` toggles the surface view, wheel zooms, arrows /
+  drag pan, `P` screenshot, `Esc` back to walking. Hover info is in the window title.
+- Surface: bicubic region elevation + metre-scale relief scaled by slope. Rivers follow the
+  region's drainage links (`ZoomRegion::receiver`) and continue upstream as creeks (catchment
+  >= `CREEK_AREA_FRACTION` of a tile), with meanders, carved beds and banks; lakes keep their
+  level; water freezes over below `FREEZE_TEMP_C`. Underground: soil (sand/clay/gravel/loam,
+  thinner on slopes) over the world tile's handshake rock stack with undulating strata.
+  Trees/shrubs/grass/boulders from the biome, with groves and clearings. Ramps where the
+  surface steps up one level. All noise is keyed on absolute position.
+- `--local-snapshot PREFIX --tiles-center X,Y` renders an embark (surface, two z-levels, a
+  16 px close-up, and a cross-section) without a window.
+
+### Biomes
+- Lowland classification (`climate/biomes.rs::classify_lowland`) uses Earth-calibrated mean
+  annual temperature: ice sheets below -22 C (or -15 C when wet), tundra to -7 C, taiga
+  -7..4 C; moisture cut-offs match the climate sim's range (rarely above ~0.6).
+- `--fantasy 0..1` (default 0.2, old behaviour 0.5) scales fantasy/special biomes, including
+  the rare-biome replacement pass. `--biome-stats` prints the land-biome mix, land
+  temperature/moisture percentiles and a zonal temperature/land profile.
+
 ### Zoomed regions (`region/zoom.rs`)
 - `--zoom X,Y` (world tile at the window centre, as the explorer's `W:(x,y)` shows) or
   `--zoom auto`; `--zoom-tiles N` (default 8), `--zoom-scale S` cells per world tile (default
   128, ~610 m/cell on a 512-wide world), `--zoom-erosion I` iterations (default 40).
   Writes `zoom_<seed>_<x>_<y>.png` and a 16-bit heightmap into `--map-output-dir`.
-- Pipeline: bicubic world heights + relief-scaled fractal detail -> world Bezier rivers carve
+- Seamless: terrain is assembled from fixed world-tile chunks (each simulated with a one-tile
+  border, cached in memory) blended with tent weights, so a cell's height depends only on its
+  world position; separately generated regions match exactly (tested). Hydrology runs on the
+  blended terrain with a two-tile margin. Known exception: the date line (x wrap).
+- Pipeline (per chunk): bicubic world heights + relief-scaled fractal detail -> world Bezier rivers carve
   valleys and inject upstream area where they enter -> shallow hollows filled -> implicit
   stream-power erosion + hillslope diffusion on a priority-flood drainage tree -> lakes and
-  rivers (moisture-dependent threshold, width ~ 0.8 sqrt(A km2) m). A one-tile margin is
-  simulated and cropped. Takes a few seconds for 1024x1024.
+  rivers (moisture-dependent threshold, width ~ 0.8 sqrt(A km2) m). ~7 s for a cold
+  1024x1024 region; neighbouring regions reuse cached chunks.
 - Render uses the climate colour LUT only (world biome colours and raw world climate are
   tile-blocky when upsampled; climate is smoothed over ~1 tile first).
 

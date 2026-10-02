@@ -1113,6 +1113,10 @@ impl Default for BiomeConfig {
 }
 
 /// World biome configuration
+/// Default share of fantasy/special biomes (0 = fully natural, 1 = full fantasy). 0.5 was the
+/// old default; 0.2 keeps worlds natural with occasional wonders.
+pub const DEFAULT_FANTASY_INTENSITY: f32 = 0.2;
+
 #[derive(Clone, Debug)]
 pub struct WorldBiomeConfig {
     pub biomes: HashMap<ExtendedBiome, BiomeConfig>,
@@ -1205,7 +1209,7 @@ impl Default for WorldBiomeConfig {
 
         Self {
             biomes,
-            fantasy_intensity: 0.5,
+            fantasy_intensity: DEFAULT_FANTASY_INTENSITY,
         }
     }
 }
@@ -3327,6 +3331,7 @@ pub fn apply_biome_replacements(
     temperature: &Tilemap<f32>,
     moisture: &Tilemap<f32>,
     stress_map: &Tilemap<f32>,
+    fantasy_intensity: f32,
     seed: u64,
 ) -> usize {
     use rand::SeedableRng;
@@ -3375,7 +3380,10 @@ pub fn apply_biome_replacements(
                 // Check chance (modified by noise for clustering)
                 let noise_val = cluster_noise.get([x as f64 * 0.1, y as f64 * 0.1]) as f32;
                 let cluster_bonus = (noise_val + 1.0) * 0.5; // 0-1 range
-                let effective_chance = rule.chance * (0.5 + cluster_bonus);
+                // Fantasy targets follow the world's fantasy dial (rule chances were tuned for
+                // the old default intensity of 0.5); realistic targets are unaffected.
+                let fantasy_scale = if is_fantasy_biome(rule.target) { fantasy_intensity / 0.5 } else { 1.0 };
+                let effective_chance = rule.chance * (0.5 + cluster_bonus) * fantasy_scale;
 
                 if rng.gen::<f32>() > effective_chance {
                     continue;
@@ -3737,4 +3745,71 @@ pub fn apply_volcanic_biomes(
     }
 
     converted
+}
+
+/// Print the land-biome mix and how fragmented it is (diagnostic for `--biome-stats`).
+/// "Isolated" = land tiles whose biome matches none of their 8 neighbours.
+pub fn print_biome_stats(biomes: &Tilemap<ExtendedBiome>, heightmap: &Tilemap<f32>, temperature: &Tilemap<f32>, moisture: &Tilemap<f32>) {
+    let (w, h) = (biomes.width, biomes.height);
+    let mut counts: HashMap<ExtendedBiome, usize> = HashMap::new();
+    let (mut land, mut isolated, mut fantasy) = (0usize, 0usize, 0usize);
+    for y in 0..h {
+        for x in 0..w {
+            if *heightmap.get(x, y) <= 0.0 { continue; }
+            let b = *biomes.get(x, y);
+            land += 1;
+            *counts.entry(b).or_insert(0) += 1;
+            if !biomes.neighbors_8(x, y).iter().any(|&(nx, ny)| *biomes.get(nx, ny) == b) {
+                isolated += 1;
+            }
+            if b != ExtendedBiome::from_base(Biome::classify(*heightmap.get(x, y), 10.0, 0.5)) && is_fantasy_biome(b) {
+                fantasy += 1;
+            }
+        }
+    }
+    let pct = |m: &Tilemap<f32>| {
+        let mut v: Vec<f32> = (0..w * h).filter(|&i| *heightmap.get(i % w, i / w) > 0.0).map(|i| *m.get(i % w, i / w)).collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let q = |p: f32| v[((v.len() - 1) as f32 * p) as usize];
+        format!("p10 {:.2} p25 {:.2} p50 {:.2} p75 {:.2} p90 {:.2}", q(0.1), q(0.25), q(0.5), q(0.75), q(0.9))
+    };
+    println!("Land temperature (C): {}", pct(temperature));
+    // Zonal profile: mean temperature (all cells) and land share per 10-degree band.
+    let mut profile = String::new();
+    for band in 0..9 {
+        let (lat_hi, lat_lo) = (90 - band * 10, 80 - band * 10);
+        let (mut t, mut n, mut l) = (0.0f32, 0usize, 0usize);
+        for y in 0..h {
+            let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+            if lat > lat_hi as f32 || lat <= lat_lo as f32 { continue; }
+            for x in 0..w {
+                t += *temperature.get(x, y);
+                n += 1;
+                if *heightmap.get(x, y) > 0.0 { l += 1; }
+            }
+        }
+        profile += &format!(" {}-{}: {:.0}C {:.0}%land |", lat_lo, lat_hi, t / n.max(1) as f32, 100.0 * l as f32 / n.max(1) as f32);
+    }
+    println!("Zonal (|lat|):{}", profile);
+    println!("Land moisture:        {}", pct(moisture));
+    let mut v: Vec<_> = counts.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1));
+    println!("Biome stats: {} land tiles, {} biome kinds, {:.1}% isolated tiles, {:.1}% fantasy/special",
+        land, v.len(), 100.0 * isolated as f32 / land.max(1) as f32, 100.0 * fantasy as f32 / land.max(1) as f32);
+    for (b, c) in v.iter().take(25) {
+        println!("  {:>5.1}%  {:?}", 100.0 * *c as f32 / land.max(1) as f32, b);
+    }
+}
+
+/// Biomes outside the realistic Whittaker/altitude set.
+pub fn is_fantasy_biome(b: ExtendedBiome) -> bool {
+    use ExtendedBiome::*;
+    !matches!(
+        b,
+        DeepOcean | Ocean | CoastalWater | Ice | Tundra | BorealForest | TemperateGrassland | TemperateForest
+            | TemperateRainforest | Desert | Savanna | TropicalForest | TropicalRainforest | MontaneForest
+            | CloudForest | Paramo | SubalpineForest | AlpineMeadow | AlpineTundra | SnowyPeaks
+            | HighlandLake | CraterLake | Foothills | Lagoon | Swamp | Marsh | Bog | MangroveSaltmarsh
+            | SaltFlats | Oasis | VolcanicWasteland | Ashlands
+    )
 }

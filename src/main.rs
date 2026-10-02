@@ -21,6 +21,7 @@ mod grid_export;
 mod heightmap;
 mod history;
 mod islands;
+mod local;
 mod map_export;
 mod menu;
 mod microclimate;
@@ -30,6 +31,7 @@ mod scale;
 mod seasons;
 mod seeds;
 mod tilemap;
+mod tiles;
 mod underground_water;
 mod water_bodies;
 mod weather_zones;
@@ -64,6 +66,40 @@ struct Args {
     /// Options: earthlike, archipelago, islands, pangaea, continental, waterworld
     #[arg(short = 'w', long, default_value = "earthlike")]
     world_style: String,
+
+    /// Fantasy/special biome intensity, 0 (fully natural) to 1 (full fantasy)
+    #[arg(long, default_value_t = biomes::DEFAULT_FANTASY_INTENSITY)]
+    fantasy: f32,
+
+    /// Print the land-biome mix and fragmentation after biome generation
+    #[arg(long)]
+    biome_stats: bool,
+
+    /// Open the graphical tile viewer (pixel-art tiles, mouse zoom/pan) instead of the
+    /// terminal explorer
+    #[arg(long)]
+    tiles: bool,
+
+    /// Tileset PNG for the tile viewer: an edited atlas from --export-tileset, or a
+    /// Dwarf Fortress style 16x16 CP437 sheet
+    #[arg(long)]
+    tileset: Option<String>,
+
+    /// World tile "X,Y" to centre the tile viewer (and its snapshots) on
+    #[arg(long)]
+    tiles_center: Option<String>,
+
+    /// Render tile-viewer frames to <PREFIX>_overview/_16px/_32px.png without opening a window
+    #[arg(long)]
+    tiles_snapshot: Option<String>,
+
+    /// Render a playable area (embark) at --tiles-center to <PREFIX>_surface/_z*/_section.png
+    #[arg(long)]
+    local_snapshot: Option<String>,
+
+    /// Write the built-in tile atlas to this PNG (one row per tile kind, 4 variants) and exit
+    #[arg(long)]
+    export_tileset: Option<String>,
 
     /// Re-simulate a window of world tiles at high resolution (rivers, lakes, valleys).
     /// Value: "X,Y" = world tile at the window centre (as shown by the explorer's W:(x,y)),
@@ -300,6 +336,14 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
+
+    if let Some(path) = &args.export_tileset {
+        match tiles::Atlas::generated().save_png(std::path::Path::new(path)) {
+            Ok(()) => println!("Wrote tile atlas to {path} (rows: {:?})", tiles::atlas::ALL_KINDS),
+            Err(e) => eprintln!("Failed to write tile atlas: {e}"),
+        }
+        return;
+    }
 
     // Handle grid export commands
     if args.export_erosion_grid || args.export_climate_grid || args.export_rainfall_grid
@@ -593,7 +637,10 @@ fn main() {
         lake_count, wb_stats.river_tiles, wb_stats.ocean_tiles);
 
     // Generate extended biomes for explorer
-    let biome_config = biomes::WorldBiomeConfig::default();
+    let biome_config = biomes::WorldBiomeConfig {
+        fantasy_intensity: args.fantasy.clamp(0.0, 1.0),
+        ..biomes::WorldBiomeConfig::default()
+    };
     let mut extended_biomes = biomes::generate_extended_biomes(
         &heightmap,
         &temperature,
@@ -611,6 +658,7 @@ fn main() {
         &temperature,
         &moisture,
         &stress_map,
+        biome_config.fantasy_intensity,
         seeds.biomes,
     );
     println!("Created {} rare biome clusters", rare_biome_clusters);
@@ -648,6 +696,10 @@ fn main() {
     );
     if volcanic_tiles > 0 {
         println!("Converted {} tiles to volcanic biomes", volcanic_tiles);
+    }
+
+    if args.biome_stats {
+        biomes::print_biome_stats(&extended_biomes, &heightmap, &temperature, &moisture);
     }
 
     // Compute biome feathering map for smooth transitions
@@ -1125,6 +1177,47 @@ fn main() {
 
     // Skip explorer in headless mode
     if args.headless {
+        return;
+    }
+
+    if args.tiles || args.tiles_snapshot.is_some() || args.local_snapshot.is_some() {
+        let atlas = match &args.tileset {
+            Some(path) => match tiles::Atlas::load_png(std::path::Path::new(path)) {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("Could not load tileset {path}: {e}; using the built-in tiles");
+                    tiles::Atlas::generated()
+                }
+            },
+            None => tiles::Atlas::generated(),
+        };
+        let center = args.tiles_center.as_deref().and_then(|spec| {
+            let p: Vec<_> = spec.split(',').map(|v| v.trim().parse::<usize>()).collect();
+            match p.as_slice() {
+                [Ok(x), Ok(y)] if *x < width && *y < height => Some((*x, *y)),
+                _ => {
+                    eprintln!("--tiles-center expects \"X,Y\" inside {}x{}, got '{}'", width, height, spec);
+                    None
+                }
+            }
+        });
+        if let Some(prefix) = &args.local_snapshot {
+            match tiles::viewer::save_local_snapshots(&world_data, &atlas, center, prefix) {
+                Ok(files) => println!("Saved playable-area snapshots: {}", files.join(", ")),
+                Err(e) => eprintln!("Playable-area snapshot failed: {e}"),
+            }
+            return;
+        }
+        if let Some(prefix) = &args.tiles_snapshot {
+            match tiles::viewer::save_snapshots(&world_data, &atlas, prefix, center) {
+                Ok(files) => println!("Saved tile snapshots: {}", files.join(", ")),
+                Err(e) => eprintln!("Tile snapshot failed: {e}"),
+            }
+            return;
+        }
+        if let Err(e) = tiles::run_tile_viewer(&world_data, atlas, center) {
+            eprintln!("Tile viewer error: {}", e);
+        }
         return;
     }
 

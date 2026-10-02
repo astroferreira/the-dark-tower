@@ -83,41 +83,60 @@ impl Biome {
     /// Classify lowland biomes (below mountain elevation thresholds)
     /// Based purely on temperature and moisture
     pub fn classify_lowland(temperature: f32, moisture: f32) -> Biome {
+        // Thresholds are on mean annual temperature, calibrated to Earth: ice sheets need means
+        // around -22 C or below (or snow accumulation in wet cold), Arctic tundra sits around -22
+        // to -7 C, and the taiga reaches down to about -7 C (Yakutsk ~ -8 C is forested). Moisture
+        // cut-offs match the range the climate simulation produces (rarely above ~0.6).
         match (temperature, moisture) {
-            // Freezing temperatures
-            (t, _) if t < -10.0 => Biome::Ice,
-            (t, _) if t < 0.0 => Biome::Tundra,
+            // Ice sheets need extreme cold or heavy snowfall; high-Arctic lowlands are tundra.
+            (t, _) if t < -22.0 => Biome::Ice,
+            (t, m) if t < -15.0 && m > 0.50 => Biome::Ice,
+            (t, _) if t < -7.0 => Biome::Tundra,
 
-            // Cold temperatures (0 to 10°C)
-            (t, m) if t < 10.0 => {
-                if m > 0.45 {
+            // Subarctic (-7 to 4 C): taiga unless very dry, then tundra / cold steppe
+            (t, m) if t < 4.0 => {
+                if m > 0.22 {
                     Biome::BorealForest
-                } else if m > 0.22 && t >= 3.0 {
-                    // Cold steppe / prairie in moderate moisture
+                } else if m > 0.12 && t >= -2.0 {
                     Biome::TemperateGrassland
                 } else {
                     Biome::Tundra
                 }
             }
 
-            // Temperate temperatures (10 to 20°C)
-            (t, m) if t < 20.0 => {
-                if m > 0.65 {
-                    Biome::TemperateRainforest
-                } else if m > 0.38 {
+            // Cool (4 to 10 C): mixed / boreal forest, steppe, cold desert
+            (t, m) if t < 10.0 => {
+                if m > 0.45 {
                     Biome::TemperateForest
-                } else {
+                } else if m > 0.28 {
+                    Biome::BorealForest
+                } else if m > 0.06 {
                     Biome::TemperateGrassland
+                } else {
+                    Biome::Desert
                 }
             }
 
-            // Warm/tropical temperatures (>= 20°C)
+            // Temperate (10 to 20 C)
+            (t, m) if t < 20.0 => {
+                if m > 0.56 {
+                    Biome::TemperateRainforest
+                } else if m > 0.33 {
+                    Biome::TemperateForest
+                } else if m > 0.06 {
+                    Biome::TemperateGrassland
+                } else {
+                    Biome::Desert
+                }
+            }
+
+            // Warm / tropical (>= 20 C)
             (_, m) => {
-                if m > 0.68 {
+                if m > 0.55 {
                     Biome::TropicalRainforest
-                } else if m > 0.40 {
+                } else if m > 0.36 {
                     Biome::TropicalForest
-                } else if m > 0.18 {
+                } else if m > 0.15 {
                     Biome::Savanna
                 } else {
                     Biome::Desert
