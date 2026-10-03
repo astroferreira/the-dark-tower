@@ -60,6 +60,25 @@ fn load_region(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, 
     ZoomState { region, rgb, origin, tile, lore }
 }
 
+/// Names of the settlements in a zoomed region.
+fn draw_region_labels(l: &crate::lore::RegionLore, cam: &ZoomCamera, buf: &mut [u32], w: usize, h: usize) {
+    use crate::history::civilizations::settlement::SettlementType;
+    let labels: Vec<Label> = l.sites.iter().map(|site| {
+        let (rank, min_px, color) = match (site.destroyed_year.is_some(), site.kind) {
+            (true, _) => (300, 1.2, 0x00A0_9890),
+            (_, SettlementType::Capital) => (900, 0.0, 0x00FF_E08A),
+            (_, SettlementType::City | SettlementType::Port) => (850, 0.0, 0x00FF_E08A),
+            (_, SettlementType::Town | SettlementType::Fort) => (700, 0.4, 0x00FF_E08A),
+            _ => (400, 0.9, 0x00F0_DCB4),
+        };
+        let text = if site.destroyed_year.is_some() { format!("ruins of {}", site.name) } else { site.name.clone() };
+        Label { x: site.x as f32, y: site.y as f32 + 9.0, text, rank, min_tile_px: min_px, color }
+    }).collect();
+    place_labels(&labels, cam.px_per_cell, w, h, buf, |x, y| {
+        (w as f32 / 2.0 + (x - cam.cx) * cam.px_per_cell, h as f32 / 2.0 + (y - cam.cy) * cam.px_per_cell)
+    });
+}
+
 /// Everything named on the world map: geographic features and settlements, highest rank first.
 fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazetteer) -> Vec<Label> {
     use crate::history::civilizations::settlement::SettlementType;
@@ -533,6 +552,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         px_per_cell,
                     };
                     render_zoom(&z.rgb, z.region.width, z.region.height, &cam_z, &mut buf, w, h);
+                    if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h); }
                     // The playable area an embark here would cover.
                     let half = (LOCAL_SIZE as f32 * TILE_M / z.region.cell_m * px_per_cell / 2.0).max(6.0);
                     draw_box(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, half, 0x00F0_D23C);
@@ -628,7 +648,16 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
     {
         let path = format!("{prefix}_region.png");
         let (rw, rh) = (zs.region.width, zs.region.height);
-        image::RgbImage::from_fn(rw as u32, rh as u32, |x, y| image::Rgb(zs.rgb[y as usize * rw + x as usize])).save(&path)?;
+        // Render the way the window does (so labels show); a 1:1 view of the region centre.
+        let (vw, vh) = (1280usize, 800usize);
+        let mut vbuf = vec![0u32; vw * vh];
+        let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: 1.0 };
+        render_zoom(&zs.rgb, rw, rh, &cam, &mut vbuf, vw, vh);
+        if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh); }
+        image::RgbImage::from_fn(vw as u32, vh as u32, |x, y| {
+            let p = vbuf[y as usize * vw + x as usize];
+            image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
+        }).save(&path)?;
         written.push(path);
     }
     // Embark on the settlement in this tile if there is one, else by a river.

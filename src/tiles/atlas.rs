@@ -728,7 +728,8 @@ fn paint(kind: TileKind, c: &mut Canvas) {
                 let seam = y % 4 == 3;
                 for x in 0..s {
                     let grain = ((x * 7 + y * 3) % 5 == 0) as u8 * 12;
-                    let c0 = if seam { rgb(70, 46, 24) } else { rgb(142 - grain, 96 - grain, 54) };
+                    // Dark weathered timber, distinct from the bare earth around it.
+                    let c0 = if seam { rgb(44, 28, 16) } else { rgb(96 - grain, 58 - grain, 36) };
                     c.set(x, y, c0);
                 }
             }
@@ -767,7 +768,7 @@ fn paint(kind: TileKind, c: &mut Canvas) {
                 for x in 0..s {
                     let seam = x % 4 == 3;
                     let knot = (x * 13 + y * 7) % 23 == 0;
-                    c.set(x, y, if seam { rgb(110, 74, 42) } else if knot { rgb(120, 82, 46) } else { rgb(164, 116, 68) });
+                    c.set(x, y, if seam { rgb(150, 104, 58) } else if knot { rgb(160, 112, 64) } else { rgb(200, 150, 92) });
                 }
             }
         }

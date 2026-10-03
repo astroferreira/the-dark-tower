@@ -127,6 +127,7 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
         let (tx, ty) = st.location;
         let Some((lx, ly)) = local_tile(tx, ty, 0) else { continue };
         let (cx0, cy0) = (lx * s, ly * s);
+        let core_probe = core_radius_m(st.population.max(if st.is_destroyed() { 200 } else { 0 }), st.settlement_type) as f64 * 1.1;
         let mut best: Option<(i64, i64, f32)> = None;
         let margin = s / 6;
         for y in cy0 + margin..cy0 + s - margin {
@@ -134,6 +135,14 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
                 if !land(x, y) { continue; }
                 let k = y as usize * rw + x as usize;
                 let mut score = -slope(x, y) * 40.0;
+                // The built-up area must be on dry land: sample a ring at the settlement's radius.
+                let rc = ((core_probe / cell_m).max(1.5)).min(60.0);
+                let mut dry = 0;
+                for k in 0..16 {
+                    let a = k as f64 / 16.0 * std::f64::consts::TAU;
+                    if land((x as f64 + a.cos() * rc) as i64, (y as f64 + a.sin() * rc) as i64) { dry += 1; }
+                }
+                score -= (16 - dry) as f32 * 1.5;
                 // Water nearby (river, lake, sea) within ~2 cells.
                 let wet = (-2..=2).any(|dy| (-2..=2).any(|dx| {
                     let (nx, ny) = (x + dx, y + dy);
@@ -243,6 +252,7 @@ fn route(region: &ZoomRegion, a: (f64, f64), b: (f64, f64), s: i64) -> Option<Ve
     let pad = s / 2;
     let (x0, x1) = ((a.0.min(b.0) as i64 - pad).max(0), (a.0.max(b.0) as i64 + pad).min(rw - 1));
     let (y0, y1) = ((a.1.min(b.1) as i64 - pad).max(0), (a.1.max(b.1) as i64 + pad).min(rh - 1));
+    if x0 > x1 || y0 > y1 { return None; } // both ends lie beyond the same edge
     let clampc = |p: (f64, f64)| ((p.0 as i64).clamp(x0, x1), (p.1 as i64).clamp(y0, y1));
     let (sa, sb) = (clampc(a), clampc(b));
     let bw = (x1 - x0 + 1) as usize;
@@ -294,29 +304,73 @@ fn route(region: &ZoomRegion, a: (f64, f64), b: (f64, f64), s: i64) -> Option<Ve
     Some(path)
 }
 
-/// Paint fields, settlements, rubble and roads onto a rendered region.
+/// Paint fields, settlements and roads onto a rendered region. At region scale a town is
+/// smaller than a cell, so settlements are drawn as map symbols: a filled disc (size by rank)
+/// with a dark rim, a wall ring for walled places, and a hollow grey ring for ruins.
 pub fn paint_region(lore: &RegionLore, region: &ZoomRegion, rgb: &mut [[u8; 3]]) {
-    let (rw, s) = (region.width, (region.params.cells_per_tile.max(8) & !1) as i64);
+    let (rw, rh) = (region.width, region.height);
+    let s = (region.params.cells_per_tile.max(8) & !1) as i64;
     let mix = |a: [u8; 3], b: [u8; 3], t: f32| -> [u8; 3] {
         [(a[0] as f32 * (1.0 - t) + b[0] as f32 * t) as u8, (a[1] as f32 * (1.0 - t) + b[1] as f32 * t) as u8, (a[2] as f32 * (1.0 - t) + b[2] as f32 * t) as u8]
     };
-    const FIELD_COLORS: [[u8; 3]; 4] = [[196, 176, 96], [126, 150, 70], [150, 118, 78], [170, 170, 92]];
+    const FIELD_COLORS: [[u8; 3]; 4] = [[214, 190, 90], [150, 176, 70], [176, 130, 82], [196, 196, 100]];
     for (k, &c) in lore.cover.iter().enumerate() {
+        if c != RegionLore::FIELD { continue; }
         let (x, y) = ((k % rw) as i64, (k / rw) as i64);
         let (gx, gy) = (x + region.world_x0 * s, y + region.world_y0 * s);
-        rgb[k] = match c {
-            RegionLore::FIELD => {
-                // Parcels: strips a cell or two long with their own crop colour.
-                let parcel = hash(gx.div_euclid(2), gy, 5);
-                mix(rgb[k], FIELD_COLORS[(parcel % 4) as usize], 0.55)
+        // Parcels: strips with their own crop colour, alternating furrow shade.
+        let parcel = hash(gx.div_euclid(3), gy.div_euclid(5), 5);
+        let furrow = if (gx + gy) % 2 == 0 { 0.9 } else { 1.0 };
+        let col = FIELD_COLORS[(parcel % 4) as usize];
+        rgb[k] = mix(rgb[k], [(col[0] as f32 * furrow) as u8, (col[1] as f32 * furrow) as u8, (col[2] as f32 * furrow) as u8], 0.75);
+    }
+    // Roads: two cells wide with a lighter centre, so they read at full-region zoom.
+    for road in &lore.roads {
+        for w in road.windows(2) {
+            let steps = (((w[1].0 - w[0].0).abs().max((w[1].1 - w[0].1).abs())) * 2.0).ceil().max(1.0) as i32;
+            for i in 0..=steps {
+                let t = i as f64 / steps as f64;
+                let (x, y) = (w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t);
+                for (ox, oy, a) in [(0.0, 0.0, 0.95f32), (1.0, 0.0, 0.6), (0.0, 1.0, 0.6), (-1.0, 0.0, 0.35), (0.0, -1.0, 0.35)] {
+                    let (px, py) = ((x + ox) as i64, (y + oy) as i64);
+                    if px < 0 || py < 0 || px >= rw as i64 || py >= rh as i64 { continue; }
+                    let k = py as usize * rw + px as usize;
+                    if region.elevation_m[k] > 0.0 && region.lake_depth_m[k] == 0.0 {
+                        rgb[k] = mix(rgb[k], [196, 160, 108], a);
+                    }
+                }
             }
-            RegionLore::BUILT => {
-                let roof = if hash(gx, gy, 9) % 3 == 0 { [150, 80, 60] } else { [176, 150, 120] };
-                mix(rgb[k], roof, 0.85)
-            }
-            RegionLore::RUBBLE => mix(rgb[k], [120, 116, 110], 0.6),
-            RegionLore::ROAD => mix(rgb[k], [150, 118, 80], 0.75),
-            _ => rgb[k],
+        }
+    }
+    // Settlements.
+    for site in &lore.sites {
+        let r = match site.kind {
+            SettlementType::Capital => 6.0,
+            SettlementType::City | SettlementType::Port => 5.0,
+            SettlementType::Town | SettlementType::Fort => 4.0,
+            _ => 3.0,
         };
+        let ruined = site.destroyed_year.is_some();
+        let (cx, cy) = (site.x, site.y);
+        let reach = r as i64 + 2;
+        for dy in -reach..=reach {
+            for dx in -reach..=reach {
+                let (px, py) = (cx as i64 + dx, cy as i64 + dy);
+                if px < 0 || py < 0 || px >= rw as i64 || py >= rh as i64 { continue; }
+                let d = (((px as f64 + 0.5 - cx).powi(2) + (py as f64 + 0.5 - cy).powi(2)).sqrt()) as f32;
+                let k = py as usize * rw + px as usize;
+                let walled = site.walls != WallLevel::None && !ruined && r >= 4.0;
+                if ruined {
+                    if d > r - 1.0 && d <= r { rgb[k] = [120, 114, 106]; }
+                    else if d <= r - 1.0 { rgb[k] = mix(rgb[k], [96, 92, 86], 0.35); }
+                } else if d <= r - 1.2 {
+                    rgb[k] = if (px + py) % 2 == 0 { [214, 96, 64] } else { [236, 214, 170] };
+                } else if d <= r {
+                    rgb[k] = if walled { [232, 228, 218] } else { [40, 30, 24] };
+                } else if d <= r + 1.0 {
+                    rgb[k] = mix(rgb[k], [20, 16, 12], 0.7);
+                }
+            }
+        }
     }
 }
