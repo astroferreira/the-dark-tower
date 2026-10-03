@@ -1,6 +1,6 @@
 //! Notable historical figures (rulers, heroes, villains).
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::history::{FigureId, RaceId, FactionId, DynastyId, ArtifactId, EventId, EntityId};
 use crate::history::time::Date;
@@ -71,7 +71,7 @@ impl Figure {
             children: Vec::new(),
             dynasty: None,
             personality,
-            skills: HashMap::new(),
+            skills: HashMap::default(),
             abilities: Vec::new(),
             titles: Vec::new(),
             artifacts: Vec::new(),

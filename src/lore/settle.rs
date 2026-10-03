@@ -5,7 +5,8 @@
 //! settlement lands on the same spot whichever region (or embark) asks for it.
 
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
+use crate::history::det::HashMap;
 
 use crate::history::civilizations::settlement::{SettlementType, WallLevel};
 use crate::history::entities::culture::ArchitectureStyle;
@@ -53,7 +54,7 @@ pub struct RegionLore {
     pub cover: Vec<u8>,
     /// Wildlife density per species (`history::ecology::SPECIES`) for each world tile in and
     /// around the region.
-    pub wildlife: std::collections::HashMap<(usize, usize), Vec<f32>>,
+    pub wildlife: crate::history::det::HashMap<(usize, usize), Vec<f32>>,
 }
 
 impl RegionLore {
@@ -123,7 +124,7 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
 
     // Settlement sites: the best cell inside the settlement's world tile (flat, dry, by water).
     let mut sites = Vec::new();
-    let mut site_cell: HashMap<(usize, usize), (f64, f64)> = HashMap::new();
+    let mut site_cell: HashMap<(usize, usize), (f64, f64)> = HashMap::default();
     let mut list: Vec<_> = history.settlements.values().collect();
     list.sort_by_key(|st| st.id.0);
     for st in list {
@@ -245,7 +246,7 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
             }
         }
     }
-    let mut wildlife = std::collections::HashMap::new();
+    let mut wildlife = crate::history::det::HashMap::default();
     if let Some(eco) = &history.ecology {
         for dy in -1..=(rh as i64 / s + 1) {
             for dx in -1..=(tiles_x + 1) {

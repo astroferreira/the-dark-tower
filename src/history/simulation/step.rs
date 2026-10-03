@@ -62,6 +62,9 @@ pub fn simulate_step(
     // 5.5. Active sieges: attrition, resolution
     step_sieges(history, rng);
 
+    // 5.6. The Shadow spreads and strikes (no RNG draws)
+    crate::history::shadow::step(history);
+
     // 6. Creature activity
     step_creatures(history, rng);
 
@@ -2018,7 +2021,8 @@ fn find_trade_path(
     from: (usize, usize),
     to: (usize, usize),
 ) -> Vec<(usize, usize)> {
-    use std::collections::{BinaryHeap, HashMap};
+    use std::collections::BinaryHeap;
+use crate::history::det::HashMap;
     use std::cmp::Ordering;
 
     #[derive(Clone, Eq, PartialEq)]
@@ -2158,8 +2162,8 @@ fn find_trade_path(
     };
 
     let mut open = BinaryHeap::new();
-    let mut came_from: HashMap<(usize, usize), (usize, usize)> = HashMap::new();
-    let mut g_score: HashMap<(usize, usize), u32> = HashMap::new();
+    let mut came_from: HashMap<(usize, usize), (usize, usize)> = HashMap::default();
+    let mut g_score: HashMap<(usize, usize), u32> = HashMap::default();
 
     open.push(Node { pos: from, cost: 0, heuristic: heuristic(from) });
     g_score.insert(from, 0);
@@ -3962,7 +3966,7 @@ const ABANDON_CHANCE: f32 = 0.05;
 const SETTLEMENT_SPACING: i64 = 4;
 
 /// Mark a settlement destroyed and clear it from the map. Returns its location.
-fn destroy_settlement(history: &mut WorldHistory, id: SettlementId, date: Date) -> Option<(usize, usize)> {
+pub(crate) fn destroy_settlement(history: &mut WorldHistory, id: SettlementId, date: Date) -> Option<(usize, usize)> {
     let loc = {
         let s = history.settlements.get_mut(&id)?;
         if s.destroyed.is_some() { return None; }
@@ -3977,7 +3981,7 @@ fn destroy_settlement(history: &mut WorldHistory, id: SettlementId, date: Date) 
 }
 
 /// Dissolve a faction that has lost its last settlement.
-fn dissolve_if_landless(history: &mut WorldHistory, faction: FactionId, name: &str, date: Date) {
+pub(crate) fn dissolve_if_landless(history: &mut WorldHistory, faction: FactionId, name: &str, date: Date) {
     let left = history.factions.get(&faction).map(|f| f.settlements.len()).unwrap_or(1);
     let active = history.factions.get(&faction).map_or(false, |f| f.is_active());
     if left > 0 || !active { return; }

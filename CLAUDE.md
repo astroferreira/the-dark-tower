@@ -1,6 +1,8 @@
 # CLAUDE.md
 
 Procedural world map generator with tectonic plates, erosion, climate, and biomes.
+Direction: an autonomous, story-first colony simulator; see `ROADMAP.md` (six updates) and
+`TODO.md` (short-term tasks).
 
 ---
 
@@ -10,8 +12,12 @@ Procedural world map generator with tectonic plates, erosion, climate, and biome
 # Build
 cargo build --release
 
-# Run (generates world and launches explorer)
+# Run (generates world + 250 years of history, opens the tile viewer)
 cargo run --release
+
+# Skip the history (faster), or open the frozen legacy terminal explorer
+cargo run --release -- --no-history
+cargo run --release -- --legacy-explorer
 
 # With specific seed
 cargo run --release -- --seed 42
@@ -19,6 +25,22 @@ cargo run --release -- --seed 42
 # Custom map size
 cargo run --release -- --width 1024 --height 512
 ```
+
+### Dev world (fast iteration on history and story)
+`cargo run --release -- --dev` generates a 96x48 world (seed 31, 8 civilizations) with 250 years
+of history in about a second, vs ~9 min at 512x256. It has 3 named rivers, a lake, 3 mountain
+ranges, forests, deserts, islands and two continents. Any of `--width`/`--height`/`--seed`/
+`--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
+`--journal`, `--gazetteer`, `--director` as usual. Seed 31 came from a search over 96x48 seeds
+scored by gazetteer landmarks (`DEV_WORLD` in `main.rs`); 64x32 worlds get no rivers at all.
+If worldgen changes move the landmarks, re-run that search.
+- Small maps: the river threshold (`water_bodies::river_flow_threshold`) scales with
+  (width/512)^2 below 512 wide (unchanged at 512+), and legendary creatures scale with map
+  area (`legendary_creatures_for` in `main.rs`; 1500 at 512x256).
+- History is deterministic: `history/` and `lore/` use `crate::history::det::{HashMap,
+  HashSet}` (fixed hasher) so the same seed tells the same story every run (the journal is
+  byte-identical). Use these, not `std::collections::HashMap`, for any map the simulation
+  iterates while drawing from the RNG.
 
 ---
 
@@ -38,21 +60,17 @@ OPTIONS:
 
 ---
 
-## Explorer Controls
+## Front end
 
-### Navigation
-- `Arrow keys / WASD / HJKL` - Move cursor
-- `PgUp/PgDn` - Fast vertical movement
-- `Home/End` - Fast horizontal movement
-- Click - Move cursor to position
+The tile viewer (`src/tiles/`, minifb window) is the default and the **only maintained** front
+end. The old terminal (ASCII) front end, `explorer.rs` (ratatui explorer), `menu.rs` (the
+pre-generation menu) and `ascii.rs`, is **LEGACY and FROZEN** (since 2026-10-03). It is
+reachable only with `--legacy-explorer`. Don't add features to it, port new systems to it,
+fix its visuals or document its controls; touch it only if the build breaks. If something in it
+is still needed (`main` calls the image exporters `export_base_map_image` and
+`export_freshwater_network_image` in `explorer.rs`), move it out of the legacy file first.
 
-### View Modes (press V to cycle)
-- **Biome** - Shows biome types with colors
-- **Height** - Elevation map
-- **Temperature** - Temperature distribution
-- **Moisture** - Moisture/precipitation
-- **Plates** - Tectonic plate boundaries
-- **Stress** - Tectonic stress (mountain building)
+## Features
 
 ### Resources and history (`lore/resources.rs`, `history/simulation`)
 - `world.resources()` (lazy, never serialized) derives the world's wealth from its geology:
@@ -147,6 +165,28 @@ OPTIONS:
 - The model is behind the `Author` trait; tests use a scripted author (no Ollama needed).
 - Without Ollama (or with `--director 0`) history is fully procedural as before.
 
+### The Shadow (`history/shadow.rs`)
+- A dark power raised at the dawn of history (on by default; `--no-shadow` for sandbox
+  worlds; `HistoryEngine::shadow`). `pick_realm` chooses the realm with the most foreign towns
+  near its capital (orcs/goblins/undead weigh more); its capital is the seat; the archetype
+  (Warlord / Necromancer / Tyrant) follows the race and names the lord ("the Dark Lord", ...).
+- Each season (`step`, called from `simulate_step`; no RNG draws, rolls hash seed+season+target):
+  a corruption field spreads one tile from its sources (seat 1.0, its towns 0.8, its land 0.5),
+  fading by terrain conductance (fast on roads/rivers, slow over mountains, none over water),
+  held back by other peoples' towns; reach grows with `strength`. Wild land above 0.55 becomes
+  its dominion. Every 6-24 seasons it strikes the town deepest in its shadow: captured or
+  burned (`ShadowConquest`) or holds (`ShadowRepelled`; it then leaves that town alone for 40
+  seasons). Falls stiffen the free peoples' defence (rally). If its seat falls it is broken
+  (`ShadowBroken`) and returns ~20 years later in a new seat. Every deed is `caused_by` the
+  previous one, back to `ShadowRose`. Tuned on `--dev`: ~13 falls, ~20-30 held, a third of the
+  land darkened over 250 years; the end-of-history report prints a `Shadow:` line.
+- Drawn in three layers (`render.rs::shadow_ink`, `classify.rs`): reach = a cold grey wash that
+  deepens with corruption (land only); blight (corruption >= 0.6) = dead trees; dominion =
+  cross-hatching (doubled where deepest) inside a jagged ink border; the seat is a black tower
+  with a red eye. The watcher has a Shadow panel (lord, darkened/blighted land, towns held,
+  fallen, held out) and marks its realm in red.
+- Saved as the world file's last field (`WORLD_FILE_VERSION` 5; v1-v4 still load).
+
 ### Watching history being written (`tiles/watcher.rs`)
 - `--watch` simulates the history in a window (DF world-gen style, dressed as the ink map),
   then opens the tile viewer. The simulation runs on a background thread
@@ -180,8 +220,8 @@ come from the seasonal climate; `--season` picks the season for `--tiles-snapsho
 to zoomed regions or embarks.
 
 ### Graphical tile viewer (`src/tiles/`)
-`cargo run --release -- --seed 42 --tiles` opens a window (minifb) that draws the world with
-pixel-art tiles instead of the terminal explorer.
+`cargo run --release -- --seed 42` opens a window (minifb) that draws the world with
+pixel-art tiles (the default front end; `--tiles` is accepted but no longer needed).
 - Mouse wheel / `+` `-` zoom (1-64 px per tile, around the cursor); drag or arrows/WASD pan;
   click the minimap to jump; `N` minimap; `P` screenshot; `Q`/`Esc` quit. Hover info is shown
   in the window title.
@@ -206,16 +246,6 @@ pixel-art tiles instead of the terminal explorer.
   blend between tiles, rivers get ink banks, and atlas tiles larger than the screen cell are
   2x2 supersampled. Labels are ink on a parchment halo.
 
-### Minimap and zoom
-- `N` - Toggle the world minimap (bottom-right; yellow = visible area, white = zoom window)
-- `Z` - Simulate the 8x8-tile region around the cursor at 128 cells/tile (~5 s) and show it
-  full-screen. In the zoom view: arrows/WASD pan, `+`/`-` scale, `F` fit, `X` save PNG to the
-  current directory, `Esc`/`Z` back. Zooming the same tile again reuses the cached region.
-
-### Other
-- `?` - Help
-- `Q/Esc` - Quit
-
 ---
 
 ## Module Structure
@@ -223,7 +253,8 @@ pixel-art tiles instead of the terminal explorer.
 ```
 src/
 ├── main.rs           # CLI entry point
-├── explorer.rs       # Terminal UI (ratatui)
+├── explorer.rs       # LEGACY, frozen: terminal UI (ratatui), --legacy-explorer only
+├── menu.rs           # LEGACY, frozen: terminal pre-generation menu
 ├── world.rs          # WorldData structure
 ├── tilemap.rs        # 2D grid with wrapping
 ├── heightmap.rs      # Terrain generation
@@ -231,7 +262,7 @@ src/
 ├── biomes.rs         # 50+ biome types
 ├── water_bodies.rs   # Lakes/rivers/ocean detection
 ├── scale.rs          # Physical scale (km/tile)
-├── ascii.rs          # ASCII rendering utilities
+├── ascii.rs          # LEGACY, frozen: ASCII rendering for the terminal UI
 │
 ├── plates/           # Tectonic plates
 │   ├── types.rs      # Plate, PlateType, velocity
@@ -318,7 +349,7 @@ the zoomed region around a point.
   temperature/moisture percentiles and a zonal temperature/land profile.
 
 ### Zoomed regions (`region/zoom.rs`)
-- `--zoom X,Y` (world tile at the window centre, as the explorer's `W:(x,y)` shows) or
+- `--zoom X,Y` (world tile at the window centre) or
   `--zoom auto`; `--zoom-tiles N` (default 8), `--zoom-scale S` cells per world tile (default
   128, ~610 m/cell on a 512-wide world), `--zoom-erosion I` iterations (default 40).
   Writes `zoom_<seed>_<x>_<y>.png` and a 16-bit heightmap into `--map-output-dir`.
@@ -377,11 +408,13 @@ All data is accessible through the `WorldData` struct for export or further proc
 **IMPORTANT**: Always test changes before considering work complete:
 
 1. After making code changes, run `cargo build --release` to check for compilation errors
-2. Run the program with a known seed: `cargo run --release -- --seed 42`
+2. Run the program with a known seed: `cargo run --release -- --seed 42` (or `--dev` for the
+   ~1 s development world); check rendering headlessly with `--tiles-snapshot` /
+   `--watch-snapshot`
 3. Navigate to relevant areas and visually verify the changes work correctly
 4. For local map changes, embark (Z/Enter) and test at multiple z-levels with `<` and `>`
 5. Only report completion after confirming the feature works as expected
 
 Debug tools:
 - `src/multiscale/debug_export.rs` - Export chunk data for analysis
-- Status bar shows `W:(x,y)` for world position to help locate issues
+- The tile viewer's window title shows the hovered tile and what is on it

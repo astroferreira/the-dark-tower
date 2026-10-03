@@ -1,6 +1,6 @@
 //! Settlement types and definitions.
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::history::{SettlementId, FactionId, MonumentId, TempleId, ArtifactId, EventId};
 use crate::history::time::Date;
@@ -147,7 +147,7 @@ impl Settlement {
             walls: WallLevel::None,
             trade_hub: false,
             local_resources,
-            production: HashMap::new(),
+            production: HashMap::default(),
             trade_connections: Vec::new(),
             monuments: Vec::new(),
             temples: Vec::new(),

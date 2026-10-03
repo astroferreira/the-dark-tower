@@ -12,7 +12,7 @@
 //! (`--bard N`), most significant subjects first and kinds interleaved, and every finished piece
 //! is kept in the world's `Library` (saved with the world), so runs can be stopped and resumed.
 
-use std::collections::HashSet;
+use crate::history::det::HashSet;
 
 use serde::{Deserialize, Serialize};
 
@@ -325,7 +325,7 @@ pub fn commissions(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer, l
     }
 
     // Poems by notable figures, on something from their own life.
-    let mut ruled: HashSet<FigureId> = HashSet::new();
+    let mut ruled: HashSet<FigureId> = HashSet::default();
     for e in events.iter().filter(|e| e.event_type == EventType::RulerCrowned) {
         for p in &e.primary_participants { if let EntityId::Figure(id) = p { ruled.insert(*id); } }
     }
@@ -379,7 +379,7 @@ pub fn commissions(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer, l
     }
 
     // Legends of beasts: those that scarred the land, then the worst raiders.
-    let mut raids: std::collections::HashMap<u64, (usize, Vec<String>)> = Default::default();
+    let mut raids: crate::history::det::HashMap<u64, (usize, Vec<String>)> = Default::default();
     for e in events.iter().filter(|e| e.event_type == EventType::MonsterRaid) {
         for p in &e.primary_participants {
             if let EntityId::LegendaryCreature(c) = p {

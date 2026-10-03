@@ -98,6 +98,12 @@ pub enum EventType {
     LandScarred,
     /// Written by the director (an LLM) at a turning point, with real consequences.
     Authored,
+
+    // The Shadow (appended so older saved histories still decode)
+    ShadowRose,
+    ShadowConquest,
+    ShadowRepelled,
+    ShadowBroken,
 }
 
 impl EventType {
@@ -108,7 +114,8 @@ impl EventType {
             EventType::WarDeclared | EventType::WarEnded |
             EventType::CreatureSlain | EventType::VolcanoErupted |
             EventType::Plague | EventType::MagicalCatastrophe |
-            EventType::ReligionFounded | EventType::HolyWarDeclared
+            EventType::ReligionFounded | EventType::HolyWarDeclared |
+            EventType::ShadowRose | EventType::ShadowConquest | EventType::ShadowBroken
         )
     }
 }

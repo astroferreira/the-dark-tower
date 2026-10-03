@@ -1,5 +1,8 @@
 # TODO
 
+Short-term tasks. The long-term direction (six updates toward an autonomous colony
+simulator) is in `ROADMAP.md`.
+
 Remaining work, roughly in priority order. "Phase" letters refer to the richness plan
 (A save/load + seasons, B living world, C resources + geographic history, D ecology + caused
 anomalies, E adventurer). A and C are done.
@@ -14,10 +17,11 @@ anomalies, E adventurer). A and C are done.
 - [ ] Only some anomaly biomes have causes; the rest of `is_caused_biome` (void scars, ley nexus, spore wastes, ...) never appear with a history. No deities die, so "dead gods leave titan bones" uses slain giant beasts instead.
 - [ ] Seasonal migration (herds moving between summer and winter ranges) and per-species map markers.
 
-## Phase B: living world (deferred by request)
-- [ ] World clock: history keeps stepping while the viewer runs (pause / speed controls).
-- [ ] Seasons advance with it; settlements grow, wars start, ruins appear on screen.
-- [ ] Rivers freeze / flood with the seasons.
+## Phase B: living world (superseded)
+The generated history is the past; time only passes in the game (unpaused) after embarking,
+so history no longer steps while the viewer runs. The living world after the present day is
+ROADMAP Update 5; game-time seasons are Update 3.
+- [ ] Rivers freeze / flood with the seasons (in game time).
 
 ## Phase E: embodied player
 - [ ] Adventurer walking embarks and regions, entering towns.
@@ -55,7 +59,6 @@ anomalies, E adventurer). A and C are done.
 - [ ] `grid_export.rs` still uses the legacy plate path.
 
 ## Viewer and tooling
-- [ ] Terminal explorer's `Z` shows a single region without walking; port walking, seasons, labels and resource markers or retire it in favour of the tile viewer.
 - [ ] Zoom view (`Z`) shows a shaded-relief image, not tiles.
 - [ ] Zoom size is fixed at 8x8 tiles x 128 cells inside the viewer (only CLI flags change it).
 - [ ] Region generation freezes the window for ~5-7 s on a cold start (background load only happens while walking).

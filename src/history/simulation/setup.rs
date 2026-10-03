@@ -344,7 +344,7 @@ fn create_creature_species(
     rng: &mut impl Rng,
 ) {
     // Create one species per major biome type present in the world
-    let mut seen_biomes = std::collections::HashSet::new();
+    let mut seen_biomes = crate::history::det::HashSet::default();
     let sample_count = 200.min(world.width * world.height / 50);
 
     for _ in 0..sample_count {

@@ -1,6 +1,7 @@
 //! Chronicle: the complete event log with indexing.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
+use crate::history::det::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::history::EventId;
 use crate::history::time::Date;

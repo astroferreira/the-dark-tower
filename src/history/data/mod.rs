@@ -9,7 +9,7 @@ pub mod naming_data;
 pub mod backstory_data;
 pub mod culture_data;
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 use std::path::Path;
 
 pub use race_data::{RaceTemplate, RacesFile};
@@ -52,7 +52,7 @@ impl GameData {
         let culture_biases: CultureBiasData = serde_json::from_str(DEFAULT_CULTURE_BIASES_JSON)
             .expect("Failed to parse embedded culture_biases.json");
 
-        let mut races = HashMap::new();
+        let mut races = HashMap::default();
         let mut race_tags = Vec::new();
         for race in races_file.races {
             race_tags.push(race.tag.clone());

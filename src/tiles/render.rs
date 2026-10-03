@@ -228,6 +228,7 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                         col = mix(col, INK, 0.7 * cover);
                     }
                 }
+                let col = shadow_ink(tw, wx, wy, sx, sy, t, col);
                 buf[sy * w + sx] = pack(col);
                 continue;
             }
@@ -421,7 +422,96 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                 }
             }
 
+            let col = shadow_ink(tw, wx, wy, sx, sy, t, col);
             buf[sy * w + sx] = pack([col[0] * mottle, col[1] * mottle, col[2] * mottle]);
+        }
+    }
+    draw_shadow_seat(tw, cam, buf, w, h);
+}
+
+/// Ink for the Shadow's own lands and its seat.
+const SHADOW_INK: [f32; 3] = [30.0, 20.0, 26.0];
+
+/// The Shadow on the map, in three layers: its *reach* drains the colour from the land (a cold
+/// grey wash that deepens with corruption), its *blight* is in the tiles themselves (ash, dead
+/// woods; see `TileWorld::apply_history`), and its *dominion* is cross-hatched in dark ink,
+/// densely where the corruption is deepest, inside a jagged border.
+#[inline]
+fn shadow_ink(tw: &TileWorld, wx: f32, wy: f32, sx: usize, sy: usize, t: f32, col: [f32; 3]) -> [f32; 3] {
+    if tw.shadow.is_empty() { return col; }
+    let c = smooth_field(tw, wx, wy, |i| if tw.ground[i].is_water() { 0.0 } else { tw.shadow[i] });
+    let mut col = col;
+    if c > 0.08 {
+        let s = ((c - 0.08) / 0.55).clamp(0.0, 1.0);
+        let s = s * s * (3.0 - 2.0 * s);
+        let lum = col[0] * 0.3 + col[1] * 0.59 + col[2] * 0.11;
+        col = mix(col, [lum * 0.98, lum * 0.94, lum * 0.97], 0.8 * s);
+        col = [col[0] * (1.0 - 0.3 * s), col[1] * (1.0 - 0.3 * s), col[2] * (1.0 - 0.3 * s)];
+    }
+    let dominion = |x: f32, y: f32| {
+        smooth_field(tw, x, y, |i| tw.dominion[i] as u8 as f32)
+            + 0.16 * value_noise(tw, x, y, 4.0, 77)
+            + 0.07 * value_noise(tw, x, y, 11.0, 78)
+    };
+    let d = dominion(wx, wy);
+    if d > 0.5 {
+        // Hatching in screen space, like a pen: one diagonal, crossed where the hold is deepest.
+        let gap = if t < 3.0 { 4 } else { 5 };
+        let a = (sx + sy) % gap == 0;
+        let b = (sx + gap * 64 - sy % (gap * 64)) % gap == 0;
+        if a || (c > 0.7 && b) {
+            col = mix(col, SHADOW_INK, 0.6);
+        }
+    }
+    if (d - 0.5).abs() < 0.4 {
+        let cover = contour(dominion, wx, wy, d, 0.5, (1.4 / t).max(0.05), t);
+        col = mix(col, SHADOW_INK, 0.9 * cover);
+    }
+    col
+}
+
+/// The Shadow's seat: a black tower with a red eye.
+fn draw_shadow_seat(tw: &TileWorld, cam: &Camera, buf: &mut [u32], w: usize, h: usize) {
+    let Some((x, y)) = tw.shadow_seat else { return };
+    let ww = tw.width as f32;
+    let mut dx = x as f32 + 0.5 - cam.cx;
+    if dx > ww / 2.0 { dx -= ww; }
+    if dx < -ww / 2.0 { dx += ww; }
+    let cx = w as f32 / 2.0 + dx * cam.tile_px;
+    let base = h as f32 / 2.0 + (y as f32 + 0.5 - cam.cy) * cam.tile_px;
+    let s = (cam.tile_px * 1.1).clamp(9.0, 40.0);
+    let ink = pack(SHADOW_INK);
+    let halo = pack([226.0, 214.0, 190.0]);
+    let mut put = |px: f32, py: f32, c: u32| {
+        let (px, py) = (px as i64, py as i64);
+        if px >= 0 && py >= 0 && (px as usize) < w && (py as usize) < h { buf[py as usize * w + px as usize] = c; }
+    };
+    // Tapering shaft, horned crown, on a parchment halo so it reads on any ground.
+    let top = base - s * 1.3;
+    for pass in 0..2 {
+        let c = if pass == 0 { halo } else { ink };
+        let grow = if pass == 0 { 1.5 } else { 0.0 };
+        let mut py = top - grow;
+        while py <= base + grow {
+            let f = (py - top) / (base - top);
+            let half = s * (0.12 + 0.16 * f) + grow;
+            let mut px = cx - half;
+            while px <= cx + half { put(px, py, c); px += 1.0; }
+            py += 1.0;
+        }
+        for k in 0..(s * 0.35) as i64 {
+            let k = k as f32;
+            for side in [-1.0f32, 1.0] {
+                for g in 0..=(grow as i64) * 2 {
+                    put(cx + side * (s * 0.12 + k * 0.45) + side * g as f32 * 0.5, top - k - grow, c);
+                }
+            }
+        }
+    }
+    let eye = pack([200.0, 40.0, 24.0]);
+    for ey in -1..=1 {
+        for ex in -2..=2 {
+            if ex * ex + ey * ey * 4 <= 5 { put(cx + ex as f32, top + s * 0.3 + ey as f32, eye); }
         }
     }
 }

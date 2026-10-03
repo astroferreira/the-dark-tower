@@ -22,6 +22,8 @@ pub struct HistoryEngine {
     pub rng: ChaCha8Rng,
     /// Optional LLM director that authors events at turning points (see `history::director`).
     pub director: Option<crate::history::director::Director>,
+    /// Raise a Shadow (a spreading dark power) at the dawn of history.
+    pub shadow: bool,
 }
 
 impl HistoryEngine {
@@ -30,6 +32,7 @@ impl HistoryEngine {
         Self {
             rng: ChaCha8Rng::seed_from_u64(seed),
             director: None,
+            shadow: true,
         }
     }
 
@@ -73,7 +76,13 @@ impl HistoryEngine {
     /// Set up the world's peoples, prehistory and creatures; the history is then advanced with
     /// `step` (config.total_steps() times) and closed with `finish`.
     pub fn begin(&mut self, world: &WorldData, config: HistoryConfig, game_data: &GameData) -> WorldHistory {
-        initialize_world(world, config, game_data, &mut self.rng)
+        let mut history = initialize_world(world, config, game_data, &mut self.rng);
+        if self.shadow && crate::history::shadow::seed(&mut history, world) {
+            if let Some(s) = &history.shadow {
+                eprintln!("{} rises ({})", s.name, s.lord(&history));
+            }
+        }
+        history
     }
 
     /// One season of history, plus the director's turn when there is one.
@@ -90,6 +99,18 @@ impl HistoryEngine {
             history.tales = Some(d.tales.clone());
             eprintln!("Director: {} events authored, {} threads opened ({} resolved), {} failed calls",
                 d.tales.authored.len(), d.tales.threads.len(), d.tales.threads.iter().filter(|t| t.resolved.is_some()).count(), d.failures);
+        }
+
+        if let Some(sh) = &history.shadow {
+            use crate::history::events::types::EventType;
+            let count = |k: EventType| history.chronicle.events.iter().filter(|e| e.event_type == k).count();
+            let burned = history.chronicle.events.iter().filter(|e| e.event_type == EventType::ShadowConquest && e.title.contains("burned")).count();
+            let (reach, blight) = sh.extent();
+            eprintln!(
+                "Shadow: {} ({}) - {} towns fallen ({} burned), {} held against it, strength {:.2}, reach {} tiles, blight {}{}",
+                sh.name, sh.lord(history), count(EventType::ShadowConquest), burned, count(EventType::ShadowRepelled),
+                sh.strength, reach, blight, if sh.is_broken() { ", BROKEN" } else { "" }
+            );
         }
 
         // Define eras from major events

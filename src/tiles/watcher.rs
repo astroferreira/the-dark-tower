@@ -52,7 +52,9 @@ const LINE: i64 = 12;
 const LOG_CAP: usize = 3000;
 /// Pace: minimum seconds per season, slowest first; the last is as fast as the simulation goes.
 const PACES: [(f32, &str); 5] = [(1.0, "a season a breath"), (0.4, "unhurried"), (0.15, "brisk"), (0.05, "swift"), (0.0, "headlong")];
-const DEFAULT_PACE: usize = 4;
+/// Swift: small worlds (whose seasons take a millisecond) stay watchable; big worlds take longer
+/// than this per season anyway.
+const DEFAULT_PACE: usize = 3;
 
 /// Controls shared with the simulation thread.
 struct Control {
@@ -91,6 +93,21 @@ struct Stats {
     beasts: usize,
     artifacts: usize,
     monuments: usize,
+    shadow: Option<ShadowStats>,
+}
+
+#[derive(Clone, Default)]
+struct ShadowStats {
+    name: String,
+    lord: String,
+    faction: u64,
+    towns: usize,
+    fallen: usize,
+    held: u32,
+    /// Share of land in its reach, and blighted.
+    reach: f32,
+    blight: f32,
+    broken: bool,
 }
 
 struct Frame {
@@ -150,6 +167,10 @@ fn style(kind: &EventType) -> (char, u32, Option<MarkKind>, bool) {
         LandScarred => ('@', RUBRIC, Some(MarkKind::Disaster), true),
         Authored => ('@', GOLD, None, true),
         Other => ('-', INK_FADED, None, false),
+        ShadowRose => ('@', RUBRIC, Some(MarkKind::Disaster), true),
+        ShadowConquest => ('X', RUBRIC, Some(MarkKind::Razed), true),
+        ShadowRepelled => ('=', GOLD, Some(MarkKind::Battle), true),
+        ShadowBroken => ('*', GOLD, Some(MarkKind::Wonder), true),
     }
 }
 
@@ -326,6 +347,21 @@ fn frame(
     stats.beasts = history.living_legendary_count();
     stats.artifacts = history.artifacts.len();
     stats.monuments = history.monuments.len();
+    stats.shadow = history.shadow.as_ref().map(|sh| {
+        let land = (0..world.width * world.height).filter(|&i| *world.heightmap.get(i % world.width, i / world.width) >= 0.0).count().max(1) as f32;
+        let (reach, blight) = sh.extent();
+        ShadowStats {
+            name: sh.name.clone(),
+            lord: sh.lord(history),
+            faction: sh.faction.0,
+            towns: history.factions.get(&sh.faction).map_or(0, |f| f.settlements.len()),
+            fallen: sh.fallen.len(),
+            held: sh.repelled,
+            reach: reach as f32 / land,
+            blight: blight as f32 / land,
+            broken: sh.is_broken(),
+        }
+    });
     let mut realms: Vec<Realm> = realms.into_values().collect();
     realms.sort_by_key(|r| std::cmp::Reverse(r.population));
     Frame {
@@ -517,10 +553,10 @@ fn draw_mark(buf: &mut [u32], w: usize, h: usize, clip: Rect, m: &Mark, sx: f32,
     let life = m.kind.life();
     let t = age / life;
     let fade = (1.0 - t).clamp(0.0, 1.0);
-    let scale = tile_px.clamp(2.0, 12.0) / 3.0;
+    let scale = tile_px.clamp(2.0, 5.0) / 3.0;
     match m.kind {
         MarkKind::Road => {
-            let r = (tile_px * 0.45).max(1.6);
+            let r = (tile_px * 0.25).clamp(1.6, 2.5);
             dot(buf, w, h, clip, sx, sy, r + 1.5 * fade, ROAD_GLOW, 0.85 * fade);
         }
         MarkKind::Founded => {
@@ -672,7 +708,7 @@ impl<'a> View<'a> {
                     }
                     // Someone reading older entries keeps their place as new ones arrive.
                     if self.log_scroll > 0 && (e.key || self.show_all) { self.log_scroll += 1; }
-                    let great = e.kind.is_major() || matches!(e.kind, EventType::Authored | EventType::SettlementDestroyed | EventType::LandScarred);
+                    let great = e.kind.is_major() || matches!(e.kind, EventType::Authored | EventType::SettlementDestroyed | EventType::LandScarred | EventType::ShadowRepelled);
                     if great && f.step > 0 { self.banner_msg = Some((ascii(&e.title), now)); }
                     self.log.push_front(e.clone());
                 }
@@ -1122,6 +1158,32 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Frame>, s
     hline(buf, w, chart.x, chart.x + chart.w, chart.y + chart.h, INK_FADED);
     y += chart.h as i64 + 12;
 
+    // The Shadow.
+    if let Some(sh) = &s.shadow {
+        heading(buf, w, h, x, y, iw, if sh.broken { "THE SHADOW, BROKEN" } else { "THE SHADOW" });
+        y += 16;
+        let mut title = ascii(&sh.name);
+        if let Some(c) = title.get_mut(0..1) { c.make_ascii_uppercase(); }
+        draw_ink(buf, w, h, x as i64, y, &truncate(&title, iw / 7), RUBRIC, 1, true);
+        y += LINE;
+        draw_ink(buf, w, h, x as i64, y, &truncate(&ascii(&sh.lord), iw / 7), INK_FADED, 1, false);
+        y += LINE + 3;
+        // Darkened land: a bar of reach with blight inside it.
+        let bar = Rect { x, y: y as usize, w: iw, h: 7 };
+        outline(buf, w, bar, INK);
+        let rw = ((bar.w - 2) as f32 * sh.reach.min(1.0)) as usize;
+        let bw = ((bar.w - 2) as f32 * sh.blight.min(1.0)) as usize;
+        if rw > 0 { fill(buf, w, Rect { x: bar.x + 1, y: bar.y + 1, w: rw, h: bar.h - 2 }, 0x0090_8478); }
+        if bw > 0 { fill(buf, w, Rect { x: bar.x + 1, y: bar.y + 1, w: bw, h: bar.h - 2 }, 0x001E_141A); }
+        y += 10;
+        let line = format!("{:.0}% of the land darkened, {:.0}% blighted", sh.reach * 100.0, sh.blight * 100.0);
+        draw_ink(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK_FADED, 1, false);
+        y += LINE;
+        let line = format!("holds {} towns   {} fallen   {} held out", sh.towns, sh.fallen, sh.held);
+        draw_ink(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK, 1, false);
+        y += LINE + 8;
+    }
+
     // The great realms.
     heading(buf, w, h, x, y, iw, "GREAT REALMS");
     y += 16;
@@ -1134,7 +1196,8 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Frame>, s
         outline(buf, w, sw, INK);
         let pop = format!("{}  {}", r.towns, short_num(r.population));
         let name_chars = (iw - 18 - text_width(&pop, 1) - 8) / 7;
-        draw_ink(buf, w, h, (x + 16) as i64, y + 1, &truncate(&ascii(&r.name), name_chars), INK, 1, false);
+        let dark = s.shadow.as_ref().map_or(false, |sh| sh.faction == r.id && !sh.broken);
+        draw_ink(buf, w, h, (x + 16) as i64, y + 1, &truncate(&ascii(&r.name), name_chars), if dark { RUBRIC } else { INK }, 1, dark);
         draw_ink(buf, w, h, (x + iw - text_width(&pop, 1)) as i64, y + 1, &pop, INK_FADED, 1, false);
         let bw = ((iw - 16) as f32 * r.population as f32 / top as f32) as usize;
         if bw > 0 { hline(buf, w, x + 16, x + 16 + bw, (y + 12) as usize, mix(faction_color(r.id), INK, 0.2)); }

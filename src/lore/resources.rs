@@ -10,7 +10,7 @@
 //!
 //! Everything is a pure function of the world, so history, the map and the embarks all agree.
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 
 use noise::{NoiseFn, Perlin};
 
@@ -204,7 +204,7 @@ pub fn compute_resources(world: &WorldData) -> ResourceMap {
             let low = 1.0 - smoothstep(200.0, 1600.0, e);
             let mut f = warm * wet * low;
             let flow = world.flow_accumulation.as_ref().map(|a| *a.get(x, y)).unwrap_or(0.0);
-            if flow > 25.0 { f += 0.25; }
+            if flow > 0.5 * crate::water_bodies::river_flow_threshold(w) { f += 0.25; }
             let vd = *volc.get(x, y);
             if vd < 10.0 { f += 0.2 * (1.0 - vd / 10.0); }
             let biome = *world.biomes.get(x, y);
@@ -330,7 +330,7 @@ pub fn compute_resources(world: &WorldData) -> ResourceMap {
             deposits.push(Deposit { x, y, kind: spec.kind, richness });
         }
     }
-    let mut by_tile: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+    let mut by_tile: HashMap<(usize, usize), Vec<usize>> = HashMap::default();
     for (i, d) in deposits.iter().enumerate() {
         by_tile.entry((d.x, d.y)).or_default().push(i);
     }

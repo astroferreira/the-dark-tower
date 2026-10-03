@@ -1,7 +1,7 @@
 //! Backstory templates loaded from JSON.
 
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 use rand::Rng;
 
 /// A title+description template pair.

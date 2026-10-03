@@ -1,3 +1,9 @@
+//! LEGACY - FROZEN (2026-10-03). Part of the old terminal (ASCII) front end, kept only behind
+//! `--legacy-explorer`. Do not add features, fix visuals or port new systems here: the tile
+//! viewer (`src/tiles/`) is the only maintained front end. Only change this file if the build
+//! breaks; anything still needed from it (e.g. image exporters used by `main`) should be moved
+//! out first.
+//!
 //! Terminal-based world map explorer using ratatui
 //!
 //! Simple roguelike-style terminal interface for exploring generated worlds.

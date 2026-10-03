@@ -55,6 +55,12 @@ struct Args {
     #[arg(short = 'H', long, default_value = "256")]
     height: usize,
 
+    /// Small development world for fast iteration on history and story: 96x48, seed 31,
+    /// 8 civilizations, 250 years of history (each overridable). Generates with history in about a second and has a
+    /// river system, a lake, mountain ranges, forests, deserts, islands and two continents
+    #[arg(long)]
+    dev: bool,
+
     /// Master seed (derives all other seeds if not overridden)
     #[arg(short, long)]
     seed: Option<u64>,
@@ -97,6 +103,10 @@ struct Args {
     #[arg(long)]
     watch: bool,
 
+    /// No Shadow: don't raise a spreading dark power at the dawn of history (sandbox worlds)
+    #[arg(long)]
+    no_shadow: bool,
+
     /// Simulate the history headlessly and save watcher frames to <PREFIX>_y<year>.png
     #[arg(long)]
     watch_snapshot: Option<String>,
@@ -113,10 +123,14 @@ struct Args {
     #[arg(long)]
     biome_stats: bool,
 
-    /// Open the graphical tile viewer (pixel-art tiles, mouse zoom/pan) instead of the
-    /// terminal explorer
+    /// Open the graphical tile viewer (now the default; kept for old command lines)
     #[arg(long)]
     tiles: bool,
+
+    /// LEGACY: the frozen terminal explorer (and the terminal menu when no --seed is given)
+    /// instead of the tile viewer. Not maintained; new features only reach the tile viewer
+    #[arg(long)]
+    legacy_explorer: bool,
 
     /// Tileset PNG for the tile viewer: an edited atlas from --export-tileset, or a
     /// Dwarf Fortress style 16x16 CP437 sheet
@@ -402,6 +416,32 @@ struct Args {
     upscale_factor: usize,
 }
 
+/// Seed, size and peoples of `--dev`, the small development world. Seed 31 was picked by a
+/// search over 96x48 worlds for the most landmarks (3 rivers, a lake, 3 ranges, forests,
+/// deserts, islands, 2 continents); 64x32 worlds get no rivers. Re-run the search if worldgen
+/// changes move the landmarks.
+const DEV_WORLD: (usize, usize, u64, u32) = (96, 48, 31, 8);
+
+/// Parse the command line; `--dev` fills in the development world's settings for any of
+/// width, height, seed and civilizations not given explicitly.
+fn parse_args() -> Args {
+    use clap::{CommandFactory, FromArgMatches};
+    use clap::parser::ValueSource;
+    let matches = Args::command().get_matches();
+    let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    if args.dev {
+        let defaulted = |id: &str| matches.value_source(id) != Some(ValueSource::CommandLine);
+        let (w, h, seed, civs) = DEV_WORLD;
+        if defaulted("width") { args.width = w; }
+        if defaulted("height") { args.height = h; }
+        if args.seed.is_none() { args.seed = Some(seed); }
+        if defaulted("civilizations") { args.civilizations = civs; }
+        // The dev world exists for history and story work, so it always has a history.
+        if args.history_years == 0 { args.history_years = DEFAULT_VIEWER_HISTORY_YEARS; }
+    }
+    args
+}
+
 /// The tile atlas: an edited tileset PNG when given (falling back on errors), else the built-in one.
 fn load_atlas(tileset: Option<&str>) -> tiles::Atlas {
     match tileset {
@@ -416,11 +456,19 @@ fn load_atlas(tileset: Option<&str>) -> tiles::Atlas {
     }
 }
 
+/// Legendary creatures for a map: the default is calibrated for 512x256 and scales down with
+/// map area, so small test maps aren't overrun by beasts.
+fn legendary_creatures_for(width: usize, height: usize) -> u32 {
+    let base = history::config::HistoryConfig::default().initial_legendary_creatures;
+    let k = ((width * height) as f64 / (512.0 * 256.0)).min(1.0);
+    ((base as f64 * k).round() as u32).max(3)
+}
+
 /// Years of history the tile viewer simulates when --history-years isn't given.
 const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 
 fn main() {
-    let args = Args::parse();
+    let args = parse_args();
 
     if let Some(path) = &args.export_tileset {
         match tiles::Atlas::generated().save_png(std::path::Path::new(path)) {
@@ -507,12 +555,12 @@ fn main() {
         None => None,
     };
 
-    // Determine configuration: use menu if no seed provided (interactive mode),
-    // otherwise use CLI args directly (batch mode)
+    // Configuration comes from the CLI (a random seed if none is given); the legacy terminal
+    // menu only runs with --legacy-explorer and no seed.
     let (width, height, master_seed, plates_count, world_style, erosion_preset, climate_config) = if let Some(w) = &loaded_world {
         (w.width, w.height, w.seed(), None, plates::WorldStyle::default(), erosion::ErosionPreset::Normal, climate::ClimateConfig::default())
-    } else if args.seed.is_some() {
-        // Batch mode: use CLI args directly (use defaults for new options)
+    } else if args.seed.is_some() || !args.legacy_explorer {
+        // Use CLI args directly (use defaults for new options)
         let world_style = plates::WorldStyle::from_str(&args.world_style).unwrap_or_else(|| {
             eprintln!("Unknown world style '{}'. Available options:", args.world_style);
             for style in plates::WorldStyle::all() {
@@ -523,14 +571,14 @@ fn main() {
         (
             args.width,
             args.height,
-            args.seed.unwrap(),
+            args.seed.unwrap_or_else(rand::random),
             args.plates,
             world_style,
             erosion::ErosionPreset::Normal,
             climate::ClimateConfig::default(),
         )
     } else {
-        // Interactive mode: show menu
+        // LEGACY interactive terminal menu (--legacy-explorer without --seed)
         let initial_config = WorldConfig {
             width: args.width,
             height: args.height,
@@ -823,8 +871,6 @@ fn main() {
         seeds.biomes,
     );
 
-    // Launch explorer
-    println!("Launching terminal explorer...");
     // Generate Bezier river network with true flow accumulation and lake connectivity
     let river_network = crate::erosion::trace_bezier_rivers_with_flow(
         &heightmap,
@@ -1230,7 +1276,9 @@ fn main() {
     }
 
     // Load or simulate history
-    let wants_tiles = args.tiles || args.watch || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
+    // The tile viewer is the default viewer, so it wants a history unless running headless or
+    // in the legacy terminal explorer.
+    let wants_tiles = (!args.legacy_explorer && !args.headless) || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
     // A saved world's history is reused unless --history-years (or --watch) asks for a fresh simulation.
     if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() { loaded_history = None; }
     let mut history = if loaded_history.is_some() {
@@ -1254,6 +1302,7 @@ fn main() {
         let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
         let config = history::config::HistoryConfig {
             initial_civilizations: args.civilizations,
+            initial_legendary_creatures: legendary_creatures_for(width, height),
             simulation_years: years,
             ..history::config::HistoryConfig::default()
         };
@@ -1264,6 +1313,7 @@ fn main() {
         if restored > 0 { eprintln!("Restored {} randomly placed anomaly tiles to natural biomes", restored); }
         eprintln!("Simulating {} years of history (seed: {})...", years, history_seed);
         let mut engine = history::simulation::HistoryEngine::new(history_seed);
+        engine.shadow = !args.no_shadow;
         if args.director > 0 {
             let bard = lore::bard::Bard::new(&args.bard_url, &args.bard_model);
             match bard.check() {
@@ -1475,7 +1525,7 @@ fn main() {
         return;
     }
 
-    if args.tiles || args.watch || args.tiles_snapshot.is_some() || args.local_snapshot.is_some() {
+    if !args.legacy_explorer || args.tiles_snapshot.is_some() || args.local_snapshot.is_some() {
         let atlas = load_atlas(args.tileset.as_deref());
         let center = args.tiles_center.as_deref().and_then(|spec| {
             let p: Vec<_> = spec.split(',').map(|v| v.trim().parse::<usize>()).collect();
@@ -1512,6 +1562,7 @@ fn main() {
         return;
     }
 
+    // LEGACY: the frozen terminal explorer (--legacy-explorer).
     if let Err(e) = explorer::run_explorer(world_data, history) {
         eprintln!("Explorer error: {}", e);
     }

@@ -7,7 +7,8 @@
 //! holds most of it (current owner, else former owner); unclaimed features get names in an
 //! "ancient" style tied to their landmass, so nameless wilderness still sounds consistent.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+use crate::history::det::HashMap;
 
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -125,7 +126,7 @@ impl Gazetteer {
 struct Namer<'a> {
     history: Option<&'a WorldHistory>,
     styles: HashMap<NamingArchetype, NamingStyle>,
-    used: std::collections::HashSet<String>,
+    used: crate::history::det::HashSet<String>,
     seed: u64,
 }
 
@@ -141,8 +142,8 @@ impl<'a> Namer<'a> {
     /// The faction that holds most of `tiles` now, else the one that held most in the past.
     fn owner(&self, tiles: &[(usize, usize)]) -> Option<FactionId> {
         let h = self.history?;
-        let mut now: HashMap<FactionId, usize> = HashMap::new();
-        let mut past: HashMap<FactionId, usize> = HashMap::new();
+        let mut now: HashMap<FactionId, usize> = HashMap::default();
+        let mut past: HashMap<FactionId, usize> = HashMap::default();
         let step = (tiles.len() / 400).max(1);
         for &(x, y) in tiles.iter().step_by(step) {
             let t = h.tile_history.get(x, y);
@@ -431,7 +432,8 @@ pub fn build_gazetteer(world: &WorldData, history: Option<&WorldHistory>, seed: 
     // Rivers: D8 main stems traced upstream from their mouths, longest first. Tributaries long
     // enough get their own names.
     if let Some(flow) = &world.flow_accumulation {
-        let river = |x: usize, y: usize| (channel[y * w + x] || land(x, y)) && *flow.get(x, y) >= 50.0;
+        let threshold = crate::water_bodies::river_flow_threshold(w);
+        let river = |x: usize, y: usize| (channel[y * w + x] || land(x, y)) && *flow.get(x, y) >= threshold;
         let wet = |x: usize, y: usize| !land(x, y);
         // Downstream of each river tile: steepest descent among neighbours.
         let mut down = vec![NONE as usize; w * h];

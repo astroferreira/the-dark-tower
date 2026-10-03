@@ -4,7 +4,7 @@
 //! produced by the history simulation. Everything is stored in HashMaps
 //! keyed by their respective ID types.
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 use serde::{Serialize, Deserialize};
 
 use crate::history::{
@@ -99,6 +99,9 @@ pub struct WorldHistory {
     /// The director's authored events and plot threads (saved separately in world files).
     #[serde(skip)]
     pub tales: Option<crate::history::director::Tales>,
+    /// The dark power spreading over the world (saved separately in world files).
+    #[serde(skip)]
+    pub shadow: Option<crate::history::shadow::Shadow>,
 
     // ID generators (not serialized - rebuilt from max IDs on load)
     #[serde(skip)]
@@ -114,27 +117,28 @@ impl WorldHistory {
             timeline: Timeline::new(),
             chronicle: Chronicle::new(),
             tile_history: TileHistoryMap::new(map_width, map_height),
-            races: HashMap::new(),
-            cultures: HashMap::new(),
-            factions: HashMap::new(),
-            settlements: HashMap::new(),
-            figures: HashMap::new(),
-            dynasties: HashMap::new(),
-            armies: HashMap::new(),
-            wars: HashMap::new(),
-            sieges: HashMap::new(),
-            creature_species: HashMap::new(),
-            legendary_creatures: HashMap::new(),
-            populations: HashMap::new(),
-            deities: HashMap::new(),
-            religions: HashMap::new(),
-            cults: HashMap::new(),
-            artifacts: HashMap::new(),
-            monuments: HashMap::new(),
-            trade_routes: HashMap::new(),
+            races: HashMap::default(),
+            cultures: HashMap::default(),
+            factions: HashMap::default(),
+            settlements: HashMap::default(),
+            figures: HashMap::default(),
+            dynasties: HashMap::default(),
+            armies: HashMap::default(),
+            wars: HashMap::default(),
+            sieges: HashMap::default(),
+            creature_species: HashMap::default(),
+            legendary_creatures: HashMap::default(),
+            populations: HashMap::default(),
+            deities: HashMap::default(),
+            religions: HashMap::default(),
+            cults: HashMap::default(),
+            artifacts: HashMap::default(),
+            monuments: HashMap::default(),
+            trade_routes: HashMap::default(),
             ecology: None,
             library: None,
             tales: None,
+            shadow: None,
             id_generators: IdGenerators::new(),
         }
     }

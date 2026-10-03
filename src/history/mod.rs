@@ -6,6 +6,7 @@
 
 pub mod civilizations;
 pub mod config;
+pub mod det;
 pub mod creatures;
 pub mod data;
 pub mod director;
@@ -17,6 +18,7 @@ pub mod naming;
 pub mod objects;
 pub mod persistence;
 pub mod religion;
+pub mod shadow;
 pub mod simulation;
 pub mod time;
 pub mod world_state;

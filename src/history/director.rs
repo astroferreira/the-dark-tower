@@ -18,7 +18,7 @@
 //!
 //! The model sits behind the `Author` trait, so tests use a scripted author.
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -289,7 +289,7 @@ impl Director {
             start_year,
             years: years.max(1),
             scanned: 0,
-            last_for: HashMap::new(),
+            last_for: HashMap::default(),
             tales: Tales { model, ..Default::default() },
             next_thread: 1,
             verbose: true,

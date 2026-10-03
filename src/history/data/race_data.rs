@@ -1,7 +1,7 @@
 //! Race template data loaded from JSON.
 
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 
 /// A race definition loaded from data files.
 #[derive(Clone, Debug, Serialize, Deserialize)]

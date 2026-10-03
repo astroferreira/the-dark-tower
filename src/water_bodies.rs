@@ -146,6 +146,14 @@ impl WaterBody {
 /// Higher = only major rivers, lower = includes small streams
 const RIVER_FLOW_THRESHOLD: f32 = 50.0;
 
+/// Upstream flow (runoff-weighted tiles) that makes a river channel at this map width.
+/// Calibrated at 512 wide; a narrower map has bigger tiles, so the same catchment covers fewer
+/// of them (area scales with width squared). Wider maps keep the calibrated value.
+pub fn river_flow_threshold(width: usize) -> f32 {
+    let k = (width as f32 / 512.0).min(1.0);
+    (RIVER_FLOW_THRESHOLD * k * k).max(4.0)
+}
+
 /// Sea level (0.0 by convention)
 const SEA_LEVEL: f32 = 0.0;
 
@@ -350,7 +358,7 @@ pub fn detect_water_bodies_hydrological(
         for x in 0..width {
             if water_map.get(x, y).is_none() && *heightmap.get(x, y) >= 0.0 {
                 let flow = *flow_acc.get(x, y);
-                if flow >= RIVER_FLOW_THRESHOLD {
+                if flow >= river_flow_threshold(width) {
                     water_map.set(x, y, river_id);
                     river.add_tile(x, y, *heightmap.get(x, y), height);
                 }
@@ -570,7 +578,7 @@ pub fn detect_water_bodies_full(
             // 2. High flow accumulation
             if water_map.get(x, y).is_none() {
                 let flow = *flow_acc.get(x, y);
-                if flow >= RIVER_FLOW_THRESHOLD {
+                if flow >= river_flow_threshold(width) {
                     water_map.set(x, y, river_id);
                     river.add_tile(x, y, *heightmap.get(x, y), height);
                 }

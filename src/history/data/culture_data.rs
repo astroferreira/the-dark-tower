@@ -1,7 +1,7 @@
 //! Culture bias data loaded from JSON.
 
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 
 /// Culture value biases: [center, spread] pairs for each value axis.
 #[derive(Clone, Debug, Serialize, Deserialize)]

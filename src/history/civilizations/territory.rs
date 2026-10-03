@@ -1,6 +1,6 @@
 //! Territory management for factions.
 
-use std::collections::HashSet;
+use crate::history::det::HashSet;
 use serde::{Serialize, Deserialize};
 use crate::history::FactionId;
 
@@ -13,7 +13,7 @@ pub struct Territory {
 
 impl Territory {
     pub fn new() -> Self {
-        Self { tiles: HashSet::new() }
+        Self { tiles: HashSet::default() }
     }
 
     /// Claim a tile.

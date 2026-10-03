@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn test_size_random_weighted() {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        let mut counts = std::collections::HashMap::new();
+        let mut counts = crate::history::det::HashMap::default();
         for _ in 0..10000 {
             let size = CreatureSize::random_weighted(&mut rng);
             *counts.entry(size).or_insert(0u32) += 1;

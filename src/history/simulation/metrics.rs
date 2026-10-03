@@ -4,7 +4,7 @@
 //! statistical realism, narrative richness, behavioral coherence,
 //! and religious impact. Produces a composite quality score (0–100).
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 use crate::history::*;
 use crate::history::events::types::{EventType, Event};
 use crate::history::world_state::WorldHistory;
@@ -220,7 +220,7 @@ fn detect_monopoly(history: &WorldHistory) -> bool {
 
 /// Shannon entropy of event type distribution (higher = more diverse).
 fn compute_event_entropy(history: &WorldHistory) -> f32 {
-    let mut counts: HashMap<&EventType, u32> = HashMap::new();
+    let mut counts: HashMap<&EventType, u32> = HashMap::default();
     for event in &history.chronicle.events {
         *counts.entry(&event.event_type).or_insert(0) += 1;
     }
@@ -256,7 +256,7 @@ fn count_personality_events(history: &WorldHistory) -> u32 {
 }
 
 fn count_unique_event_types(history: &WorldHistory) -> u32 {
-    let mut types = std::collections::HashSet::new();
+    let mut types = crate::history::det::HashSet::default();
     for event in &history.chronicle.events {
         types.insert(std::mem::discriminant(&event.event_type));
     }
@@ -279,7 +279,7 @@ fn compute_behavioral_correlations(history: &WorldHistory) -> (f32, f32, f32) {
 
     // === War coherence: Cohen's d on per-leader war declarations ===
     // Identify leaders who declared wars via primary_participants
-    let mut war_declaring_leaders: std::collections::HashSet<FigureId> = std::collections::HashSet::new();
+    let mut war_declaring_leaders: crate::history::det::HashSet<FigureId> = crate::history::det::HashSet::default();
     for event in &history.chronicle.events {
         if matches!(event.event_type, EventType::WarDeclared | EventType::HolyWarDeclared) {
             for participant in &event.primary_participants {
@@ -334,8 +334,8 @@ fn compute_behavioral_correlations(history: &WorldHistory) -> (f32, f32, f32) {
         return (war_corr, 0.0, 0.0);
     }
 
-    let mut treaties_signed: HashMap<FactionId, u32> = HashMap::new();
-    let mut monuments_built: HashMap<FactionId, u32> = HashMap::new();
+    let mut treaties_signed: HashMap<FactionId, u32> = HashMap::default();
+    let mut monuments_built: HashMap<FactionId, u32> = HashMap::default();
 
     for event in &history.chronicle.events {
         match event.event_type {
@@ -414,7 +414,7 @@ fn compute_doctrine_war_effect(history: &WorldHistory, doctrine: Doctrine) -> f3
 
     // Count wars declared per faction (first faction listed = the declarer)
     // Include both WarDeclared and HolyWarDeclared events
-    let mut wars_per_faction: HashMap<FactionId, u32> = HashMap::new();
+    let mut wars_per_faction: HashMap<FactionId, u32> = HashMap::default();
     for event in &history.chronicle.events {
         if matches!(event.event_type, EventType::WarDeclared | EventType::HolyWarDeclared) {
             if let Some(&fid) = event.factions_involved.first() {

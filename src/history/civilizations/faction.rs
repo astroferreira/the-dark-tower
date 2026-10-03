@@ -1,6 +1,6 @@
 //! Faction (nation/kingdom/tribe) definition.
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::history::{
     FactionId, SettlementId, FigureId, DynastyId, RaceId, ReligionId,
@@ -77,7 +77,7 @@ impl Faction {
             current_leader: None,
             ruling_dynasty: None,
             succession_law,
-            resources: HashMap::new(),
+            resources: HashMap::default(),
             trade_routes: Vec::new(),
             wealth: 100,
             state_religion: None,
@@ -85,7 +85,7 @@ impl Faction {
             military_strength: 0,
             armies: Vec::new(),
             wars: Vec::new(),
-            relations: HashMap::new(),
+            relations: HashMap::default(),
             events: Vec::new(),
             notable_figures: Vec::new(),
             total_population: 0,

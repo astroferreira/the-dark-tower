@@ -224,7 +224,7 @@ mod tests {
             .collect();
 
         // With 20 names, we should have mostly unique ones
-        let unique: std::collections::HashSet<&String> = names.iter().collect();
+        let unique: crate::history::det::HashSet<&String> = names.iter().collect();
         assert!(
             unique.len() >= 10,
             "Too few unique names: {} out of 20. Names: {:?}",

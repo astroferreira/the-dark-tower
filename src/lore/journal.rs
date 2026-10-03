@@ -8,7 +8,8 @@
 //! yearly or per-age tallies. Names of peoples, people and beasts that have an entry of their
 //! own are linked, using each event's participants (not text matching).
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
+use crate::history::det::{HashMap, HashSet};
 use std::fmt::Write as _;
 
 use crate::history::civilizations::military::War;
@@ -233,7 +234,7 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
     let mut factions: Vec<_> = history.factions.values().collect();
     factions.sort_by_key(|f| (f.founded.year, f.id.0));
 
-    let mut ruled: HashSet<FigureId> = HashSet::new();
+    let mut ruled: HashSet<FigureId> = HashSet::default();
     for e in events.iter().filter(|e| e.event_type == EventType::RulerCrowned) {
         for p in &e.primary_participants {
             if let EntityId::Figure(f) = p { ruled.insert(*f); }
@@ -246,8 +247,8 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
     lives.truncate(220);
     lives.sort_by_key(|f| (f.birth_date.year, f.id.0));
 
-    let mut raids_by: HashMap<LegendaryCreatureId, (usize, u32)> = HashMap::new();
-    let mut slain_by: HashMap<LegendaryCreatureId, &Event> = HashMap::new();
+    let mut raids_by: HashMap<LegendaryCreatureId, (usize, u32)> = HashMap::default();
+    let mut slain_by: HashMap<LegendaryCreatureId, &Event> = HashMap::default();
     for e in events {
         for p in &e.primary_participants {
             if let EntityId::LegendaryCreature(c) = p {
@@ -343,8 +344,8 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
 
     // A people's founding is told once: the founder's own story (from the first crowning that
     // year), then the seat. The separate capital-founding and crowning entries are dropped.
-    let mut founding_story: HashMap<FactionId, String> = HashMap::new();
-    let mut folded: HashSet<EventId> = HashSet::new();
+    let mut founding_story: HashMap<FactionId, String> = HashMap::default();
+    let mut folded: HashSet<EventId> = HashSet::default();
     for f in events.iter().filter(|e| e.event_type == EventType::FactionFounded) {
         let Some(&fid) = f.factions_involved.first() else { continue };
         let fname = history.factions.get(&fid).map(|x| x.name.clone()).unwrap_or_default();
@@ -967,7 +968,7 @@ mod tests {
 
     #[test]
     fn links_replace_names_once_and_escape_the_rest() {
-        let links = Links { factions: HashMap::new(), figures: HashMap::new(), beasts: HashMap::new() };
+        let links = Links { factions: HashMap::default(), figures: HashMap::default(), beasts: HashMap::default() };
         let html = links.link_names("Ann & Annabel met Annabel", vec![("p1".into(), "Annabel".into()), ("p2".into(), "Ann".into())]);
         assert_eq!(html, "<a href=\"#p2\">Ann</a> &amp; <a href=\"#p1\">Annabel</a> met Annabel");
     }

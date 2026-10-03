@@ -10,7 +10,6 @@ use super::atlas::{Atlas, TileKind, VARIANTS};
 /// Smallest water body (tiles) drawn as a lake.
 const MIN_LAKE_TILES: usize = 4;
 /// Drainage area (world tiles) at which a river is drawn.
-const RIVER_MIN_FLOW: f32 = 50.0;
 /// One-tile-wide water deeper than this (m) is a real strait, not a river channel.
 const CHANNEL_MAX_DEPTH_M: f32 = -300.0;
 
@@ -51,6 +50,11 @@ pub struct TileWorld {
     /// Ore deposit on this tile (colour, richness), when resource markers are shown.
     pub deposit: Vec<Option<([u8; 3], u8)>>,
     pub show_resources: bool,
+    /// The Shadow's corruption per tile (empty when there is no Shadow), its dominion, and its
+    /// seat.
+    pub shadow: Vec<f32>,
+    pub dominion: Vec<bool>,
+    pub shadow_seat: Option<(usize, usize)>,
 }
 
 /// Distinct, muted colour for a faction's border (ink-like, to sit on the parchment palette).
@@ -166,7 +170,7 @@ impl TileWorld {
                 || (*hm.get(x, y) > 0.0
                     && !is_lake(x, y)
                     && match &world.flow_accumulation {
-                        Some(f) => *f.get(x, y) >= RIVER_MIN_FLOW,
+                        Some(f) => *f.get(x, y) >= crate::water_bodies::river_flow_threshold(w),
                         None => world.river_tile_cache.as_ref().map(|c| *c.get(x, y)).unwrap_or(false),
                     })
         };
@@ -193,6 +197,9 @@ impl TileWorld {
             season_frozen: vec![false; n],
             deposit: vec![None; n],
             show_resources: false,
+            shadow: Vec::new(),
+            dominion: Vec::new(),
+            shadow_seat: None,
         };
         for d in &world.resources().deposits {
             if d.x < w && d.y < h {
@@ -527,6 +534,31 @@ impl TileWorld {
                     }
                     self.color[i] = col;
                 }
+            }
+        }
+        // The Shadow: its corruption and dominion for the renderer; blighted woods die (the
+        // ground is darkened by the renderer's wash, not swapped tile by tile, which reads as
+        // blocks).
+        if let Some(sh) = &history.shadow {
+            self.shadow = sh.corruption.clone();
+            self.dominion = self.owner.iter().map(|&o| o == sh.faction.0).collect();
+            self.shadow_seat = (!sh.is_broken()).then_some(sh.seat);
+            for i in 0..w * h {
+                if sh.corruption[i] < crate::history::shadow::BLIGHT || tw_is_water(self.ground[i]) { continue; }
+                if matches!(self.sprite[i], Some(TileKind::Village | TileKind::Town | TileKind::City | TileKind::Castle | TileKind::Ruins)) { continue; }
+                let tree = matches!(self.sprite[i], Some(TileKind::Conifer | TileKind::Deciduous | TileKind::Jungle | TileKind::Palm | TileKind::Acacia | TileKind::BigBroadleaf | TileKind::BigConifer | TileKind::BigJungle));
+                if tree {
+                    self.sprite[i] = Some(TileKind::DeadTree);
+                } else if matches!(self.sprite[i], Some(TileKind::Shrub)) {
+                    self.sprite[i] = None;
+                }
+                let v = self.variant[i] as usize;
+                let mut col = atlas.average(self.ground[i], v);
+                if let Some(sp) = self.sprite[i] {
+                    let sc = atlas.average(sp, v);
+                    col = [0, 1, 2].map(|k| ((col[k] as u16 + sc[k] as u16) / 2) as u8);
+                }
+                self.color[i] = col;
             }
         }
         let _ = world;

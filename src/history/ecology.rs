@@ -15,7 +15,7 @@
 //!
 //! The step uses no randomness, so adding it leaves the rest of the history unchanged.
 
-use std::collections::HashMap;
+use crate::history::det::HashMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -288,13 +288,13 @@ impl Ecology {
             fauna: vec![vec![0.0; n]; SPECIES.len()],
             initial_totals: Vec::new(),
             initial_forest: 0.0,
-            notes: HashMap::new(),
+            notes: HashMap::default(),
             scars: Vec::new(),
             scanned_events: 0,
-            battles_at: HashMap::new(),
-            lair_events: HashMap::new(),
+            battles_at: HashMap::default(),
+            lair_events: HashMap::default(),
             pressure: vec![0.0; n],
-            overrides: HashMap::new(),
+            overrides: HashMap::default(),
         };
         // Start every species at 80% of its undisturbed carrying capacity.
         let prey_k = eco.capacities(world);
