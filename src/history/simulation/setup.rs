@@ -63,6 +63,9 @@ pub fn initialize_world(
     // 6. Create initial religions
     create_religions(&mut history, rng);
 
+    // 7. Wild land: forests and animal populations at their undisturbed levels.
+    history.ecology = Some(crate::history::ecology::Ecology::new(world));
+
     history
 }
 

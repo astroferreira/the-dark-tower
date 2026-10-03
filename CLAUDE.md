@@ -73,13 +73,89 @@ OPTIONS:
   host rock near deposits.
 - `ResourceType` gained Coal/Tin/Fish at the *end* of the enum (bincode-compatible with old saves).
 
+### Ecology and scarred landscapes (`history/ecology.rs`)
+- `history.ecology` (stepped once a year inside the history sim, no RNG) holds per-tile forest
+  cover (vs. climax `forest_potential`), farmland, and densities for 9 species (`SPECIES`:
+  deer, caribou, boar, aurochs, antelope, ibex as grazers; wolf, lion predators; bear omnivore)
+  with biome habitats, logistic growth, predation, hunting and human-intolerance, and spread
+  into neighbouring free habitat (migration / recolonisation).
+- Settlements press on the land (`pressure`): fields within `0.3 + sqrt(pop/4000)` tiles,
+  logging, hunting. Abandoned land regrows. Chronicle events (once per settlement):
+  `ForestCleared`, `GameScarce`, `WildlifeReturned` (wolves/bears/lions den in a ruin).
+- Anomaly biomes are caused, not rolled: with a history, `Ecology::naturalize` restores
+  randomly placed anomaly tiles (`is_caused_biome`) and `update_scars` grows `scars` from
+  events, each chronicled as `LandScarred` linked (`caused_by`) to its cause: bone fields where
+  6+ battles were fought (battles are located at the defender's settlement nearest the
+  attacker), titan bones where huge legendary beasts were slain, ashlands / dead woods /
+  crystal woods around long-held lairs of huge beasts with elemental / necromantic / spell
+  powers, crystal wastes where towers stood over razed towns, overgrown or cyclopean ruins a
+  century after a town falls. `apply_scars` writes them into `world.biomes` (in `main`).
+- Shown: tile viewer draws `Fields`, thinned/felled forests, `Bones` / `TitanBones` sprites;
+  hover lists wildlife and the scar's chronicle entry. Embarks (`local/wildlife.rs`, via
+  `RegionLore::wildlife`) get game trails (least-cost paths to water), burrows, nests, predator
+  dens with bones, and bones on bone fields (`LocalMap::features`).
+- The history summary prints an ecology report (forest %, farmed tiles, species vs. start,
+  scars by kind, chronicle counts).
+
+### History journal (`lore/journal.rs`)
+- `--journal PATH` (or `J` in the tile viewer, which writes `journal_<seed>.html` and opens it)
+  writes the history as a self-contained HTML book: "The Annals of <largest continent>" with an
+  opening on the geography, one book per age (merged timeline eras) with year-by-year entries,
+  then the peoples, the 30 greatest wars, ~220 lives of note, ~160 beasts of legend and the
+  land (fauna vs. start, scarred places). Routine events (raids, treaties, quarrels, trade,
+  new villages, crafted artifacts, conversions) are folded into yearly or per-age tallies; a
+  people's founding is told once. Names with entries are linked via event participants.
+  Search box and category chips filter the annals. Styled like the ink map (parchment, sepia,
+  red year rubrics; dark theme).
+
+### The bard: LLM-written lore (`lore/bard.rs`)
+- `--bard N` has a local model served by Ollama (`--bard-model`, default `gemma4:26b`;
+  `--bard-url`, default `http://localhost:11434`) write N pieces from the history:
+  founding songs, poems by notable figures (love / grief / a slaying / war / homeland, chosen
+  from their own life), folk legends of beasts, laments for razed towns, artifact
+  inscriptions and lore, soldiers' ballads of bone fields. `commissions()` builds the queue
+  (most significant first, kinds interleaved, skipping what's already written); each prompt
+  carries the writer's voice (by race), temperament and the real geography (biome, climate,
+  named rivers/peaks/forests nearby). `--bard-prompts N` prints prompts without the model.
+- Writings live in `history.library` (`Library`), saved as the world file's last field
+  (`WORLD_FILE_VERSION` 3; v1/v2 still load). With `--save-world` the world is saved after
+  every piece, so long runs can be interrupted and resumed (rerun adds the next N).
+- The journal shows them in place (songs at foundings, laments at razings, poems in lives,
+  legends with beasts, ballads with scars), plus a Treasures part and a Songs and Sayings index.
+- Speed on this machine: ~10 s per piece with `gemma4:26b` (MoE, ~4B active, 44 tok/s) vs
+  66-105 s with the dense `qwen3.8:27b` (3.5 tok/s); Gemma also keeps to the prompt rules
+  better. `--bard-rewrite` rewrites already-written pieces with the current model.
+
+### The director: LLM-authored events during history (`history/director.rs`)
+- `--director N` (with a simulated history; uses `--bard-model` / `--bard-url`, default
+  `gemma4:26b` via Ollama) lets the model author up to N events at turning points. After each
+  step the director scores the step's new events by drama (`drama()`: fallen peoples, razed
+  towns, succession crises, coups, holy wars, plagues...), paces the budget over the history
+  and avoids peoples it wrote about in the last 12 years.
+- The model gets a dossier (peoples with voice and faith, seat and its geography, ruler and
+  notable figures with temperament, feelings toward others, recent events) and answers JSON
+  constrained by `proposal_schema()`: title, 3-5 sentence chronicle text, up to 4 effects
+  from `EFFECT_MENU` (opinion, war, peace, alliance, death, crown, marriage, exile, defect, title,
+  epithet, artifact, monument, population, wealth, convert), optional thread. Names resolve
+  only against the dossier's cast (`lookup`), amounts are clamped, invalid effects dropped;
+  effects go through engine paths (`War::end`, `step::succeed` for dead/exiled rulers).
+- Threads (prophecy/feud/curse/vow/secret) carry a checkable `Trigger` (years, ruler or
+  figure dies, war between two peoples, town falls); when due they are paid off first, and
+  the payoff event is `caused_by` the origin. Stored in `history.tales` (`Tales`), saved as
+  the world file's last field (`WORLD_FILE_VERSION` 4). Journal: authored events are "Tales"
+  entries; a Threads of Fate part lists arcs.
+- The model is behind the `Author` trait; tests use a scripted author (no Ollama needed).
+- Without Ollama (or with `--director 0`) history is fully procedural as before.
+
 ### Saving worlds
 - `--save-world worlds/x.world` writes the generated world plus any simulated history (bincode,
   ~170 MB at 512x256); `--load-world worlds/x.world` loads it in ~0.1 s instead of regenerating
   (~3 min world + ~6 min history). The tile viewer simulates 250 years of history by default
   (`--no-history` to skip), so save once with history and reload from then on.
-- The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`); bump it when any
-  serialized type changes. `worlds/` is gitignored-worthy local data.
+- The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`, now 2: the
+  ecology is appended after the history; version-1 files still load, without ecology); bump it
+  when any serialized type changes. New `EventType` variants go at the end of the enum so old
+  histories still decode. `worlds/` is gitignored-worthy local data.
 
 ### Seasons in the tile viewer
 `T` steps Spring/Summer/Autumn/Winter, `C` cycles them automatically. Snow cover (cold + moisture),
@@ -99,14 +175,20 @@ pixel-art tiles instead of the terminal explorer.
   and swapped in; zoom terrain is seamless, so you can walk across the world.
 - `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/16px/32px
   frames to PNG without a window (for checking rendering).
-- Tiles: `atlas.rs` draws a 16x16 pixel-art atlas (ground kinds + transparent sprites, 4
-  variants each). `--export-tileset atlas.png` writes it (one row per kind, in `ALL_KINDS`
+- Tiles: `atlas.rs` draws a 32x32 atlas in an ink-cartography style (ground kinds +
+  transparent sprites, 4 variants each): muted washes on parchment, sepia ink outlines, shadow
+  sides hatched (never darkened), symbols built from shape masks so all share one treatment.
+  Keep new tiles in that style (palette consts `INK`, `SEA_INK`, `PAPER`, `STONE`, ...). `--export-tileset atlas.png` writes it (one row per kind, in `ALL_KINDS`
   order) for editing; `--tileset file.png` loads an edited atlas or a Dwarf Fortress style
   16x16 CP437 sheet (glyphs tinted with per-kind fg/bg colours, magenta = background).
 - `classify.rs` maps world data to tiles (biome -> ground + sprite, relief overrides,
   beaches, lakes >= 4 tiles, rivers from D8 flow, one-tile-wide water strips drawn as river
-  channels); `render.rs` is pure software rendering (river strokes and coastline foam are
-  drawn per pixel, relief shading interpolated between tiles).
+  channels); `render.rs` is pure software rendering, per pixel: land/water comes from a smooth
+  noisy field between tile centres (ink coastline, pale wash and two offshore ripple lines on
+  its 0.5 contour), ground kinds and territory borders are looked up through a domain warp so
+  borders meander, the deep-ocean edge is a contour of a smooth depth field, snow/season tint
+  blend between tiles, rivers get ink banks, and atlas tiles larger than the screen cell are
+  2x2 supersampled. Labels are ink on a parchment halo.
 
 ### Minimap and zoom
 - `N` - Toggle the world minimap (bottom-right; yellow = visible area, white = zoom window)

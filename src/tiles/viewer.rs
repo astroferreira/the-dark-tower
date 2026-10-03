@@ -65,11 +65,11 @@ fn draw_region_labels(l: &crate::lore::RegionLore, cam: &ZoomCamera, buf: &mut [
     use crate::history::civilizations::settlement::SettlementType;
     let labels: Vec<Label> = l.sites.iter().map(|site| {
         let (rank, min_px, color) = match (site.destroyed_year.is_some(), site.kind) {
-            (true, _) => (300, 1.2, 0x00A0_9890),
-            (_, SettlementType::Capital) => (900, 0.0, 0x00FF_E08A),
-            (_, SettlementType::City | SettlementType::Port) => (850, 0.0, 0x00FF_E08A),
-            (_, SettlementType::Town | SettlementType::Fort) => (700, 0.4, 0x00FF_E08A),
-            _ => (400, 0.9, 0x00F0_DCB4),
+            (true, _) => (300, 1.2, 0x0078_6A58),
+            (_, SettlementType::Capital) => (900, 0.0, 0x0030_1E14),
+            (_, SettlementType::City | SettlementType::Port) => (850, 0.0, 0x0030_1E14),
+            (_, SettlementType::Town | SettlementType::Fort) => (700, 0.4, 0x0030_1E14),
+            _ => (400, 0.9, 0x004A_3624),
         };
         let text = if site.destroyed_year.is_some() { format!("ruins of {}", site.name) } else { site.name.clone() };
         Label { x: site.x as f32, y: site.y as f32 + 9.0, text, rank, min_tile_px: min_px, color }
@@ -85,12 +85,12 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
     let mut labels = Vec::new();
     for f in &gaz.features {
         let (min_tile_px, color) = match f.kind {
-            FeatureKind::Ocean | FeatureKind::Continent => (0.0, if f.kind.is_water() { 0x009C_C8EE } else { 0x00F2_E6C8 }),
-            FeatureKind::Sea | FeatureKind::MountainRange | FeatureKind::Desert | FeatureKind::IceField => (2.0, if f.kind.is_water() { 0x009C_C8EE } else { 0x00F2_E6C8 }),
-            FeatureKind::Forest | FeatureKind::Jungle | FeatureKind::Plains | FeatureKind::Tundra | FeatureKind::Gulf => (4.0, if f.kind.is_water() { 0x009C_C8EE } else { 0x00E6_DCC0 }),
-            FeatureKind::River | FeatureKind::Island => (6.0, if f.kind.is_water() { 0x00A8_D4F4 } else { 0x00E6_DCC0 }),
-            FeatureKind::Lake | FeatureKind::Marsh => (10.0, if f.kind.is_water() { 0x00A8_D4F4 } else { 0x00E6_DCC0 }),
-            FeatureKind::Peak => (10.0, 0x00FF_FFFF),
+            FeatureKind::Ocean | FeatureKind::Continent => (0.0, if f.kind.is_water() { 0x0026_4A60 } else { 0x003A_2A1E }),
+            FeatureKind::Sea | FeatureKind::MountainRange | FeatureKind::Desert | FeatureKind::IceField => (2.0, if f.kind.is_water() { 0x0026_4A60 } else { 0x003A_2A1E }),
+            FeatureKind::Forest | FeatureKind::Jungle | FeatureKind::Plains | FeatureKind::Tundra | FeatureKind::Gulf => (4.0, if f.kind.is_water() { 0x0026_4A60 } else { 0x004A_3828 }),
+            FeatureKind::River | FeatureKind::Island => (6.0, if f.kind.is_water() { 0x0030_5670 } else { 0x004A_3828 }),
+            FeatureKind::Lake | FeatureKind::Marsh => (10.0, if f.kind.is_water() { 0x0030_5670 } else { 0x004A_3828 }),
+            FeatureKind::Peak => (10.0, 0x0030_1E14),
         };
         let text = if f.kind == FeatureKind::Peak { format!("{} {:.0}m", f.name, f.height_m) } else { f.name.clone() };
         // Bigger features of a kind rank above smaller ones.
@@ -110,7 +110,7 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
                 }
             };
             let text = if s.is_destroyed() { format!("ruins of {}", s.name) } else { s.name.clone() };
-            let color = if s.is_destroyed() { 0x00A0_9890 } else { 0x00FF_E08A };
+            let color = if s.is_destroyed() { 0x0078_6A58 } else { 0x0030_1E14 };
             labels.push(Label { x: s.location.0 as f32 + 0.5, y: s.location.1 as f32 + 1.4, text, rank: base + (s.population / 2000).min(99), min_tile_px: min_px, color });
         }
     }
@@ -155,6 +155,21 @@ fn describe_tile(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazett
     if let Some(h) = history {
         if let Some(f) = h.tile_history.get(x, y).current_owner.and_then(|id| h.factions.get(&id)) {
             parts.push(format!("held by {}", f.name));
+        }
+        if let Some(eco) = &h.ecology {
+            if let Some(scar) = eco.scar_at(x, y) {
+                if let Some(ev) = h.chronicle.events.iter().find(|e| e.id == scar.event) {
+                    parts.push(format!("{} (year {})", ev.title, ev.date.year));
+                }
+            }
+            let i = y * eco.width + x;
+            if eco.farmland[i] > 0.4 { parts.push("fields".to_string()); }
+            let pot = eco.forest_potential[i];
+            if pot > 0.3 && eco.forest[i] < 0.3 * pot { parts.push("felled forest".to_string()); }
+            let wild: Vec<String> = eco.wildlife_at(x, y, 0.15).iter().take(3)
+                .map(|&(name, d)| format!("{} {}", if d > 0.6 { "many" } else if d > 0.3 { "some" } else { "few" }, name))
+                .collect();
+            if !wild.is_empty() { parts.push(wild.join(", ")); }
         }
     }
     let _ = world;
@@ -246,7 +261,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut dirty = true;
         let mut drag: Option<((f32, f32), (f32, f32))> = None;
         let mut minimap_rect = (0usize, 0usize, 0usize, 0usize);
-        let mut status = String::from("wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | P: screenshot | Q: quit");
+        let mut status = String::from("wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | J: journal | P: screenshot | Q: quit");
         let mut last_title = String::new();
 
         while window.is_open() {
@@ -332,7 +347,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         Shape::Empty if c.water > 0 => format!("water {}/7", c.water),
                         Shape::Empty => "open space".to_string(),
                     };
-                    format!("({tx},{ty}) {what}")
+                    let feature = map.features[ty * map.width + tx];
+                    let sign = if feature != crate::local::wildlife::Feature::None && z as i32 == map.surface_z[ty * map.width + tx] {
+                        format!(", {}", feature.name())
+                    } else {
+                        String::new()
+                    };
+                    format!("({tx},{ty}) {what}{sign}")
                 } else {
                     String::new()
                 };
@@ -518,6 +539,22 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
 
                 if pressed(Key::L) { show_labels = !show_labels; dirty = true; }
+                if pressed(Key::J) {
+                    // Write the history journal next to the binary's working directory and open it.
+                    if let Some(h) = history {
+                        let path = std::path::PathBuf::from(format!("journal_{}.html", world.seed()));
+                        match crate::lore::journal::write_journal(world, h, &gaz, &path) {
+                            Ok(()) => {
+                                let opener = if cfg!(target_os = "macos") { "open" } else if cfg!(target_os = "windows") { "explorer" } else { "xdg-open" };
+                                let _ = std::process::Command::new(opener).arg(&path).spawn();
+                                status = format!("journal written to {}", path.display());
+                            }
+                            Err(e) => status = format!("could not write journal: {e}"),
+                        }
+                    } else {
+                        status = "no history to write a journal from (run without --no-history)".to_string();
+                    }
+                }
                 if pressed(Key::R) { tw.show_resources = !tw.show_resources; dirty = true; }
                 if pressed(Key::C) {
                     auto_season = if auto_season.is_some() { None } else { Some(std::time::Instant::now()) };

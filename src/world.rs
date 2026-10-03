@@ -717,13 +717,42 @@ pub fn generate_test_world() -> WorldData {
 
 const WORLD_FILE_MAGIC: &[u8; 8] = b"PGWORLD1";
 /// Bump when the serialized layout changes; older files are rejected with a clear message.
-const WORLD_FILE_VERSION: u32 = 1;
+/// Version 2 appended the ecology, 3 the bard's library, 4 the director's tales (older files
+/// still load).
+const WORLD_FILE_VERSION: u32 = 4;
+
+#[derive(serde::Deserialize)]
+struct WorldFileV1 {
+    version: u32,
+    world: WorldData,
+    history: Option<crate::history::world_state::WorldHistory>,
+}
+
+#[derive(serde::Deserialize)]
+struct WorldFileV2 {
+    version: u32,
+    world: WorldData,
+    history: Option<crate::history::world_state::WorldHistory>,
+    ecology: Option<crate::history::ecology::Ecology>,
+}
+
+#[derive(serde::Deserialize)]
+struct WorldFileV3 {
+    version: u32,
+    world: WorldData,
+    history: Option<crate::history::world_state::WorldHistory>,
+    ecology: Option<crate::history::ecology::Ecology>,
+    library: Option<crate::lore::bard::Library>,
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct WorldFile {
     version: u32,
     world: WorldData,
     history: Option<crate::history::world_state::WorldHistory>,
+    ecology: Option<crate::history::ecology::Ecology>,
+    library: Option<crate::lore::bard::Library>,
+    tales: Option<crate::history::director::Tales>,
 }
 
 /// Save a world (and its history, if any) to a single file.
@@ -739,8 +768,14 @@ pub fn save_world(
         version: u32,
         world: &'a WorldData,
         history: Option<&'a crate::history::world_state::WorldHistory>,
+        ecology: Option<&'a crate::history::ecology::Ecology>,
+        library: Option<&'a crate::lore::bard::Library>,
+        tales: Option<&'a crate::history::director::Tales>,
     }
-    let bytes = bincode::serialize(&WorldFileRef { version: WORLD_FILE_VERSION, world, history })
+    let ecology = history.and_then(|h| h.ecology.as_ref());
+    let library = history.and_then(|h| h.library.as_ref());
+    let tales = history.and_then(|h| h.tales.as_ref());
+    let bytes = bincode::serialize(&WorldFileRef { version: WORLD_FILE_VERSION, world, history, ecology, library, tales })
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("serialize failed: {e}")))?;
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
     f.write_all(WORLD_FILE_MAGIC)?;
@@ -756,19 +791,53 @@ pub fn load_world(
     if bytes.len() < 8 || &bytes[..8] != WORLD_FILE_MAGIC {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "not a planet world file"));
     }
-    let file: WorldFile = bincode::deserialize(&bytes[8..])
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("corrupt or outdated world file: {e}")))?;
-    if file.version != WORLD_FILE_VERSION {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("world file version {} (this build reads {})", file.version, WORLD_FILE_VERSION),
-        ));
-    }
-    let mut history = file.history;
+    let corrupt = |e: bincode::Error| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("corrupt or outdated world file: {e}"));
+    // The version is the first field (a little-endian u32 under bincode's default encoding).
+    let version = bytes.get(8..12).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).unwrap_or(0);
+    let (world, mut history) = match version {
+        1 => {
+            let file: WorldFileV1 = bincode::deserialize(&bytes[8..]).map_err(corrupt)?;
+            let _ = file.version;
+            (file.world, file.history)
+        }
+        2 => {
+            let file: WorldFileV2 = bincode::deserialize(&bytes[8..]).map_err(corrupt)?;
+            let _ = file.version;
+            let mut history = file.history;
+            if let Some(h) = history.as_mut() { h.ecology = file.ecology; }
+            (file.world, history)
+        }
+        3 => {
+            let file: WorldFileV3 = bincode::deserialize(&bytes[8..]).map_err(corrupt)?;
+            let _ = file.version;
+            let mut history = file.history;
+            if let Some(h) = history.as_mut() {
+                h.ecology = file.ecology;
+                h.library = file.library;
+            }
+            (file.world, history)
+        }
+        WORLD_FILE_VERSION => {
+            let file: WorldFile = bincode::deserialize(&bytes[8..]).map_err(corrupt)?;
+            let mut history = file.history;
+            if let Some(h) = history.as_mut() {
+                h.ecology = file.ecology;
+                h.library = file.library;
+                h.tales = file.tales;
+            }
+            (file.world, history)
+        }
+        v => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("world file version {} (this build reads 1..={})", v, WORLD_FILE_VERSION),
+            ))
+        }
+    };
     if let Some(h) = history.as_mut() {
         crate::history::persistence::rebuild_id_generators(h);
     }
-    Ok((file.world, history))
+    Ok((world, history))
 }
 
 #[cfg(test)]

@@ -1,7 +1,9 @@
 //! World lore projected onto geography: named features (gazetteer) and, built from the
 //! history simulation, settlements, roads and ruins at every map scale.
 
+pub mod bard;
 pub mod gazetteer;
+pub mod journal;
 pub mod resources;
 pub mod settle;
 

@@ -92,7 +92,12 @@ pub fn simulate_step(
     // 13. Wealth tick (income, trade revenue, war costs)
     step_wealth_tick(history, rng);
 
-    // 13. Advance date
+    // 14. Ecology, once a year: land cover, wildlife and what people do to them.
+    if date.season == crate::seasons::Season::Spring {
+        crate::history::ecology::step_year(history, world);
+    }
+
+    // 15. Advance date
     history.current_date = date.next();
 }
 
@@ -605,6 +610,24 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
     }
 }
 
+/// Where a battle between two factions is fought: the defender's living settlement closest to
+/// any of the attacker's (computed, not rolled).
+fn battle_site(history: &WorldHistory, agg: FactionId, def: FactionId) -> Option<(usize, usize)> {
+    let w = history.tile_history.width as i64;
+    let alive = |f: FactionId| history.settlements.values().filter(move |s| s.faction == f && !s.is_destroyed()).map(|s| (s.id.0, s.location));
+    let mut best: Option<(i64, u64, (usize, usize))> = None;
+    for (did, d) in alive(def) {
+        for (_, a) in alive(agg) {
+            let mut dx = (d.0 as i64 - a.0 as i64).abs();
+            dx = dx.min(w - dx);
+            let dy = d.1 as i64 - a.1 as i64;
+            let dist = dx * dx + dy * dy;
+            if best.map_or(true, |b| (dist, did) < (b.0, b.1)) { best = Some((dist, did, d)); }
+        }
+    }
+    best.map(|b| b.2)
+}
+
 fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
     let date = history.current_date;
     let active_war_ids: Vec<WarId> = history.wars.keys()
@@ -668,6 +691,12 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
             .with_faction(def);
             if let Some(decl_id) = declaration_evt {
                 event = event.caused_by(decl_id);
+            }
+
+            // Fought outside the defender's settlement nearest the attacker.
+            if let Some((x, y)) = battle_site(history, agg, def) {
+                event = event.at_location(x, y);
+                history.tile_history.record_event(x, y, event_id);
             }
 
             if let Some(war) = history.wars.get_mut(&war_id) {
@@ -921,6 +950,196 @@ fn step_creatures(history: &mut WorldHistory, rng: &mut impl Rng) {
     }
 }
 
+/// Install a successor after a faction's leader has died (succession law, dynasties, crises).
+pub(crate) fn succeed(history: &mut WorldHistory, dead_leader_id: FigureId, faction_id: FactionId, game_data: &GameData, rng: &mut impl Rng) {
+    let date = history.current_date;
+    let dead_name = history.figures.get(&dead_leader_id)
+        .map(|f| f.full_name())
+        .unwrap_or_default();
+
+    let race_id = history.factions.get(&faction_id)
+        .map(|f| f.race_id)
+        .unwrap_or(RaceId(0));
+    let succession_law = history.factions.get(&faction_id)
+        .map(|f| f.succession_law)
+        .unwrap_or(crate::history::civilizations::government::SuccessionLaw::Primogeniture);
+    let dynasty_id = history.factions.get(&faction_id)
+        .and_then(|f| f.ruling_dynasty);
+
+    // Determine if a succession crisis occurs
+    // Crisis-prone laws (OpenSuccession, Tanistry, ElectiveMonarchy) have higher chance
+    let crisis_chance = if succession_law.crisis_prone() { 0.35 } else { 0.08 };
+    let is_crisis = rng.gen::<f32>() < crisis_chance;
+
+    // Generate new leader
+    let naming_style = naming_style_for_race(history, race_id, game_data);
+    let new_leader_id = history.id_generators.next_figure();
+    let new_leader_name = NameGenerator::personal_name(&naming_style, rng);
+    let personality = Personality::random(rng);
+    let mut new_leader = Figure::new(
+        new_leader_id, new_leader_name.clone(),
+        race_id,
+        Date::new(date.year.saturating_sub(rng.gen_range(20..50)), crate::seasons::Season::Spring),
+        personality,
+    );
+    new_leader.faction = Some(faction_id);
+
+    // Wire dynasty link based on succession law
+    if succession_law.requires_dynasty() {
+        new_leader.parents.0 = Some(dead_leader_id);
+        if let Some(dead_leader) = history.figures.get_mut(&dead_leader_id) {
+            dead_leader.add_child(new_leader_id);
+        }
+    }
+
+    // Update faction
+    let faction_name = if let Some(faction) = history.factions.get_mut(&faction_id) {
+        faction.current_leader = Some(new_leader_id);
+        faction.notable_figures.push(new_leader_id);
+        faction.name.clone()
+    } else {
+        String::new()
+    };
+
+    // Update dynasty
+    if let Some(did) = dynasty_id {
+        if let Some(dynasty) = history.dynasties.get_mut(&did) {
+            dynasty.add_member(new_leader_id);
+            dynasty.current_head = Some(new_leader_id);
+            dynasty.generations += 1;
+        }
+        new_leader.dynasty = Some(did);
+    }
+
+    history.figures.insert(new_leader_id, new_leader);
+
+    if is_crisis {
+        // Succession crisis: rival claimant challenges the new ruler
+        let rival_id = history.id_generators.next_figure();
+        let rival_name = NameGenerator::personal_name(&naming_style, rng);
+        let rival_personality = Personality::random(rng);
+        let mut rival = Figure::new(
+            rival_id, rival_name.clone(),
+            race_id,
+            Date::new(date.year.saturating_sub(rng.gen_range(25..55)), crate::seasons::Season::Spring),
+            rival_personality,
+        );
+        rival.faction = Some(faction_id);
+        rival.enemies.push(new_leader_id);
+
+        // New leader considers rival an enemy too
+        if let Some(new_leader) = history.figures.get_mut(&new_leader_id) {
+            new_leader.enemies.push(rival_id);
+        }
+
+        if let Some(faction) = history.factions.get_mut(&faction_id) {
+            faction.notable_figures.push(rival_id);
+        }
+
+        history.figures.insert(rival_id, rival);
+
+        // Record succession crisis event
+        let crisis_event_id = history.id_generators.next_event();
+        let crisis_event = Event::new(
+            crisis_event_id,
+            EventType::SuccessionCrisis,
+            date,
+            format!("Succession crisis in {}", faction_name),
+            format!("Upon the death of {}, {} and {} both claim the throne of {}.",
+                dead_name, new_leader_name, rival_name, faction_name),
+        )
+        .with_faction(faction_id)
+        .with_participant(EntityId::Figure(new_leader_id))
+        .with_participant(EntityId::Figure(rival_id));
+        history.chronicle.record(crisis_event);
+
+        // Determine crisis outcome: coup (30%) or civil unrest (70%)
+        if rng.gen::<f32>() < 0.30 {
+            // Coup: rival seizes power
+            if let Some(faction) = history.factions.get_mut(&faction_id) {
+                faction.current_leader = Some(rival_id);
+            }
+            if let Some(new_leader) = history.figures.get_mut(&new_leader_id) {
+                new_leader.kill(date, DeathCause::Execution);
+            }
+
+            // Dynasty scandal
+            if let Some(did) = dynasty_id {
+                if let Some(dynasty) = history.dynasties.get_mut(&did) {
+                    dynasty.scandals.push(crisis_event_id);
+                    dynasty.prestige = dynasty.prestige.saturating_sub(10);
+                }
+            }
+
+            let coup_event_id = history.id_generators.next_event();
+            let coup_event = Event::new(
+                coup_event_id,
+                EventType::Coup,
+                date,
+                format!("{} seizes power in {}", rival_name, faction_name),
+                format!("{} overthrew {} and seized the throne of {}. {} was executed.",
+                    rival_name, new_leader_name, faction_name, new_leader_name),
+            )
+            .with_faction(faction_id)
+            .with_participant(EntityId::Figure(rival_id))
+            .with_participant(EntityId::Figure(new_leader_id))
+            .with_consequence(Consequence::FigureDeath(new_leader_id, DeathCause::Execution))
+            .caused_by(crisis_event_id);
+            history.chronicle.record(coup_event);
+        } else {
+            // Civil unrest: population loss, rival becomes enemy, dynasty loses prestige
+            let losses = rng.gen_range(50..200);
+            if let Some(faction) = history.factions.get_mut(&faction_id) {
+                faction.total_population = faction.total_population.saturating_sub(losses);
+            }
+            if let Some(did) = dynasty_id {
+                if let Some(dynasty) = history.dynasties.get_mut(&did) {
+                    dynasty.scandals.push(crisis_event_id);
+                    dynasty.prestige = dynasty.prestige.saturating_sub(5);
+                }
+            }
+
+            let deposed_event_id = history.id_generators.next_event();
+            let deposed_event = Event::new(
+                deposed_event_id,
+                EventType::RulerDeposed,
+                date,
+                format!("Unrest in {} over succession", faction_name),
+                format!("The succession of {} in {} was contested by {}. {} perished in the fighting.",
+                    new_leader_name, faction_name, rival_name, losses),
+            )
+            .with_faction(faction_id)
+            .with_participant(EntityId::Figure(new_leader_id))
+            .with_participant(EntityId::Figure(rival_id))
+            .with_consequence(Consequence::PopulationChange(faction_id, -(losses as i32)))
+            .caused_by(crisis_event_id);
+            history.chronicle.record(deposed_event);
+        }
+    } else {
+        // Normal succession
+        let (title, desc) = game_data.backstory.succession_description(
+            &new_leader_name, &dead_name, &faction_name, rng,
+        );
+        if let Some(did) = dynasty_id {
+            if let Some(dynasty) = history.dynasties.get_mut(&did) {
+                dynasty.prestige += 3;
+            }
+        }
+
+        let event_id = history.id_generators.next_event();
+        let event = Event::new(
+            event_id,
+            EventType::RulerCrowned,
+            date,
+            title,
+            desc,
+        )
+        .with_faction(faction_id)
+        .with_participant(EntityId::Figure(new_leader_id));
+        history.chronicle.record(event);
+    }
+}
+
 fn step_figures(history: &mut WorldHistory, game_data: &GameData, rng: &mut impl Rng) {
     let date = history.current_date;
 
@@ -989,191 +1208,7 @@ fn step_figures(history: &mut WorldHistory, game_data: &GameData, rng: &mut impl
 
     // Succession for dead leaders — consults SuccessionLaw, may trigger crises
     for (dead_leader_id, faction_id) in dead_leaders {
-        let dead_name = history.figures.get(&dead_leader_id)
-            .map(|f| f.full_name())
-            .unwrap_or_default();
-
-        let race_id = history.factions.get(&faction_id)
-            .map(|f| f.race_id)
-            .unwrap_or(RaceId(0));
-        let succession_law = history.factions.get(&faction_id)
-            .map(|f| f.succession_law)
-            .unwrap_or(crate::history::civilizations::government::SuccessionLaw::Primogeniture);
-        let dynasty_id = history.factions.get(&faction_id)
-            .and_then(|f| f.ruling_dynasty);
-
-        // Determine if a succession crisis occurs
-        // Crisis-prone laws (OpenSuccession, Tanistry, ElectiveMonarchy) have higher chance
-        let crisis_chance = if succession_law.crisis_prone() { 0.35 } else { 0.08 };
-        let is_crisis = rng.gen::<f32>() < crisis_chance;
-
-        // Generate new leader
-        let naming_style = naming_style_for_race(history, race_id, game_data);
-        let new_leader_id = history.id_generators.next_figure();
-        let new_leader_name = NameGenerator::personal_name(&naming_style, rng);
-        let personality = Personality::random(rng);
-        let mut new_leader = Figure::new(
-            new_leader_id, new_leader_name.clone(),
-            race_id,
-            Date::new(date.year.saturating_sub(rng.gen_range(20..50)), crate::seasons::Season::Spring),
-            personality,
-        );
-        new_leader.faction = Some(faction_id);
-
-        // Wire dynasty link based on succession law
-        if succession_law.requires_dynasty() {
-            new_leader.parents.0 = Some(dead_leader_id);
-            if let Some(dead_leader) = history.figures.get_mut(&dead_leader_id) {
-                dead_leader.add_child(new_leader_id);
-            }
-        }
-
-        // Update faction
-        let faction_name = if let Some(faction) = history.factions.get_mut(&faction_id) {
-            faction.current_leader = Some(new_leader_id);
-            faction.notable_figures.push(new_leader_id);
-            faction.name.clone()
-        } else {
-            String::new()
-        };
-
-        // Update dynasty
-        if let Some(did) = dynasty_id {
-            if let Some(dynasty) = history.dynasties.get_mut(&did) {
-                dynasty.add_member(new_leader_id);
-                dynasty.current_head = Some(new_leader_id);
-                dynasty.generations += 1;
-            }
-            new_leader.dynasty = Some(did);
-        }
-
-        history.figures.insert(new_leader_id, new_leader);
-
-        if is_crisis {
-            // Succession crisis: rival claimant challenges the new ruler
-            let rival_id = history.id_generators.next_figure();
-            let rival_name = NameGenerator::personal_name(&naming_style, rng);
-            let rival_personality = Personality::random(rng);
-            let mut rival = Figure::new(
-                rival_id, rival_name.clone(),
-                race_id,
-                Date::new(date.year.saturating_sub(rng.gen_range(25..55)), crate::seasons::Season::Spring),
-                rival_personality,
-            );
-            rival.faction = Some(faction_id);
-            rival.enemies.push(new_leader_id);
-
-            // New leader considers rival an enemy too
-            if let Some(new_leader) = history.figures.get_mut(&new_leader_id) {
-                new_leader.enemies.push(rival_id);
-            }
-
-            if let Some(faction) = history.factions.get_mut(&faction_id) {
-                faction.notable_figures.push(rival_id);
-            }
-
-            history.figures.insert(rival_id, rival);
-
-            // Record succession crisis event
-            let crisis_event_id = history.id_generators.next_event();
-            let crisis_event = Event::new(
-                crisis_event_id,
-                EventType::SuccessionCrisis,
-                date,
-                format!("Succession crisis in {}", faction_name),
-                format!("Upon the death of {}, {} and {} both claim the throne of {}.",
-                    dead_name, new_leader_name, rival_name, faction_name),
-            )
-            .with_faction(faction_id)
-            .with_participant(EntityId::Figure(new_leader_id))
-            .with_participant(EntityId::Figure(rival_id));
-            history.chronicle.record(crisis_event);
-
-            // Determine crisis outcome: coup (30%) or civil unrest (70%)
-            if rng.gen::<f32>() < 0.30 {
-                // Coup: rival seizes power
-                if let Some(faction) = history.factions.get_mut(&faction_id) {
-                    faction.current_leader = Some(rival_id);
-                }
-                if let Some(new_leader) = history.figures.get_mut(&new_leader_id) {
-                    new_leader.kill(date, DeathCause::Execution);
-                }
-
-                // Dynasty scandal
-                if let Some(did) = dynasty_id {
-                    if let Some(dynasty) = history.dynasties.get_mut(&did) {
-                        dynasty.scandals.push(crisis_event_id);
-                        dynasty.prestige = dynasty.prestige.saturating_sub(10);
-                    }
-                }
-
-                let coup_event_id = history.id_generators.next_event();
-                let coup_event = Event::new(
-                    coup_event_id,
-                    EventType::Coup,
-                    date,
-                    format!("{} seizes power in {}", rival_name, faction_name),
-                    format!("{} overthrew {} and seized the throne of {}. {} was executed.",
-                        rival_name, new_leader_name, faction_name, new_leader_name),
-                )
-                .with_faction(faction_id)
-                .with_participant(EntityId::Figure(rival_id))
-                .with_participant(EntityId::Figure(new_leader_id))
-                .with_consequence(Consequence::FigureDeath(new_leader_id, DeathCause::Execution))
-                .caused_by(crisis_event_id);
-                history.chronicle.record(coup_event);
-            } else {
-                // Civil unrest: population loss, rival becomes enemy, dynasty loses prestige
-                let losses = rng.gen_range(50..200);
-                if let Some(faction) = history.factions.get_mut(&faction_id) {
-                    faction.total_population = faction.total_population.saturating_sub(losses);
-                }
-                if let Some(did) = dynasty_id {
-                    if let Some(dynasty) = history.dynasties.get_mut(&did) {
-                        dynasty.scandals.push(crisis_event_id);
-                        dynasty.prestige = dynasty.prestige.saturating_sub(5);
-                    }
-                }
-
-                let deposed_event_id = history.id_generators.next_event();
-                let deposed_event = Event::new(
-                    deposed_event_id,
-                    EventType::RulerDeposed,
-                    date,
-                    format!("Unrest in {} over succession", faction_name),
-                    format!("The succession of {} in {} was contested by {}. {} perished in the fighting.",
-                        new_leader_name, faction_name, rival_name, losses),
-                )
-                .with_faction(faction_id)
-                .with_participant(EntityId::Figure(new_leader_id))
-                .with_participant(EntityId::Figure(rival_id))
-                .with_consequence(Consequence::PopulationChange(faction_id, -(losses as i32)))
-                .caused_by(crisis_event_id);
-                history.chronicle.record(deposed_event);
-            }
-        } else {
-            // Normal succession
-            let (title, desc) = game_data.backstory.succession_description(
-                &new_leader_name, &dead_name, &faction_name, rng,
-            );
-            if let Some(did) = dynasty_id {
-                if let Some(dynasty) = history.dynasties.get_mut(&did) {
-                    dynasty.prestige += 3;
-                }
-            }
-
-            let event_id = history.id_generators.next_event();
-            let event = Event::new(
-                event_id,
-                EventType::RulerCrowned,
-                date,
-                title,
-                desc,
-            )
-            .with_faction(faction_id)
-            .with_participant(EntityId::Figure(new_leader_id));
-            history.chronicle.record(event);
-        }
+        succeed(history, dead_leader_id, faction_id, game_data, rng);
     }
 
     // Hero births (rare)

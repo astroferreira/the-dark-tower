@@ -8,6 +8,8 @@ pub mod civilizations;
 pub mod config;
 pub mod creatures;
 pub mod data;
+pub mod director;
+pub mod ecology;
 pub mod entities;
 pub mod events;
 pub mod legends;

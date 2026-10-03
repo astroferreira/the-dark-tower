@@ -51,6 +51,9 @@ pub struct RegionLore {
     pub roads: Vec<Vec<(f64, f64)>>,
     /// Per region cell: 0 nothing, 1 road, 2 field, 3 built-up, 4 rubble.
     pub cover: Vec<u8>,
+    /// Wildlife density per species (`history::ecology::SPECIES`) for each world tile in and
+    /// around the region.
+    pub wildlife: std::collections::HashMap<(usize, usize), Vec<f32>>,
 }
 
 impl RegionLore {
@@ -242,7 +245,19 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
             }
         }
     }
-    RegionLore { sites, roads, cover }
+    let mut wildlife = std::collections::HashMap::new();
+    if let Some(eco) = &history.ecology {
+        for dy in -1..=(rh as i64 / s + 1) {
+            for dx in -1..=(tiles_x + 1) {
+                let ty = region.world_y0 + dy;
+                if ty < 0 || ty >= world.height as i64 { continue; }
+                let tx = (region.world_x0 + dx).rem_euclid(ww) as usize;
+                let i = ty as usize * world.width + tx;
+                wildlife.insert((tx, ty as usize), eco.fauna.iter().map(|f| f[i]).collect());
+            }
+        }
+    }
+    RegionLore { sites, roads, cover, wildlife }
 }
 
 /// Least-cost path between two points (region cells) favouring gentle ground; crossing a river

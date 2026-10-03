@@ -290,6 +290,36 @@ struct Args {
     #[arg(long)]
     export_legends: Option<String>,
 
+    /// Have a local LLM (Ollama) write up to N songs, poems, legends, laments and artifact lore
+    /// from the history; kept with the world (saved after each piece with --save-world)
+    #[arg(long, default_value = "0")]
+    bard: usize,
+
+    /// Let a local LLM (Ollama, --bard-model) author up to N events at turning points while
+    /// history is simulated; they change the simulation (wars, deaths, alliances, treasures...)
+    #[arg(long, default_value = "0")]
+    director: usize,
+
+    /// With --bard: rewrite pieces already written (replacing them) instead of writing new ones
+    #[arg(long)]
+    bard_rewrite: bool,
+
+    /// Print the bard's next N prompts without calling the model
+    #[arg(long, default_value = "0")]
+    bard_prompts: usize,
+
+    /// Ollama model the bard writes with
+    #[arg(long, default_value = "gemma4:26b")]
+    bard_model: String,
+
+    /// Ollama server URL
+    #[arg(long, default_value = "http://localhost:11434")]
+    bard_url: String,
+
+    /// Write the world's history as a readable journal (HTML annals, peoples, wars, lives, beasts)
+    #[arg(long)]
+    journal: Option<String>,
+
     /// Run N benchmark simulations and print aggregate quality metrics
     #[arg(long)]
     benchmark: Option<u32>,
@@ -1180,7 +1210,7 @@ fn main() {
     let wants_tiles = args.tiles || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
     // A saved world's history is reused unless --history-years asks for a fresh simulation.
     if args.history_years > 0 { loaded_history = None; }
-    let history = if loaded_history.is_some() {
+    let mut history = if loaded_history.is_some() {
         loaded_history.take()
     } else if let Some(ref load_path) = args.load_history {
         eprintln!("Loading history from {}...", load_path);
@@ -1206,8 +1236,24 @@ fn main() {
         };
         // Load game data (embedded defaults + optional data/ directory overrides)
         let game_data = history::data::GameData::load_from(std::path::Path::new("data"));
+        // Anomalous biomes come from history (scars), not from the dice of world generation.
+        let restored = history::ecology::Ecology::naturalize(&mut world_data);
+        if restored > 0 { eprintln!("Restored {} randomly placed anomaly tiles to natural biomes", restored); }
         eprintln!("Simulating {} years of history (seed: {})...", years, history_seed);
         let mut engine = history::simulation::HistoryEngine::new(history_seed);
+        if args.director > 0 {
+            let bard = lore::bard::Bard::new(&args.bard_url, &args.bard_model);
+            match bard.check() {
+                Ok(()) => {
+                    eprintln!("Director ({}) will author up to {} events", args.bard_model, args.director);
+                    let start = config.prehistory_depth + 1;
+                    engine.director = Some(history::director::Director::new(
+                        Box::new(history::director::OllamaAuthor(bard)), &world_data, args.director, start, years,
+                    ));
+                }
+                Err(e) => eprintln!("Director unavailable, history will be fully procedural: {e}"),
+            }
+        }
         let hist = engine.simulate_with_data(&world_data, config, &game_data);
         let summary = hist.summary();
         eprintln!("{}", summary);
@@ -1215,6 +1261,73 @@ fn main() {
     } else {
         None
     };
+
+    // Scars history left on the land become part of the biome map.
+    if let Some(eco) = history.as_mut().and_then(|h| h.ecology.as_mut()) {
+        eco.apply_scars(&mut world_data);
+        if !eco.scars.is_empty() {
+            let some: Vec<String> = eco.scars.iter().take(4).map(|s| format!("{:?} at {},{}", s.biome, s.x, s.y)).collect();
+            eprintln!("{} scarred landscapes (e.g. {})", eco.scars.len(), some.join(", "));
+        }
+    }
+
+    if args.bard_prompts > 0 {
+        if let Some(h) = history.as_ref() {
+            let gaz = lore::build_gazetteer(&world_data, Some(h), master_seed);
+            let empty = lore::bard::Library::default();
+            let queue = lore::bard::commissions(&world_data, h, &gaz, h.library.as_ref().unwrap_or(&empty));
+            println!("{} commissions waiting", queue.len());
+            for c in queue.iter().take(args.bard_prompts) {
+                println!("--- {} ({:?})\n{}\n", c.key, c.kind, lore::bard::Bard::prompt(c));
+            }
+        }
+    }
+
+    if args.bard > 0 {
+        match history.as_mut() {
+            None => eprintln!("--bard needs a history: load a world saved with history, or simulate one"),
+            Some(h) => {
+                let bard = lore::bard::Bard::new(&args.bard_url, &args.bard_model);
+                match bard.check() {
+                    Err(e) => eprintln!("Bard unavailable: {e}"),
+                    Ok(()) => {
+                        let gaz = lore::build_gazetteer(&world_data, Some(h), master_seed);
+                        let library = h.library.take().unwrap_or_default();
+                        let queue = if args.bard_rewrite {
+                            // The same commissions, limited to what is already written, in queue order.
+                            let done: std::collections::HashSet<String> = library.writings.iter().map(|w| w.key.clone()).collect();
+                            lore::bard::commissions(&world_data, h, &gaz, &lore::bard::Library::default()).into_iter().filter(|c| done.contains(&c.key)).collect()
+                        } else {
+                            lore::bard::commissions(&world_data, h, &gaz, &library)
+                        };
+                        h.library = Some(library);
+                        let total = args.bard.min(queue.len());
+                        eprintln!("The bard ({}) will write {} pieces ({} commissions waiting)...", args.bard_model, total, queue.len());
+                        for (k, c) in queue.into_iter().take(total).enumerate() {
+                            let t0 = std::time::Instant::now();
+                            match bard.write(&c) {
+                                Ok(w) => {
+                                    eprintln!("  [{}/{}] {} \"{}\" ({}) in {:.0}s", k + 1, total, w.kind.label(), w.title, w.author_name, t0.elapsed().as_secs_f32());
+                                    let lib = h.library.get_or_insert_with(Default::default);
+                                    match lib.writings.iter_mut().find(|old| old.key == w.key) {
+                                        Some(old) => *old = w,
+                                        None => lib.writings.push(w),
+                                    }
+                                    // Keep what is written even if the run is interrupted.
+                                    if let Some(path) = &args.save_world {
+                                        if let Err(e) = world::save_world(&world_data, Some(h), std::path::Path::new(path)) {
+                                            eprintln!("  could not save: {e}");
+                                        }
+                                    }
+                                }
+                                Err(e) => eprintln!("  [{}/{}] {} failed: {}", k + 1, total, c.key, e),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     if args.resource_stats {
         let r = world_data.resources();
@@ -1308,6 +1421,19 @@ fn main() {
             eprintln!("Failed to export legends: {}", e);
         } else {
             eprintln!("Legends exported.");
+        }
+    }
+
+    if let Some(path) = &args.journal {
+        match history.as_ref() {
+            Some(h) => {
+                let gaz = lore::build_gazetteer(&world_data, Some(h), master_seed);
+                match lore::journal::write_journal(&world_data, h, &gaz, std::path::Path::new(path)) {
+                    Ok(()) => eprintln!("Wrote journal to {}", path),
+                    Err(e) => eprintln!("Failed to write journal: {}", e),
+                }
+            }
+            None => eprintln!("--journal needs a history: load a world saved with history, or add --history-years"),
         }
     }
 

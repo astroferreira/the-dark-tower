@@ -20,12 +20,137 @@ pub struct ZoomCamera {
     pub px_per_cell: f32,
 }
 
-const OFF_MAP: u32 = 0x0010_1014;
-const RIVER: [f32; 3] = [58.0, 118.0, 190.0];
-const FOAM: [f32; 3] = [210.0, 232.0, 240.0];
-const ICE: [f32; 3] = [196.0, 222.0, 238.0];
-const ROAD: [f32; 3] = [168.0, 132.0, 86.0];
-const ROAD_HALF_WIDTH: f32 = 0.05;
+const OFF_MAP: u32 = 0x002A_2420;
+const RIVER: [f32; 3] = [112.0, 148.0, 160.0];
+const ICE: [f32; 3] = [214.0, 224.0, 226.0];
+const ROAD: [f32; 3] = [136.0, 92.0, 60.0];
+const ROAD_HALF_WIDTH: f32 = 0.04;
+/// Ink colours shared with the atlas (sepia for land, blue-grey for water).
+const INK: [f32; 3] = [56.0, 42.0, 32.0];
+const SEA_INK: [f32; 3] = [40.0, 66.0, 82.0];
+/// Pale water band along coasts.
+const COAST_WASH: [f32; 3] = [172.0, 198.0, 192.0];
+
+/// Smooth value noise in [-1, 1] over world tiles, `freq` lattice cells per tile. `freq` must be
+/// a whole number so the noise wraps cleanly at the date line.
+#[inline]
+fn value_noise(tw: &TileWorld, wx: f32, wy: f32, freq: f32, seed: u64) -> f32 {
+    let period = (tw.width as f32 * freq) as i64;
+    let (x, y) = (wx * freq, wy * freq);
+    let (x0, y0) = (x.floor(), y.floor());
+    let (tx, ty) = (x - x0, y - y0);
+    let (sx, sy) = (tx * tx * (3.0 - 2.0 * tx), ty * ty * (3.0 - 2.0 * ty));
+    let lat = |dx: i64, dy: i64| {
+        let xi = (x0 as i64 + dx).rem_euclid(period) as u64;
+        let yi = (y0 as i64 + dy) as u64;
+        let mut h = xi.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ yi.wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ seed;
+        h ^= h >> 31;
+        h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        h ^= h >> 29;
+        (h & 0xFFFF) as f32 / 32767.5 - 1.0
+    };
+    let top = lat(0, 0) + (lat(1, 0) - lat(0, 0)) * sx;
+    let bot = lat(0, 1) + (lat(1, 1) - lat(0, 1)) * sx;
+    top + (bot - top) * sy
+}
+
+#[inline]
+fn tile_index(tw: &TileWorld, wx: f32, wy: f32) -> usize {
+    let tx = (wx.floor() as i64).rem_euclid(tw.width as i64) as usize;
+    let ty = (wy.floor().max(0.0) as usize).min(tw.height - 1);
+    ty * tw.width + tx
+}
+
+/// Smoothstep-weighted interpolation of a per-tile value between tile centres.
+#[inline]
+fn smooth_field(tw: &TileWorld, wx: f32, wy: f32, f: impl Fn(usize) -> f32) -> f32 {
+    let (fx, fy) = (wx - 0.5, (wy - 0.5).clamp(0.0, tw.height as f32 - 1.0));
+    let (x0, y0) = (fx.floor(), fy.floor());
+    let (tx, ty) = (fx - x0, fy - y0);
+    let (sx, sy) = (tx * tx * (3.0 - 2.0 * tx), ty * ty * (3.0 - 2.0 * ty));
+    let w = tw.width as i64;
+    let at = |dx: i64, dy: usize| {
+        let x = (x0 as i64 + dx).rem_euclid(w) as usize;
+        let y = (y0 as usize + dy).min(tw.height - 1);
+        f(y * tw.width + x)
+    };
+    let top = at(0, 0) + (at(1, 0) - at(0, 0)) * sx;
+    let bot = at(0, 1) + (at(1, 1) - at(0, 1)) * sx;
+    top + (bot - top) * sy
+}
+
+/// Smooth land indicator: 1 on land, 0 on water, with a little noise, so the 0.5 contour is a
+/// rounded, irregular coastline instead of a staircase.
+#[inline]
+fn land_field(tw: &TileWorld, wx: f32, wy: f32) -> f32 {
+    smooth_field(tw, wx, wy, |i| if tw.ground[i].is_water() { 0.0 } else { 1.0 })
+        + 0.16 * value_noise(tw, wx, wy, 3.0, 11)
+        + 0.04 * value_noise(tw, wx, wy, 6.0, 12)
+}
+
+/// Smooth water depth class (0 shallows/land, 1 sea, 2 deep ocean): its 1.5 contour is the
+/// drawn edge of the deep ocean.
+#[inline]
+fn depth_field(tw: &TileWorld, wx: f32, wy: f32) -> f32 {
+    use super::atlas::TileKind;
+    smooth_field(tw, wx, wy, |i| match tw.ground[i] {
+        TileKind::DeepOcean => 2.0,
+        TileKind::Ocean | TileKind::Lake => 1.0,
+        _ => 0.0,
+    }) + 0.3 * value_noise(tw, wx, wy, 2.0, 41) + 0.08 * value_noise(tw, wx, wy, 6.0, 42)
+}
+
+/// Domain warp shared by everything that should not follow tile edges (ground kinds, borders).
+#[inline]
+fn warp(tw: &TileWorld, wx: f32, wy: f32) -> (f32, f32) {
+    (
+        wx + 0.32 * value_noise(tw, wx, wy, 1.0, 31) + 0.1 * value_noise(tw, wx, wy, 3.0, 33),
+        wy + 0.32 * value_noise(tw, wx, wy, 1.0, 32) + 0.1 * value_noise(tw, wx, wy, 3.0, 34),
+    )
+}
+
+/// Ink line of `half` width (tiles) along the `level` contour of `field` at (wx, wy):
+/// returns coverage 0..1, using the field's numerical gradient for distance.
+#[inline]
+fn contour(field: impl Fn(f32, f32) -> f32, wx: f32, wy: f32, value: f32, level: f32, half: f32, t: f32) -> f32 {
+    let e = 0.03;
+    let gx = field(wx + e, wy) - field(wx - e, wy);
+    let gy = field(wx, wy + e) - field(wx, wy - e);
+    let grad = (gx * gx + gy * gy).sqrt() / (2.0 * e);
+    if grad < 1e-3 { return 0.0; }
+    let dist = (value - level).abs() / grad;
+    ((half - dist) * t + 0.5).clamp(0.0, 1.0)
+}
+
+/// Sample an atlas tile at (u, v). When the tile has more pixels than the screen cell, four
+/// sub-pixel samples are averaged (alpha-weighted), so thin ink lines fade instead of breaking up.
+#[inline]
+fn sample_tile(tile: &[[u8; 4]], s: usize, u: f32, v: f32, screen_px: f32) -> [f32; 4] {
+    let at = |u: f32, v: f32| {
+        let (x, y) = (((u * s as f32) as usize).min(s - 1), ((v * s as f32) as usize).min(s - 1));
+        tile[y * s + x]
+    };
+    if (s as f32) <= screen_px * 1.05 {
+        let p = at(u, v);
+        return [p[0] as f32, p[1] as f32, p[2] as f32, p[3] as f32];
+    }
+    let d = 0.25 / screen_px;
+    let mut acc = [0.0f32; 4];
+    for (du, dv) in [(-d, -d), (d, -d), (-d, d), (d, d)] {
+        let p = at((u + du).clamp(0.0, 0.9999), (v + dv).clamp(0.0, 0.9999));
+        let a = p[3] as f32;
+        for k in 0..3 { acc[k] += p[k] as f32 * a; }
+        acc[3] += a;
+    }
+    if acc[3] <= 0.0 { return [0.0; 4]; }
+    [acc[0] / acc[3], acc[1] / acc[3], acc[2] / acc[3], acc[3] / 4.0]
+}
+
+/// Faint world-anchored mottling, like uneven paper.
+#[inline]
+fn paper(tw: &TileWorld, wx: f32, wy: f32) -> f32 {
+    1.0 + 0.035 * value_noise(tw, wx, wy, 1.0, 21) + 0.02 * value_noise(tw, wx, wy, 4.0, 22)
+}
 
 #[inline]
 fn pack(c: [f32; 3]) -> u32 {
@@ -87,55 +212,116 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
             let u = wx - txf;
             let tx = (txf as i64).rem_euclid(tw.width as i64) as usize;
             let i = ty * tw.width + tx;
-            let shade = smooth_shade(tw, wx, wy);
+            // Relief shading, softened and warm: shadows lean sepia rather than grey.
+            let shade = 1.0 + (smooth_shade(tw, wx, wy) - 1.0) * 0.75;
+            let sh = [shade.powf(0.8), shade, shade.powf(1.25)];
 
+            let mottle = paper(tw, wx, wy);
             if !detailed {
                 let c = tw.color[i];
-                buf[sy * w + sx] = pack([c[0] as f32 * shade, c[1] as f32 * shade, c[2] as f32 * shade]);
+                let mut col = [0, 1, 2].map(|k| c[k] as f32 * sh[k] * mottle);
+                // Coastline ink even when zoomed far out.
+                if t >= 1.5 {
+                    let lf = land_field(tw, wx, wy);
+                    if (lf - 0.5).abs() < 0.45 {
+                        let cover = contour(|x, y| land_field(tw, x, y), wx, wy, lf, 0.5, 0.6 / t, t);
+                        col = mix(col, INK, 0.7 * cover);
+                    }
+                }
+                buf[sy * w + sx] = pack(col);
                 continue;
             }
 
+            // Land or water is decided by the smooth coastline field, not by the tile square.
+            let lf = land_field(tw, wx, wy);
+            let is_land = lf >= 0.5;
+            // The ground kind comes from a slightly warped position, so borders between biomes
+            // (and between ocean depths) meander instead of following tile edges.
+            let g = {
+                let (warp_x, warp_y) = warp(tw, wx, wy);
+                let j = tile_index(tw, warp_x, warp_y);
+                if tw.ground[j].is_water() != is_land {
+                    j
+                } else if tw.ground[i].is_water() != is_land {
+                    i
+                } else {
+                    // Nearest tile of the right class around this one.
+                    let mut best = (f32::MAX, i);
+                    for oy in -1i64..=1 {
+                        let ny = ty as i64 + oy;
+                        if ny < 0 || ny >= tw.height as i64 { continue; }
+                        for ox in -1i64..=1 {
+                            let nx = (tx as i64 + ox).rem_euclid(tw.width as i64) as usize;
+                            let k = ny as usize * tw.width + nx;
+                            if tw.ground[k].is_water() == is_land { continue; }
+                            let d = (u - 0.5 - ox as f32).powi(2) + (v - 0.5 - oy as f32).powi(2);
+                            if d < best.0 { best = (d, k); }
+                        }
+                    }
+                    best.1
+                }
+            };
+
+            // Open water takes its depth class from the smooth depth field, so the deep-ocean edge
+            // is a drawn contour rather than a staircase of tiles.
+            let depth = if is_land { 0.0 } else { depth_field(tw, wx, wy) };
+            let ground = match tw.ground[g] {
+                TileKind::DeepOcean | TileKind::Ocean | TileKind::Shallows => {
+                    if depth >= 1.5 { TileKind::DeepOcean } else if depth >= 0.5 { TileKind::Ocean } else { TileKind::Shallows }
+                }
+                k => k,
+            };
             let var = tw.variant[i] as usize;
-            let (gt, gs) = atlas.tile_for(tw.ground[i], var, src_px);
+            let (gt, gs) = atlas.tile_for(ground, var, src_px);
             let (gx, gy) = (((u * gs as f32) as usize).min(gs - 1), ((v * gs as f32) as usize).min(gs - 1));
-            let gp = gt[gy * gs + gx];
-            let tint = tw.season_tint[i];
-            let mut col = [gp[0] as f32 * shade * tint[0], gp[1] as f32 * shade * tint[1], gp[2] as f32 * shade * tint[2]];
-            let frozen = tw.season_frozen[i];
-            let snow = tw.season_snow[i];
-            if frozen && tw.ground[i].is_water() {
+            let gp = sample_tile(gt, gs, u, v, t);
+            // Seasonal tint and snow blend smoothly between tiles (with a ragged edge for snow).
+            let tint = [0, 1, 2].map(|k| smooth_field(tw, wx, wy, |n| tw.season_tint[n][k]));
+            let mut col = [0, 1, 2].map(|k| gp[k] * sh[k] * tint[k]);
+            let frozen = tw.season_frozen[g];
+            let snow = if is_land {
+                let s = smooth_field(tw, wx, wy, |n| tw.season_snow[n]);
+                if s > 0.0 { (s + 0.25 * value_noise(tw, wx, wy, 4.0, 51)).clamp(0.0, 1.0) } else { 0.0 }
+            } else {
+                0.0
+            };
+            if frozen && tw.ground[g].is_water() {
                 col = mix(col, ICE, 0.78);
             } else if snow > 0.0 {
                 // Snow settles in a light, slightly mottled layer.
                 let mottle = 0.9 + 0.1 * (((tx * 7 + ty * 13 + gx * 3 + gy * 5) % 5) as f32 / 4.0);
-                col = mix(col, [236.0 * shade.min(1.1), 242.0 * shade.min(1.1), 250.0 * shade.min(1.1)], (snow * 0.88 * mottle).min(0.95));
+                col = mix(col, [240.0 * sh[0].min(1.1), 238.0 * sh[1].min(1.1), 232.0 * sh[2].min(1.1)], (snow * 0.88 * mottle).min(0.95));
             }
 
-            // Coastline foam on water tiles next to land.
-            let shore = tw.shore[i];
-            if shore != 0 {
-                let mut d = f32::MAX;
-                for (b, dir) in DIRS.iter().enumerate() {
-                    if shore & (1 << b) == 0 { continue; }
-                    let dist = match dir {
-                        (0, -1) => v,
-                        (1, 0) => 1.0 - u,
-                        (0, 1) => 1.0 - v,
-                        (-1, 0) => u,
-                        (dx, dy) => {
-                            let cx = if *dx > 0 { 1.0 } else { 0.0 };
-                            let cy = if *dy > 0 { 1.0 } else { 0.0 };
-                            ((u - cx).powi(2) + (v - cy).powi(2)).sqrt()
+            // Coastline: an ink line along the smooth shore, a pale wash and two ripple lines
+            // offshore, as on an engraved map.
+            if (lf - 0.5).abs() < 0.45 {
+                let e = 0.03;
+                let gxd = land_field(tw, wx + e, wy) - land_field(tw, wx - e, wy);
+                let gyd = land_field(tw, wx, wy + e) - land_field(tw, wx, wy - e);
+                let grad = (gxd * gxd + gyd * gyd).sqrt() / (2.0 * e);
+                if grad > 1e-3 {
+                    let dist = (lf - 0.5) / grad; // tiles, positive on land
+                    if !is_land {
+                        let off = -dist;
+                        if off < 0.3 { col = mix(col, COAST_WASH, 0.5 * (1.0 - off / 0.3)); }
+                        if t >= 8.0 {
+                            for (k, a) in [(1.0f32, 0.6f32), (2.0, 0.38)] {
+                                let cover = (0.85 - (off - 0.13 * k).abs() * t).clamp(0.0, 1.0);
+                                if cover > 0.0 { col = mix(col, SEA_INK, a * cover); }
+                            }
                         }
-                    };
-                    d = d.min(dist);
+                    }
+                    let half = (0.7 / t).max(0.018);
+                    let cover = ((half - dist.abs()) * t + 0.5).clamp(0.0, 1.0);
+                    if cover > 0.0 { col = mix(col, INK, 0.85 * cover); }
                 }
-                let wobble = 0.03 * ((u * 17.0 + v * 11.0 + tx as f32 * 3.1).sin());
-                if d < 0.10 + wobble {
-                    col = mix(col, FOAM, 0.75);
-                } else if d < 0.18 + wobble {
-                    col = mix(col, FOAM, 0.25);
-                }
+            }
+
+            // Faint ink contour along the edge of the deep ocean.
+            if !is_land && t >= 6.0 && (depth - 1.5).abs() < 0.4 {
+                let cover = contour(|x, y| depth_field(tw, x, y), wx, wy, depth, 1.5, (0.5 / t).max(0.012), t);
+                if cover > 0.0 { col = mix(col, SEA_INK, 0.35 * cover); }
             }
 
             // River channel, drawn under sprites so trees overhang it. Strokes from the 8
@@ -159,6 +345,12 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                     }
                 }
                 let aa = 1.0 / t;
+                // Ink banks a little outside the channel, then the water on top.
+                let bank = (0.8 / t).min(0.04);
+                let ink_cover = ((aa - (edge - bank)) / (2.0 * aa)).clamp(0.0, 1.0);
+                if ink_cover > 0.0 && is_land {
+                    col = mix(col, INK, 0.75 * ink_cover);
+                }
                 let cover = ((aa - edge) / (2.0 * aa)).clamp(0.0, 1.0);
                 if cover > 0.0 {
                     col = mix(col, if frozen { ICE } else { RIVER }, cover);
@@ -183,39 +375,37 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                 }
                 let aa = 1.0 / t;
                 let cover = ((aa - edge) / (2.0 * aa)).clamp(0.0, 1.0);
-                if cover > 0.0 && !tw.ground[i].is_water() {
-                    col = mix(col, ROAD, cover * 0.9);
+                if cover > 0.0 && is_land {
+                    col = mix(col, ROAD, cover * 0.85);
                 }
             }
 
-            // Territory borders: a dotted line along edges between different owners.
-            let own = tw.owner[i];
-            if own != u64::MAX && t >= 10.0 {
-                let band = (1.6 / t).max(0.06);
-                let mut border = false;
-                for (dx, dy, near) in [(-1i64, 0i64, u < band), (1, 0, u > 1.0 - band), (0, -1, v < band), (0, 1, v > 1.0 - band)] {
-                    if !near { continue; }
-                    let ny = ty as i64 + dy;
-                    if ny < 0 || ny >= tw.height as i64 { continue; }
-                    let nx = (tx as i64 + dx).rem_euclid(tw.width as i64) as usize;
-                    if tw.owner[ny as usize * tw.width + nx] != own { border = true; }
-                }
-                let dot = (((u + v) * t) as i64 / 2) % 2 == 0;
+            // Territory borders: a dotted line where the owner changes, sampled through the same
+            // warp as the ground so borders meander like the biomes do.
+            if is_land && t >= 10.0 {
+                let owner_at = |x: f32, y: f32| {
+                    let (a, b) = warp(tw, x, y);
+                    tw.owner[tile_index(tw, a, b)]
+                };
+                let own = owner_at(wx, wy);
+                let band = (1.2 / t).max(0.03);
+                let border = own != u64::MAX
+                    && [(band, 0.0), (-band, 0.0), (0.0, band), (0.0, -band)].iter().any(|&(dx, dy)| owner_at(wx + dx, wy + dy) != own);
+                let dot = (((wx + wy) * t) as i64 / 3) % 2 == 0;
                 if border && dot {
                     let c = super::classify::faction_color(own);
-                    col = mix(col, [((c >> 16) & 255) as f32, ((c >> 8) & 255) as f32, (c & 255) as f32], 0.85);
+                    col = mix(col, [((c >> 16) & 255) as f32, ((c >> 8) & 255) as f32, (c & 255) as f32], 0.7);
                 }
             }
 
-            if let Some(sp) = tw.sprite[i] {
+            if let Some(sp) = tw.sprite[i].filter(|_| is_land || tw.ground[i].is_water()) {
                 let (st, ss) = atlas.tile_for(sp, var, src_px);
-                let (px, py) = (((u * ss as f32) as usize).min(ss - 1), ((v * ss as f32) as usize).min(ss - 1));
-                let p = st[py * ss + px];
-                if p[3] > 0 {
-                    let a = p[3] as f32 / 255.0;
-                    let mut sc = [p[0] as f32 * shade * tint[0], p[1] as f32 * shade * tint[1], p[2] as f32 * shade * tint[2]];
+                let p = sample_tile(st, ss, u, v, t);
+                if p[3] > 0.0 {
+                    let a = p[3] / 255.0;
+                    let mut sc = [0, 1, 2].map(|k| p[k] * sh[k] * tint[k]);
                     // Trees and rooftops carry some snow too.
-                    if snow > 0.0 { sc = mix(sc, [240.0, 244.0, 250.0], snow * 0.45); }
+                    if snow > 0.0 { sc = mix(sc, [240.0, 238.0, 232.0], snow * 0.45); }
                     col = mix(col, sc, a);
                 }
             }
@@ -231,7 +421,7 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                 }
             }
 
-            buf[sy * w + sx] = pack(col);
+            buf[sy * w + sx] = pack([col[0] * mottle, col[1] * mottle, col[2] * mottle]);
         }
     }
 }
@@ -516,6 +706,29 @@ pub fn render_local(map: &LocalMap, atlas: &Atlas, cam: &LocalCamera, buf: &mut 
                     let q = tile_px(atlas, sp, var, u, v, src_px);
                     if q[3] > 0 {
                         c = mix(c, [q[0] as f32, q[1] as f32, q[2] as f32], q[3] as f32 / 255.0);
+                    }
+                }
+                // Animal signs on the surface.
+                if draw_z == sz {
+                    use crate::local::wildlife::Feature;
+                    let mark = match map.features[col_i] {
+                        Feature::None => None,
+                        Feature::Trail => {
+                            // Trodden earth whatever the soil, a little of the ground showing through.
+                            let d = tile_px(atlas, TileKind::Dirt, var, u, v, src_px);
+                            c = mix(c, [d[0] as f32 * 0.92, d[1] as f32 * 0.9, d[2] as f32 * 0.86], 0.75);
+                            None
+                        }
+                        Feature::Burrow => Some(TileKind::Burrow),
+                        Feature::Nest => Some(TileKind::Nest),
+                        Feature::Den => Some(TileKind::Den),
+                        Feature::Bones => Some(TileKind::Bones),
+                    };
+                    if let Some(k) = mark {
+                        let q = tile_px(atlas, k, var, u, v, src_px);
+                        if q[3] > 0 {
+                            c = mix(c, [q[0] as f32, q[1] as f32, q[2] as f32], q[3] as f32 / 255.0);
+                        }
                     }
                 }
                 c

@@ -1,5 +1,5 @@
-//! Bitmap text for map labels (8x8 public-domain font), with a dark outline for legibility
-//! over any terrain.
+//! Bitmap text for map labels (8x8 public-domain font): ink lettering with a parchment halo
+//! for legibility over any terrain.
 
 use font8x8::legacy::BASIC_LEGACY;
 
@@ -47,6 +47,9 @@ pub fn draw_text(buf: &mut [u32], w: usize, h: usize, x: i64, y: i64, text: &str
     }
 }
 
+/// Parchment halo behind the ink lettering.
+const LABEL_HALO: u32 = 0x00EE_E4CC;
+
 /// A label to place on the map, in world-tile coordinates.
 #[derive(Clone, Debug)]
 pub struct Label {
@@ -75,7 +78,7 @@ pub fn place_labels(labels: &[Label], tile_px: f32, w: usize, h: usize, buf: &mu
         let pad = 4;
         let hit = placed.iter().any(|&(a, b, c, d)| x0 - pad < c && x0 + tw + pad > a && y0 - pad < d && y0 + th + pad > b);
         if hit { continue; }
-        draw_text(buf, w, h, x0, y0, &l.text, l.color, 0x0010_1010, scale);
+        draw_text(buf, w, h, x0, y0, &l.text, l.color, LABEL_HALO, scale);
         placed.push((x0, y0, x0 + tw, y0 + th));
     }
 }

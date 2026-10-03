@@ -89,6 +89,15 @@ pub enum EventType {
 
     /// Catch-all for data-driven event types not yet mapped.
     Other,
+
+    // Ecology (appended so older saved histories still decode)
+    ForestCleared,
+    GameScarce,
+    WildlifeReturned,
+    /// History turned a patch of land into an anomalous biome (bone fields, ash, ...).
+    LandScarred,
+    /// Written by the director (an LLM) at a turning point, with real consequences.
+    Authored,
 }
 
 impl EventType {

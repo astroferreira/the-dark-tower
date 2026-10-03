@@ -90,6 +90,16 @@ pub struct WorldHistory {
     // Economy
     pub trade_routes: HashMap<TradeRouteId, TradeRoute>,
 
+    /// Forests, farmland and wildlife. Saved separately in world files (older saves lack it).
+    #[serde(skip)]
+    pub ecology: Option<crate::history::ecology::Ecology>,
+    /// Songs, poems, legends and lore written by the bard (saved separately in world files).
+    #[serde(skip)]
+    pub library: Option<crate::lore::bard::Library>,
+    /// The director's authored events and plot threads (saved separately in world files).
+    #[serde(skip)]
+    pub tales: Option<crate::history::director::Tales>,
+
     // ID generators (not serialized - rebuilt from max IDs on load)
     #[serde(skip)]
     pub id_generators: IdGenerators,
@@ -122,6 +132,9 @@ impl WorldHistory {
             artifacts: HashMap::new(),
             monuments: HashMap::new(),
             trade_routes: HashMap::new(),
+            ecology: None,
+            library: None,
+            tales: None,
             id_generators: IdGenerators::new(),
         }
     }

@@ -5,10 +5,14 @@ Remaining work, roughly in priority order. "Phase" letters refer to the richness
 anomalies, E adventurer). A and C are done.
 
 ## Phase D: ecology and anomalies with causes
-- [ ] Species populations with biome ranges, predators/prey, migration (scaffold: `history/creatures/populations.rs`).
-- [ ] Visible feedback over time: forests shrink around cities, farmland spreads, game vanishes near big towns, wolves return to ruins.
-- [ ] Replace dice-rolled fantasy biomes with caused ones: dragon lair scorches forest to ashlands, battlefields become bone fields, dead gods leave titan bones, collapsed towers leave crystal wastelands. Each anomaly should link to a chronicle event.
-- [ ] Embark-scale signs of life: animal trails to water, burrows, nests, bones.
+- [x] Species populations with biome ranges, predators/prey, migration (`history/ecology.rs`: 9 species on the world grid, stepped yearly).
+- [x] Visible feedback over time: forests shrink around cities, farmland spreads, game vanishes near big towns, wolves return to ruins (map tiles, hover, chronicle).
+- [x] Replace dice-rolled fantasy biomes with caused ones (bone fields, titan bones, ashlands / dead / crystal woods at lairs, crystal wastes at fallen towers, overgrown ruins), each linked to a chronicle event.
+- [x] Embark-scale signs of life: animal trails to water, burrows, nests, dens, bones.
+- [ ] Ecology does not feed back into settlements yet (scarce game / felled forests don't change growth or timber).
+- [ ] Old `history/creatures/populations.rs` (legendary-led monster populations) is separate from the ecology species; merge or retire it.
+- [ ] Only some anomaly biomes have causes; the rest of `is_caused_biome` (void scars, ley nexus, spore wastes, ...) never appear with a history. No deities die, so "dead gods leave titan bones" uses slain giant beasts instead.
+- [ ] Seasonal migration (herds moving between summer and winter ranges) and per-species map markers.
 
 ## Phase B: living world (deferred by request)
 - [ ] World clock: history keeps stepping while the viewer runs (pause / speed controls).

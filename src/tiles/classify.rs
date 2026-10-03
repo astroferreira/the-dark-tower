@@ -52,10 +52,10 @@ pub struct TileWorld {
     pub show_resources: bool,
 }
 
-/// Distinct, muted colour for a faction's border.
+/// Distinct, muted colour for a faction's border (ink-like, to sit on the parchment palette).
 pub fn faction_color(id: u64) -> u32 {
     let hue = (hash(id as usize, 7) % 360) as f32;
-    let (r, g, b) = hsv(hue, 0.65, 0.95);
+    let (r, g, b) = hsv(hue, 0.55, 0.72);
     ((r as u32) << 16) | ((g as u32) << 8) | b as u32
 }
 
@@ -99,6 +99,10 @@ fn land_tiles(biome: ExtendedBiome, sparse: bool) -> (TileKind, Option<TileKind>
         DeadForest | PetrifiedForest => (T::Tundra, Some(T::DeadTree)),
         MushroomForest | BioluminescentForest => (T::JungleFloor, Some(T::Mushroom)),
         CrystalForest | CrystalWasteland => (T::Rock, Some(T::Crystal)),
+        BoneFields => (T::Tundra, Some(T::Bones)),
+        TitanBones => (T::Rock, Some(T::TitanBones)),
+        OvergrownCitadel => (T::JungleFloor, Some(T::Ruins)),
+        CyclopeanRuins => (T::Rock, Some(T::Ruins)),
         _ => match get_biome_family(biome).0 {
             BiomeFamily::Polar => (T::Snow, None),
             BiomeFamily::Boreal => (T::Grass, tree(T::Conifer)),
@@ -493,6 +497,41 @@ impl TileWorld {
                 }
             }
         }
+        // Ecology: fields around settlements, forests cleared or thinned.
+        if let Some(eco) = &history.ecology {
+            for i in 0..w * h {
+                if tw_is_water(self.ground[i]) { continue; }
+                let settled = matches!(self.sprite[i], Some(TileKind::Village | TileKind::Town | TileKind::City | TileKind::Castle | TileKind::Ruins));
+                let tree = matches!(self.sprite[i], Some(TileKind::Conifer | TileKind::Deciduous | TileKind::Jungle | TileKind::Palm | TileKind::Acacia));
+                let pot = eco.forest_potential[i];
+                let cover = if pot > 0.05 { eco.forest[i] / pot } else { 1.0 };
+                let mut changed = false;
+                if eco.farmland[i] > 0.4 && !settled && !matches!(self.ground[i], TileKind::Snow | TileKind::Sand | TileKind::Salt) {
+                    self.ground[i] = TileKind::Fields;
+                    if tree { self.sprite[i] = None; }
+                    changed = true;
+                } else if tree && cover < 0.3 {
+                    self.sprite[i] = None;
+                    changed = true;
+                } else if tree && cover < 0.6 && (hash(i % w, i / w) >> 7) % 2 == 0 {
+                    self.sprite[i] = Some(TileKind::Shrub);
+                    changed = true;
+                }
+                if changed && !settled {
+                    let v = self.variant[i] as usize;
+                    let mut col = atlas.average(self.ground[i], v);
+                    if let Some(sp) = self.sprite[i] {
+                        let sc = atlas.average(sp, v);
+                        col = [0, 1, 2].map(|k| ((col[k] as u16 + sc[k] as u16) / 2) as u8);
+                    }
+                    self.color[i] = col;
+                }
+            }
+        }
         let _ = world;
     }
+}
+
+fn tw_is_water(k: TileKind) -> bool {
+    k.is_water() || k == TileKind::SeaIce
 }

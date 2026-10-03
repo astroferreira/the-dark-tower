@@ -17,6 +17,7 @@
 //! generates the same way (neighbouring embarks would match).
 
 pub mod structures;
+pub mod wildlife;
 
 use noise::{NoiseFn, Perlin};
 
@@ -124,6 +125,8 @@ pub struct LocalMap {
     pub world_tile: (usize, usize),
     /// Biome at the centre (for display).
     pub biome: Biome,
+    /// Signs of animal life on each column's surface (trails, burrows, nests, dens, bones).
+    pub features: Vec<wildlife::Feature>,
 }
 
 impl LocalMap {
@@ -447,6 +450,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         surface_m: cols.iter().map(|c| c.e).collect(),
         world_tile,
         biome: Biome::classify(cols[n * n / 2 + n / 2].e, cols[n * n / 2 + n / 2].temp, cols[n * n / 2 + n / 2].moist),
+        features: vec![wildlife::Feature::None; n * n],
     };
 
     for j in 0..n {
@@ -572,6 +576,12 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     // What history left here: settlements, ruins, fields and roads.
     if let Some(lore) = lore {
         structures::apply(&mut map, region, lore, cx, cy);
+        // Animals: trails, burrows, nests, dens (keyed on absolute 2 m tile position).
+        let origin = (
+            ((ox_m + (cx - n as f64 / 2.0 * tile_cells) * cell_m) / TILE_M as f64).round() as i64,
+            ((oy_m + (cy - n as f64 / 2.0 * tile_cells) * cell_m) / TILE_M as f64).round() as i64,
+        );
+        wildlife::apply(&mut map, world, lore, origin);
     }
 
     // Ramps: a floor next to ground exactly one level higher leads up (DF style).

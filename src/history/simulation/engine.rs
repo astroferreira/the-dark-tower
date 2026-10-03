@@ -20,6 +20,8 @@ use super::step::simulate_step;
 /// The history simulation engine.
 pub struct HistoryEngine {
     pub rng: ChaCha8Rng,
+    /// Optional LLM director that authors events at turning points (see `history::director`).
+    pub director: Option<crate::history::director::Director>,
 }
 
 impl HistoryEngine {
@@ -27,6 +29,7 @@ impl HistoryEngine {
     pub fn new(seed: u64) -> Self {
         Self {
             rng: ChaCha8Rng::seed_from_u64(seed),
+            director: None,
         }
     }
 
@@ -54,6 +57,9 @@ impl HistoryEngine {
         // Run simulation steps
         for step in 0..total_steps {
             simulate_step(&mut history, world, game_data, &mut self.rng);
+            if let Some(d) = self.director.as_mut() {
+                d.step(&mut history, world, game_data, &mut self.rng);
+            }
 
             // Progress reporting every 100 years
             if step > 0 && step % 400 == 0 {
@@ -68,12 +74,29 @@ impl HistoryEngine {
             }
         }
 
+        if let Some(d) = self.director.as_ref() {
+            history.tales = Some(d.tales.clone());
+            eprintln!("Director: {} events authored, {} threads opened ({} resolved), {} failed calls",
+                d.tales.authored.len(), d.tales.threads.len(), d.tales.threads.iter().filter(|t| t.resolved.is_some()).count(), d.failures);
+        }
+
         // Define eras from major events
         self.define_eras(&mut history);
 
         // Compute and print quality metrics
         let metrics = SimulationMetrics::compute(&history);
         eprintln!("{}", metrics.report());
+        if let Some(eco) = &history.ecology {
+            use crate::history::events::types::EventType;
+            let count = |k: EventType| history.chronicle.events.iter().filter(|e| e.event_type == k).count();
+            eprintln!(
+                "{}\n  chronicle: {} forests felled, {} hunting grounds emptied, {} ruins reclaimed by the wild",
+                eco.summary(),
+                count(EventType::ForestCleared),
+                count(EventType::GameScarce),
+                count(EventType::WildlifeReturned)
+            );
+        }
 
         history
     }
@@ -90,6 +113,9 @@ impl HistoryEngine {
 
         for step in 0..total_steps {
             simulate_step(&mut history, world, game_data, &mut self.rng);
+            if let Some(d) = self.director.as_mut() {
+                d.step(&mut history, world, game_data, &mut self.rng);
+            }
 
             if step > 0 && step % 400 == 0 {
                 let year = history.current_date.year;
