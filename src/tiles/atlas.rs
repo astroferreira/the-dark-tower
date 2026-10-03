@@ -71,9 +71,10 @@ pub enum TileKind {
     BlockWall,
     WoodFloor,
     Crops,
+    OreWall,
 }
 
-pub const ALL_KINDS: [TileKind; 50] = [
+pub const ALL_KINDS: [TileKind; 51] = [
     TileKind::DeepOcean, TileKind::Ocean, TileKind::Shallows, TileKind::Lake, TileKind::SeaIce,
     TileKind::Grass, TileKind::Steppe, TileKind::Savanna, TileKind::Sand, TileKind::Salt,
     TileKind::Tundra, TileKind::Snow, TileKind::Swamp, TileKind::JungleFloor, TileKind::Rock,
@@ -86,6 +87,7 @@ pub const ALL_KINDS: [TileKind; 50] = [
     TileKind::BigBroadleaf, TileKind::BigConifer, TileKind::BigJungle,
     TileKind::Village, TileKind::Town, TileKind::City, TileKind::Castle,
     TileKind::WoodWall, TileKind::BlockWall, TileKind::WoodFloor, TileKind::Crops,
+    TileKind::OreWall,
 ];
 
 impl TileKind {
@@ -155,6 +157,7 @@ impl TileKind {
             BlockWall => (219, [190, 186, 178], [70, 68, 64]),
             WoodFloor => (43, [170, 120, 70], [100, 68, 38]),
             Crops => (34, [210, 190, 90], [0, 0, 0]),
+            OreWall => (219, [150, 146, 140], [40, 38, 36]),
         }
     }
 }
@@ -730,6 +733,23 @@ fn paint(kind: TileKind, c: &mut Canvas) {
                 }
             }
             c.hline(0, s - 1, 0, rgb(176, 124, 74));
+        }
+        OreWall => {
+            // Rough rock with bright flecks; the renderer recolours the near-white pixels.
+            for y in 0..s {
+                for x in 0..s {
+                    let facet = ((x / 4 + y / 5 * 3) % 3) as u8;
+                    let v = [124u8, 108, 94][facet as usize];
+                    c.set(x, y, rgb(v, v - 3, v - 8));
+                }
+            }
+            for _ in 0..9 {
+                let (x, y) = (c.range(1, s - 3), c.range(1, s - 3));
+                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    if c.chance(0.8) { c.set(x + dx, y + dy, rgb(255, 255, 255)); }
+                }
+            }
+            c.hline(0, s - 1, 0, rgb(150, 146, 140));
         }
         BlockWall => {
             // Coursed ashlar: offset rows of blocks.

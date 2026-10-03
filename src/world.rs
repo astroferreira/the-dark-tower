@@ -79,9 +79,17 @@ pub struct WorldData {
     pub lava_map: Option<Tilemap<LavaState>>,
     /// List of volcano locations
     pub volcanoes: Vec<VolcanoLocation>,
+    /// Resources derived from geology (computed on first use, never serialized).
+    #[serde(skip)]
+    resources: std::sync::OnceLock<crate::lore::ResourceMap>,
 }
 
 impl WorldData {
+    /// Ore deposits, farmland, timber and fish, derived from the world (cached).
+    pub fn resources(&self) -> &crate::lore::ResourceMap {
+        self.resources.get_or_init(|| crate::lore::compute_resources(self))
+    }
+
     /// Convenience accessor for master seed
     pub fn seed(&self) -> u64 {
         self.seeds.master
@@ -137,6 +145,7 @@ impl WorldData {
             underground_water: None,
             lava_map: None,
             volcanoes: Vec::new(),
+            resources: std::sync::OnceLock::new(),
         }
     }
 
@@ -194,6 +203,7 @@ impl WorldData {
             underground_water,
             lava_map: None,
             volcanoes: Vec::new(),
+            resources: std::sync::OnceLock::new(),
         }
     }
 
@@ -696,6 +706,7 @@ pub fn generate_test_world() -> WorldData {
         underground_water: None,
         lava_map: None,
         volcanoes: Vec::new(),
+        resources: std::sync::OnceLock::new(),
     }
 }
 

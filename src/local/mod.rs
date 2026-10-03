@@ -57,6 +57,8 @@ pub enum Material {
     Wood,
     /// Constructed: dressed stone blocks.
     Block(RockType),
+    /// Ore vein in the rock.
+    Ore(crate::history::civilizations::economy::ResourceType),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -294,6 +296,45 @@ fn river_segments(region: &ZoomRegion, cx: f64, cy: f64, radius: i64) -> Vec<Riv
     segs
 }
 
+/// An ore that can occur around an embark: strength 0..1 falls with distance and grows with
+/// richness.
+struct VeinSource {
+    kind: crate::history::civilizations::economy::ResourceType,
+    strength: f32,
+    noise: Perlin,
+}
+
+fn vein_sources(world: &WorldData, tile: (usize, usize), params: &crate::region::zoom::ZoomParams) -> Vec<VeinSource> {
+    let res = world.resources();
+    let mut best: Vec<(crate::history::civilizations::economy::ResourceType, f32)> = Vec::new();
+    for d in res.deposits_near(tile.0, tile.1, 3, world.width) {
+        let dx = (d.x as i64 - tile.0 as i64).abs();
+        let dx = dx.min(world.width as i64 - dx) as f32;
+        let dist = (dx * dx + (d.y as f32 - tile.1 as f32).powi(2)).sqrt();
+        let strength = d.richness as f32 / (1.0 + dist * 1.2);
+        match best.iter_mut().find(|b| b.0 == d.kind) {
+            Some(b) => b.1 = b.1.max(strength),
+            None => best.push((d.kind, strength)),
+        }
+    }
+    best.into_iter()
+        .map(|(kind, strength)| VeinSource { kind, strength, noise: Perlin::new((params.seed as u32).wrapping_add(900 + kind as u32 * 7)) })
+        .collect()
+}
+
+/// Which ore, if any, fills this rock cell: thin, mostly horizontal seams (like real veins and
+/// beds) where the noise field rises above a threshold that falls with source strength.
+fn ore_vein(veins: &[VeinSource], rock: RockType, mx: f64, my: f64, z: usize) -> Option<crate::history::civilizations::economy::ResourceType> {
+    for v in veins {
+        let hosts = crate::lore::resources::host_rocks(v.kind);
+        if !hosts.is_empty() && !hosts.contains(&rock) { continue; }
+        let n = v.noise.get([mx / 38.0, my / 38.0, z as f64 * 0.55]) as f32;
+        let thr = 0.74 - 0.14 * v.strength.min(2.0);
+        if n > thr { return Some(v.kind); }
+    }
+    None
+}
+
 // ---------------------------------------------------------------------------------------------
 // Generation
 // ---------------------------------------------------------------------------------------------
@@ -320,6 +361,9 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     let strata_noise = Perlin::new(seed.wrapping_add(705));
 
     let segments = river_segments(region, cx, cy, 3);
+
+    // Ore deposits within a couple of world tiles feed veins in the rock below.
+    let veins = vein_sources(world, world_tile, &region.params);
 
     // Per-column surface, water level and climate.
     struct Col { e: f32, water_level: Option<f32>, temp: f32, moist: f32, slope: f32, river_d: f32, river_hw: f32, sea: bool }
@@ -451,6 +495,11 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
                         d -= layer.thickness as i32;
                     }
                     Material::Rock(rock)
+                };
+                // Ore veins in host rock, thicker the closer and richer the nearest deposit.
+                let material = match material {
+                    Material::Rock(rock) => ore_vein(&veins, rock, mx, my, z as usize).map(Material::Ore).unwrap_or(material),
+                    other => other,
                 };
                 let k = map.idx(i, j, z as usize);
                 map.cells[k] = Cell { shape: Shape::Wall, material, water: 0, plant: Plant::None, boulder: false };

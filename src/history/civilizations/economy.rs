@@ -36,6 +36,10 @@ pub enum ResourceType {
     DragonScale,
     MonsterBones,
     Ichor,
+    // Added later: appended so older save files still deserialize.
+    Coal,
+    Tin,
+    Fish,
 }
 
 impl ResourceType {
@@ -96,7 +100,9 @@ impl ResourceType {
     pub fn base_value(&self) -> u32 {
         match self {
             ResourceType::Food | ResourceType::Wood | ResourceType::Stone => 1,
-            ResourceType::Iron | ResourceType::Copper | ResourceType::Salt => 3,
+            ResourceType::Iron | ResourceType::Copper | ResourceType::Salt | ResourceType::Coal => 3,
+            ResourceType::Tin => 4,
+            ResourceType::Fish => 2,
             ResourceType::Herbs | ResourceType::Wine | ResourceType::Spices => 5,
             ResourceType::Gold | ResourceType::Silver => 8,
             ResourceType::Silk | ResourceType::Gems => 10,

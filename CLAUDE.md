@@ -54,6 +54,25 @@ OPTIONS:
 - **Plates** - Tectonic plate boundaries
 - **Stress** - Tectonic stress (mountain building)
 
+### Resources and history (`lore/resources.rs`, `history/simulation`)
+- `world.resources()` (lazy, never serialized) derives the world's wealth from its geology:
+  copper/gold/silver/gems in high-stress arcs and orogens and around volcanoes, tin and silver in
+  granite uplands, iron in hard rock belts, coal in wet sedimentary lowlands, salt in dry basins;
+  plus farmland (water, warmth, flat ground, floodplains, volcanic soil), timber and fish.
+  `--resource-stats` prints the mix (metals average stress +0.4, coal/salt ~0).
+- History uses it: settlement sites score fertility and nearby ore; `apply_local_economy` sets
+  each settlement's local resources, production, carrying capacity and growth; trade partners
+  and goods are chosen by what each side has and the other lacks; faction income includes
+  extraction; resource envy between neighbours adds friction, produces "dispute over iron"
+  incidents and Resource wars. `--civilizations N` (default 60) sets the founding powers.
+- Settlements are founded (colonization from crowded towns), conquered, razed or abandoned, so
+  ruins exist. Sieges launched when a war ends now carry on after it (they used to be lifted
+  instantly). Disasters take a fraction of a settlement, not a flat number.
+- Visible: the tile viewer's `R` toggles ore markers (size = richness); hover names deposits,
+  farmland and fishing grounds; embarks contain ore veins (`Material::Ore`, recoloured flecks) in
+  host rock near deposits.
+- `ResourceType` gained Coal/Tin/Fish at the *end* of the enum (bincode-compatible with old saves).
+
 ### Saving worlds
 - `--save-world worlds/x.world` writes the generated world plus any simulated history (bincode,
   ~170 MB at 512x256); `--load-world worlds/x.world` loads it in ~0.1 s instead of regenerating

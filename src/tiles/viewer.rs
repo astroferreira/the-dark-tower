@@ -125,6 +125,14 @@ fn describe_tile(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazett
     }
     let place = gaz.describe(x, y);
     if !place.is_empty() { parts.push(place); }
+    let res = world.resources();
+    for d in res.deposits_at(x, y) {
+        let q = ["poor", "good", "rich"][(d.richness - 1) as usize];
+        parts.push(format!("{} {} deposit", q, crate::lore::resource_name(d.kind)));
+    }
+    let (fert, fish) = (*res.fertility.get(x, y), *res.fish.get(x, y));
+    if fert > 0.6 { parts.push("rich farmland".to_string()); } else if fert > 0.35 { parts.push("farmland".to_string()); }
+    if fish > 0.35 { parts.push("fishing grounds".to_string()); }
     if let Some(h) = history {
         if let Some(f) = h.tile_history.get(x, y).current_owner.and_then(|id| h.factions.get(&id)) {
             parts.push(format!("held by {}", f.name));
@@ -491,6 +499,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
 
                 if pressed(Key::L) { show_labels = !show_labels; dirty = true; }
+                if pressed(Key::R) { tw.show_resources = !tw.show_resources; dirty = true; }
                 if pressed(Key::C) {
                     auto_season = if auto_season.is_some() { None } else { Some(std::time::Instant::now()) };
                 }
@@ -504,7 +513,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
                 let place = describe_tile(world, history, &gaz, &tw, tile.0, tile.1);
                 let title = format!(
-                    "({},{}) {} | {:.0} m | {} {}°C | T season, C auto{}, L labels | {}",
+                    "({},{}) {} | {:.0} m | {} {}°C | T season, C auto{}, L labels, R resources | {}",
                     tile.0, tile.1, place, world.heightmap.get(tile.0, tile.1), season.name(),
                     format!("{:.1}", world.seasonal_climate.as_ref().map(|c| c.get_temperature(tile.0, tile.1, season, tile.1 < tw.height / 2)).unwrap_or(*world.temperature.get(tile.0, tile.1))),
                     if auto_season.is_some() { " ON" } else { "" }, status
@@ -558,6 +567,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
 /// `<prefix>_32px.png`.
 pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, prefix: &str, center: Option<(usize, usize)>, season: crate::seasons::Season) -> Result<Vec<String>, Box<dyn Error>> {
     let mut tw = TileWorld::build(world, atlas);
+    tw.show_resources = true;
     tw.set_season(world, season);
     if let Some(h) = history { tw.apply_history(world, h, atlas); }
     let gaz = build_gazetteer(world, history, world.seed());
@@ -656,6 +666,8 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
     save(&format!("z{cz}"), &buf)?;
     render_local(&map, atlas, &cam(cz - 4, false), &mut buf, w, h);
     save(&format!("z{}", cz - 4), &buf)?;
+    render_local(&map, atlas, &cam(cz - 12, false), &mut buf, w, h);
+    save(&format!("z{}", cz - 12), &buf)?;
     // A close-up at the viewer's real scale (16 px per tile).
     let (cw, ch) = (1024usize, 640usize);
     let mut close = vec![0u32; cw * ch];

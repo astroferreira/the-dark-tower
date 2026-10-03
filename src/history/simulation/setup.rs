@@ -146,9 +146,13 @@ fn find_settlement_sites(
                 ExtendedBiome::VolcanicWasteland | ExtendedBiome::LavaLake
             );
 
-            if !is_water && !is_extreme && height > 0.0 && height < 0.85 {
+            if !is_water && !is_extreme && height > 0.0 && height < 3000.0 {
                 // Calculate desirability score
                 let mut score = 10;
+                let res = world.resources();
+                // Farmland, and ore within a day's walk, make a place worth founding a city.
+                score += (res.fertility_near(x, y, 3, world.width) * 60.0) as i32;
+                score += (res.wealth_near(x, y, 5, world.width) * 1.5).min(40.0) as i32;
                 
                 // Prioritize rivers heavily (fresh water source)
                 let has_river = world.river_network.as_ref()
@@ -159,15 +163,17 @@ fn find_settlement_sites(
 
                 // Prioritize coast (trade, fishing)
                 let is_coastal = world.heightmap.neighbors_8(x, y).into_iter().any(|(nx, ny)| {
-                    *world.heightmap.get(nx, ny) < 0.0
+                    *world.heightmap.get(nx, ny) <= 0.0
                 });
                 if is_coastal {
                     score += 20;
                 }
 
-                // Prioritize flat/low fertile land
-                if height < 0.3 {
+                // Prefer low ground (flat, easy to build and supply)
+                if height < 300.0 {
                     score += 5;
+                } else if height > 1500.0 {
+                    score -= 10;
                 }
 
                 candidates.push(((x, y), score));
@@ -230,6 +236,27 @@ fn find_settlement_sites(
     }
 
     sites
+}
+
+/// Fill a settlement's local resources, production, carrying capacity and growth from the
+/// land around it: fertile river plains support cities, barren highlands hold small mining
+/// towns.
+pub(crate) fn apply_local_economy(settlement: &mut Settlement, world: &WorldData) {
+    let (x, y) = settlement.location;
+    let res = world.resources();
+    let production = res.local_production(world, x, y);
+    let mut kinds: Vec<ResourceType> = Vec::new();
+    settlement.production.clear();
+    for (kind, qty) in production {
+        if !kinds.contains(&kind) { kinds.push(kind); }
+        *settlement.production.entry(kind).or_insert(0.0) += qty;
+    }
+    settlement.local_resources = kinds;
+    let fert = res.fertility_near(x, y, 4, world.width);
+    let fish = settlement.production.get(&ResourceType::Fish).copied().unwrap_or(0.0).min(1.0) * 0.3;
+    let scale = (0.3 + 1.5 * fert + fish).clamp(0.3, 1.7);
+    settlement.population_cap = ((settlement.settlement_type.population_cap() as f32 * scale) as u32).max(300);
+    settlement.growth_rate = 0.005 * (0.6 + fert + fish);
 }
 
 /// Pick a biome-appropriate race for a location.
@@ -462,6 +489,7 @@ fn create_factions(
             SettlementType::Capital, (sx, sy),
             faction_id, founding_date, local_resources,
         );
+        apply_local_economy(&mut settlement, world);
 
         // Scale settlement by age: compound 2% growth per year
         if founding_age > 0 {

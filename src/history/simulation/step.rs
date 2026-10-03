@@ -193,8 +193,14 @@ fn step_opinion_friction(history: &mut WorldHistory, rng: &mut impl Rng) {
             0.0
         };
 
+        // Resource envy: a neighbour holds metals, salt or farmland we lack.
+        let (envy, envied) = resource_envy(history, fid_a, fid_b);
+        let (envy_rev, envied_rev) = resource_envy(history, fid_b, fid_a);
+        let (envy_best, envied_good) = if envy >= envy_rev { (envy, envied) } else { (envy_rev, envied_rev) };
+        let envy_friction = 0.35 * (envy_best / 20.0).min(1.0);
+
         // Total opinion delta: negative (friction) or slightly positive (cultural affinity)
-        let total_friction = friction + religion_friction;
+        let total_friction = friction + religion_friction + envy_friction;
 
         // Apply: 20% chance per checked pair per step to generate a friction event
         if rng.gen::<f32>() < 0.20 && total_friction > 0.12 {
@@ -225,11 +231,12 @@ fn step_opinion_friction(history: &mut WorldHistory, rng: &mut impl Rng) {
 
             let name_a = history.factions.get(&fid_a).map(|f| f.name.clone()).unwrap_or_default();
             let name_b = history.factions.get(&fid_b).map(|f| f.name.clone()).unwrap_or_default();
-            let incident_type = match rng.gen_range(0..4) {
-                0 => "border clash",
-                1 => "diplomatic insult",
-                2 => "trade dispute",
-                _ => "territorial encroachment",
+            let incident_type: String = match (envied_good, rng.gen_range(0..4)) {
+                (Some(r), 0 | 1) if envy_friction > 0.1 => format!("dispute over {}", crate::lore::resource_name(r)),
+                (_, 0) => "border clash".to_string(),
+                (_, 1) => "diplomatic insult".to_string(),
+                (_, 2) => "trade dispute".to_string(),
+                _ => "territorial encroachment".to_string(),
             };
             let event_id = history.id_generators.next_event();
             let event = Event::new(
@@ -332,7 +339,8 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
         let leader_p = leader_id_a
             .and_then(|lid| history.figures.get(&lid))
             .map(|fig| &fig.personality);
-        let cause = pick_war_cause(leader_p, rng);
+        let envy_here = resource_envy(history, fid_a, fid_b).0;
+        let cause = if envy_here > 10.0 && rng.gen::<f32>() < 0.6 { WarCause::Resource } else { pick_war_cause(leader_p, rng) };
 
         let event_id = history.id_generators.next_event();
         let war_name = format!("{:?} War of {} and {}", cause, name_a, name_b);
@@ -880,7 +888,7 @@ fn step_creatures(history: &mut WorldHistory, rng: &mut impl Rng) {
                     .unwrap_or_default();
 
                 // Damage settlement
-                let losses = rng.gen_range(10..200);
+                let losses = scaled_loss(history, sid, rng.gen_range(10..200), rng);
                 if let Some(settlement) = history.settlements.get_mut(&sid) {
                     settlement.population = settlement.population.saturating_sub(losses);
                 }
@@ -1650,7 +1658,7 @@ fn step_natural_events(history: &mut WorldHistory, rng: &mut impl Rng) {
             (s.location, s.faction, s.name.clone())
         };
 
-        let losses = rng.gen_range(50..500);
+        let losses = scaled_loss(history, sid, rng.gen_range(50..500), rng);
         if let Some(settlement) = history.settlements.get_mut(&sid) {
             settlement.population = settlement.population.saturating_sub(losses);
         }
@@ -1860,8 +1868,20 @@ fn step_trade(history: &mut WorldHistory, world: &WorldData, rng: &mut impl Rng)
             continue;
         }
         
-        // Pick a random candidate
-        let (sid_b, loc_b, fid_b) = candidates[rng.gen_range(0..candidates.len())];
+        // Pick the partner with the most to swap: sample a few and weigh goods against distance.
+        let mut best: Option<(f32, usize)> = None;
+        for _ in 0..8 {
+            let ci = rng.gen_range(0..candidates.len());
+            let (sb, lb, _) = candidates[ci];
+            let (gain, _) = trade_gain(history, *sid_a, *sb);
+            let d = (((loc_a.0 as f32 - lb.0 as f32).powi(2) + (loc_a.1 as f32 - lb.1 as f32).powi(2)).sqrt()).max(1.0);
+            let score = gain / (1.0 + d / 30.0);
+            if best.map(|b| score > b.0).unwrap_or(true) { best = Some((score, ci)); }
+        }
+        let (best_score, best_idx) = best.unwrap();
+        // Partners with nothing to exchange only rarely trade.
+        if best_score < 0.5 && rng.gen::<f32>() > 0.15 { continue; }
+        let (sid_b, loc_b, fid_b) = candidates[best_idx];
         
         // Check diplomatic stance - only block if hostile or at war
         let stance = history.factions.get(fid_a)
@@ -1899,24 +1919,9 @@ fn step_trade(history: &mut WorldHistory, world: &WorldData, rng: &mut impl Rng)
             history.tile_history.build_road(rx, ry);
         }
         
-        // Determine traded goods based on biomes
-        let biome_a = world.biomes.get(loc_a.0, loc_a.1);
-        let biome_b = world.biomes.get(loc_b.0, loc_b.1);
-        let goods_a = ResourceType::from_biome(*biome_a);
-        let goods_b = ResourceType::from_biome(*biome_b);
-        
-        // Find complementary goods
-        let mut traded: Vec<ResourceType> = Vec::new();
-        for g in &goods_a {
-            if !goods_b.contains(g) {
-                traded.push(*g);
-            }
-        }
-        for g in &goods_b {
-            if !goods_a.contains(g) && !traded.contains(g) {
-                traded.push(*g);
-            }
-        }
+        // Goods flow from where they are produced to where they are missing.
+        let (_, mut traded) = trade_gain(history, *sid_a, *sid_b);
+        traded.truncate(5);
         
         // If no complementary goods, just trade food (everyone trades food)
         if traded.is_empty() {
@@ -2906,8 +2911,11 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
              siege.war_id, siege.duration_seasons(&date))
         };
 
-        // Check if the war ended — auto-lift siege
-        let war_active = history.wars.get(&war_id).map_or(false, |w| w.is_active());
+        // Sieges are the victor's conquests, launched as the war ends, so they carry on after
+        // it. They are lifted only if the war ended in the defender's favour (or nobody's).
+        let war_open = history.wars.get(&war_id).map_or(false, |w| w.is_active());
+        let victor_is_attacker = history.wars.get(&war_id).map_or(false, |w| w.victor == Some(attacker));
+        let war_active = war_open || victor_is_attacker;
         if !war_active {
             if let Some(siege) = history.sieges.get_mut(&siege_id) {
                 siege.end(date, false);
@@ -3329,7 +3337,15 @@ fn step_wealth_tick(history: &mut WorldHistory, rng: &mut impl Rng) {
 
         // --- Base income from settlements ---
         // Each settlement generates wealth proportional to population
-        let base_income = (total_pop / 100).max(settlement_count);
+        // Extraction: what the land yields (ore, grain, timber, fish) times the people to work it.
+        let extraction: f32 = history.factions.get(&fid)
+            .map(|f| f.settlements.iter()
+                .filter_map(|sid| history.settlements.get(sid))
+                .filter(|st| !st.is_destroyed())
+                .map(|st| st.production.iter().map(|(k, q)| *q * k.base_value() as f32).sum::<f32>() * (st.population as f32 / 400.0).sqrt())
+                .sum())
+            .unwrap_or(0.0);
+        let base_income = (total_pop / 100).max(settlement_count) + (extraction * 0.6) as u32;
 
         // Wealth drive personality bonus: greedy/ambitious leaders extract more wealth
         let wealth_mult = leader_personality(history, fid)
@@ -3833,6 +3849,67 @@ fn step_territory_expansion(
     }
 }
 
+/// A disaster takes at most 10-50% of a settlement, so hamlets survive what would wipe out
+/// nothing in a city.
+fn scaled_loss(history: &WorldHistory, sid: SettlementId, base: u32, rng: &mut impl Rng) -> u32 {
+    let pop = history.settlements.get(&sid).map(|s| s.population).unwrap_or(0);
+    base.min((pop as f32 * rng.gen_range(0.1..0.5)) as u32)
+}
+
+// =========================================================================
+// Resources in diplomacy and trade
+// =========================================================================
+
+/// Resources worth fighting or trading over (basics everyone has don't count).
+fn is_strategic(r: ResourceType) -> bool {
+    matches!(r,
+        ResourceType::Iron | ResourceType::Copper | ResourceType::Tin | ResourceType::Gold |
+        ResourceType::Silver | ResourceType::Gems | ResourceType::Coal | ResourceType::Salt |
+        ResourceType::Mithril | ResourceType::Adamantine)
+}
+
+/// What `a` could gain by trading with `b`: the value of strategic and staple goods each side
+/// has that the other lacks, and the goods that would move.
+fn trade_gain(history: &WorldHistory, a: SettlementId, b: SettlementId) -> (f32, Vec<ResourceType>) {
+    let (Some(sa), Some(sb)) = (history.settlements.get(&a), history.settlements.get(&b)) else { return (0.0, Vec::new()) };
+    let surplus = |from: &Settlement, to: &Settlement| -> Vec<ResourceType> {
+        from.production.iter()
+            .filter(|(k, q)| **q >= 0.5 && !to.local_resources.contains(k) && **k != ResourceType::Food)
+            .map(|(k, _)| *k)
+            .collect()
+    };
+    let mut goods = surplus(sa, sb);
+    for g in surplus(sb, sa) { if !goods.contains(&g) { goods.push(g); } }
+    goods.sort_by_key(|g| std::cmp::Reverse(g.base_value()));
+    let gain = goods.iter().map(|g| g.base_value() as f32).sum::<f32>();
+    (gain, goods)
+}
+
+/// How much `a` covets what `b` holds: value of strategic resources in `b`'s settlements that
+/// none of `a`'s have (0 if `a` is not short of them), and the most valuable such resource.
+fn resource_envy(history: &WorldHistory, a: FactionId, b: FactionId) -> (f32, Option<ResourceType>) {
+    let held = |f: FactionId| -> Vec<ResourceType> {
+        let mut v: Vec<ResourceType> = Vec::new();
+        if let Some(fa) = history.factions.get(&f) {
+            for sid in &fa.settlements {
+                if let Some(s) = history.settlements.get(sid) {
+                    if s.is_destroyed() { continue; }
+                    for r in &s.local_resources { if is_strategic(*r) && !v.contains(r) { v.push(*r); } }
+                }
+            }
+        }
+        v
+    };
+    let (mine, theirs) = (held(a), held(b));
+    let mut best: Option<ResourceType> = None;
+    let mut total = 0.0;
+    for r in theirs.iter().filter(|r| !mine.contains(r)) {
+        total += r.base_value() as f32;
+        if best.map(|x| r.base_value() > x.base_value()).unwrap_or(true) { best = Some(*r); }
+    }
+    (total, best)
+}
+
 // =========================================================================
 // Settlement lifecycle: colonization, abandonment, razing
 // =========================================================================
@@ -3841,6 +3918,11 @@ fn step_territory_expansion(
 const RAZE_CHANCE: f32 = 0.3;
 /// Per-season chance that a faction with a crowded settlement sends out colonists.
 const COLONIZE_CHANCE: f32 = 0.06;
+/// People who leave to found a new village.
+const COLONIST_POPULATION: u32 = 90;
+/// A settlement this small for decades may be abandoned (per-season chance).
+const ABANDON_BELOW: u32 = 12;
+const ABANDON_CHANCE: f32 = 0.05;
 /// Minimum distance (tiles) between living settlements.
 const SETTLEMENT_SPACING: i64 = 4;
 
@@ -3899,6 +3981,9 @@ fn step_colonization(history: &mut WorldHistory, world: &WorldData, game_data: &
         let biome = *world.biomes.get(x, y);
         if matches!(biome, crate::biomes::ExtendedBiome::Ice | crate::biomes::ExtendedBiome::SnowyPeaks) { return f32::MIN; }
         let mut score = 1.0 - e / 2500.0;
+        let res = world.resources();
+        score += res.fertility_near(x, y, 3, w) * 2.0;
+        score += (res.wealth_near(x, y, 4, w) / 25.0).min(1.5);
         let flow = world.flow_accumulation.as_ref().map(|f| *f.get(x, y)).unwrap_or(0.0);
         if flow > 50.0 { score += 1.5; } else if flow > 15.0 { score += 0.6; }
         let coast = (-1i64..=1).any(|dy| (-1i64..=1).any(|dx| {
@@ -3949,9 +4034,10 @@ fn step_colonization(history: &mut WorldHistory, world: &WorldData, game_data: &
         let sid = history.id_generators.next_settlement();
         let biome = *world.biomes.get(sx, sy);
         let mut settlement = Settlement::new(sid, name.clone(), SettlementType::Village, (sx, sy), fid, date, ResourceType::from_biome(biome));
-        settlement.population = 40;
+        settlement.population = COLONIST_POPULATION;
+        super::setup::apply_local_economy(&mut settlement, world);
         history.settlements.insert(sid, settlement);
-        if let Some(p) = history.settlements.get_mut(&parent_id) { p.population = p.population.saturating_sub(40); }
+        if let Some(p) = history.settlements.get_mut(&parent_id) { p.population = p.population.saturating_sub(COLONIST_POPULATION); }
         if let Some(f) = history.factions.get_mut(&fid) { f.add_settlement(sid); }
         history.tile_history.set_owner(sx, sy, fid, date);
         history.tile_history.get_mut(sx, sy).settlement = Some(sid);
@@ -3975,13 +4061,13 @@ fn step_colonization(history: &mut WorldHistory, world: &WorldData, game_data: &
     // Abandonment: villages and outposts that dwindled away.
     let dying: Vec<(SettlementId, FactionId, String)> = history.settlements.values()
         .filter(|s| !s.is_destroyed()
-            && s.population < 15
+            && s.population < ABANDON_BELOW
             && !matches!(s.settlement_type, SettlementType::Capital | SettlementType::City)
-            && date.year.saturating_sub(s.founded.year) > 20)
+            && date.year.saturating_sub(s.founded.year) > 30)
         .map(|s| (s.id, s.faction, s.name.clone()))
         .collect();
     for (sid, fid, name) in dying {
-        if rng.gen::<f32>() > 0.25 { continue; }
+        if rng.gen::<f32>() > ABANDON_CHANCE { continue; }
         if let Some(f) = history.factions.get_mut(&fid) { f.remove_settlement(sid); }
         let loc = destroy_settlement(history, sid, date);
         let event_id = history.id_generators.next_event();

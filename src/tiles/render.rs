@@ -220,6 +220,17 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                 }
             }
 
+            // Resource marker: a diamond in the tile's upper-right corner, size by richness.
+            if tw.show_resources && t >= 5.0 {
+                if let Some((rc, rich)) = tw.deposit[i] {
+                    let r = 0.14 + 0.05 * rich as f32;
+                    let d = (u - 0.72).abs() + (v - 0.28).abs();
+                    if d < r {
+                        col = if d > r - 1.5 / t { [20.0, 20.0, 24.0] } else { [rc[0] as f32, rc[1] as f32, rc[2] as f32] };
+                    }
+                }
+            }
+
             buf[sy * w + sx] = pack(col);
         }
     }
@@ -354,6 +365,7 @@ fn cell_tiles(c: &Cell) -> (TileKind, [f32; 3], Option<TileKind>) {
             let kind = match c.material {
                 Material::Wood => TileKind::WoodWall,
                 Material::Block(_) => TileKind::BlockWall,
+                Material::Ore(_) => TileKind::OreWall,
                 Material::Rock(_) | Material::Ice => TileKind::StoneWall,
                 _ => TileKind::SoilWall,
             };
@@ -369,7 +381,7 @@ fn cell_tiles(c: &Cell) -> (TileKind, [f32; 3], Option<TileKind>) {
                 Material::Gravel => TileKind::Gravel,
                 Material::Snow => TileKind::Snow,
                 Material::Ice => TileKind::SeaIce,
-                Material::Rock(_) | Material::Block(_) => TileKind::StoneFloor,
+                Material::Rock(_) | Material::Block(_) | Material::Ore(_) => TileKind::StoneFloor,
                 Material::Wood => TileKind::WoodFloor,
                 Material::Air => TileKind::Dirt,
             };
@@ -493,6 +505,13 @@ pub fn render_local(map: &LocalMap, atlas: &Atlas, cam: &LocalCamera, buf: &mut 
                 let (ground, tint, sprite) = cell_tiles(cell);
                 let p = tile_px(atlas, ground, var, u, v, src_px);
                 let mut c = [p[0] as f32 * tint[0], p[1] as f32 * tint[1], p[2] as f32 * tint[2]];
+                // Ore flecks (the bright pixels of the ore-wall tile) take the ore's colour.
+                if let (TileKind::OreWall, Material::Ore(r)) = (ground, cell.material) {
+                    if p[0] > 235 {
+                        let rc = crate::lore::resource_color(r);
+                        c = [rc[0] as f32, rc[1] as f32, rc[2] as f32];
+                    }
+                }
                 if let Some(sp) = sprite {
                     let q = tile_px(atlas, sp, var, u, v, src_px);
                     if q[3] > 0 {
@@ -534,6 +553,7 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
                 Material::Rock(_) | Material::Air => [125, 120, 115],
                 Material::Wood => [140, 96, 54],
                 Material::Block(_) => [180, 176, 168],
+                Material::Ore(r) => crate::lore::resource_color(r),
             };
             let t = material_tint(c.material);
             let f = if c.shape == Shape::Wall { 1.0 } else { 1.15 };

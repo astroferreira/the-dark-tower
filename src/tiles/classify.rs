@@ -47,6 +47,9 @@ pub struct TileWorld {
     pub season_snow: Vec<f32>,
     pub season_tint: Vec<[f32; 3]>,
     pub season_frozen: Vec<bool>,
+    /// Ore deposit on this tile (colour, richness), when resource markers are shown.
+    pub deposit: Vec<Option<([u8; 3], u8)>>,
+    pub show_resources: bool,
 }
 
 /// Distinct, muted colour for a faction's border.
@@ -183,7 +186,14 @@ impl TileWorld {
             season_snow: vec![0.0; n],
             season_tint: vec![[1.0; 3]; n],
             season_frozen: vec![false; n],
+            deposit: vec![None; n],
+            show_resources: false,
         };
+        for d in &world.resources().deposits {
+            if d.x < w && d.y < h {
+                tw.deposit[d.y * w + d.x] = Some((crate::lore::resource_color(d.kind), d.richness));
+            }
+        }
 
         for y in 0..h {
             for x in 0..w {

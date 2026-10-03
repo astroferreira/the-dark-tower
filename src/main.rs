@@ -84,9 +84,17 @@ struct Args {
     #[arg(long, default_value = "summer")]
     season: String,
 
+    /// Number of founding civilizations in the simulated history (few, so each one matters)
+    #[arg(long, default_value = "60")]
+    civilizations: u32,
+
     /// Don't simulate history for the tile viewer (no settlements, roads or ruins)
     #[arg(long)]
     no_history: bool,
+
+    /// Print where the world's ore, farmland, timber and fish are
+    #[arg(long)]
+    resource_stats: bool,
 
     /// Print the named geography (rivers, ranges, seas, regions...) after history
     #[arg(long)]
@@ -1170,6 +1178,8 @@ fn main() {
 
     // Load or simulate history
     let wants_tiles = args.tiles || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
+    // A saved world's history is reused unless --history-years asks for a fresh simulation.
+    if args.history_years > 0 { loaded_history = None; }
     let history = if loaded_history.is_some() {
         loaded_history.take()
     } else if let Some(ref load_path) = args.load_history {
@@ -1190,6 +1200,7 @@ fn main() {
         // The tile viewer shows history on the land, so it simulates some by default.
         let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
         let config = history::config::HistoryConfig {
+            initial_civilizations: args.civilizations,
             simulation_years: years,
             ..history::config::HistoryConfig::default()
         };
@@ -1205,6 +1216,28 @@ fn main() {
         None
     };
 
+    if args.resource_stats {
+        let r = world_data.resources();
+        let mut by: std::collections::BTreeMap<String, (usize, f32, [usize; 3])> = Default::default();
+        for d in &r.deposits {
+            let e = by.entry(lore::resource_name(d.kind).to_string()).or_default();
+            e.0 += 1;
+            e.1 += *world_data.stress_map.get(d.x, d.y);
+            e.2[(d.richness - 1) as usize] += 1;
+        }
+        println!("Resources: {} deposits", r.deposits.len());
+        for k in ["iron", "gold", "coal"] {
+            let at: Vec<String> = r.deposits.iter().filter(|d| lore::resource_name(d.kind) == k && d.richness == 3).take(2).map(|d| format!("({},{})", d.x, d.y)).collect();
+            println!("  rich {} at {}", k, at.join(" "));
+        }
+        for (k, (n, st, rich)) in by {
+            println!("  {:>8} x{:<3} mean stress {:+.2}  poor/good/rich {}/{}/{}", k, n, st / n as f32, rich[0], rich[1], rich[2]);
+        }
+        let land: Vec<f32> = r.fertility.iter().zip(world_data.heightmap.iter()).filter(|(_, h)| *h.2 > 0.0).map(|(f, _)| *f.2).collect();
+        let fertile = land.iter().filter(|&&f| f > 0.5).count();
+        println!("  farmland: {:.1}% of land is fertile (>0.5), mean {:.2}", 100.0 * fertile as f32 / land.len() as f32, land.iter().sum::<f32>() / land.len() as f32);
+    }
+
     if args.gazetteer {
         let t0 = std::time::Instant::now();
         let gaz = lore::build_gazetteer(&world_data, history.as_ref(), master_seed);
@@ -1215,6 +1248,12 @@ fn main() {
             let roads = (0..width * height).filter(|&i| h.tile_history.has_road(i % width, i / width)).count();
             let owned = (0..width * height).filter(|&i| h.tile_history.get(i % width, i / width).current_owner.is_some()).count();
             let named = gaz.features.iter().filter(|f| f.named_by.is_some()).count();
+            let count = |needle: &str| h.chronicle.events.iter().filter(|e| e.title.contains(needle)).count();
+            let (won, lost, open) = h.sieges.values().fold((0, 0, 0), |a, s| match s.successful { Some(true) => (a.0 + 1, a.1, a.2), Some(false) => (a.0, a.1 + 1, a.2), None => (a.0, a.1, a.2 + 1) });
+            println!("Sieges: {} begun; {} taken, {} failed or lifted, {} open", h.sieges.len(), won, lost, open);
+            println!("Settlement churn: {} founded, {} abandoned, {} razed; wars: {} ({} over resources); {} disputes over resources",
+                count(" founded"), count(" abandoned"), count(" razed by"), h.wars.len(),
+                h.wars.values().filter(|w| format!("{:?}", w.cause) == "Resource").count(), count("dispute over"));
             println!("History on the map: {} living settlements, {} ruins, {} road tiles, {} claimed tiles; {} features named by a living culture",
                 living, ruins, roads, owned, named);
         }
