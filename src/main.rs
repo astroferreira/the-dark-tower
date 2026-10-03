@@ -92,6 +92,15 @@ struct Args {
     #[arg(long)]
     no_history: bool,
 
+    /// Watch the history being written in a window (map filling with towns, roads and
+    /// borders, a chronicle of key events), then open the tile viewer
+    #[arg(long)]
+    watch: bool,
+
+    /// Simulate the history headlessly and save watcher frames to <PREFIX>_y<year>.png
+    #[arg(long)]
+    watch_snapshot: Option<String>,
+
     /// Print where the world's ore, farmland, timber and fish are
     #[arg(long)]
     resource_stats: bool,
@@ -391,6 +400,20 @@ struct Args {
     /// Upscaling factor for exported maps (1 = native, 2 = 2x, 4 = 4x, etc.)
     #[arg(long, default_value = "1")]
     upscale_factor: usize,
+}
+
+/// The tile atlas: an edited tileset PNG when given (falling back on errors), else the built-in one.
+fn load_atlas(tileset: Option<&str>) -> tiles::Atlas {
+    match tileset {
+        Some(path) => match tiles::Atlas::load_png(std::path::Path::new(path)) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Could not load tileset {path}: {e}; using the built-in tiles");
+                tiles::Atlas::generated()
+            }
+        },
+        None => tiles::Atlas::generated(),
+    }
 }
 
 /// Years of history the tile viewer simulates when --history-years isn't given.
@@ -1207,9 +1230,9 @@ fn main() {
     }
 
     // Load or simulate history
-    let wants_tiles = args.tiles || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
-    // A saved world's history is reused unless --history-years asks for a fresh simulation.
-    if args.history_years > 0 { loaded_history = None; }
+    let wants_tiles = args.tiles || args.watch || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
+    // A saved world's history is reused unless --history-years (or --watch) asks for a fresh simulation.
+    if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() { loaded_history = None; }
     let mut history = if loaded_history.is_some() {
         loaded_history.take()
     } else if let Some(ref load_path) = args.load_history {
@@ -1225,7 +1248,7 @@ fn main() {
                 None
             }
         }
-    } else if args.history_years > 0 || (wants_tiles && !args.no_history) {
+    } else if args.history_years > 0 || args.watch_snapshot.is_some() || (wants_tiles && !args.no_history) {
         let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
         // The tile viewer shows history on the land, so it simulates some by default.
         let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
@@ -1254,7 +1277,17 @@ fn main() {
                 Err(e) => eprintln!("Director unavailable, history will be fully procedural: {e}"),
             }
         }
-        let hist = engine.simulate_with_data(&world_data, config, &game_data);
+        let hist = if let Some(prefix) = &args.watch_snapshot {
+            let atlas = load_atlas(args.tileset.as_deref());
+            let (h, files) = tiles::watcher::watch_snapshots(&world_data, &game_data, config, engine, &atlas, prefix);
+            println!("Saved watcher snapshots: {}", files.join(", "));
+            h
+        } else if args.watch && !args.headless {
+            let atlas = load_atlas(args.tileset.as_deref());
+            tiles::watcher::watch_history(&world_data, &game_data, config, engine, &atlas)
+        } else {
+            engine.simulate_with_data(&world_data, config, &game_data)
+        };
         let summary = hist.summary();
         eprintln!("{}", summary);
         Some(hist)
@@ -1442,17 +1475,8 @@ fn main() {
         return;
     }
 
-    if args.tiles || args.tiles_snapshot.is_some() || args.local_snapshot.is_some() {
-        let atlas = match &args.tileset {
-            Some(path) => match tiles::Atlas::load_png(std::path::Path::new(path)) {
-                Ok(a) => a,
-                Err(e) => {
-                    eprintln!("Could not load tileset {path}: {e}; using the built-in tiles");
-                    tiles::Atlas::generated()
-                }
-            },
-            None => tiles::Atlas::generated(),
-        };
+    if args.tiles || args.watch || args.tiles_snapshot.is_some() || args.local_snapshot.is_some() {
+        let atlas = load_atlas(args.tileset.as_deref());
         let center = args.tiles_center.as_deref().and_then(|spec| {
             let p: Vec<_> = spec.split(',').map(|v| v.trim().parse::<usize>()).collect();
             match p.as_slice() {

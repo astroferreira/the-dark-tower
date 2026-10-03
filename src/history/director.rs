@@ -155,7 +155,7 @@ pub fn proposal_schema() -> serde_json::Value {
 // ---------------------------------------------------------------------------------------------
 
 /// Something that turns a prompt into a proposal's JSON.
-pub trait Author {
+pub trait Author: Send {
     fn propose(&mut self, system: &str, prompt: &str) -> Result<String, String>;
     fn name(&self) -> String;
 }

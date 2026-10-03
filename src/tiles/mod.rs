@@ -6,6 +6,7 @@ pub mod classify;
 pub mod render;
 pub mod text;
 pub mod viewer;
+pub mod watcher;
 
 pub use atlas::{Atlas, TileKind};
 pub use classify::TileWorld;

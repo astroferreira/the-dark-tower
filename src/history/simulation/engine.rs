@@ -50,16 +50,9 @@ impl HistoryEngine {
         game_data: &GameData,
     ) -> WorldHistory {
         let total_steps = config.total_steps();
-
-        // Initialize world
-        let mut history = initialize_world(world, config, game_data, &mut self.rng);
-
-        // Run simulation steps
+        let mut history = self.begin(world, config, game_data);
         for step in 0..total_steps {
-            simulate_step(&mut history, world, game_data, &mut self.rng);
-            if let Some(d) = self.director.as_mut() {
-                d.step(&mut history, world, game_data, &mut self.rng);
-            }
+            self.step(&mut history, world, game_data);
 
             // Progress reporting every 100 years
             if step > 0 && step % 400 == 0 {
@@ -73,7 +66,26 @@ impl HistoryEngine {
                 );
             }
         }
+        self.finish(&mut history);
+        history
+    }
 
+    /// Set up the world's peoples, prehistory and creatures; the history is then advanced with
+    /// `step` (config.total_steps() times) and closed with `finish`.
+    pub fn begin(&mut self, world: &WorldData, config: HistoryConfig, game_data: &GameData) -> WorldHistory {
+        initialize_world(world, config, game_data, &mut self.rng)
+    }
+
+    /// One season of history, plus the director's turn when there is one.
+    pub fn step(&mut self, history: &mut WorldHistory, world: &WorldData, game_data: &GameData) {
+        simulate_step(history, world, game_data, &mut self.rng);
+        if let Some(d) = self.director.as_mut() {
+            d.step(history, world, game_data, &mut self.rng);
+        }
+    }
+
+    /// Close the history: keep the director's tales, name the eras and report.
+    pub fn finish(&mut self, history: &mut WorldHistory) {
         if let Some(d) = self.director.as_ref() {
             history.tales = Some(d.tales.clone());
             eprintln!("Director: {} events authored, {} threads opened ({} resolved), {} failed calls",
@@ -81,10 +93,10 @@ impl HistoryEngine {
         }
 
         // Define eras from major events
-        self.define_eras(&mut history);
+        self.define_eras(history);
 
         // Compute and print quality metrics
-        let metrics = SimulationMetrics::compute(&history);
+        let metrics = SimulationMetrics::compute(history);
         eprintln!("{}", metrics.report());
         if let Some(eco) = &history.ecology {
             use crate::history::events::types::EventType;
@@ -97,8 +109,6 @@ impl HistoryEngine {
                 count(EventType::WildlifeReturned)
             );
         }
-
-        history
     }
 
     /// Run simulation and return both history and metrics.

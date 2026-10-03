@@ -13,6 +13,29 @@ fn glyph(c: char) -> [u8; 8] {
     if i < 128 { BASIC_LEGACY[i] } else { BASIC_LEGACY[b'?' as usize] }
 }
 
+/// Draw `text` in plain ink (no halo) with its top-left at (x, y); `bold` doubles each stroke
+/// one pixel to the right. Same 7 px advance as `draw_text`.
+pub fn draw_ink(buf: &mut [u32], w: usize, h: usize, x: i64, y: i64, text: &str, color: u32, scale: usize, bold: bool) {
+    let s = scale as i64;
+    for (k, ch) in text.chars().enumerate() {
+        let g = glyph(ch);
+        let ox = x + k as i64 * 7 * s;
+        for (row, bits) in g.iter().enumerate() {
+            for col in 0..8 {
+                if bits & (1 << col) == 0 { continue; }
+                for sy in 0..s {
+                    for sx in 0..s + bold as i64 {
+                        let (px, py) = (ox + col as i64 * s + sx, y + row as i64 * s + sy);
+                        if px >= 0 && py >= 0 && px < w as i64 && py < h as i64 {
+                            buf[py as usize * w + px as usize] = color;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Draw `text` with its top-left at (x, y): an outline in `shadow`, then the glyphs in `color`.
 /// Glyphs are 7 px apart (tighter than the 8 px cell) for map-label density.
 pub fn draw_text(buf: &mut [u32], w: usize, h: usize, x: i64, y: i64, text: &str, color: u32, shadow: u32, scale: usize) {

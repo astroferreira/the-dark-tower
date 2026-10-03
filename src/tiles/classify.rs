@@ -17,6 +17,7 @@ const CHANNEL_MAX_DEPTH_M: f32 = -300.0;
 /// Neighbour offsets, indexed by bit: N, NE, E, SE, S, SW, W, NW.
 pub const DIRS: [(i32, i32); 8] = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
 
+#[derive(Clone)]
 pub struct TileWorld {
     pub width: usize,
     pub height: usize,

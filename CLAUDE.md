@@ -147,6 +147,22 @@ OPTIONS:
 - The model is behind the `Author` trait; tests use a scripted author (no Ollama needed).
 - Without Ollama (or with `--director 0`) history is fully procedural as before.
 
+### Watching history being written (`tiles/watcher.rs`)
+- `--watch` simulates the history in a window (DF world-gen style, dressed as the ink map),
+  then opens the tile viewer. The simulation runs on a background thread
+  (`HistoryEngine::begin` / `step` / `finish`) and sends a frame per season (a `TileWorld`
+  with the history applied, stats, realms, new events and new road tiles).
+- Map: settlements, fields, territories (faction wash + borders) and roads appear as they
+  spread; `overlay_realms` draws borders/roads at zooms where `render_world` omits them. New
+  roads glow, foundings ring, battles/razings/disasters flare; great events get a banner.
+- Panel: year/season, progress, almanac, souls sparkline, great realms. Chronicle below:
+  key events (`style()` decides glyph, colour, map mark and whether it is key), `L` = all.
+- Keys: Space pause, `[` `]` pace, wheel zoom (or scroll chronicle), drag pan, `H` fit,
+  click an entry to fly there, `P` screenshot, Esc = finish unwatched, Enter at the end.
+- `--watch-snapshot PREFIX --headless` renders frames at 1/4, 1/2, the end and a close-up to
+  PNG without a window (for checking the look). The window doesn't redraw while hidden, so
+  screen capture is unreliable; use this.
+
 ### Saving worlds
 - `--save-world worlds/x.world` writes the generated world plus any simulated history (bincode,
   ~170 MB at 512x256); `--load-world worlds/x.world` loads it in ~0.1 s instead of regenerating
