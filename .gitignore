@@ -13,3 +13,10 @@ lore_*.json
 lore_*.txt
 lore_*.md
 /worlds
+
+# macOS folder metadata
+.DS_Store
+
+# Local render output and exported legends
+/renders
+/world_*_legend.txt

@@ -76,6 +76,6 @@ ROADMAP Update 5; game-time seasons are Update 3.
 
 ## Housekeeping
 - [ ] Decide whether `worlds/*.world` (170 MB each) should stay gitignored (currently yes) and document a standard seed set.
-- [ ] `.DS_Store` files and `world_42_legend.txt` are untracked / modified noise: add to `.gitignore`.
+- [x] `.DS_Store` files, `renders/` and `world_*_legend.txt` are ignored (the tracked `.DS_Store` files untracked).
 - [ ] Remove or silence long-standing compiler warnings in `history/simulation/step.rs`, `geomorphometry.rs`.
 - [ ] Add tests for settlement siting, road routing and town plans (only determinism / consistency tests exist today).
