@@ -51,7 +51,8 @@ ROADMAP Update 5; game-time seasons are Update 3.
 
 ## Terrain and tectonics
 - [x] Coupled erosion and uplift (`erosion/landscape.rs`: stream power with the climate's precipitation, uplift from stress, flexural isostasy, sediment to lakes and shelves; `fill_pits` drainage repair after the finishing passes; 2 km erosion clamp removed).
-- [ ] The legacy hi-res erosion (`simulate_erosion_hires`: particle + river carving + flat depression fills at 4x) still runs after the landscape step and dominates the run time (~45 s at 512x256, ~6 min at 1024x512); replace it with landscape evolution at 2-4x for detail, keeping lakes instead of filling every depression.
+- [x] The legacy hi-res erosion (~45 s at 512x256) is off by default (`--legacy-erosion`); the landscape step already gives the drainage and relief, and lakes are kept. A 512x256 world now takes ~4 s.
+- [ ] Sub-tile detail (valleys narrower than a tile) only exists in zoomed regions; if the world map wants more texture, run the landscape step at 2x and downsample.
 - [ ] Endorheic basins: the landscape step keeps arid hollows as lakes, but the legacy erosion fills them all; decide lakes vs. salt flats from the water balance (evaporation vs. inflow).
 - [x] Sea level from the ocean's volume (priority flood: inland basins below sea level stay dry; volume fixed at birth to meet the style's land fraction, conserved through the landscape evolution).
 - [x] River discharge and lake water balance from precipitation (Budyko runoff, open-water evaporation PET - P).

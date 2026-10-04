@@ -292,6 +292,7 @@ fn main() {
     if let Some(v) = env("LEM_FLEX") { cfg.landscape.flexure_km = v; }
     if flag("LAB_NO_LEM") { cfg.landscape.steps = 0; }
     cfg.island_coasts = !flag("LAB_NO_ISLANDS");
+    if flag("LAB_LEGACY_EROSION") { cfg.legacy_erosion = true; }
 
     let result = terrain::generate_terrain(&cfg, &seeds, &mut |st: &terrain::Stage| {
         let hm = st.heightmap;

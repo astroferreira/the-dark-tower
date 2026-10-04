@@ -256,6 +256,11 @@ struct Args {
     #[arg(long)]
     no_hires: bool,
 
+    /// Also run the legacy erosion pass (particles, river carving, glaciers at 4x) after the
+    /// landscape evolution: ~45 s at 512x256 for little visible change; off by default
+    #[arg(long)]
+    legacy_erosion: bool,
+
     /// Export freshwater network image (rivers + lakes only) before launching explorer
     #[arg(long)]
     export_rivers: bool,
@@ -428,7 +433,7 @@ struct Args {
 }
 
 /// Seed, size and peoples of `--dev`, the small development world. Seed 76 was picked by a
-/// search over 96x48 worlds for the most landmarks (`scripts/dev_seed_search.sh`: 4 rivers,
+/// search over 96x48 worlds for the most landmarks (`scripts/dev_seed_search.sh`: 3 rivers,
 /// 2 lakes, 6 ranges, forests, a desert, an island, 2 continents with its history); 64x32
 /// worlds get no rivers. Re-run the search if worldgen changes move the landmarks.
 const DEV_WORLD: (usize, usize, u64, u32) = (96, 48, 76, 8);
@@ -708,6 +713,7 @@ fn main() {
         erosion_preset,
         climate: climate_config.clone(),
         no_hires: args.no_hires,
+        legacy_erosion: args.legacy_erosion || args.legacy_tectonics,
         ..terrain::TerrainConfig::new(width, height, world_style)
     };
     let terrain::Terrain {

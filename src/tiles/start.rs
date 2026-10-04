@@ -60,10 +60,10 @@ fn step_index(i: usize, len: usize, d: i32) -> usize {
 }
 
 /// Rough generation time, from measurements (96x48: ~1 s for world and history; 512x256:
-/// ~3 min world, ~6 min for 250 years).
+/// ~4 s world, ~6 min for 250 years).
 fn estimate(cfg: &StartConfig) -> String {
     let r = (cfg.width * cfg.height) as f32 / (512.0 * 256.0);
-    let world = 180.0 * r.powf(1.4) * cfg.tectonic_myr / 200.0;
+    let world = 4.0 * r.powf(1.4) * cfg.tectonic_myr / 200.0;
     let history = 360.0 * r.powf(1.6) * cfg.history_years as f32 / 250.0 * (cfg.civilizations as f32 / 60.0).max(0.3);
     let fmt = |s: f32| if s < 5.0 { "a few seconds".to_string() } else if s < 90.0 { format!("about {:.0} s", s) } else { format!("about {:.0} min", s / 60.0) };
     if cfg.history_years == 0 { format!("World: {}. No history.", fmt(world)) } else { format!("World: {}. History: {}.", fmt(world), fmt(history)) }

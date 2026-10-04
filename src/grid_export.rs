@@ -58,6 +58,8 @@ fn generate_world_image(
         erosion_preset,
         climate: climate_config.clone(),
         no_hires: true,
+        // The grids compare erosion presets, which only the legacy pass uses.
+        legacy_erosion: true,
         ..terrain::TerrainConfig::new(config.width, config.height, config.world_style)
     };
     let t = terrain::generate_terrain(&terrain_config, &seeds, &mut |_| true)

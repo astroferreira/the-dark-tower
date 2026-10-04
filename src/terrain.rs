@@ -31,6 +31,11 @@ pub struct TerrainConfig {
     pub climate: ClimateConfig,
     /// Run the legacy erosion at the map's own resolution instead of 4x.
     pub no_hires: bool,
+    /// Run the legacy erosion pass (particles, river carving, glaciers, mostly at 4x) after the
+    /// landscape evolution. Off by default: ~45 s of a 512x256 world for little visible change
+    /// (seed 42: rivers slightly denser, every depression flat-filled so fewer lakes). The legacy
+    /// tectonics path still uses it (it has no landscape step).
+    pub legacy_erosion: bool,
     pub landscape: LandscapeParams,
     /// Break up small islands' coasts (`heightmap::apply_island_coasts`).
     pub island_coasts: bool,
@@ -48,6 +53,7 @@ impl TerrainConfig {
             erosion_preset: ErosionPreset::Normal,
             climate: ClimateConfig::default(),
             no_hires: false,
+            legacy_erosion: false,
             landscape: LandscapeParams::default(),
             island_coasts: true,
         }
@@ -147,6 +153,11 @@ pub fn generate_terrain(
     if !on_stage(&stage("landscape", &heightmap, &stress_map, Some(&climate_sim), None, ocean_gel)) { return None; }
 
     // Legacy erosion (particles, river carving, glaciers), mostly at 4x resolution.
+    let (hardness, flow_accumulation) = if !cfg.legacy_erosion {
+        println!("Legacy erosion skipped");
+        let (_, acc, _) = erosion::rivers::compute_flow_with_filled_routing(&heightmap);
+        (Tilemap::new_with(width, height, 0.3f32), acc)
+    } else {
     println!("Simulating erosion (preset: {})...", cfg.erosion_preset);
     let mut erosion_params = erosion::ErosionParams::from_preset(cfg.erosion_preset);
     erosion_params.tune_for_heightmap(&heightmap);
@@ -166,6 +177,8 @@ pub fn generate_terrain(
     println!("  Max deposition: {:.2} units", stats.max_deposition);
     let (min_h, max_h) = range(&heightmap);
     println!("Post-erosion heightmap range: {:.1}m to {:.1}m", min_h, max_h);
+    (hardness, flow_accumulation)
+    };
     if !on_stage(&stage("erosion", &heightmap, &stress_map, Some(&climate_sim), None, ocean_gel)) { return None; }
 
     // Finishing passes.

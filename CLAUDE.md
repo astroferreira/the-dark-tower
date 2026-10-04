@@ -31,7 +31,7 @@ cargo run --release -- --width 1024 --height 512
 
 ### Dev world (fast iteration on history and story)
 `cargo run --release -- --dev` generates a 96x48 world (seed 76, 8 civilizations) with 250 years
-of history in about a second, vs ~9 min at 512x256. It has 4 named rivers, a lake, 6 mountain
+of history in about a second, vs ~6 min at 512x256 (almost all of it history). It has 3 named rivers, 2 lakes, 6 mountain
 ranges, forests, a desert, an island and two continents. Any of `--width`/`--height`/`--seed`/
 `--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
 `--journal`, `--gazetteer`, `--director` as usual. Seed 76 came from a search over 96x48 seeds
@@ -262,7 +262,7 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
 ### Saving worlds
 - `--save-world worlds/x.world` writes the generated world plus any simulated history (bincode,
   ~170 MB at 512x256); `--load-world worlds/x.world` loads it in ~0.1 s instead of regenerating
-  (~3 min world + ~6 min history). The tile viewer simulates 250 years of history by default
+  (~4 s world + ~6 min history). The tile viewer simulates 250 years of history by default
   (`--no-history` to skip), so save once with history and reload from then on.
 - The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`, now 2: the
   ecology is appended after the history; version-1 files still load, without ecology); bump it
@@ -364,7 +364,8 @@ crust/climate) after each named stage and can stop early (the lab's metrics hook
 3. **Heightmap** - Derived from crust: Airy isostasy on land, age-depth law at sea, solved sea level
 4. **Climate** - Temperature (latitude + elevation), moisture and precipitation
 5. **Landscape evolution** - Uplift vs. precipitation-driven river incision, sediment, rebound
-6. **Erosion** - Hydraulic and glacial erosion add detail; finishing passes; drainage repair
+6. **Finishing passes** - Coastlines, fjords, regional noise, volcanoes, island coasts, beaches;
+   drainage repair (legacy hydraulic/glacial erosion only with `--legacy-erosion`)
 7. **Biomes** - 50+ biome types based on climate
 8. **Water Bodies** - Detect oceans, lakes, rivers
 
@@ -510,6 +511,12 @@ the zoomed region around a point.
   coastal tile to ~130 m on 78 km tiles).
 
 ### Erosion
+- The legacy erosion pass (`erosion::simulate_erosion`: below) is off by default since the
+  landscape evolution does the physical erosion: it took ~45 s of a 512x256 world (~6 min at
+  1024x512, and its GPU step sometimes hung) for little visible change (seed 42: slightly denser
+  tributaries; it flat-filled every depression, so 17 lakes vs 23). A 512x256 world now
+  generates in ~4 s. `--legacy-erosion` (or `LAB_LEGACY_EROSION=1` in terrain_lab) runs it; the
+  legacy tectonics path and the erosion-preset comparison grids still use it.
 - **Hydraulic**: Water droplets carve valleys and deposit sediment
 - **Glacial**: Ice sheets using Shallow Ice Approximation (SIA)
 - **Rivers**: Flow accumulation creates river channels
