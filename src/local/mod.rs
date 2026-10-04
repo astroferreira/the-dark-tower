@@ -622,7 +622,9 @@ mod tests {
                 let sz = map.surface_z[y * map.width + x] as usize;
                 for z in 0..map.depth {
                     let c = map.cell(x, y, z);
-                    if z < sz { assert!(c.shape == Shape::Wall || c.water > 0, "solid (or frozen-over water) below the surface"); }
+                    // Below the surface: rock, or under a frozen-over lake its water and its bed.
+                    let bed = c.shape == Shape::Floor && z + 1 < map.depth && map.cell(x, y, z + 1).water > 0;
+                    if z < sz { assert!(c.shape == Shape::Wall || c.water > 0 || bed, "solid (or frozen-over water) below the surface"); }
                     if z == sz { assert!(matches!(c.shape, Shape::Floor | Shape::Ramp)); }
                     if z > sz && c.shape != Shape::Empty {
                         assert!(matches!(c.material, Material::Wood | Material::Block(_) | Material::Clay | Material::Ice), "only buildings or ice above the surface");

@@ -2770,14 +2770,19 @@ pub fn apply_inland_uplift(
 
 /// Apply a coastal beach/shore strip near sea level for most coastlines.
 /// High-stress convergent coastlines can preserve steep cliffs.
+/// `tile_km` is the physical width of a tile: where the beach or nearshore strip is narrower
+/// than a tile, the tile's mean height only moves by the share of it the strip covers.
 pub fn apply_coastal_beaches(
     heightmap: &mut Tilemap<f32>,
     stress_map: &Tilemap<f32>,
     map_scale: &MapScale,
+    tile_km: f32,
 ) {
     let width = heightmap.width;
     let height = heightmap.height;
 
+    let beach_cover = (BEACH_WIDTH_KM / tile_km).min(1.0);
+    let water_cover = (BEACH_WATER_WIDTH_KM / tile_km).min(1.0);
     let beach_width = scale_distance(BEACH_WIDTH_KM, map_scale).max(1.0);
     let beach_water_width = scale_distance(BEACH_WATER_WIDTH_KM, map_scale).max(1.0);
     let beach_rise = scale_elevation(BEACH_MAX_RISE, map_scale);
@@ -2814,7 +2819,7 @@ pub fn apply_coastal_beaches(
                 };
 
                 let adjusted = cap + (elevation - cap) * cliff_factor;
-                heightmap.set(x, y, adjusted);
+                heightmap.set(x, y, elevation + (adjusted - elevation) * beach_cover);
             } else if *ocean_mask.get(x, y) {
                 let water_dist = *land_distance.get(x, y);
                 if water_dist <= 0.0 || water_dist > beach_water_width {
@@ -2825,7 +2830,7 @@ pub fn apply_coastal_beaches(
                 let target_depth = shore_depth + (outer_depth - shore_depth) * t.powf(1.2);
 
                 if elevation < target_depth {
-                    heightmap.set(x, y, target_depth);
+                    heightmap.set(x, y, elevation + (target_depth - elevation) * water_cover);
                 }
             }
         }

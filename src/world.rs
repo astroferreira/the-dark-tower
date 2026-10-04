@@ -478,7 +478,7 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
     let plates::TectonicTerrain { plate_map, plates, stress_map, mut heightmap, .. } = terrain;
     heightmap::apply_fjord_incisions(&mut heightmap, seeds.heightmap, &scale);
     heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
-    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &scale);
+    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &scale, crate::erosion::landscape::tile_km(width));
 
     // Generate climate with domain warping for organic zone boundaries
     let temperature = climate::generate_temperature_with_seed(

@@ -50,7 +50,9 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [ ] Settlement variety by culture: more architecture styles than stone / timber / earth (bone, crystal, living, woven, carved).
 
 ## Terrain and tectonics
-- [ ] Coupled erosion and uplift (stream-power law with the climate's real precipitation, flexural isostasy, sediment to shelves). Mountains currently outpace what erosion can grade; closed-basin/pit counts and river connectivity at 1024x512 are worse than the legacy terrain (about 45% vs 75%).
+- [x] Coupled erosion and uplift (`erosion/landscape.rs`: stream power with the climate's precipitation, uplift from stress, flexural isostasy, sediment to lakes and shelves; `fill_pits` drainage repair after the finishing passes; 2 km erosion clamp removed).
+- [ ] The legacy hi-res erosion (`simulate_erosion_hires`: particle + river carving + flat depression fills at 4x) still runs after the landscape step and dominates the run time (~45 s at 512x256, ~6 min at 1024x512); replace it with landscape evolution at 2-4x for detail, keeping lakes instead of filling every depression.
+- [ ] Endorheic basins: the landscape step keeps arid hollows as lakes, but the legacy erosion fills them all; decide lakes vs. salt flats from the water balance (evaporation vs. inflow).
 - [ ] Sea level from a fixed ocean volume; priority-flood lakes; river discharge from precipitation.
 - [ ] Whittaker/Koppen biomes from simulated climate; soils from erosion history. Temperate and tropical forests are only 2-5% of land because the climate sim is dry.
 - [ ] Allow polar continents (currently the map's top/bottom rows are forced to ocean for flow routing).

@@ -345,7 +345,7 @@ pub fn simulate_parallel(
                 let idx = y * width + x;
                 if delta[idx].abs() > 0.0001 {
                     let current = *heightmap.get(x, y);
-                    let new_h = (current + delta[idx]).clamp(-5000.0, 2000.0);
+                    let new_h = (current + delta[idx]).clamp(-11000.0, 9000.0);
                     heightmap.set(x, y, new_h);
                     delta[idx] = 0.0; // Reset for next batch
                 }
@@ -660,7 +660,7 @@ fn apply_deposit(
     height: usize,
 ) {
     // Maximum height cap to prevent unrealistic buildup
-    const MAX_TERRAIN_HEIGHT: f32 = 2000.0;
+    const MAX_TERRAIN_HEIGHT: f32 = 9000.0;
 
     for &(dx, dy, weight) in brush {
         let nx = ((x as i32 + dx).rem_euclid(width as i32)) as usize;

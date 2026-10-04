@@ -12,7 +12,7 @@ direction.
 
 | Layer | What exists | What's missing for a colony sim |
 |---|---|---|
-| Planet | Tectonics, isostasy, climate, erosion, hydrology, 50+ biomes, resources from geology | Coupled erosion/uplift, soils (see `TODO.md`); good enough to build on |
+| Planet | Tectonics, isostasy, climate, erosion, hydrology, 50+ biomes, resources from geology | Soils, endorheic lakes, a faster detail-erosion pass (see `TODO.md`); good enough to build on |
 | Region / embark | Seamless zoomed regions; 192x192 embarks with z-levels, strata, ore, rivers, plants, wildlife signs, towns with streets | Nothing *moves*: no clock, no agents, no jobs, no items on the ground |
 | History | 250-year sim at season resolution: factions, settlements, ~300 named figures (personality, family, enemies, skills, life events), wars, religions, beasts, ecology, scars, a causal chronicle (`caused_by`) | Common people are population counts; figures don't plan; colony-scale events don't exist |
 | Narrative | Journal (HTML annals), bard (LLM prose), director (LLM-authored events with checkable threads), watcher window | Story is told *after* the fact; nothing picks out arcs while they happen |

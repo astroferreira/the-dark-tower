@@ -763,6 +763,17 @@ fn main() {
     println!("Temperature range: {:.1}°C to {:.1}°C", min_temp, max_temp);
     println!("Precipitation range: {:.0}mm to {:.0}mm/yr", min_precip, max_precip);
 
+    // Landscape evolution: uplift where plates converge against river incision driven by the
+    // climate's precipitation, with flexural rebound and sediment filling lakes and shelves.
+    if !args.legacy_tectonics {
+        println!("Evolving the landscape (uplift, rivers, sediment, isostasy)...");
+        let lp = erosion::landscape::LandscapeParams::default();
+        let r = erosion::landscape::evolve(&mut heightmap, &climate_sim.annual_precipitation, &stress_map, &lp);
+        println!("  {:.1} Myr: eroded {:.2}M km3 (lakes {:.2}M, shelves {:.2}M, deep sea {:.2}M), uplifted {:.2}M km3; {} land cells hold lakes",
+            lp.duration_yr / 1e6, r.eroded_km3 / 1e6, r.into_lakes_km3 / 1e6, r.onto_shelves_km3 / 1e6,
+            r.to_deep_sea_km3 / 1e6, r.uplifted_km3 / 1e6, r.lake_cells);
+    }
+
     // Apply erosion
     println!("Simulating erosion (preset: {})...", erosion_preset);
     let mut erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
@@ -823,7 +834,14 @@ fn main() {
 
     // Enforce coastal beach strips near sea level (except high-stress cliffs)
     println!("Applying coastal beach pass...");
-    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale);
+    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale, erosion::landscape::tile_km(width));
+
+    // The detail passes above leave pits that would end rivers; fill them so the land drains
+    // to the sea again (larger hollows stay as lakes).
+    if !args.legacy_tectonics {
+        let filled = erosion::landscape::fill_pits(&mut heightmap, 4, 10.0);
+        println!("Restored drainage: filled {} pit cells", filled);
+    }
 
     // Generate lava for active volcanoes
     println!("Generating lava flows...");

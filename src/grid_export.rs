@@ -110,7 +110,7 @@ fn generate_world_image(
     heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
 
     // Enforce coastal beach strips near sea level
-    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale);
+    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale, map_scale.km_per_tile);
 
     // Generate moisture with config
     let moisture = climate::generate_moisture_with_config(

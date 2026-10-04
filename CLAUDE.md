@@ -331,10 +331,11 @@ src/
 2. **Tectonic Simulation** - Plates rotate about Euler poles on a sphere for ~200 Myr; the
    simulation yields final plates, crust thickness/age, and a `stress_map` (see below)
 3. **Heightmap** - Derived from crust: Airy isostasy on land, age-depth law at sea, solved sea level
-4. **Erosion** - Hydraulic and glacial erosion sculpts terrain
-5. **Climate** - Temperature (latitude + elevation) and moisture
-6. **Biomes** - 50+ biome types based on climate
-7. **Water Bodies** - Detect oceans, lakes, rivers
+4. **Climate** - Temperature (latitude + elevation), moisture and precipitation
+5. **Landscape evolution** - Uplift vs. precipitation-driven river incision, sediment, rebound
+6. **Erosion** - Hydraulic and glacial erosion add detail; finishing passes; drainage repair
+7. **Biomes** - 50+ biome types based on climate
+8. **Water Bodies** - Detect oceans, lakes, rivers
 
 ---
 
@@ -413,6 +414,38 @@ the zoomed region around a point.
 - `--export-maps --upscale-factor N` renders at N× the simulation size; rivers are drawn from
   the Bezier river network as anti-aliased strokes at output resolution (width/opacity follow
   discharge), not from per-cell flow accumulation.
+
+### Landscape evolution (`erosion/landscape.rs`)
+- `landscape::evolve` runs in `main` after the climate and before the legacy erosion (tectonic
+  terrain only): 40 implicit steps over 10 Myr on the world grid. Each step: flexural response
+  to the last step's load (rebound 0.82 of rock removed, subsidence 0.6 of sediment, Gaussian
+  over 150 km), hillslope creep (sea = base level), priority-flood routing from the sea (enclosed
+  seas of 50+ cells at 512x256 count; hollows fill to their spill level and drain through it),
+  discharge = climate precipitation x runoff summed downstream, uplift of land from the
+  `stress_map`, implicit stream power `K Q^0.5 S` (K = 5e-7 with Q in m3/yr; erodes ~3 km3/yr
+  at 512x256, Earth's sediment flux is ~8), then sediment routed down: it settles in lakes up
+  to the spill level and on shelves around river mouths (40 m deep + 60 m per cell, 10 cells
+  out), the rest to the deep sea. ~0.6 s at 512x256, ~4 s at 1024x512.
+- K is tuned to the current, too-dry climate (draining land averages ~100 mm/yr); when
+  precipitation is fixed, scale K down by about sqrt(P_new / P_old).
+- `landscape::fill_pits(hm, 4, 10.0)` runs after the finishing passes (coastline, fjords,
+  regional noise, volcanoes, beaches), which pock the land with pits: hollows under 4 cells or
+  10 m deep are filled and flats tilted (0.05 m/cell) so every cell outside a lake drains;
+  bigger hollows stay lakes. `landscape::lake_depth` gives the standing water per cell.
+- `terrain_lab` (`cargo run --release --bin terrain_lab -- <seed> <w> <h> <style> <out_dir>`)
+  runs the terrain pipeline without history or window and prints, per stage, land %,
+  elevation quantiles, closed-basin share and where water from big-river cells ends up by
+  raw steepest descent (sea / lake / pit or flat), plus `terrain_<stage>.png`.
+  `LAB_VERBOSE=1` reports after every finishing pass; `LAB_ONLY_LEM=1` stops after the
+  landscape step; `LAB_NO_LEM=1` skips it; `LEM_K`, `LEM_U`, `LEM_D`, `LEM_T`, `LEM_STEPS`,
+  `LEM_FLEX` override its parameters.
+- Seed 42: final map at 512x256, big-river water reaches the sea 87% / a lake 12% / a pit
+  1.5% (legacy 30 / 49 / 21); at 1024x512 78 / 22 / 0 (legacy 26 / 38 / 37). Land p99 2.5 km
+  (legacy 1.7 km, at 1024 0.8 km).
+- The particle erosion used to clamp heights to [-5000, 2000] m (every range became a 2 km
+  mesa); it now only clamps to [-11000, 9000]. `apply_coastal_beaches` takes the tile size in
+  km and only moves a tile by the share of it the beach strip covers (it used to flatten every
+  coastal tile to ~130 m on 78 km tiles).
 
 ### Erosion
 - **Hydraulic**: Water droplets carve valleys and deposit sediment
