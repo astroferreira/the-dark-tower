@@ -64,7 +64,7 @@ impl Default for LandscapeParams {
         Self {
             duration_yr: 10.0e6,
             steps: 40,
-            k_fluvial: 5.0e-7,
+            k_fluvial: 1.2e-7,
             m: 0.5,
             runoff: 0.5,
             uplift_m_per_yr: 2.5e-4,

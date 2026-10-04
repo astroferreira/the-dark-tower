@@ -205,7 +205,10 @@ pub fn solve_energy_balance(
         .collect();
     let total_weight: f32 = row_weights.iter().sum::<f32>() * width as f32;
 
-    const MERIDIONAL_D: f32 = 2.2;
+    // Meridional heat transport (Budyko-Sellers, W/(m^2 C)). Budyko's Earth fit is ~3.8, but
+    // with the continentality terms below 3.0 gives zonal land temperatures closest to Earth's
+    // (2.2 left 50-70 degrees 7-8 C too cold and the map 30-40% tundra).
+    const MERIDIONAL_D: f32 = 3.0;
 
     let mut t_sealevel = Tilemap::new_with(width, height, 15.0f32);
 

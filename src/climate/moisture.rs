@@ -3,7 +3,6 @@
 //! Replaces distance/noise heuristics with physical Clausius-Clapeyron saturation,
 //! ocean evaporation, Semi-Lagrangian wind advection, orographic lift, and rain shadows.
 
-use std::f32::consts::PI;
 use crate::tilemap::Tilemap;
 use super::ebm::row_latitude;
 use super::circulation::PLANET_RADIUS;
@@ -32,7 +31,49 @@ pub fn potential_evapotranspiration(temp_c: f32) -> f32 {
     }
 }
 
+/// Annual potential evapotranspiration (mm/yr) from mean temperature: a fit to Thornthwaite /
+/// Hargreaves annual totals (about 300 mm at 0 C, 800 at 10 C, 1550 at 25 C), with a floor for
+/// sublimation in the cold.
+pub fn pet_mm(temp_c: f32) -> f32 {
+    (300.0 + 50.0 * temp_c).clamp(60.0, 1900.0)
+}
+
+/// Moisture index in [0, 1] from annual precipitation and temperature: P / (P + PET), the UNEP
+/// aridity index AI = P / PET mapped to AI / (1 + AI). Hyper-arid AI < 0.05 (index < 0.05),
+/// arid < 0.2 (< 0.17), semi-arid < 0.5 (< 0.33), dry sub-humid < 0.65 (< 0.39), humid above;
+/// rainforests have AI > 2 (index > 0.67).
+pub fn moisture_index(precip_mm: f32, temp_c: f32) -> f32 {
+    let p = precip_mm.max(0.0);
+    p / (p + pet_mm(temp_c))
+}
+
+/// Annual runoff (mm/yr): precipitation minus actual evapotranspiration, which follows the
+/// Budyko curve in Fu's form (w = 2.6). Wet, cool land sheds most of its rain; where
+/// evaporative demand far exceeds rain almost nothing runs off.
+pub fn runoff_mm(precip_mm: f32, temp_c: f32) -> f32 {
+    const W: f32 = 2.6;
+    let p = precip_mm.max(0.0);
+    if p <= 0.0 { return 0.0; }
+    let phi = pet_mm(temp_c) / p;
+    let aet_ratio = 1.0 + phi - (1.0 + phi.powf(W)).powf(1.0 / W);
+    (p * (1.0 - aet_ratio)).max(0.0)
+}
+
+/// Large-scale vertical motion from sea-level pressure: low pressure (ITCZ, subpolar storm
+/// tracks, summer thermal lows) means rising air and rain, high pressure (subtropical and polar
+/// highs) sinking air and drought. 1.0 at the ITCZ's 1006 hPa; capped just above it so the
+/// deeper subpolar lows don't out-rain the vapour-rich tropics.
+fn ascent(pressure_hpa: f32, cap: f32) -> f32 {
+    ((1021.0 - pressure_hpa) / 15.0).clamp(0.06, cap)
+}
+
 /// Perform Semi-Lagrangian advection and moisture precipitation simulation.
+///
+/// Water vapour evaporates from the sea, is carried by the wind (about one cell per step), and
+/// rains out at a rate set by relative humidity and large-scale ascent (from `pressure`), plus
+/// orographic lift where the wind climbs. Over land about half the rain is evapotranspired back
+/// into the air, which carries moisture deep into continents. Precipitation is averaged over the
+/// steps after a spin-up and scaled to mm/yr.
 ///
 /// Returns (precipitation in mm/year, moisture index in [0.0, 1.0]).
 pub fn simulate_moisture_and_precipitation(
@@ -40,214 +81,158 @@ pub fn simulate_moisture_and_precipitation(
     surface_temp: &Tilemap<f32>,
     sst: &Tilemap<f32>,
     surface_winds: &Tilemap<(f32, f32)>,
+    pressure: &Tilemap<f32>,
     rainfall_multiplier: f32,
     rainfall_floor: f32,
 ) -> (Tilemap<f32>, Tilemap<f32>) {
+    /// Mean residence time of water vapour in the atmosphere (Earth: ~9 days); a fully humid,
+    /// strongly rising column rains out faster by RAIN_BOOST.
+    const RESIDENCE_S: f32 = 9.0 * 86_400.0;
+    const RAIN_BOOST: f32 = 3.0;
+    /// Vapour rides the steering-level winds (850-700 hPa), faster than the surface wind.
+    const TRANSPORT: f32 = 3.5;
+    /// Cap on large-scale ascent (see `ascent`).
+    const ASCENT_CAP: f32 = 1.15;
+    /// Orographic rain: share of the vapour rained out per metre of climb along the wind
+    /// (1/CLIMB_M), at most CLIMB_MAX per step.
+    const CLIMB_M: f32 = 3000.0;
+    const CLIMB_MAX: f32 = 0.3;
+    /// Marine air is recharged toward this relative humidity over the sea.
+    const SEA_RH: f32 = 0.8;
+    /// Precipitable water (mm) per g/kg of near-surface specific humidity (vapour scale height).
+    const PW_MM_PER_GKG: f32 = 2.5;
+    /// Share of land rain returned to the air by evapotranspiration, scaled by warmth (from 0.4
+    /// in the cold to 1 above 20 C). Land recycling is what carries rain into the interiors.
+    const RECYCLE: f32 = 0.92;
+    const COLD_RECYCLE: f32 = 0.4;
+    /// Steps: the air moves about a cell per step; rain is averaged after SPIN_UP.
+    const STEPS: usize = 120;
+    const SPIN_UP: usize = 40;
+    const REF_SPEED: f32 = 7.5;
+
     let width = heightmap.width;
     let height = heightmap.height;
-
-    let delta_lambda = 2.0 * PI / width as f32;
-    let delta_phi = PI / height as f32;
-
-    // Time step for advection iterations
-    let dt = 1800.0; // 30 minutes in seconds
-    let total_steps = 24; // 12 hours total simulation time to reach steady moisture equilibrium
-
-    // Initialize atmospheric specific humidity q (g/kg)
-    let mut q_air = Tilemap::new_with(width, height, 0.0f32);
-    for y in 0..height {
-        for x in 0..width {
-            let elev = *heightmap.get(x, y);
-            let t = *surface_temp.get(x, y);
-            let q_sat = saturation_humidity(t, elev);
-            if elev <= 0.0 {
-                // Ocean starts saturated
-                q_air.set(x, y, q_sat * 0.95);
-            } else {
-                q_air.set(x, y, q_sat * 0.30);
+    let n = width * height;
+    // One step = the time the reference wind takes to cross a cell.
+    let step_s = 2.0 * std::f32::consts::PI * PLANET_RADIUS / width as f32 / REF_SPEED;
+    let rain_rate = (RAIN_BOOST * step_s / RESIDENCE_S).min(0.9);
+    let mm_per_unit = PW_MM_PER_GKG * 365.0 * 86_400.0 / step_s;
+    let elev: Vec<f32> = heightmap.iter().map(|(_, _, &e)| e).collect();
+    let temp: Vec<f32> = surface_temp.iter().map(|(_, _, &t)| t).collect();
+    let q_sat: Vec<f32> = (0..n).map(|i| saturation_humidity(temp[i], elev[i])).collect();
+    let q_sat_sea: Vec<f32> = sst.iter().map(|(_, _, &t)| saturation_humidity(t, 0.0)).collect();
+    let lift: Vec<f32> = pressure.iter().map(|(_, _, &p)| ascent(p, ASCENT_CAP)).collect();
+    // Orographic lift sees the broad terrain, not single-cell bumps (which would streak).
+    let smooth = {
+        let mut a = elev.iter().map(|&e| e.max(0.0)).collect::<Vec<f32>>();
+        for _ in 0..2 {
+            let b = a.clone();
+            for y in 0..height {
+                for x in 0..width {
+                    let mut sum = 0.0;
+                    for dy in -1i32..=1 {
+                        let yy = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+                        for dx in -1i32..=1 {
+                            sum += b[yy * width + (x as i32 + dx).rem_euclid(width as i32) as usize];
+                        }
+                    }
+                    a[y * width + x] = sum / 9.0;
+                }
             }
+        }
+        a
+    };
+    let warmth: Vec<f32> = temp.iter().map(|&t| ((t + 5.0) / 25.0).clamp(COLD_RECYCLE, 1.0)).collect();
+
+    // Upwind source of each cell (semi-Lagrangian, bilinear), fixed for the season.
+    let mut src: Vec<[(usize, f32); 4]> = Vec::with_capacity(n);
+    for y in 0..height {
+        let lat = row_latitude(y, height);
+        let cos_lat = lat.cos().max(0.18);
+        for x in 0..width {
+            let (wu, wv) = *surface_winds.get(x, y);
+            let sx = (x as f32 - (TRANSPORT * wu / (REF_SPEED * cos_lat)).clamp(-4.0, 4.0)).rem_euclid(width as f32);
+            let sy = (y as f32 + (TRANSPORT * wv / REF_SPEED).clamp(-3.0, 3.0)).clamp(0.0, (height - 1) as f32);
+            let (x0, y0) = (sx.floor() as usize % width, sy.floor() as usize);
+            let (x1, y1) = ((x0 + 1) % width, (y0 + 1).min(height - 1));
+            let (fx, fy) = (sx - sx.floor(), sy - sy.floor());
+            src.push([
+                (y0 * width + x0, (1.0 - fx) * (1.0 - fy)),
+                (y0 * width + x1, fx * (1.0 - fy)),
+                (y1 * width + x0, (1.0 - fx) * fy),
+                (y1 * width + x1, fx * fy),
+            ]);
         }
     }
 
-    // Accumulators for precipitation over the simulation
-    let mut total_precip = Tilemap::new_with(width, height, 0.0f32);
+    let mut q: Vec<f32> = (0..n).map(|i| if elev[i] <= 0.0 { q_sat_sea[i] * 0.8 } else { q_sat[i] * 0.3 }).collect();
+    let mut next = vec![0.0f32; n];
+    let mut rain_sum = vec![0.0f32; n];
 
-    // Number of advection sweeps to transport moisture across continents
-    let total_steps = 32;
+    for step in 0..STEPS {
+        for i in 0..n {
+            // Advection: vapour and the elevation it was carried from.
+            let mut qi = 0.0;
+            let mut src_h = 0.0;
+            for &(j, w) in &src[i] {
+                qi += w * q[j];
+                src_h += w * smooth[j];
+            }
+            let land = elev[i] > 0.0;
+            if !land {
+                // Evaporation recharges marine air toward 80% humidity.
+                qi += (q_sat_sea[i] * SEA_RH - qi).max(0.0) * 0.4;
+            }
 
-    for _step in 0..total_steps {
-        let mut next_q = Tilemap::new_with(width, height, 0.0f32);
-        let mut next_src_elev = Tilemap::new_with(width, height, 0.0f32);
-
-        // Sub-step 1: Semi-Lagrangian Advection
-        // Each step advances moisture by roughly 0.8-1.2 cells along the wind vector
-        const REF_SPEED: f32 = 7.5;
-
-        for y in 0..height {
-            let lat = row_latitude(y, height);
-            let cos_lat = lat.cos().max(0.18);
-
-            for x in 0..width {
-                let (wu, wv) = *surface_winds.get(x, y);
-
-                // Wind vector in grid-cell units:
-                // wu > 0 blows East (to +x), so upstream source is West (-wu)
-                // wv > 0 blows North (to -y), so upstream source is South (+wv)
-                let delta_x_cells = -(wu / (REF_SPEED * cos_lat)).clamp(-3.0, 3.0);
-                let delta_y_cells = (wv / REF_SPEED).clamp(-2.0, 2.0);
-
-                let src_x = (x as f32 + delta_x_cells).rem_euclid(width as f32);
-                let src_y = (y as f32 + delta_y_cells).clamp(0.0, (height - 1) as f32);
-
-                // Bilinear interpolation of upwind moisture and upwind elevation
-                let x0 = src_x.floor() as usize;
-                let x1 = (x0 + 1) % width;
-                let y0 = src_y.floor() as usize;
-                let y1 = (y0 + 1).min(height - 1);
-
-                let fx = src_x - x0 as f32;
-                let fy = src_y - y0 as f32;
-
-                let q00 = *q_air.get(x0, y0);
-                let q10 = *q_air.get(x1, y0);
-                let q01 = *q_air.get(x0, y1);
-                let q11 = *q_air.get(x1, y1);
-
-                let advected_q = (1.0 - fx) * (1.0 - fy) * q00
-                    + fx * (1.0 - fy) * q10
-                    + (1.0 - fx) * fy * q01
-                    + fx * fy * q11;
-
-                let h00 = *heightmap.get(x0, y0);
-                let h10 = *heightmap.get(x1, y0);
-                let h01 = *heightmap.get(x0, y1);
-                let h11 = *heightmap.get(x1, y1);
-
-                let advected_h = (1.0 - fx) * (1.0 - fy) * h00
-                    + fx * (1.0 - fy) * h10
-                    + (1.0 - fx) * fy * h01
-                    + fx * fy * h11;
-
-                next_q.set(x, y, advected_q);
-                next_src_elev.set(x, y, advected_h);
+            // Rain: humid air in rising columns rains out; climbing air rains more.
+            let rh = qi / q_sat[i];
+            let humid = ((rh - 0.3) / 0.7).clamp(0.0, 1.0);
+            let climb = if land { ((smooth[i] - src_h) / CLIMB_M).clamp(0.0, CLIMB_MAX) } else { 0.0 };
+            let mut rain = qi * (rain_rate * lift[i] * humid * humid + climb * rh.min(1.0));
+            // Supersaturated air condenses its excess at once.
+            rain += (qi - rain - q_sat[i]).max(0.0);
+            rain = rain.min(qi);
+            qi -= rain;
+            if land {
+                qi += rain * RECYCLE * warmth[i];
+            }
+            next[i] = qi;
+            if step >= SPIN_UP {
+                rain_sum[i] += rain;
             }
         }
+        std::mem::swap(&mut q, &mut next);
+    }
 
-        // Sub-step 2: Evaporation, Orographic Lift, and Precipitation
+    let steps = (STEPS - SPIN_UP) as f32;
+    // A light 3x3 smoothing: at this cell size rainfall varies smoothly, and the semi-Lagrangian
+    // scheme leaves streaks where winds turn sharply between pressure belts.
+    for _ in 0..2 {
+        let b = rain_sum.clone();
         for y in 0..height {
             for x in 0..width {
-                let elev = *heightmap.get(x, y);
-                let t = *surface_temp.get(x, y);
-                let src_h = *next_src_elev.get(x, y);
-                let mut q = *next_q.get(x, y);
-
-                let is_ocean = elev <= 0.0;
-                let mut step_precip = 0.0f32;
-
-                if is_ocean {
-                    // 2a. Evaporation over water:
-                    let sea_t = *sst.get(x, y);
-                    let q_sat_sea = saturation_humidity(sea_t, 0.0);
-
-                    // Recharges air moisture toward sea saturation
-                    let deficit = (q_sat_sea * 0.95 - q).max(0.0);
-                    q += deficit * 0.40;
-
-                    // Convergence precipitation over ocean (e.g. ITCZ)
-                    if q > q_sat_sea * 0.88 {
-                        let excess = q - q_sat_sea * 0.88;
-                        let condensed = excess * 0.35;
-                        q -= condensed;
-                        step_precip += condensed * 1.5;
-                    }
-                } else {
-                    // 2b. Orographic Lift & Rain Shadows:
-                    // Elevation change along the wind trajectory: delta_h = elev - src_h
-                    let delta_h = elev - src_h;
-                    let q_sat_local = saturation_humidity(t, elev);
-
-                    if delta_h > 20.0 {
-                        // Air moving uphill: adiabatic expansion and cooling
-                        let cooling = (delta_h / 1000.0) * 6.5;
-                        let q_sat_lifted = saturation_humidity(t - cooling, elev);
-
-                        if q > q_sat_lifted {
-                            let excess = q - q_sat_lifted;
-                            let condensed = excess * 0.85; // high orographic precipitation efficiency
-                            q -= condensed;
-                            step_precip += condensed * 3.5;
-                        }
-                    } else if delta_h < -20.0 {
-                        // Air moving downhill: adiabatic warming (foehn/chinook wind)
-                        // Relative humidity plummets -> zero rain, dry air creates rain shadow!
-                        // No condensation occurs when descending
-                    }
-
-                    // 2c. Convective / Frontal Condensation
-                    if q > q_sat_local * 0.82 {
-                        let excess = q - q_sat_local * 0.82;
-                        let condensed = excess * 0.50;
-                        q -= condensed;
-                        step_precip += condensed * 1.8;
-                    }
-
-                    // 2d. Continental Evapotranspiration Recycling:
-                    // Only occurs if there is local soil moisture from previous precipitation
-                    let prev_precip = *total_precip.get(x, y);
-                    if prev_precip > 0.05 {
-                        let pet = potential_evapotranspiration(t);
-                        let moisture_avail = (prev_precip * 0.15).min(1.0);
-                        let deficit = (q_sat_local * 0.70 - q).max(0.0);
-                        let et_rate = (pet * 0.08 * moisture_avail).min(deficit * 0.10);
-                        q += et_rate;
+                let mut sum = 0.0;
+                let mut wsum = 0.0;
+                for dy in -1i32..=1 {
+                    let yy = (y as i32 + dy).clamp(0, height as i32 - 1) as usize;
+                    for dx in -1i32..=1 {
+                        let wgt = if dx == 0 && dy == 0 { 4.0 } else if dx == 0 || dy == 0 { 2.0 } else { 1.0 };
+                        sum += wgt * b[yy * width + (x as i32 + dx).rem_euclid(width as i32) as usize];
+                        wsum += wgt;
                     }
                 }
-
-                let current_total = *total_precip.get(x, y);
-                total_precip.set(x, y, current_total + step_precip);
-                next_q.set(x, y, q);
+                rain_sum[y * width + x] = sum / wsum;
             }
         }
-
-        q_air = next_q;
     }
-
-    // Step 3: Compute annual precipitation (mm/year) and normalized moisture (0.0 to 1.0)
     let mut precip_map = Tilemap::new_with(width, height, 0.0f32);
     let mut moisture_map = Tilemap::new_with(width, height, 0.0f32);
-
-    for y in 0..height {
-        for x in 0..width {
-            let elev = *heightmap.get(x, y);
-            let t = *surface_temp.get(x, y);
-            let is_ocean = elev <= 0.0;
-
-            if is_ocean {
-                precip_map.set(x, y, 1200.0);
-                moisture_map.set(x, y, 1.0);
-                continue;
-            }
-
-            // Convert accumulated simulation precipitation to annual mm/year
-            // Scaled so average wet temperate regions receive ~800-1500 mm, deserts < 200 mm
-            let raw_precip = *total_precip.get(x, y);
-            let annual_mm = (raw_precip * 85.0 * rainfall_multiplier).clamp(20.0, 5000.0);
-            precip_map.set(x, y, annual_mm);
-
-            // Aridity Index calculation:
-            // Moisture = P / (P + PET)
-            // Hot deserts have high PET and low P -> Moisture < 0.15
-            // Temperate forests have P ~ PET -> Moisture ~ 0.5 - 0.7
-            // Tropical rainforests have P >> PET -> Moisture > 0.8
-            let pet = potential_evapotranspiration(t) * 365.0; // annual PET in mm
-            let aridity_moisture = annual_mm / (annual_mm + pet * 0.7);
-
-            let final_moisture = aridity_moisture
-                .clamp(rainfall_floor, 1.0);
-
-            moisture_map.set(x, y, final_moisture);
-        }
+    for (i, (_, _, p)) in precip_map.iter_mut().enumerate() {
+        *p = (rain_sum[i] / steps * mm_per_unit * rainfall_multiplier).clamp(10.0, 6000.0);
     }
-
+    for (i, (_, _, m)) in moisture_map.iter_mut().enumerate() {
+        let p = *precip_map.get(i % width, i / width);
+        *m = if elev[i] <= 0.0 { 1.0 } else { moisture_index(p, temp[i]).clamp(rainfall_floor, 1.0) };
+    }
     (precip_map, moisture_map)
 }

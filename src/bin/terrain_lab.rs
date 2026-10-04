@@ -152,6 +152,95 @@ fn main() {
 
     let climate_config = climate::ClimateConfig::default();
     let sim = climate::run_climate_simulation(&hm, &climate_config, seeds.climate);
+    if std::env::var("LAB_CLIMATE").is_ok() {
+        let t1 = std::time::Instant::now();
+        let _ = climate::run_climate_simulation(&hm, &climate_config, seeds.climate);
+        println!("climate in {:.2}s", t1.elapsed().as_secs_f32());
+        let p = &sim.annual_precipitation;
+        let mut land: Vec<f32> = hm.iter().filter(|(_, _, &e)| e > 0.0).map(|(x, y, _)| *p.get(x, y)).collect();
+        land.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let q = |f: f32| land[((land.len() - 1) as f32 * f) as usize];
+        let mean = land.iter().sum::<f32>() / land.len() as f32;
+        let ocean: Vec<f32> = hm.iter().filter(|(_, _, &e)| e <= 0.0).map(|(x, y, _)| *p.get(x, y)).collect();
+        println!("land precip mm/yr: mean {:.0} p10 {:.0} p25 {:.0} p50 {:.0} p75 {:.0} p90 {:.0} p99 {:.0}; ocean mean {:.0}",
+            mean, q(0.1), q(0.25), q(0.5), q(0.75), q(0.9), q(0.99), ocean.iter().sum::<f32>() / ocean.len().max(1) as f32);
+        print!("zonal ocean precip (signed lat bands of 10, N to S):");
+        for b in 0..18 {
+            let (mut sum, mut cnt) = (0.0f32, 0);
+            for (x, y, &e) in hm.iter() {
+                let lat = 90.0 - (y as f32 + 0.5) / h as f32 * 180.0;
+                if e <= 0.0 && ((90.0 - lat) / 10.0) as usize == b { sum += *p.get(x, y); cnt += 1; }
+            }
+            print!(" {}:{:.0}", 80 - 10 * b as i32, if cnt > 0 { sum / cnt as f32 } else { f32::NAN });
+        }
+        println!();
+        print!("zonal land precip (|lat| bands of 10):");
+        for b in 0..9 {
+            let (mut sum, mut cnt) = (0.0f32, 0);
+            for (x, y, &e) in hm.iter() {
+                let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+                if e > 0.0 && (lat / 10.0) as usize == b { sum += *p.get(x, y); cnt += 1; }
+            }
+            print!(" {}0s:{:.0}", b, if cnt > 0 { sum / cnt as f32 } else { f32::NAN });
+        }
+        println!();
+        {
+            // Precipitation and wind speed by distance from the coast (cells).
+            use std::collections::VecDeque;
+            let mut d = vec![usize::MAX; w * h];
+            let mut qd = VecDeque::new();
+            for (x, y, &e) in hm.iter() { if e <= 0.0 { d[y * w + x] = 0; qd.push_back((x, y)); } }
+            while let Some((x, y)) = qd.pop_front() {
+                for (nx, ny) in hm.neighbors(x, y) {
+                    if d[ny * w + nx] == usize::MAX { d[ny * w + nx] = d[y * w + x] + 1; qd.push_back((nx, ny)); }
+                }
+            }
+            print!("by coast distance (precip mm / wind m/s):");
+            for (lo, hi) in [(1, 2), (2, 4), (4, 8), (8, 16), (16, 32), (32, 999)] {
+                let (mut sp, mut sw, mut c) = (0.0f32, 0.0f32, 0);
+                for (x, y, _) in hm.iter() {
+                    let di = d[y * w + x];
+                    if di >= lo && di < hi { sp += *p.get(x, y); let (u, v) = *sim.prevailing_winds.get(x, y); sw += (u * u + v * v).sqrt(); c += 1; }
+                }
+                if c > 0 { print!(" {lo}-{hi}: {:.0}/{:.1} ({c})", sp / c as f32, sw / c as f32); }
+            }
+            println!();
+        }
+        {
+            let mut img = RgbImage::new(w as u32, h as u32);
+            for (x, y, &e) in hm.iter() {
+                let v = *p.get(x, y);
+                let c = if e <= 0.0 {
+                    let t = (v / 3000.0).clamp(0.0, 1.0);
+                    lerp([30.0, 40.0, 70.0], [60.0, 90.0, 160.0], t)
+                } else {
+                    let t = (v.max(1.0).log10() - 1.0) / 2.6; // 10 mm .. 4000 mm
+                    let t = t.clamp(0.0, 1.0);
+                    if t < 0.5 { lerp([200.0, 160.0, 90.0], [230.0, 220.0, 120.0], t * 2.0) } else { lerp([230.0, 220.0, 120.0], [20.0, 120.0, 40.0], t * 2.0 - 1.0) }
+                };
+                img.put_pixel(x as u32, y as u32, Rgb([c[0] as u8, c[1] as u8, c[2] as u8]));
+            }
+            let _ = img.save(format!("{out}/precip.png"));
+        }
+        {
+            let heur = climate::compute_effective_runoff(&hm, &sim.mean_temperature, &sim.mean_moisture);
+            let (mut a, mut b, mut n) = (0.0f64, 0.0f64, 0usize);
+            let mut phys: Vec<f32> = Vec::new();
+            for (x, y, &e) in hm.iter() {
+                if e <= 0.0 { continue; }
+                a += *heur.get(x, y) as f64;
+                let r = climate::runoff_mm(*p.get(x, y), *sim.mean_temperature.get(x, y));
+                b += r as f64; n += 1; phys.push(r);
+            }
+            phys.sort_by(|x, y| x.partial_cmp(y).unwrap());
+            let q = |f: f32| phys[((phys.len() - 1) as f32 * f) as usize];
+            println!("runoff: heuristic mean {:.3}; Budyko mean {:.0} mm/yr (p25 {:.0}, p50 {:.0}, p75 {:.0}, p90 {:.0}, p99 {:.0})", a / n as f64, b / n as f64, q(0.25), q(0.5), q(0.75), q(0.9), q(0.99));
+        }
+        let cfg = planet_generator::biomes::WorldBiomeConfig { fantasy_intensity: 0.0, ..Default::default() };
+        let b = planet_generator::biomes::generate_extended_biomes(&hm, &sim.mean_temperature, &sim.mean_moisture, &t.stress_map, &cfg, seeds.biomes);
+        planet_generator::biomes::print_biome_stats(&b, &hm, &sim.mean_temperature, &sim.mean_moisture);
+        return;
+    }
 
     if std::env::var("LAB_NO_LEM").is_err() {
         let t1 = std::time::Instant::now();
@@ -195,7 +284,7 @@ fn main() {
     println!("filled {filled} hollow cells");
     report("final", &hm, &out, None);
 
-    let (_, bodies, _, _, _) = water_bodies::detect_water_bodies_climate(&hm, &sim.mean_temperature, &sim.mean_moisture);
+    let (_, bodies, _, _, _) = water_bodies::detect_water_bodies_climate(&hm, &sim.mean_temperature, &sim.mean_moisture, Some(&sim.annual_precipitation));
     let st = water_bodies::water_body_stats(&bodies);
     println!("lakes {}, river tiles {}, total {:.1}s", water_bodies::count_lakes(&bodies), st.river_tiles, t0.elapsed().as_secs_f32());
 }

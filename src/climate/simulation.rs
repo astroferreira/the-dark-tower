@@ -121,6 +121,7 @@ pub fn run_climate_simulation(
                     &t_surf_moderated,
                     &sst,
                     &winds,
+                    &pressure,
                     rain_mult,
                     rain_floor,
                 );
@@ -268,11 +269,13 @@ pub fn run_climate_simulation(
 
             // Simple prevailing westerlies
             let winds = Tilemap::new_with(width, height, (8.0f32, 0.0f32));
+            let pressure = Tilemap::new_with(width, height, 1010.0f32);
             let (precip, moist) = simulate_moisture_and_precipitation(
                 heightmap,
                 &mean_temp,
                 &mean_temp,
                 &winds,
+                &pressure,
                 rain_mult,
                 rain_floor,
             );

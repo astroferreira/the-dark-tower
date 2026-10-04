@@ -154,6 +154,11 @@ pub fn river_flow_threshold(width: usize) -> f32 {
     (RIVER_FLOW_THRESHOLD * k * k).max(4.0)
 }
 
+/// Runoff (mm/yr) that counts as one unit of flow per tile. Flow accumulation is summed in
+/// these units; the value keeps flows on the scale `river_flow_threshold` was calibrated with
+/// (the older moisture-index runoff averaged ~0.1 per land tile, Budyko runoff ~530 mm/yr).
+pub const RUNOFF_MM_PER_UNIT: f32 = 3500.0;
+
 /// Sea level (0.0 by convention)
 const SEA_LEVEL: f32 = 0.0;
 
@@ -177,6 +182,7 @@ pub fn detect_water_bodies_hydrological(
     heightmap: &Tilemap<f32>,
     temperature: Option<&Tilemap<f32>>,
     moisture: Option<&Tilemap<f32>>,
+    precipitation: Option<&Tilemap<f32>>,
 ) -> (
     Tilemap<WaterBodyId>,
     Vec<WaterBody>,
@@ -187,8 +193,17 @@ pub fn detect_water_bodies_hydrological(
     let width = heightmap.width;
     let height = heightmap.height;
 
-    // 1. Calculate effective runoff
-    let runoff = if let (Some(temp), Some(moist)) = (temperature, moisture) {
+    // 1. Calculate effective runoff: from precipitation (Budyko) when the climate gives it, else
+    // from the moisture index.
+    let runoff = if let (Some(temp), Some(precip)) = (temperature, precipitation) {
+        let mut r = Tilemap::new_with(width, height, 0.0f32);
+        for (x, y, &h) in heightmap.iter() {
+            if h >= 0.0 {
+                r.set(x, y, crate::climate::runoff_mm(*precip.get(x, y), *temp.get(x, y)) / RUNOFF_MM_PER_UNIT);
+            }
+        }
+        r
+    } else if let (Some(temp), Some(moist)) = (temperature, moisture) {
         compute_effective_runoff(heightmap, temp, moist)
     } else {
         let mut r = Tilemap::new_with(width, height, 0.0f32);
@@ -284,8 +299,14 @@ pub fn detect_water_bodies_hydrological(
             0.5
         };
 
-        // Evaporation rate per unit area (higher in hot, arid zones)
-        let evap_rate = (0.5 * (avg_t / 15.0).max(0.2) * (1.2 - avg_m).max(0.2)).max(0.1);
+        // Evaporation rate per lake tile, in the same units as the runoff: open water loses
+        // about PET less the rain falling on it; without precipitation, a moisture heuristic.
+        let evap_rate = if let Some(precip) = precipitation {
+            let avg_p = basin.tiles.iter().map(|&(tx, ty)| *precip.get(tx, ty)).sum::<f32>() / basin.area as f32;
+            ((crate::climate::pet_mm(avg_t) - avg_p) / RUNOFF_MM_PER_UNIT).max(0.02)
+        } else {
+            (0.5 * (avg_t / 15.0).max(0.2) * (1.2 - avg_m).max(0.2)).max(0.1)
+        };
         let pot_evap = evap_rate * basin.area as f32;
 
         // Only evaluate endorheic water budgets when climate data is present
@@ -378,6 +399,7 @@ pub fn detect_water_bodies_climate(
     heightmap: &Tilemap<f32>,
     temperature: &Tilemap<f32>,
     moisture: &Tilemap<f32>,
+    precipitation: Option<&Tilemap<f32>>,
 ) -> (
     Tilemap<WaterBodyId>,
     Vec<WaterBody>,
@@ -385,7 +407,7 @@ pub fn detect_water_bodies_climate(
     Tilemap<f32>,
     Tilemap<u8>,
 ) {
-    detect_water_bodies_hydrological(heightmap, Some(temperature), Some(moisture))
+    detect_water_bodies_hydrological(heightmap, Some(temperature), Some(moisture), precipitation)
 }
 
 /// Detect and classify all water bodies in the world.
@@ -395,7 +417,7 @@ pub fn detect_water_bodies(
     heightmap: &Tilemap<f32>,
 ) -> (Tilemap<WaterBodyId>, Vec<WaterBody>, Tilemap<f32>) {
     let (water_map, water_bodies, water_depth, _, _) =
-        detect_water_bodies_hydrological(heightmap, None, None);
+        detect_water_bodies_hydrological(heightmap, None, None, None);
     (water_map, water_bodies, water_depth)
 }
 

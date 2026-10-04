@@ -17,7 +17,7 @@ pub use ebm::{
     calculate_annual_insolation, calculate_daily_insolation, rossby_wave_perturbation, row_latitude,
     solve_energy_balance, surface_albedo, SOLAR_CONSTANT,
 };
-pub use moisture::{potential_evapotranspiration, saturation_humidity, simulate_moisture_and_precipitation};
+pub use moisture::{moisture_index, pet_mm, runoff_mm, potential_evapotranspiration, saturation_humidity, simulate_moisture_and_precipitation};
 pub use ocean::{
     apply_maritime_influence, calculate_coastal_upwelling, calculate_ocean_currents,
     calculate_sea_surface_temperatures,

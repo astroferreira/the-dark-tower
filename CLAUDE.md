@@ -395,9 +395,14 @@ the zoomed region around a point.
   16 px close-up, and a cross-section) without a window.
 
 ### Biomes
-- Lowland classification (`climate/biomes.rs::classify_lowland`) uses Earth-calibrated mean
-  annual temperature: ice sheets below -22 C (or -15 C when wet), tundra to -7 C, taiga
-  -7..4 C; moisture cut-offs match the climate sim's range (rarely above ~0.6).
+- Lowland classification (`climate/biomes.rs::classify_lowland`) is a Whittaker diagram on
+  mean annual temperature (ice below -22 C or -15 C when very wet, tundra to -10 C, taiga
+  -10..4 C) and the moisture index P / (P + PET) (`climate::moisture_index`, the UNEP aridity
+  index AI as AI / (1 + AI)): deserts below 0.17 (AI 0.2), steppe / savanna to 0.33-0.42,
+  forests above ~0.4 (AI ~0.67), rainforest above 0.67 (AI 2). PET rises with temperature,
+  so the same rain makes forest in the cold and steppe in the heat (Koppen's B rule).
+  Seed 42: forests 22%, desert 21%, grass/savanna 26%, tundra 27% of land tiles (seeds 7 / 99:
+  forests 37% / 28%); tiles over-weight high latitudes, so tundra is smaller by area.
 - `--fantasy 0..1` (default 0.2, old behaviour 0.5) scales fantasy/special biomes, including
   the rare-biome replacement pass. `--biome-stats` prints the land-biome mix, land
   temperature/moisture percentiles and a zonal temperature/land profile.
@@ -431,12 +436,12 @@ the zoomed region around a point.
   over 150 km), hillslope creep (sea = base level), priority-flood routing from the sea (enclosed
   seas of 50+ cells at 512x256 count; hollows fill to their spill level and drain through it),
   discharge = climate precipitation x runoff summed downstream, uplift of land from the
-  `stress_map`, implicit stream power `K Q^0.5 S` (K = 5e-7 with Q in m3/yr; erodes ~3 km3/yr
+  `stress_map`, implicit stream power `K Q^0.5 S` (K = 1.2e-7 with Q in m3/yr; erodes ~3 km3/yr
   at 512x256, Earth's sediment flux is ~8), then sediment routed down: it settles in lakes up
   to the spill level and on shelves around river mouths (40 m deep + 60 m per cell, 10 cells
   out), the rest to the deep sea. ~0.6 s at 512x256, ~4 s at 1024x512.
-- K is tuned to the current, too-dry climate (draining land averages ~100 mm/yr); when
-  precipitation is fixed, scale K down by about sqrt(P_new / P_old).
+- K was retuned (5e-7 -> 1.2e-7) when precipitation went from ~100 to ~850 mm/yr on land, to
+  keep ~29M km3 eroded over 10 Myr; retune it again if precipitation changes a lot.
 - `landscape::fill_pits(hm, 4, 10.0)` runs after the finishing passes (coastline, fjords,
   regional noise, volcanoes, beaches), which pock the land with pits: hollows under 4 cells or
   10 m deep are filled and flats tilted (0.05 m/cell) so every cell outside a lake drains;
@@ -461,10 +466,25 @@ the zoomed region around a point.
 - **Glacial**: Ice sheets using Shallow Ice Approximation (SIA)
 - **Rivers**: Flow accumulation creates river channels
 
-### Climate
-- Temperature: Decreases with latitude and elevation
-- Moisture: Trade winds, rain shadows, ocean proximity
-- Creates realistic climate zones
+### Climate (`climate/`)
+- Temperature: Budyko-Sellers energy balance per season (`ebm.rs`), heat transport D = 3.0
+  W/(m2 C) (zonal land means within ~2-4 C of Earth's), continentality, lapse rate.
+- Precipitation (`moisture.rs`): vapour evaporates from the sea (toward 80% humidity), rides
+  the steering-level wind (3.5x the surface wind, ~a cell per step: one step = a cell
+  crossing, so the scheme is resolution-independent), and rains out at (step / 9-day
+  residence) x 3 x humidity^2 x ascent, where ascent comes from sea-level pressure (ITCZ and
+  subpolar lows wet, subtropical highs dry; capped at 1.15), plus orographic rain where the
+  wind climbs the smoothed terrain. Land returns 92% of its rain to the air (40% in the cold),
+  which carries rain into the interiors. 120 steps, mean of the last 80, 2-pass smoothing,
+  precipitable water 2.5 mm per g/kg. Seed 42: land mean ~850 mm/yr (median ~390), ocean
+  ~900, equatorial ocean ~2000, subtropical ~600, storm tracks ~1700.
+- Runoff (`climate::runoff_mm`): precipitation minus actual evapotranspiration on Fu's Budyko
+  curve (w 2.6), PET = 300 + 50 T mm/yr (`pet_mm`). Water-body detection sums it as flow
+  (`water_bodies::RUNOFF_MM_PER_UNIT` = 3500 mm per unit keeps the river thresholds'
+  scale); endorheic lakes balance inflow against open-water evaporation (PET - P).
+- `terrain_lab` with `LAB_CLIMATE=1` stops after the climate and prints land precipitation
+  quantiles, zonal land/ocean precipitation, precipitation and wind by distance from the
+  coast, Budyko runoff, the biome mix, and writes `precip.png`.
 
 ### Biomes (50+ types)
 - Ocean biomes: DeepOcean, Ocean, CoastalWater

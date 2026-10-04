@@ -499,7 +499,7 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
 
     // Detect water bodies with climate coupling
     let (water_body_map, water_bodies_list, water_depth, flow_acc, flow_dir) =
-        water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture);
+        water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture, None);
 
     // Apply rare biome replacements
     biomes::apply_biome_replacements(

@@ -859,7 +859,7 @@ fn main() {
     // Detect water bodies (lakes, rivers, ocean) with water depth and climate coupling
     println!("Detecting water bodies with hydrological routing...");
     let (water_body_map, water_bodies_list, water_depth, flow_acc, flow_dir) =
-        water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture);
+        water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture, Some(&climate_sim.annual_precipitation));
     let lake_count = water_bodies::count_lakes(&water_bodies_list);
     let wb_stats = water_bodies::water_body_stats(&water_bodies_list);
     println!("Found {} lakes, {} river tiles, {} ocean tiles",
