@@ -267,9 +267,13 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   wheel zooms, `F` resets zoom, `X` saves the region PNG, `Esc`/`Z` returns to the map (centred
   where you walked to). Near a region edge the next region is generated on a background thread
   and swapped in; zoom terrain is seamless, so you can walk across the world.
-- `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/16px/32px
-  frames to PNG without a window (for checking rendering) and prints each frame's render time
-  (best of three; seed 42: ~9 ms overview, ~17-23 ms at 16/32 px).
+- `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/3px/16px/32px
+  frames to PNG without a window (for checking rendering; 3.5 px/tile is just below the
+  detailed-tile threshold) and prints each frame's render time (best of three; seed 42: ~11 ms
+  overview and 3px, ~16-21 ms at 16/32 px).
+- Far zoom (< 4 px/tile) draws flat tile colours: land/water per pixel from the smooth shoreline
+  field and the colour from a domain-warped tile lookup of the same class (`far_color`), so
+  lakes, shallows and biome patches don't show the tile grid.
 - Data overlays (`tiles/overlays.rs`; the old terminal explorer's V views): `O` cycles (Shift+O
   back) Map, Height, Temperature, Moisture, Drainage (log flow), Tectonic plates, Tectonic
   stress, Biomes. Muted palettes washed over the map (`render.rs::overlay_tint`, modulated by

@@ -79,6 +79,42 @@ fn smooth_field(tw: &TileWorld, wx: f32, wy: f32, f: impl Fn(usize) -> f32) -> f
     top + (bot - top) * sy
 }
 
+/// Far-zoom fill colour at (wx, wy): the flat colour of the tile under a domain-warped position
+/// (the same warp the detailed view uses for ground kinds), so biome patches and water depths
+/// meander instead of showing tile squares; restricted to tiles of the requested class (land or
+/// water), else the nearest such tile in the 3x3 around the pixel. Frozen water is iced over.
+fn far_color(tw: &TileWorld, wx: f32, wy: f32, land: bool) -> [f32; 3] {
+    let tile_col = |i: usize| {
+        let c = tw.color[i];
+        let c = [c[0] as f32, c[1] as f32, c[2] as f32];
+        if tw.ground[i].is_water() && tw.season_frozen[i] { mix(c, ICE, 0.78) } else { c }
+    };
+    let (ux, uy) = warp(tw, wx, wy);
+    let j = tile_index(tw, ux, uy);
+    if tw.ground[j].is_water() != land {
+        return tile_col(j);
+    }
+    let i = tile_index(tw, wx, wy);
+    if tw.ground[i].is_water() != land {
+        return tile_col(i);
+    }
+    // No tile of the right class under the pixel (a thin spit or inlet): nearest around it.
+    let w = tw.width as i64;
+    let (cx, cy) = (wx.floor() as i64, wy.floor() as i64);
+    let mut best = (f32::MAX, i);
+    for oy in -1i64..=1 {
+        let ny = cy + oy;
+        if ny < 0 || ny >= tw.height as i64 { continue; }
+        for ox in -1i64..=1 {
+            let k = ny as usize * tw.width + (cx + ox).rem_euclid(w) as usize;
+            if tw.ground[k].is_water() == land { continue; }
+            let d = (wx - (cx + ox) as f32 - 0.5).powi(2) + (wy - (cy + oy) as f32 - 0.5).powi(2);
+            if d < best.0 { best = (d, k); }
+        }
+    }
+    tile_col(best.1)
+}
+
 /// Smooth land indicator: 1 on land, 0 on water, with a little noise, so the 0.5 contour is a
 /// rounded, irregular coastline instead of a staircase. It is sampled through a domain warp:
 /// interpolating between tile centres alone keeps the tiles' axis-aligned outline, which made
@@ -225,8 +261,18 @@ pub fn render_world_lod(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [
 
             let mottle = paper(tw, wx, wy);
             if !detailed {
-                let c = tw.color[i];
-                let mut col = [0, 1, 2].map(|k| c[k] as f32 * sh[k] * mottle);
+                // Far zoom draws flat tile colours. Above ~1.5 px per tile a tile is several
+                // pixels wide, so land or water comes from the smooth shoreline field (the fill
+                // agrees with the coastline ink) and the colour from a warped tile lookup
+                // (`far_color`): lakes, coasts and biome patches don't show the tile grid.
+                let mut col = if t >= 1.5 {
+                    far_color(tw, wx, wy, land_field(tw, wx, wy) >= 0.5)
+                } else {
+                    let c = tw.color[i];
+                    let c = [c[0] as f32, c[1] as f32, c[2] as f32];
+                    if tw.ground[i].is_water() && tw.season_frozen[i] { mix(c, ICE, 0.78) } else { c }
+                };
+                col = [0, 1, 2].map(|k| col[k] * sh[k] * mottle);
                 // Coastline ink even when zoomed far out.
                 if t >= 1.5 {
                     let lf = land_field(tw, wx, wy);

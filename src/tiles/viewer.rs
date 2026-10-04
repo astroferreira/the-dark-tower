@@ -631,9 +631,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
     })
 }
 
-/// Render viewer frames headlessly (no window): the whole map, then 16 and 32 px/tile close-ups
-/// around `center` (or the most interesting region). Writes `<prefix>_overview.png`, `<prefix>_16px.png`,
-/// `<prefix>_32px.png`.
+/// Render viewer frames headlessly (no window): the whole map, then 3.5, 16 and 32 px/tile
+/// views around `center` (or the most interesting region). Writes `<prefix>_overview.png`,
+/// `<prefix>_3px.png`, `<prefix>_16px.png`, `<prefix>_32px.png`.
 pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, prefix: &str, center: Option<(usize, usize)>, season: crate::seasons::Season, overlay: Overlay) -> Result<Vec<String>, Box<dyn Error>> {
     let mut tw = TileWorld::build(world, atlas);
     tw.show_resources = true;
@@ -648,6 +648,8 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
     let fit = (w as f32 / tw.width as f32).min(h as f32 / tw.height as f32);
     let shots = [
         ("overview", Camera { cx: tw.width as f32 / 2.0, cy: tw.height as f32 / 2.0, tile_px: fit }),
+        // Just below the detailed-tile threshold (4 px): the far-zoom fill at its largest.
+        ("3px", Camera { cx: cx as f32 + 0.5, cy: cy as f32 + 0.5, tile_px: 3.5 }),
         ("16px", Camera { cx: cx as f32 + 0.5, cy: cy as f32 + 0.5, tile_px: 16.0 }),
         ("32px", Camera { cx: cx as f32 + 0.5, cy: cy as f32 + 0.5, tile_px: 32.0 }),
     ];
