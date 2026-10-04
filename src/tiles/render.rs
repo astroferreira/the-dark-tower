@@ -80,10 +80,16 @@ fn smooth_field(tw: &TileWorld, wx: f32, wy: f32, f: impl Fn(usize) -> f32) -> f
 }
 
 /// Smooth land indicator: 1 on land, 0 on water, with a little noise, so the 0.5 contour is a
-/// rounded, irregular coastline instead of a staircase.
+/// rounded, irregular coastline instead of a staircase. It is sampled through a domain warp:
+/// interpolating between tile centres alone keeps the tiles' axis-aligned outline, which made
+/// lakes a few tiles across look like rounded rectangles.
 #[inline]
 fn land_field(tw: &TileWorld, wx: f32, wy: f32) -> f32 {
-    smooth_field(tw, wx, wy, |i| if tw.ground[i].is_water() { 0.0 } else { 1.0 })
+    let (sx, sy) = (
+        wx + 0.42 * value_noise(tw, wx, wy, 0.9, 13),
+        wy + 0.42 * value_noise(tw, wx, wy, 0.9, 14),
+    );
+    smooth_field(tw, sx, sy, |i| if tw.ground[i].is_water() { 0.0 } else { 1.0 })
         + 0.16 * value_noise(tw, wx, wy, 3.0, 11)
         + 0.04 * value_noise(tw, wx, wy, 6.0, 12)
 }

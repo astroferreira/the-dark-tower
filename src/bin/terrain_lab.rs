@@ -285,6 +285,12 @@ fn main() {
     report("final", &hm, &out, None);
 
     let (_, bodies, _, _, _) = water_bodies::detect_water_bodies_climate(&hm, &sim.mean_temperature, &sim.mean_moisture, Some(&sim.annual_precipitation));
+    let mut lakes: Vec<_> = bodies.iter().filter(|b| b.id.is_lake()).collect();
+    lakes.sort_by_key(|b| std::cmp::Reverse(b.tile_count));
+    for b in lakes.iter().take(8) {
+        let (x0, y0, x1, y1) = b.bounds;
+        println!("lake {:?}: {} tiles, bounds ({x0},{y0})-({x1},{y1}), centre {},{}, depth {:.0} m{}", b.id.0, b.tile_count, (x0 + x1) / 2, (y0 + y1) / 2, b.max_depth, if b.is_endorheic { ", endorheic" } else { "" });
+    }
     let st = water_bodies::water_body_stats(&bodies);
     println!("lakes {}, river tiles {}, total {:.1}s", water_bodies::count_lakes(&bodies), st.river_tiles, t0.elapsed().as_secs_f32());
 }

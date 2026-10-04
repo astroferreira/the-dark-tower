@@ -654,7 +654,14 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
     let mut written = Vec::new();
     let mut buf = vec![0u32; w * h];
     for (name, cam) in shots {
-        render_world(&tw, atlas, &cam, &mut buf, w, h);
+        // Best of three renders: the frame time the window would see.
+        let mut best = f32::MAX;
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            render_world(&tw, atlas, &cam, &mut buf, w, h);
+            best = best.min(t0.elapsed().as_secs_f32() * 1000.0);
+        }
+        println!("render {name}: {best:.1} ms");
         draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
         render_minimap(&tw, &cam, Some((cx as f32, cy as f32, ZoomParams::default().tiles as f32 / 2.0)), &mut buf, w, h);
         overlays::draw_legend(&mut buf, w, h, overlay);

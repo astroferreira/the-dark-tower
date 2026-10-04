@@ -268,7 +268,8 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   where you walked to). Near a region edge the next region is generated on a background thread
   and swapped in; zoom terrain is seamless, so you can walk across the world.
 - `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/16px/32px
-  frames to PNG without a window (for checking rendering).
+  frames to PNG without a window (for checking rendering) and prints each frame's render time
+  (best of three; seed 42: ~9 ms overview, ~17-23 ms at 16/32 px).
 - Data overlays (`tiles/overlays.rs`; the old terminal explorer's V views): `O` cycles (Shift+O
   back) Map, Height, Temperature, Moisture, Drainage (log flow), Tectonic plates, Tectonic
   stress, Biomes. Muted palettes washed over the map (`render.rs::overlay_tint`, modulated by
@@ -282,10 +283,12 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   order) for editing; `--tileset file.png` loads an edited atlas or a Dwarf Fortress style
   16x16 CP437 sheet (glyphs tinted with per-kind fg/bg colours, magenta = background).
 - `classify.rs` maps world data to tiles (biome -> ground + sprite, relief overrides,
-  beaches, lakes >= 4 tiles, rivers from D8 flow, one-tile-wide water strips drawn as river
-  channels); `render.rs` is pure software rendering, per pixel: land/water comes from a smooth
-  noisy field between tile centres (ink coastline, pale wash and two offshore ripple lines on
-  its 0.5 contour), ground kinds and territory borders are looked up through a domain warp so
+  beaches, lakes >= 4 tiles (frozen lakes stay `Lake` tiles flagged `lake_ice` and are drawn
+  iced over, so they keep the smooth inked shore), rivers from D8 flow, one-tile-wide water
+  strips drawn as river channels); `render.rs` is pure software rendering, per pixel: land/water comes from a smooth
+  noisy field between tile centres, sampled through a domain warp (0.42 tiles) so lakes and
+  coasts don't keep the tiles' rounded-rectangle outline (ink coastline, pale wash and two
+  offshore ripple lines on its 0.5 contour), ground kinds and territory borders are looked up through a domain warp so
   borders meander, the deep-ocean edge is a contour of a smooth depth field, snow/season tint
   blend between tiles, rivers get ink banks, and atlas tiles larger than the screen cell are
   2x2 supersampled. Labels are ink on a parchment halo.

@@ -56,6 +56,9 @@ pub struct TileWorld {
     pub season_snow: Vec<f32>,
     pub season_tint: Vec<[f32; 3]>,
     pub season_frozen: Vec<bool>,
+    /// Lakes frozen all year (cold climate or a FrozenLake): still water tiles, so they get the
+    /// smooth shoreline, drawn iced over in every season.
+    pub lake_ice: Vec<bool>,
     /// Ore deposit on this tile (colour, richness), when resource markers are shown.
     pub deposit: Vec<Option<([u8; 3], u8)>>,
     pub show_resources: bool,
@@ -214,6 +217,7 @@ impl TileWorld {
             season_snow: vec![0.0; n],
             season_tint: vec![[1.0; 3]; n],
             season_frozen: vec![false; n],
+            lake_ice: vec![false; n],
             deposit: vec![None; n],
             show_resources: false,
             overlay: Vec::new(),
@@ -250,10 +254,12 @@ impl TileWorld {
                     };
                     (g, None)
                 } else if is_lake(x, y) {
+                    // Frozen lakes stay water (iced over when drawn), so their shore is the same
+                    // smooth, inked contour as open water instead of a block of ice tiles.
                     let g = match biome {
                         ExtendedBiome::LavaLake => TileKind::Lava,
-                        ExtendedBiome::FrozenLake => TileKind::SeaIce,
-                        _ if *world.temperature.get(x, y) < -8.0 => TileKind::SeaIce,
+                        ExtendedBiome::FrozenLake => { tw.lake_ice[y * w + x] = true; TileKind::Lake }
+                        _ if *world.temperature.get(x, y) < -8.0 => { tw.lake_ice[y * w + x] = true; TileKind::Lake }
                         _ => TileKind::Lake,
                     };
                     (g, None)
@@ -420,7 +426,7 @@ impl TileWorld {
                 let m = sc.map(|c| c.get_moisture(x, y, season, north)).unwrap_or(*world.moisture.get(x, y));
                 let ground = self.ground[i];
                 let water = ground.is_water() || ground == TileKind::SeaIce;
-                self.season_frozen[i] = t < -4.0;
+                self.season_frozen[i] = t < -4.0 || self.lake_ice[i];
                 // Snow lies on land when it is cold and there is moisture to fall as snow.
                 self.season_snow[i] = if water { 0.0 } else { sm(1.0, -7.0, t) * sm(0.04, 0.2, m).max(0.35) };
                 // Foliage: spring flush, summer drought on dry grass, autumn colour, winter dullness.
