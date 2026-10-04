@@ -128,16 +128,17 @@ fn key(e: f32) -> Reverse<u64> {
     Reverse(((e as f64 + 20_000.0) * 1000.0) as u64)
 }
 
-/// Sea cells: connected bodies of cells at or below sea level that are big enough to be seas
-/// (smaller ones are hollows on land). The map edges need not be reached.
-fn open_ocean(g: &Grid, h: &[f32]) -> Vec<bool> {
+/// Sea cells: connected bodies of cells at or below `level` that are big enough to be seas
+/// (smaller ones are hollows on land). The map edges need not be reached, so land can sit on
+/// the poles.
+fn open_ocean_at(g: &Grid, h: &[f32], level: f32) -> Vec<bool> {
     let min_cells = ((g.w * g.h) as f32 / 2600.0).ceil() as usize; // 50 cells at 512x256
     let mut ocean = vec![false; h.len()];
     let mut seen = vec![false; h.len()];
     let mut nb = Vec::with_capacity(8);
     let mut comp = Vec::new();
     for s in 0..h.len() {
-        if seen[s] || h[s] > 0.0 { continue; }
+        if seen[s] || h[s] > level { continue; }
         comp.clear();
         seen[s] = true;
         comp.push(s);
@@ -145,7 +146,7 @@ fn open_ocean(g: &Grid, h: &[f32]) -> Vec<bool> {
         while k < comp.len() {
             g.neighbors(comp[k], &mut nb);
             for &(n, _) in &nb {
-                if !seen[n] && h[n] <= 0.0 {
+                if !seen[n] && h[n] <= level {
                     seen[n] = true;
                     comp.push(n);
                 }
@@ -157,6 +158,20 @@ fn open_ocean(g: &Grid, h: &[f32]) -> Vec<bool> {
         }
     }
     ocean
+}
+
+fn open_ocean(g: &Grid, h: &[f32]) -> Vec<bool> {
+    open_ocean_at(g, h, 0.0)
+}
+
+/// The sea: cells at or below `level` in connected bodies big enough to be seas (50+ cells at
+/// 512x256, scaled with map area). The one definition of "ocean" used by routing, depression
+/// filling and water-body detection.
+pub fn sea_mask(heightmap: &Tilemap<f32>, level: f32) -> Tilemap<bool> {
+    let (w, h) = (heightmap.width, heightmap.height);
+    let g = Grid { w, h, dx: CIRCUMFERENCE_M / w as f32 };
+    let e: Vec<f32> = heightmap.iter().map(|(_, _, &v)| v).collect();
+    Tilemap::from_vec(w, h, open_ocean_at(&g, &e, level))
 }
 
 fn route(g: &Grid, h: &[f32]) -> Routing {

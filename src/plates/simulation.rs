@@ -439,21 +439,21 @@ impl TectonicSim {
                 let s = if in_cont[i] { d_in[i].min(200.0) } else { -d_out[i].min(200.0) };
                 let dir = grid.dirs[i];
                 let wander = 24.0 * fbm3(&big_noise, dir, 1.7, 4) as f32 + 9.0 * fbm3(&small_noise, dir, 7.0, 4) as f32;
-                // Keep continents from forming over the poles (the map edges must stay oceanic).
-                let edge = ((i / w).min(h - 1 - i / w) as f32 + 0.5) / h as f32;
-                let polar = 40.0 * sc * (1.0 - smoothstep(0.05, 0.16, edge));
-                s + wander * sc - polar
+                s + wander * sc
             })
             .collect();
 
-        // About 70-75% of continental crust ends up above sea level; the rest is drowned shelf or
-        // polar crust that is flooded to keep the map edges oceanic.
-        let needed = ((params.target_land_fraction / 0.72).min(0.9) * n as f32) as usize;
+        // About 70-75% of continental crust ends up above sea level; the rest is drowned shelf.
+        // Area is measured on the sphere (rows shrink by cos(latitude)), so continents over the
+        // poles cost their true area rather than the many map tiles they stretch across.
+        let row_area: Vec<f32> = (0..h).map(|y| (std::f32::consts::FRAC_PI_2 - (y as f32 + 0.5) / h as f32 * std::f32::consts::PI).cos()).collect();
+        let total_area: f32 = row_area.iter().sum::<f32>() * w as f32;
+        let needed = (params.target_land_fraction / 0.72).min(0.9) * total_area;
         let (mut lo, mut hi) = (-80.0 * sc, 80.0 * sc);
         for _ in 0..30 {
             let mid = 0.5 * (lo + hi);
-            let count = signed.iter().filter(|&&v| v + mid >= 0.0).count();
-            if count >= needed { hi = mid } else { lo = mid }
+            let area: f32 = signed.iter().enumerate().filter(|(_, &v)| v + mid >= 0.0).map(|(i, _)| row_area[i / w]).sum();
+            if area >= needed { hi = mid } else { lo = mid }
         }
         let offset = hi;
         let taper = 6.0 * sc;

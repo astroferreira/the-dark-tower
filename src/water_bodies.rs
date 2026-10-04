@@ -241,18 +241,16 @@ pub fn detect_water_bodies_hydrological(
     let mut water_bodies = Vec::new();
     let mut visited = Tilemap::new_with(width, height, false);
 
-    // Step A: Ocean detection - flood fill from polar edges (y = 0 and y = height - 1)
+    // Step A: Ocean detection - the sea (`landscape::sea_mask`: bodies big enough to be seas,
+    // wherever they are, so land may reach the poles), flood-filled through connected sea cells
     let mut ocean = WaterBody::new(WaterBodyId::OCEAN, WaterBodyType::Ocean);
     let mut queue = VecDeque::new();
 
-    for x in 0..width {
-        if *heightmap.get(x, 0) <= SEA_LEVEL {
-            queue.push_back((x, 0));
-            visited.set(x, 0, true);
-        }
-        if *heightmap.get(x, height - 1) <= SEA_LEVEL {
-            queue.push_back((x, height - 1));
-            visited.set(x, height - 1, true);
+    let sea = crate::erosion::landscape::sea_mask(heightmap, SEA_LEVEL);
+    for (x, y, &is_sea) in sea.iter() {
+        if is_sea {
+            queue.push_back((x, y));
+            visited.set(x, y, true);
         }
     }
 
@@ -475,27 +473,16 @@ pub fn detect_water_bodies_full(
         }
     }
 
-    // Step 2: Ocean detection - flood fill from polar edges (top/bottom of map)
-    // Only below-sea-level tiles connected to edges become ocean
+    // Step 2: Ocean detection - the sea (`landscape::sea_mask`), wherever it is
     let mut visited = Tilemap::new_with(width, height, false);
     let mut ocean = WaterBody::new(WaterBodyId::OCEAN, WaterBodyType::Ocean);
     let mut queue = VecDeque::new();
 
-    // Seed from top edge (below sea level tiles only)
-    for x in 0..width {
-        let terrain_h = *heightmap.get(x, 0);
-        if is_below_sea_level(terrain_h) {
-            queue.push_back((x, 0));
-            visited.set(x, 0, true);
-        }
-    }
-
-    // Seed from bottom edge (below sea level tiles only)
-    for x in 0..width {
-        let terrain_h = *heightmap.get(x, height - 1);
-        if is_below_sea_level(terrain_h) {
-            queue.push_back((x, height - 1));
-            visited.set(x, height - 1, true);
+    let sea = crate::erosion::landscape::sea_mask(heightmap, SEA_LEVEL);
+    for (x, y, &is_sea) in sea.iter() {
+        if is_sea {
+            queue.push_back((x, y));
+            visited.set(x, y, true);
         }
     }
 
@@ -550,41 +537,9 @@ pub fn detect_water_bodies_full(
                 }
             }
 
-            // If lake touches an edge AND is below sea level, it's actually ocean
-            let is_below_sea = lake.min_elevation <= SEA_LEVEL;
-            if (lake.touches_north_edge || lake.touches_south_edge) && is_below_sea {
-                // Reclassify this lake as ocean
-                for ly in lake.bounds.1..=lake.bounds.3 {
-                    for lx in lake.bounds.0..=lake.bounds.2 {
-                        if lx < width && ly < height && water_map.get(lx, ly).0 == lake_id.0 {
-                            water_map.set(lx, ly, WaterBodyId::OCEAN);
-                        }
-                    }
-                }
-
-                // Merge with ocean body
-                if let Some(ocean_body) = water_bodies.iter_mut().find(|wb| wb.id == WaterBodyId::OCEAN) {
-                    ocean_body.tile_count += lake.tile_count;
-                    ocean_body.min_elevation = ocean_body.min_elevation.min(lake.min_elevation);
-                    ocean_body.max_elevation = ocean_body.max_elevation.max(lake.max_elevation);
-                    let total = ocean_body.tile_count as f32;
-                    let old = (total - lake.tile_count as f32) / total;
-                    let new = lake.tile_count as f32 / total;
-                    ocean_body.avg_elevation = ocean_body.avg_elevation * old + lake.avg_elevation * new;
-                    ocean_body.bounds.0 = ocean_body.bounds.0.min(lake.bounds.0);
-                    ocean_body.bounds.1 = ocean_body.bounds.1.min(lake.bounds.1);
-                    ocean_body.bounds.2 = ocean_body.bounds.2.max(lake.bounds.2);
-                    ocean_body.bounds.3 = ocean_body.bounds.3.max(lake.bounds.3);
-                } else {
-                    lake.body_type = WaterBodyType::Ocean;
-                    lake.id = WaterBodyId::OCEAN;
-                    water_bodies.push(lake);
-                }
-                next_id -= 1;
-            } else {
-                // It's a real lake (including alpine lakes above sea level)
-                water_bodies.push(lake);
-            }
+            // A real lake (alpine, or a below-sea basin too small to be sea); the sea itself was
+            // taken by `sea_mask` above, wherever it touches the map edges or not.
+            water_bodies.push(lake);
         }
     }
 

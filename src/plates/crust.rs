@@ -38,9 +38,6 @@ const INLAND_CRUST_KM: f32 = 26.0;
 const DRAINAGE_GRADIENT_M: f32 = 0.5;
 /// Closed hollows shallower than this (m) are filled; deeper ones remain as lake basins.
 const SHALLOW_BASIN_M: f32 = 50.0;
-/// Fraction of map height (from each pole) over which terrain blends into a shallow polar sea, and that sea's depth.
-const POLAR_MARGIN: f32 = 0.10;
-const POLAR_SEA_FLOOR_M: f32 = -1500.0;
 /// Amplitude of coastline roughness and the elevation band (around sea level) it acts in.
 const COAST_ROUGHNESS_M: f32 = 800.0;
 const COAST_ROUGHNESS_FALLOFF_M: f32 = 1500.0;
@@ -151,35 +148,24 @@ fn fbm(noise: &Perlin, p: [f64; 3], freq: f64, octaves: u32) -> f32 {
     (sum / norm) as f32
 }
 
-/// Priority-flood from the open ocean (sea cells connected to the polar map edges): every other
-/// cell is raised just enough to drain toward the ocean with at least `gradient` metres of fall
-/// per cell, so closed basins (including inland pockets below sea level) gain an outlet.
+/// Priority-flood from the sea (`landscape::sea_mask` at `sea_level`: bodies big enough to be
+/// seas, wherever they are): every other cell is raised just enough to drain toward the sea with
+/// at least `gradient` metres of fall per cell, so closed basins (including inland pockets below
+/// sea level) gain an outlet.
 fn drain_to_ocean(map: &Tilemap<f32>, sea_level: f32, gradient: f32) -> Tilemap<f32> {
     use std::cmp::Reverse;
-    use std::collections::{BinaryHeap, VecDeque};
+    use std::collections::BinaryHeap;
     let (w, h) = (map.width, map.height);
     let key = |e: f32| Reverse(((e as f64 + 20_000.0) * 1000.0) as u64);
     let mut out = map.clone();
     let mut done = Tilemap::new_with(w, h, false);
     let mut heap = BinaryHeap::new();
 
-    // Open ocean: sea cells reachable from the top/bottom rows.
-    let mut q = VecDeque::new();
-    for x in 0..w {
-        for y in [0, h - 1] {
-            if *map.get(x, y) <= sea_level && !*done.get(x, y) {
-                done.set(x, y, true);
-                q.push_back((x, y));
-            }
-        }
-    }
-    while let Some((x, y)) = q.pop_front() {
-        heap.push((key(*map.get(x, y)), x, y));
-        for (nx, ny) in map.neighbors_8(x, y) {
-            if !*done.get(nx, ny) && *map.get(nx, ny) <= sea_level {
-                done.set(nx, ny, true);
-                q.push_back((nx, ny));
-            }
+    let sea = crate::erosion::landscape::sea_mask(map, sea_level);
+    for (x, y, &is_sea) in sea.iter() {
+        if is_sea {
+            done.set(x, y, true);
+            heap.push((key(*map.get(x, y)), x, y));
         }
     }
 
@@ -318,13 +304,6 @@ pub fn build_heightmap(crust: &CrustFields, seed: u64, target_land_fraction: f64
             } else {
                 e += 110.0 * fbm(&abyss, p, 10.0, 3);
             }
-            // The map does not wrap at the poles and downstream flow routing needs an ocean
-            // reaching the top and bottom edges, so continents taper into polar ocean with a
-            // ragged margin instead of running off the map.
-            let edge = (y.min(h - 1 - y) as f32 + 0.5) / h as f32;
-            let edge = edge + 0.06 * fbm(&low, p, 2.5, 4);
-            let keep = smoothstep(0.0, POLAR_MARGIN, edge);
-            e = e * keep + POLAR_SEA_FLOOR_M * (1.0 - keep);
             elev.set(x, y, e);
         }
     }
@@ -429,15 +408,25 @@ pub fn sea_level_for_volume(elev: &Tilemap<f32>, gel_m: f32) -> f32 {
     0.5 * (lo + hi)
 }
 
-/// The sea level at which `land_fraction` of the map is not ocean (cells below sea level in
-/// closed basins the sea does not reach count as land).
+/// The sea level at which `land_fraction` of the planet's surface is not ocean (cells below sea
+/// level in closed basins the sea does not reach count as land).
 pub fn sea_level_for_land_fraction(elev: &Tilemap<f32>, land_fraction: f64) -> f32 {
-    let mut level = ocean_join_level(elev);
-    let k = (((1.0 - land_fraction) * level.len() as f64) as usize).min(level.len() - 1);
-    // A cell is ocean once the sea rises above its join level, so the k-th join level is the
-    // sea level that floods k cells.
-    let (_, s, _) = level.select_nth_unstable_by(k, |a, b| a.partial_cmp(b).unwrap());
-    *s
+    // A cell is ocean once the sea rises above its join level. Sort cells by join level and
+    // flood them in order until the ocean covers (1 - land_fraction) of the planet's area (rows
+    // weighted by cos(latitude), so polar tiles count for the little area they cover).
+    let level = ocean_join_level(elev);
+    let rows = row_weights(elev.height);
+    let w = elev.width;
+    let mut order: Vec<usize> = (0..level.len()).collect();
+    order.sort_by(|&a, &b| level[a].partial_cmp(&level[b]).unwrap());
+    let total: f64 = rows.iter().sum::<f64>() * w as f64;
+    let target = (1.0 - land_fraction) * total;
+    let mut area = 0.0;
+    for &i in &order {
+        area += rows[i / w];
+        if area >= target { return level[i]; }
+    }
+    level[*order.last().unwrap()]
 }
 
 /// Move the datum so sea level is 0 with the ocean holding `gel_m` metres of global equivalent

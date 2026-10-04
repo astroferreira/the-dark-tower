@@ -375,10 +375,17 @@ src/
   are accreted as terranes instead of drilling through continents.
 - Step count scales with map width (`steps` is calibrated for 512 wide); deposit kernels and
   stress/trench memory are tuned so moving boundaries don't leave stripes.
-- Terrain: interior seaward dome, drainage integration (priority-flood from the open ocean before
+- Terrain: interior seaward dome, drainage integration (priority-flood from the sea before
   detail noise; hollows shallower than 50 m filled afterwards), coastline roughness confined to
-  a band around the shore, and a polar margin that keeps the map's top/bottom rows oceanic
-  (flow routing needs ocean connected to those edges).
+  a band around the shore.
+- Land may sit on the poles. "The sea" is one definition everywhere
+  (`erosion::landscape::sea_mask`): connected bodies at or below sea level of 50+ cells at
+  512x256 (scaled by area), wherever they are; routing, depression filling (`rivers.rs`) and
+  water-body detection seed from it instead of from the map's top/bottom rows. Plate areas,
+  continental-crust area and the land fraction are measured on the sphere (rows weighted by
+  cos latitude); counting map cells had made polar plates look big, so they were picked as
+  continents and the poles came out continental. Polar land now averages roughly Earth's (seeds
+  1-2024: ~45% of the polar 10% of rows, some worlds with a continent on a pole).
 - `stress_map` is derived from simulated convergence/divergence + standing orogens, scaled to
   the range downstream passes expect (0.15 volcanic, 0.3 mountain building).
 - Preview tool: `cargo run --release --bin tectonic_preview -- <seed> <w> <h> <style> <myr> <steps> <out_dir>`

@@ -132,6 +132,32 @@ fn main() {
     let seeds = WorldSeeds::from_master(seed);
     let t0 = std::time::Instant::now();
 
+    if std::env::var("LAB_CRUST_TIME").is_ok() {
+        use rand::SeedableRng;
+        let mut rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
+        let (pm, pl) = plates::generate_plates(w, h, None, style, &mut rng);
+        let params = plates::TectonicParams { target_land_fraction: style.target_land_fraction() as f32, ..Default::default() };
+        let mut sim = plates::TectonicSim::new(&pm, &pl, &mut rng, &params);
+        let bands = |f: &Tilemap<f32>| {
+            let mut out = String::new();
+            for b in 0..9 {
+                let (mut c, mut tot) = (0, 0);
+                for (_, y, &k) in f.iter() {
+                    let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+                    if (lat / 10.0) as usize == b { tot += 1; if k >= 25.0 { c += 1; } }
+                }
+                out += &format!(" {}0s:{:.0}%", b, 100.0 * c as f32 / tot.max(1) as f32);
+            }
+            out
+        };
+        println!("step {:3}:{}", 0, bands(&sim.crust_fields().thickness_km));
+        let every = (sim.steps_total() / 5).max(1);
+        while sim.steps_done() < sim.steps_total() {
+            sim.step();
+            if sim.steps_done() % every == 0 { println!("step {:3}:{}", sim.steps_done(), bands(&sim.crust_fields().thickness_km)); }
+        }
+        return;
+    }
     let params = plates::TectonicParams::default();
     let t = plates::generate_tectonic_terrain(w, h, None, style, &seeds, &params);
     let mut hm = t.heightmap;
@@ -147,6 +173,26 @@ fn main() {
         let mean_cont = cont_e.iter().sum::<f32>() / cont_e.len().max(1) as f32;
         println!("GEL now {:.0} m; for {:.0}% land: sea level {:+.0} m, GEL {:.0} m; continental crust {:.1}% of map, mean elevation of crust >=30 km {:.0} m",
             ocean, target * 100.0, q, plates::crust::ocean_volume_gel(&hm, q), cont * 100.0, mean_cont);
+    }
+    {
+        let band = (h / 10).max(1);
+        let frac = |rows: std::ops::Range<usize>| {
+            let (mut l, mut t) = (0, 0);
+            for y in rows { for x in 0..w { t += 1; if *hm.get(x, y) > 0.0 { l += 1; } } }
+            100.0 * l as f32 / t as f32
+        };
+        print!("continental crust (>=25 km) by |lat| band:");
+        for b in 0..9 {
+            let (mut c, mut tot) = (0, 0);
+            for (_, y, &k) in t.crust.thickness_km.iter() {
+                let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+                if (lat / 10.0) as usize == b { tot += 1; if k >= 25.0 { c += 1; } }
+            }
+            print!(" {}0s:{:.0}%", b, 100.0 * c as f32 / tot.max(1) as f32);
+        }
+        println!();
+        println!("polar land: north 10% of rows {:.1}%, south {:.1}%, edge rows {:.1}% / {:.1}%",
+            frac(0..band), frac(h - band..h), frac(0..1), frac(h - 1..h));
     }
     if std::env::var("LAB_ONLY_TECTONIC").is_ok() { return; }
 

@@ -269,16 +269,22 @@ pub fn generate_plates(
         }
     }
 
-    // Count actual plate areas
-    let mut plate_areas: Vec<usize> = vec![0; total_plates];
-    for (_, _, &id) in plate_map.iter() {
+    // Count plate areas on the sphere, in equator-cell units: a cell's area shrinks with
+    // cos(latitude). Counting map cells instead made plates that spread across the polar rows
+    // look large, so they were picked as continents and the poles ended up continental.
+    let row_area: Vec<f64> = (0..height)
+        .map(|y| (std::f64::consts::FRAC_PI_2 - (y as f64 + 0.5) / height as f64 * std::f64::consts::PI).cos())
+        .collect();
+    let mut weighted = vec![0.0f64; total_plates];
+    for (_, y, &id) in plate_map.iter() {
         if !id.is_none() {
-            plate_areas[id.0 as usize] += 1;
+            weighted[id.0 as usize] += row_area[y];
         }
     }
+    let plate_areas: Vec<usize> = weighted.iter().map(|a| a.round() as usize).collect();
 
     // Select continental vs oceanic plates to target world_style land coverage
-    let total_cells = width * height;
+    let total_cells = (row_area.iter().sum::<f64>() * width as f64).round() as usize;
     let target_land_fraction = world_style.target_land_fraction();
     // Subduction arcs, hotspot tracks, and coastal shelves add ~5-8% extra land,
     // so scale the tectonic continent target so total emerged land hits target_land_fraction

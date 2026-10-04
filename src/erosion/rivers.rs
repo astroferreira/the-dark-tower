@@ -1018,15 +1018,14 @@ pub fn fill_depressions_and_route(heightmap: &Tilemap<f32>) -> (Tilemap<f32>, Ti
     let mut flat_dir = Tilemap::new_with(width, height, NO_FLOW);
     let mut heap: BinaryHeap<Cell> = BinaryHeap::with_capacity(width * height / 4);
 
-    // Initialize with true ocean cells (connected to polar edges at or below sea level)
+    // Initialize with the sea (`landscape::sea_mask`: bodies big enough to be seas, wherever
+    // they are; the map edges may be land)
     let mut ocean_queue = std::collections::VecDeque::new();
-    for x in 0..width {
-        for &y in &[0, height - 1] {
-            let h = *heightmap.get(x, y);
-            if h <= 0.0 && !*visited.get(x, y) {
-                visited.set(x, y, true);
-                ocean_queue.push_back((x, y));
-            }
+    let sea = super::landscape::sea_mask(heightmap, 0.0);
+    for (x, y, &is_sea) in sea.iter() {
+        if is_sea && !*visited.get(x, y) {
+            visited.set(x, y, true);
+            ocean_queue.push_back((x, y));
         }
     }
 
