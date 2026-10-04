@@ -132,7 +132,9 @@ fn key(e: f32) -> Reverse<u64> {
 /// (smaller ones are hollows on land). The map edges need not be reached, so land can sit on
 /// the poles.
 fn open_ocean_at(g: &Grid, h: &[f32], level: f32) -> Vec<bool> {
-    let min_cells = ((g.w * g.h) as f32 / 2600.0).ceil() as usize; // 50 cells at 512x256
+    // 50 cells at 512x256, scaled with map area, but never fewer than 8 (on small maps a
+    // couple of cells below sea level is an inland hollow, not a sea).
+    let min_cells = (((g.w * g.h) as f32 / 2600.0).ceil() as usize).max(8);
     let mut ocean = vec![false; h.len()];
     let mut seen = vec![false; h.len()];
     let mut nb = Vec::with_capacity(8);
@@ -165,7 +167,7 @@ fn open_ocean(g: &Grid, h: &[f32]) -> Vec<bool> {
 }
 
 /// The sea: cells at or below `level` in connected bodies big enough to be seas (50+ cells at
-/// 512x256, scaled with map area). The one definition of "ocean" used by routing, depression
+/// 512x256, scaled with map area, at least 8). The one definition of "ocean" used by routing, depression
 /// filling and water-body detection.
 pub fn sea_mask(heightmap: &Tilemap<f32>, level: f32) -> Tilemap<bool> {
     let (w, h) = (heightmap.width, heightmap.height);

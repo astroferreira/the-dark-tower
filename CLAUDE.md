@@ -380,7 +380,7 @@ src/
   a band around the shore.
 - Land may sit on the poles. "The sea" is one definition everywhere
   (`erosion::landscape::sea_mask`): connected bodies at or below sea level of 50+ cells at
-  512x256 (scaled by area), wherever they are; routing, depression filling (`rivers.rs`) and
+  512x256 (scaled by area, at least 8), wherever they are; routing, depression filling (`rivers.rs`) and
   water-body detection seed from it instead of from the map's top/bottom rows. Plate areas,
   continental-crust area and the land fraction are measured on the sphere (rows weighted by
   cos latitude); counting map cells had made polar plates look big, so they were picked as
