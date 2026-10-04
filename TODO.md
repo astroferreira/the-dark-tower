@@ -53,7 +53,7 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [x] Coupled erosion and uplift (`erosion/landscape.rs`: stream power with the climate's precipitation, uplift from stress, flexural isostasy, sediment to lakes and shelves; `fill_pits` drainage repair after the finishing passes; 2 km erosion clamp removed).
 - [x] The legacy hi-res erosion (~45 s at 512x256) is off by default (`--legacy-erosion`); the landscape step already gives the drainage and relief, and lakes are kept. A 512x256 world now takes ~4 s.
 - [ ] Sub-tile detail (valleys narrower than a tile) only exists in zoomed regions; if the world map wants more texture, run the landscape step at 2x and downsample.
-- [ ] Endorheic basins: the landscape step keeps arid hollows as lakes, but the legacy erosion fills them all; decide lakes vs. salt flats from the water balance (evaporation vs. inflow).
+- [x] Endorheic basins: lakes vs. salt flats from the water balance (`apply_salt_flats` on dry basin floors; legacy erosion no longer fills them).
 - [x] Sea level from the ocean's volume (priority flood: inland basins below sea level stay dry; volume fixed at birth to meet the style's land fraction, conserved through the landscape evolution).
 - [x] River discharge and lake water balance from precipitation (Budyko runoff, open-water evaporation PET - P).
 - [ ] Continental crust elevation varies a lot between seeds (mean -700 to +500 m over 47-65% of the map), so how much continental shelf is drowned depends on the seed.

@@ -864,3 +864,48 @@ mod tests {
         assert!(stats.lake_count >= 1);
     }
 }
+
+/// Salt flats where water actually evaporates: the dry floor of each endorheic (closed, arid)
+/// basin, i.e. ground below the basin's spill level that its terminal lake does not cover.
+/// Basins too cold for evaporation pans (mean below 0 C) are left alone. Returns tiles changed.
+pub fn apply_salt_flats(
+    biomes: &mut Tilemap<ExtendedBiome>,
+    heightmap: &Tilemap<f32>,
+    temperature: &Tilemap<f32>,
+    water_map: &Tilemap<WaterBodyId>,
+    water_bodies: &[WaterBody],
+) -> usize {
+    let (w, h) = (heightmap.width, heightmap.height);
+    let endorheic: std::collections::HashSet<u16> = water_bodies.iter().filter(|b| b.is_endorheic).map(|b| b.id.0).collect();
+    if endorheic.is_empty() { return 0; }
+    // Hollows: cells below their spill level (same sea and routing as the landscape step).
+    let depth = crate::erosion::landscape::lake_depth(heightmap);
+    let in_hollow = |x: usize, y: usize| *depth.get(x, y) > 0.5 && *heightmap.get(x, y) > 0.0 || endorheic.contains(&water_map.get(x, y).0);
+    let mut seen = vec![false; w * h];
+    let mut changed = 0;
+    for s in 0..w * h {
+        let (sx, sy) = (s % w, s / w);
+        if seen[s] || !endorheic.contains(&water_map.get(sx, sy).0) { continue; }
+        // The basin around this endorheic lake.
+        let mut comp = vec![(sx, sy)];
+        seen[s] = true;
+        let mut k = 0;
+        while k < comp.len() {
+            let (x, y) = comp[k];
+            for (nx, ny) in heightmap.neighbors_8(x, y) {
+                let j = ny * w + nx;
+                if !seen[j] && in_hollow(nx, ny) { seen[j] = true; comp.push((nx, ny)); }
+            }
+            k += 1;
+        }
+        let mean_t = comp.iter().map(|&(x, y)| *temperature.get(x, y)).sum::<f32>() / comp.len() as f32;
+        if mean_t < 0.0 { continue; }
+        for &(x, y) in &comp {
+            if water_map.get(x, y).is_none() && *heightmap.get(x, y) > 0.0 {
+                biomes.set(x, y, ExtendedBiome::SaltFlats);
+                changed += 1;
+            }
+        }
+    }
+    changed
+}

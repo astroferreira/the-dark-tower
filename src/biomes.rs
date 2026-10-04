@@ -2093,20 +2093,8 @@ pub fn get_replacement_rules() -> Vec<ReplacementRule> {
 
         // ===== DESERT REPLACEMENTS =====
 
-        // Salt Flats - replaces desert
-        ReplacementRule {
-            target: ExtendedBiome::SaltFlats,
-            replaces: vec![ExtendedBiome::Desert],
-            condition: ReplacementCondition {
-                moisture_max: 0.2,
-                elevation_min: -50.0,
-                elevation_max: 200.0,
-                ..Default::default()
-            },
-            chance: 0.06,
-            cluster_size: 8,
-            description: "Salt flats in low desert areas",
-        },
+        // (Salt flats are caused, not rolled: `water_bodies::apply_salt_flats` puts them on the dry
+        // floors of closed basins.)
 
         // Glass Desert - replaces desert near volcanic
         ReplacementRule {

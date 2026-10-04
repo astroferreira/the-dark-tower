@@ -533,6 +533,11 @@ the zoomed region around a point.
   which carries rain into the interiors. 120 steps, mean of the last 80, 2-pass smoothing,
   precipitable water 2.5 mm per g/kg. Seed 42: land mean ~850 mm/yr (median ~390), ocean
   ~900, equatorial ocean ~2000, subtropical ~600, storm tracks ~1700.
+- Closed basins: water-body detection marks a lake endorheic when its inflow can't match
+  open-water evaporation (PET - P); it then covers only the area that balance allows.
+  `water_bodies::apply_salt_flats` turns the rest of the basin floor (below the spill level,
+  not under water, mean above 0 C) into `SaltFlats` (seed 42: 112 tiles, e.g. Lake Noubroorn in
+  a rain shadow). Salt flats are no longer rolled onto random low desert.
 - Runoff (`climate::runoff_mm`): precipitation minus actual evapotranspiration on Fu's Budyko
   curve (w 2.6), PET = 300 + 50 T mm/yr (`pet_mm`). Water-body detection sums it as flow
   (`water_bodies::RUNOFF_MM_PER_UNIT` = 3500 mm per unit keeps the river thresholds'

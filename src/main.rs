@@ -765,6 +765,10 @@ fn main() {
     );
     println!("Created {} rare biome clusters", rare_biome_clusters);
 
+    // Salt flats on the dry floors of closed, arid basins.
+    let salt = water_bodies::apply_salt_flats(&mut extended_biomes, &heightmap, &temperature, &water_body_map, &water_bodies_list);
+    if salt > 0 { println!("Salt flats: {} tiles on the floors of closed basins", salt); }
+
     // Apply fantasy lake conversions (transform entire lakes to LavaLake, FrozenLake, etc.)
     let fantasy_lakes_converted = water_bodies::apply_fantasy_lake_conversions(
         &mut extended_biomes,
