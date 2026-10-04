@@ -56,7 +56,7 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [x] Endorheic basins: lakes vs. salt flats from the water balance (`apply_salt_flats` on dry basin floors; legacy erosion no longer fills them).
 - [x] Sea level from the ocean's volume (priority flood: inland basins below sea level stay dry; volume fixed at birth to meet the style's land fraction, conserved through the landscape evolution).
 - [x] River discharge and lake water balance from precipitation (Budyko runoff, open-water evaporation PET - P).
-- [ ] Continental crust elevation varies a lot between seeds (mean -700 to +500 m over 47-65% of the map), so how much continental shelf is drowned depends on the seed.
+- [x] Continental crust elevation varied a lot between seeds; after the polar/area fixes it is 157-281 m (seeds 1-2024). A fixed per-style ocean volume would now give earthlike 27-38% land; the volume is still set at birth for an exact land fraction.
 - [x] Whittaker/Koppen biomes from simulated climate: precipitation model rewritten (land ~850 mm/yr), heat transport fixed, biome thresholds by aridity class (forests 22-37% of land).
 - [x] Soils (`soils.rs`: landscape position + weathering; farmland, embarks, hover). They are derived from the final terrain, not recorded from the landscape step's actual deposits.
 - [x] Tree line by the warmest season (Koppen's summer rule); perennial ice keeps polar summers cold.

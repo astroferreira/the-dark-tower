@@ -337,6 +337,13 @@ fn main() {
                         let mean_cont = cont_e.iter().sum::<f32>() / cont_e.len().max(1) as f32;
                         println!("GEL now {:.0} m; for {:.0}% land: sea level {:+.0} m, GEL {:.0} m; continental crust {:.1}% of map, mean elevation of crust >=30 km {:.0} m",
                             ocean, target * 100.0, q, plates::crust::ocean_volume_gel(hm, q), cont * 100.0, mean_cont);
+                        if let Some(g) = std::env::var("LAB_GEL_FIXED").ok().and_then(|v| v.parse::<f32>().ok()) {
+                            let s = plates::crust::sea_level_for_volume(hm, g);
+                            let rows: Vec<f64> = (0..h).map(|y| (std::f64::consts::FRAC_PI_2 - (y as f64 + 0.5) / h as f64 * std::f64::consts::PI).cos()).collect();
+                            let (mut land, mut tot) = (0.0, 0.0);
+                            for (_, y, &e) in hm.iter() { tot += rows[y]; if e > s { land += rows[y]; } }
+                            println!("with a fixed {g:.0} m ocean: sea level {s:+.0} m, land {:.1}% of the planet", 100.0 * land / tot);
+                        }
                     }
                     print!("continental crust (>=25 km) by |lat| band:");
                     for b in 0..9 {
