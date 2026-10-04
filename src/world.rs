@@ -82,12 +82,20 @@ pub struct WorldData {
     /// Resources derived from geology (computed on first use, never serialized).
     #[serde(skip)]
     resources: std::sync::OnceLock<crate::lore::ResourceMap>,
+    /// Soils derived from terrain and climate (computed on first use, never serialized).
+    #[serde(skip)]
+    soils: std::sync::OnceLock<crate::soils::SoilMap>,
 }
 
 impl WorldData {
     /// Ore deposits, farmland, timber and fish, derived from the world (cached).
     pub fn resources(&self) -> &crate::lore::ResourceMap {
         self.resources.get_or_init(|| crate::lore::compute_resources(self))
+    }
+
+    /// Soil kind and depth per tile, from terrain and climate (cached).
+    pub fn soils(&self) -> &crate::soils::SoilMap {
+        self.soils.get_or_init(|| crate::soils::compute_soils(self))
     }
 
     /// Convenience accessor for master seed
@@ -146,6 +154,7 @@ impl WorldData {
             lava_map: None,
             volcanoes: Vec::new(),
             resources: std::sync::OnceLock::new(),
+        soils: std::sync::OnceLock::new(),
         }
     }
 
@@ -204,6 +213,7 @@ impl WorldData {
             lava_map: None,
             volcanoes: Vec::new(),
             resources: std::sync::OnceLock::new(),
+        soils: std::sync::OnceLock::new(),
         }
     }
 
@@ -478,7 +488,7 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
     let plates::TectonicTerrain { plate_map, plates, stress_map, mut heightmap, .. } = terrain;
     heightmap::apply_fjord_incisions(&mut heightmap, seeds.heightmap, &scale);
     heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
-    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &scale);
+    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &scale, crate::erosion::landscape::tile_km(width));
 
     // Generate climate with domain warping for organic zone boundaries
     let temperature = climate::generate_temperature_with_seed(
@@ -492,6 +502,7 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
         &heightmap,
         &temperature,
         &moisture,
+        None,
         &stress_map,
         &biome_config,
         seeds.biomes,
@@ -499,7 +510,7 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
 
     // Detect water bodies with climate coupling
     let (water_body_map, water_bodies_list, water_depth, flow_acc, flow_dir) =
-        water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture);
+        water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture, None);
 
     // Apply rare biome replacements
     biomes::apply_biome_replacements(
@@ -707,6 +718,7 @@ pub fn generate_test_world() -> WorldData {
         lava_map: None,
         volcanoes: Vec::new(),
         resources: std::sync::OnceLock::new(),
+        soils: std::sync::OnceLock::new(),
     }
 }
 

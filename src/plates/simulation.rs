@@ -252,6 +252,22 @@ struct Grid {
 }
 
 impl Grid {
+    /// Area of cell `i` relative to an equator cell: cos(latitude) of its row.
+    #[inline]
+    fn area(&self, i: usize) -> f32 {
+        let lat = std::f32::consts::FRAC_PI_2 - ((i / self.w) as f32 + 0.5) / self.h as f32 * std::f32::consts::PI;
+        lat.cos().max(1e-3)
+    }
+
+    /// Thickness added to cell `to` for crust taken from map cell `from`, per km: the volume is
+    /// conserved, so a deposit from a small polar cell thickens a large cell only a little (and
+    /// vice versa, capped). Without it every overlapping polar cell deposited a full cell's worth
+    /// and crust piled up kilometres thick at the poles.
+    #[inline]
+    fn deposit_scale(&self, from: usize, to: usize) -> f32 {
+        (self.area(from) / self.area(to)).min(3.0)
+    }
+
     fn new(w: usize, h: usize) -> Self {
         let mut dirs = Vec::with_capacity(w * h);
         for y in 0..h {
@@ -439,21 +455,21 @@ impl TectonicSim {
                 let s = if in_cont[i] { d_in[i].min(200.0) } else { -d_out[i].min(200.0) };
                 let dir = grid.dirs[i];
                 let wander = 24.0 * fbm3(&big_noise, dir, 1.7, 4) as f32 + 9.0 * fbm3(&small_noise, dir, 7.0, 4) as f32;
-                // Keep continents from forming over the poles (the map edges must stay oceanic).
-                let edge = ((i / w).min(h - 1 - i / w) as f32 + 0.5) / h as f32;
-                let polar = 40.0 * sc * (1.0 - smoothstep(0.05, 0.16, edge));
-                s + wander * sc - polar
+                s + wander * sc
             })
             .collect();
 
-        // About 70-75% of continental crust ends up above sea level; the rest is drowned shelf or
-        // polar crust that is flooded to keep the map edges oceanic.
-        let needed = ((params.target_land_fraction / 0.72).min(0.9) * n as f32) as usize;
+        // About 70-75% of continental crust ends up above sea level; the rest is drowned shelf.
+        // Area is measured on the sphere (rows shrink by cos(latitude)), so continents over the
+        // poles cost their true area rather than the many map tiles they stretch across.
+        let row_area: Vec<f32> = (0..h).map(|y| (std::f32::consts::FRAC_PI_2 - (y as f32 + 0.5) / h as f32 * std::f32::consts::PI).cos()).collect();
+        let total_area: f32 = row_area.iter().sum::<f32>() * w as f32;
+        let needed = (params.target_land_fraction / 0.72).min(0.9) * total_area;
         let (mut lo, mut hi) = (-80.0 * sc, 80.0 * sc);
         for _ in 0..30 {
             let mid = 0.5 * (lo + hi);
-            let count = signed.iter().filter(|&&v| v + mid >= 0.0).count();
-            if count >= needed { hi = mid } else { lo = mid }
+            let area: f32 = signed.iter().enumerate().filter(|(_, &v)| v + mid >= 0.0).map(|(i, _)| row_area[i / w]).sum();
+            if area >= needed { hi = mid } else { lo = mid }
         }
         let offset = hi;
         let taper = 6.0 * sc;
@@ -643,7 +659,7 @@ impl TectonicSim {
         let mut new_fi = vec![0u32; n];
         let mut removals: Vec<(u8, u32)> = Vec::new();
         let mut collisions: Vec<(u8, u32, f32)> = Vec::new();
-        let mut arcs: Vec<(u8, u32)> = Vec::new();
+        let mut arcs: Vec<(u8, u32, f32)> = Vec::new();
         let mut gaps: Vec<usize> = Vec::new();
         let mut stress_step = vec![0.0f32; n];
         let mut trench_step = vec![0.0f32; n];
@@ -704,13 +720,15 @@ impl TectonicSim {
                 }
                 let intensity = (closing / 3.0).min(1.0) as f32;
                 removals.push((k, fi));
+                // Deposits scale by cell area (map cell -> the winner's frame cell).
+                let scale = self.grid.deposit_scale(d, win.1 as usize);
                 if both_cont {
-                    collisions.push((win.0, win.1, loser_thick * COLLISION_TRANSFER));
+                    collisions.push((win.0, win.1, loser_thick * COLLISION_TRANSFER * scale));
                     coll_cnt[win.0 as usize] += 1.0;
                     coll_cnt[k as usize] += 1.0;
                     stress_step[d] = stress_step[d].max(0.4 + 0.6 * intensity);
                 } else {
-                    arcs.push((win.0, win.1));
+                    arcs.push((win.0, win.1, scale));
                     sub_cnt[k as usize] += 1.0;
                     stress_step[d] = stress_step[d].max(0.3 + 0.6 * intensity);
                     trench_step[d] = trench_step[d].max(intensity);
@@ -725,8 +743,8 @@ impl TectonicSim {
         for &(k, fi, add) in &collisions {
             splat(&mut self.frames[k as usize], &self.kernel, w, h, fi as usize, add, 0.0);
         }
-        for &(k, fi) in &arcs {
-            splat(&mut self.frames[k as usize], &self.kernel, w, h, fi as usize, ARC_THICKNESS_PER_HIT_KM, ARC_VOLCANIC_PER_HIT_M);
+        for &(k, fi, scale) in &arcs {
+            splat(&mut self.frames[k as usize], &self.kernel, w, h, fi as usize, ARC_THICKNESS_PER_HIT_KM * scale, ARC_VOLCANIC_PER_HIT_M * scale);
         }
 
         // 5. Divergence: fill gaps with fresh oceanic crust, layer by layer from the neighbours

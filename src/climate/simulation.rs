@@ -45,6 +45,22 @@ pub struct ClimateSimulation {
     pub moisture_phase: Tilemap<f32>,
 }
 
+impl ClimateSimulation {
+    /// The warmest season's mean temperature per cell (northern summer in the north, southern
+    /// summer in the south): what sets the tree line.
+    pub fn warmest_season(&self) -> Tilemap<f32> {
+        let (w, h) = (self.mean_temperature.width, self.mean_temperature.height);
+        let mut out = Tilemap::new_with(w, h, 0.0f32);
+        for y in 0..h {
+            for x in 0..w {
+                let t = self.seasonal_temperatures.iter().map(|s| *s.get(x, y)).fold(f32::MIN, f32::max);
+                out.set(x, y, t);
+            }
+        }
+        out
+    }
+}
+
 /// Run full physical climate simulation
 pub fn run_climate_simulation(
     heightmap: &Tilemap<f32>,
@@ -80,6 +96,9 @@ pub fn run_climate_simulation(
                 -axial_tilt_rad * 0.45,
             ];
 
+            // The annual mean first: it decides where ice persists through the summer.
+            let (annual_sl, _) = solve_energy_balance(heightmap, 0.0, axial_tilt_rad, solar_const, true, seed, None);
+
             let mut seasonal_temps: Vec<Tilemap<f32>> = Vec::with_capacity(4);
             let mut seasonal_moists: Vec<Tilemap<f32>> = Vec::with_capacity(4);
             let mut seasonal_precips: Vec<Tilemap<f32>> = Vec::with_capacity(4);
@@ -100,6 +119,7 @@ pub fn run_climate_simulation(
                     solar_const,
                     false,
                     season_seed,
+                    Some(&annual_sl),
                 );
 
                 // 2. Pressure & Winds (derives closed pressure cells from 2D thermal anomalies)
@@ -121,6 +141,7 @@ pub fn run_climate_simulation(
                     &t_surf_moderated,
                     &sst,
                     &winds,
+                    &pressure,
                     rain_mult,
                     rain_floor,
                 );
@@ -268,11 +289,13 @@ pub fn run_climate_simulation(
 
             // Simple prevailing westerlies
             let winds = Tilemap::new_with(width, height, (8.0f32, 0.0f32));
+            let pressure = Tilemap::new_with(width, height, 1010.0f32);
             let (precip, moist) = simulate_moisture_and_precipitation(
                 heightmap,
                 &mean_temp,
                 &mean_temp,
                 &winds,
+                &pressure,
                 rain_mult,
                 rain_floor,
             );

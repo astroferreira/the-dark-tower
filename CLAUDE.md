@@ -30,13 +30,15 @@ cargo run --release -- --width 1024 --height 512
 ```
 
 ### Dev world (fast iteration on history and story)
-`cargo run --release -- --dev` generates a 96x48 world (seed 31, 8 civilizations) with 250 years
-of history in about a second, vs ~9 min at 512x256. It has 3 named rivers, a lake, 3 mountain
-ranges, forests, deserts, islands and two continents. Any of `--width`/`--height`/`--seed`/
+`cargo run --release -- --dev` generates a 96x48 world (seed 76, 8 civilizations) with 250 years
+of history in about a second, vs ~6 min at 512x256 (almost all of it history). It has 4 named rivers, 2 lakes, 6 mountain
+ranges, forests, a desert and two continents. Any of `--width`/`--height`/`--seed`/
 `--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
-`--journal`, `--gazetteer`, `--director` as usual. Seed 31 came from a search over 96x48 seeds
-scored by gazetteer landmarks (`DEV_WORLD` in `main.rs`); 64x32 worlds get no rivers at all.
-If worldgen changes move the landmarks, re-run that search.
+`--journal`, `--gazetteer`, `--director` as usual. Seed 76 came from a search over 96x48 seeds
+scored by gazetteer landmarks (`scripts/dev_seed_search.sh`, then the top seeds checked with
+`--dev --seed N --headless --gazetteer`, since the history renames and reshapes features;
+`DEV_WORLD` in `main.rs`); 64x32 worlds get no rivers at all. If worldgen changes move the
+landmarks, re-run that search (it was re-run 2026-10-04 after the polar/area changes).
 - Small maps: the river threshold (`water_bodies::river_flow_threshold`) scales with
   (width/512)^2 below 512 wide (unchanged at 512+), and legendary creatures scale with map
   area (`legendary_creatures_for` in `main.rs`; 1500 at 512x256).
@@ -74,6 +76,18 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
 `export_freshwater_network_image` in `explorer.rs`), move it out of the legacy file first.
 
 ## Features
+
+### Soils (`soils.rs`)
+- `world.soils()` (lazy, never serialized) gives each land tile a soil kind and depth from its
+  place in the landscape and its climate: depth 0.4-3 m by weathering (warm and wet deepest),
+  +4 m on floodplains and in closed hollows, thinned by local relief; kinds alluvium
+  (floodplains), black earth (temperate grassland), volcanic soil, brown forest soil, red clay
+  (Mediterranean), leached laterite (wet tropics), podzol (taiga), peat, desert soil, thin stony
+  soil, frozen ground. `SoilKind::fertility` (black earth 1.0 ... frozen 0.05).
+- Used by farmland (`resources.rs`: fertility = climate x altitude x soil; seed 42 fertile land
+  44.7% -> 28.6%), embarks (soil levels = depth / 2 m, material by kind: clay for laterite and
+  red clay, sand for podzol and desert, gravel for stony) and the viewer's hover.
+  `--resource-stats` prints the soil mix.
 
 ### Resources and history (`lore/resources.rs`, `history/simulation`)
 - `world.resources()` (lazy, never serialized) derives the world's wealth from its geology:
@@ -117,6 +131,33 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   dens with bones, and bones on bone fields (`LocalMap::features`).
 - The history summary prints an ecology report (forest %, farmed tiles, species vs. start,
   scars by kind, chronicle counts).
+
+### Landmarks (`lore/landmarks.rs`)
+- `find_landmarks(world, gazetteer)` picks the world's extremes: the highest peak ("the roof of
+  the world") and each continent's summit, the longest river (measured along its main stem in
+  km at the real tile size), the largest and the deepest lake, the greatest waterfall on a
+  named river, the deepest gorge (river tile with high ground on both banks), up to 3 crater
+  lakes and 3 groves of giant trees (CraterLake / AncientGrove patches), the largest desert and
+  forest. Each has a name, an epithet and a measurement.
+- Shown: `--gazetteer` prints them; tile-viewer labels of landmark features rank above their
+  kind and show from 2 px/tile (falls, gorges, crater lakes and groves get their own labels);
+  hover adds "the longest river in the world (4,700 km)" on every tile of the feature; the
+  journal's opening names the longest river, largest lake, greatest falls and deepest gorge.
+- Water bodies: the body holding every river tile has the reserved id `WaterBodyId::RIVER`
+  (65535). It used to take the next free id, so `is_lake()` held on river tiles: the viewer
+  drew river confluences as lake squares, the gazetteer named all rivers one huge "lake", and
+  history/resources treated rivers as lakes.
+
+### Director pass: focal points (`lore/focal.rs`)
+- After the world is assembled (in `main`, before history and saving), every named region
+  (forest, jungle, desert, plains, tundra; 60+ tiles at 512x256) without a focal point (a named
+  peak or lake inside it, a volcano, or a focal biome such as a grove, oasis, crater lake, karst,
+  hot springs, ruins) gets one at its most interior tile: an ancient grove (giant trees, drawn
+  with the big broadleaf sprite) in forests and jungles, an oasis (a few palm tiles) in deserts,
+  a crater lake (drawn as lake water) on plains and tundra. Planted points keep 14 tiles (at
+  512 wide, at least 5) from each other and from existing focal points. They are biome patches
+  saved with the world; landmarks list up to 6 crater lakes and groves. Seed 42 gets 4, the dev
+  world 10. Placed features are designed, not caused (unlike scars and salt flats).
 
 ### History journal (`lore/journal.rs`)
 - `--journal PATH` (or `J` in the tile viewer, which writes `journal_<seed>.html` and opens it)
@@ -244,7 +285,7 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
 ### Saving worlds
 - `--save-world worlds/x.world` writes the generated world plus any simulated history (bincode,
   ~170 MB at 512x256); `--load-world worlds/x.world` loads it in ~0.1 s instead of regenerating
-  (~3 min world + ~6 min history). The tile viewer simulates 250 years of history by default
+  (~4 s world + ~6 min history). The tile viewer simulates 250 years of history by default
   (`--no-history` to skip), so save once with history and reload from then on.
 - The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`, now 2: the
   ecology is appended after the history; version-1 files still load, without ecology); bump it
@@ -267,8 +308,13 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   wheel zooms, `F` resets zoom, `X` saves the region PNG, `Esc`/`Z` returns to the map (centred
   where you walked to). Near a region edge the next region is generated on a background thread
   and swapped in; zoom terrain is seamless, so you can walk across the world.
-- `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/16px/32px
-  frames to PNG without a window (for checking rendering).
+- `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/3px/16px/32px
+  frames to PNG without a window (for checking rendering; 3.5 px/tile is just below the
+  detailed-tile threshold) and prints each frame's render time (best of three; seed 42: ~11 ms
+  overview and 3px, ~16-21 ms at 16/32 px).
+- Far zoom (< 4 px/tile) draws flat tile colours: land/water per pixel from the smooth shoreline
+  field and the colour from a domain-warped tile lookup of the same class (`far_color`), so
+  lakes, shallows and biome patches don't show the tile grid.
 - Data overlays (`tiles/overlays.rs`; the old terminal explorer's V views): `O` cycles (Shift+O
   back) Map, Height, Temperature, Moisture, Drainage (log flow), Tectonic plates, Tectonic
   stress, Biomes. Muted palettes washed over the map (`render.rs::overlay_tint`, modulated by
@@ -282,10 +328,12 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   order) for editing; `--tileset file.png` loads an edited atlas or a Dwarf Fortress style
   16x16 CP437 sheet (glyphs tinted with per-kind fg/bg colours, magenta = background).
 - `classify.rs` maps world data to tiles (biome -> ground + sprite, relief overrides,
-  beaches, lakes >= 4 tiles, rivers from D8 flow, one-tile-wide water strips drawn as river
-  channels); `render.rs` is pure software rendering, per pixel: land/water comes from a smooth
-  noisy field between tile centres (ink coastline, pale wash and two offshore ripple lines on
-  its 0.5 contour), ground kinds and territory borders are looked up through a domain warp so
+  beaches, lakes >= 4 tiles (frozen lakes stay `Lake` tiles flagged `lake_ice` and are drawn
+  iced over, so they keep the smooth inked shore), rivers from D8 flow, one-tile-wide water
+  strips drawn as river channels); `render.rs` is pure software rendering, per pixel: land/water comes from a smooth
+  noisy field between tile centres, sampled through a domain warp (0.42 tiles) so lakes and
+  coasts don't keep the tiles' rounded-rectangle outline (ink coastline, pale wash and two
+  offshore ripple lines on its 0.5 contour), ground kinds and territory borders are looked up through a domain warp so
   borders meander, the deep-ocean edge is a contour of a smooth depth field, snow/season tint
   blend between tiles, rivers get ink banks, and atlas tiles larger than the screen cell are
   2x2 supersampled. Labels are ink on a parchment halo.
@@ -299,6 +347,7 @@ src/
 ├── main.rs           # CLI entry point
 ├── explorer.rs       # LEGACY, frozen: terminal UI (ratatui), --legacy-explorer only
 ├── menu.rs           # LEGACY, frozen: terminal pre-generation menu
+├── terrain.rs        # The terrain pipeline (generate_terrain), shared by main, terrain_lab, grid exports
 ├── world.rs          # WorldData structure
 ├── tilemap.rs        # 2D grid with wrapping
 ├── heightmap.rs      # Terrain generation
@@ -306,6 +355,7 @@ src/
 ├── biomes.rs         # 50+ biome types
 ├── water_bodies.rs   # Lakes/rivers/ocean detection
 ├── scale.rs          # Physical scale (km/tile)
+├── soils.rs          # Soil kind and depth from terrain and climate (world.soils())
 ├── ascii.rs          # LEGACY, frozen: ASCII rendering for the terminal UI
 │
 ├── plates/           # Tectonic plates
@@ -327,14 +377,21 @@ src/
 
 ## World Generation Pipeline
 
+`terrain::generate_terrain(&TerrainConfig, &seeds, on_stage)` runs steps 1-6 below plus the
+finishing passes and drainage repair; `main`, `terrain_lab` and the comparison grids
+(`grid_export.rs`) all call it, so they can't drift apart. `on_stage` sees the heightmap (and
+crust/climate) after each named stage and can stop early (the lab's metrics hook in there).
+
 1. **Tectonic Plates** - BFS flood-fill creates 6-15 initial plates
 2. **Tectonic Simulation** - Plates rotate about Euler poles on a sphere for ~200 Myr; the
    simulation yields final plates, crust thickness/age, and a `stress_map` (see below)
 3. **Heightmap** - Derived from crust: Airy isostasy on land, age-depth law at sea, solved sea level
-4. **Erosion** - Hydraulic and glacial erosion sculpts terrain
-5. **Climate** - Temperature (latitude + elevation) and moisture
-6. **Biomes** - 50+ biome types based on climate
-7. **Water Bodies** - Detect oceans, lakes, rivers
+4. **Climate** - Temperature (latitude + elevation), moisture and precipitation
+5. **Landscape evolution** - Uplift vs. precipitation-driven river incision, sediment, rebound
+6. **Finishing passes** - Coastlines, fjords, regional noise, volcanoes, island coasts, beaches;
+   drainage repair (legacy hydraulic/glacial erosion only with `--legacy-erosion`)
+7. **Biomes** - 50+ biome types based on climate
+8. **Water Bodies** - Detect oceans, lakes, rivers
 
 ---
 
@@ -349,8 +406,18 @@ src/
 - Slab pull speeds plates up, continental collision locks them. Mantle hotspots are fixed in
   the global frame and leave volcanic chains. Mountains relax by erosion (tau = 140 Myr).
 - Elevation: Airy isostasy (continents), Parsons-Sclater sqrt(age) law (ocean), trenches from
-  recent subduction, then procedural detail. Sea level is solved for the style's land
-  fraction but cannot drop below -300 m (continental area is seeded to make that sufficient).
+  recent subduction, then procedural detail.
+- Sea level is the planet's water poured into the basins (`crust.rs`): a priority flood from the
+  deepest cell gives each cell the water level at which it joins the ocean, so closed basins
+  inland stay dry even below sea level. The volume is set at birth so the style's land fraction
+  is met (`sea_level_for_land_fraction`, area-weighted), stored as
+  `TectonicTerrain::ocean_gel_m` (global equivalent layer; earthlike ~2.9-3.1 km, Earth 2.64),
+  and kept after the landscape evolution (`relevel_to_volume`: shelf sediment displaces water,
+  the sea rises ~30 m at 512x256, ~35-50 m on the dev world). A fixed volume per style was
+  tried first: land then swung 4-42% between earthlike seeds because continental crust stood at
+  a mean -700 to +500 m; since the polar/area fixes it stands at 157-281 m, and a fixed 3015 m
+  ocean would give 27-38% land (`terrain_lab` with `LAB_GEL=1 LAB_GEL_FIXED=3015`). The legacy
+  erosion and finishing passes don't conserve mass, so the sea is not re-levelled after them.
 - Initial continents are the zero contour of a noise-perturbed spherical signed-distance field;
   each continent and its shelf belongs to one plate, plate borders are domain-warped, and
   detached plate fragments are absorbed (otherwise they plough trails through continents).
@@ -358,10 +425,20 @@ src/
   are accreted as terranes instead of drilling through continents.
 - Step count scales with map width (`steps` is calibrated for 512 wide); deposit kernels and
   stress/trench memory are tuned so moving boundaries don't leave stripes.
-- Terrain: interior seaward dome, drainage integration (priority-flood from the open ocean before
+- Terrain: interior seaward dome, drainage integration (priority-flood from the sea before
   detail noise; hollows shallower than 50 m filled afterwards), coastline roughness confined to
-  a band around the shore, and a polar margin that keeps the map's top/bottom rows oceanic
-  (flow routing needs ocean connected to those edges).
+  a band around the shore.
+- Land may sit on the poles. "The sea" is one definition everywhere
+  (`erosion::landscape::sea_mask`): connected bodies at or below sea level of 50+ cells at
+  512x256 (scaled by area, at least 8), wherever they are; routing, depression filling (`rivers.rs`) and
+  water-body detection seed from it instead of from the map's top/bottom rows. Plate areas,
+  continental-crust area and the land fraction are measured on the sphere (rows weighted by
+  cos latitude); counting map cells had made polar plates look big, so they were picked as
+  continents and the poles came out continental. Collision and arc deposits are scaled by
+  the source/receiving cell area too (`Grid::deposit_scale`): every overlapping polar cell used
+  to add a full cell's crust, piling crust up to 9-11 km elevations at the poles (hidden while
+  the poles were forced underwater). Some worlds now get a polar continent (seed 7), most
+  little polar land.
 - `stress_map` is derived from simulated convergence/divergence + standing orogens, scaled to
   the range downstream passes expect (0.15 volcanic, 0.3 mountain building).
 - Preview tool: `cargo run --release --bin tectonic_preview -- <seed> <w> <h> <style> <myr> <steps> <out_dir>`
@@ -385,9 +462,25 @@ the zoomed region around a point.
   16 px close-up, and a cross-section) without a window.
 
 ### Biomes
-- Lowland classification (`climate/biomes.rs::classify_lowland`) uses Earth-calibrated mean
-  annual temperature: ice sheets below -22 C (or -15 C when wet), tundra to -7 C, taiga
-  -7..4 C; moisture cut-offs match the climate sim's range (rarely above ~0.6).
+- Lowland classification (`climate/biomes.rs::classify_lowland`) is a Whittaker diagram on
+  mean annual temperature (ice below -22 C or -15 C when very wet, tundra to -10 C, taiga
+  -10..4 C) and the moisture index P / (P + PET) (`climate::moisture_index`, the UNEP aridity
+  index AI as AI / (1 + AI)): deserts below 0.17 (AI 0.2), steppe / savanna to 0.33-0.42,
+  forests above ~0.4 (AI ~0.67), rainforest above 0.67 (AI 2). PET rises with temperature,
+  so the same rain makes forest in the cold and steppe in the heat (Koppen's B rule).
+  The polar band follows Koppen's summer rule when the warmest season is known
+  (`Biome::classify_seasonal`, `generate_extended_biomes(.., Some(&warmest), ..)`): ice cap
+  below -1.5 C, tundra below 8.5 C (a 3-month mean ~ a 10 C warmest month), taiga as far as
+  summers stay warm however cold the winters. Seed 42: forests ~40%, desert 18%, grass/savanna
+  28%, tundra 10% of land tiles; seed 7 (land on both poles) 24% ice. Embarks and the legacy
+  world path still classify by annual means only.
+- Seasonal rain (`biomes::apply_seasonal_biomes`, after biome generation, each hemisphere's own
+  summer/winter): `MediterraneanShrubland` (winter 3x+ wetter than a dry summer, mild, 250-1500
+  mm; replaces temperate grassland/forest; drawn as steppe with shrubs) and `MonsoonForest`
+  (warm, summer 3x+ wetter, 1000-3500 mm; replaces seasonal tropical forest and wet savanna;
+  savanna ground with deciduous trees). Seed 42: ~1700 Mediterranean tiles at 20-45 deg, ~1000
+  monsoon tiles at 0-20 deg. Both appended at the end of `ExtendedBiome` (old saves load) and
+  added to ecology, races, economy, road costs and gazetteer regions next to their analogues.
 - `--fantasy 0..1` (default 0.2, old behaviour 0.5) scales fantasy/special biomes, including
   the rare-biome replacement pass. `--biome-stats` prints the land-biome mix, land
   temperature/moisture percentiles and a zonal temperature/land profile.
@@ -414,15 +507,88 @@ the zoomed region around a point.
   the Bezier river network as anti-aliased strokes at output resolution (width/opacity follow
   discharge), not from per-cell flow accumulation.
 
+### Landscape evolution (`erosion/landscape.rs`)
+- `landscape::evolve` runs in `terrain::generate_terrain` after the climate (tectonic terrain
+  only; followed by `relevel_to_volume`, then the finishing passes; the legacy erosion only with
+  `--legacy-erosion`): 40 implicit steps over 10 Myr on the world grid. Each step: flexural response
+  to the last step's load (rebound 0.82 of rock removed, subsidence 0.6 of sediment, Gaussian
+  over 150 km), hillslope creep (sea = base level), priority-flood routing from the sea (enclosed
+  seas of 50+ cells at 512x256 count; hollows fill to their spill level and drain through it),
+  discharge = climate precipitation x runoff summed downstream, uplift of land from the
+  `stress_map`, implicit stream power `K Q^0.5 S` (K = 1.2e-7 with Q in m3/yr; erodes ~3 km3/yr
+  at 512x256, Earth's sediment flux is ~8), then sediment routed down: it settles in lakes up
+  to the spill level and on shelves around river mouths (40 m deep + 60 m per cell, 10 cells
+  out), the rest to the deep sea. ~0.6 s at 512x256, ~4 s at 1024x512.
+- K was retuned (5e-7 -> 1.2e-7) when precipitation went from ~100 to ~850 mm/yr on land, to
+  keep ~29M km3 eroded over 10 Myr; retune it again if precipitation changes a lot. K is
+  defined at 512 wide and scaled by (cell size / 78 km)^-0.27, so the mean depth eroded is the
+  same at any map size (it was ~1.5x deeper on the 96x48 dev world).
+- `heightmap::apply_island_coasts` (a finishing pass, before the beaches) breaks up the coasts of
+  small islands (< 200 cells at 512x256) with tile-scale ridged noise near sea level (+-420 m,
+  fading by 500 m), so arcs and hotspot islands get bays, headlands and satellite islets instead
+  of eroded ovals (seed 42: 21 -> 34 islands, raggedness 2.9 -> 3.5). Shaping the volcanic
+  edifices in the crust instead made no difference after erosion.
+- `landscape::fill_pits(hm, 4, 10.0)` runs after the finishing passes (coastline, fjords,
+  regional noise, volcanoes, island coasts, beaches), which pock the land with pits: hollows under 4 cells or
+  10 m deep are filled and flats tilted (0.05 m/cell) so every cell outside a lake drains;
+  bigger hollows stay lakes. `landscape::lake_depth` gives the standing water per cell.
+- `terrain_lab` (`cargo run --release --bin terrain_lab -- <seed> <w> <h> <style> <out_dir>`)
+  runs the terrain pipeline without history or window and prints, per stage, land %,
+  elevation quantiles, closed-basin share and where water from big-river cells ends up by
+  raw steepest descent (sea / lake / pit or flat), plus `terrain_<stage>.png`.
+  It also counts islands (land bodies under 200 cells) and their raggedness (perimeter^2 /
+  (4 pi area); a grid disc is ~1.6). `LAB_NO_ISLANDS=1` skips `apply_island_coasts`.
+  `LAB_VERBOSE=1` reports after every finishing pass; `LAB_ONLY_LEM=1` stops after the
+  landscape step; `LAB_NO_LEM=1` skips it; `LEM_K`, `LEM_U`, `LEM_D`, `LEM_T`, `LEM_STEPS`,
+  `LEM_FLEX` override its parameters.
+- Seed 42: final map at 512x256, big-river water reaches the sea 87% / a lake 12% / a pit
+  1.5% (legacy 30 / 49 / 21); at 1024x512 78 / 22 / 0 (legacy 26 / 38 / 37). Land p99 2.5 km
+  (legacy 1.7 km, at 1024 0.8 km).
+- The particle erosion used to clamp heights to [-5000, 2000] m (every range became a 2 km
+  mesa); it now only clamps to [-11000, 9000]. `apply_coastal_beaches` takes the tile size in
+  km and only moves a tile by the share of it the beach strip covers (it used to flatten every
+  coastal tile to ~130 m on 78 km tiles).
+
 ### Erosion
+- The legacy erosion pass (`erosion::simulate_erosion`: below) is off by default since the
+  landscape evolution does the physical erosion: it took ~45 s of a 512x256 world (~6 min at
+  1024x512, and its GPU step sometimes hung) for little visible change (seed 42: slightly denser
+  tributaries; it flat-filled every depression, so 17 lakes vs 23). A 512x256 world now
+  generates in ~4 s. `--legacy-erosion` (or `LAB_LEGACY_EROSION=1` in terrain_lab) runs it; the
+  legacy tectonics path and the erosion-preset comparison grids still use it.
 - **Hydraulic**: Water droplets carve valleys and deposit sediment
 - **Glacial**: Ice sheets using Shallow Ice Approximation (SIA)
 - **Rivers**: Flow accumulation creates river channels
 
-### Climate
-- Temperature: Decreases with latitude and elevation
-- Moisture: Trade winds, rain shadows, ocean proximity
-- Creates realistic climate zones
+### Climate (`climate/`)
+- Temperature: Budyko-Sellers energy balance per season (`ebm.rs`), heat transport D = 3.0
+  W/(m2 C) (zonal land means within ~2-4 C of Earth's), continentality, lapse rate. The
+  annual mean is solved first; where its surface temperature is below -20 C
+  (`PERENNIAL_ICE_C`) the seasons keep ice albedo, so ice sheets survive the polar summer
+  (solving each season from scratch had melted them: +10 C summers at 80-90 deg). Seed 42
+  warmest season on land: ~10 C at 60-70 deg, ~6 C at 70-80, -7 C at 80-90.
+  `ClimateSimulation::warmest_season()` is the max of the four seasonal means.
+- Precipitation (`moisture.rs`): vapour evaporates from the sea (toward 80% humidity), rides
+  the steering-level wind (3.5x the surface wind, ~a cell per step: one step = a cell
+  crossing, so the scheme is resolution-independent), and rains out at (step / 9-day
+  residence) x 3 x humidity^2 x ascent, where ascent comes from sea-level pressure (ITCZ and
+  subpolar lows wet, subtropical highs dry; capped at 1.15), plus orographic rain where the
+  wind climbs the smoothed terrain. Land returns 92% of its rain to the air (40% in the cold),
+  which carries rain into the interiors. 120 steps, mean of the last 80, 2-pass smoothing,
+  precipitable water 2.5 mm per g/kg. Seed 42: land mean ~850 mm/yr (median ~390), ocean
+  ~900, equatorial ocean ~2000, subtropical ~600, storm tracks ~1700.
+- Closed basins: water-body detection marks a lake endorheic when its inflow can't match
+  open-water evaporation (PET - P); it then covers only the area that balance allows.
+  `water_bodies::apply_salt_flats` turns the rest of the basin floor (below the spill level,
+  not under water, mean above 0 C) into `SaltFlats` (seed 42: 112 tiles, e.g. Lake Noubroorn in
+  a rain shadow). Salt flats are no longer rolled onto random low desert.
+- Runoff (`climate::runoff_mm`): precipitation minus actual evapotranspiration on Fu's Budyko
+  curve (w 2.6), PET = 300 + 50 T mm/yr (`pet_mm`). Water-body detection sums it as flow
+  (`water_bodies::RUNOFF_MM_PER_UNIT` = 3500 mm per unit keeps the river thresholds'
+  scale); endorheic lakes balance inflow against open-water evaporation (PET - P).
+- `terrain_lab` with `LAB_CLIMATE=1` stops after the climate and prints land precipitation
+  quantiles, zonal land/ocean precipitation, precipitation and wind by distance from the
+  coast, Budyko runoff, the biome mix, and writes `precip.png`.
 
 ### Biomes (50+ types)
 - Ocean biomes: DeepOcean, Ocean, CoastalWater

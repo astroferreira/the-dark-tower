@@ -419,6 +419,8 @@ fn biome_to_id(biome: ExtendedBiome) -> u32 {
         FumaroleField => 114,
         VolcanicBeach => 115,
         HotSpot => 116,
+        MediterraneanShrubland => 117,
+        MonsoonForest => 118,
     }
 }
 

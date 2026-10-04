@@ -329,7 +329,7 @@ impl GpuErosionContext {
             for x in 0..width {
                 let idx = y * width + x;
                 let old_h = *heightmap.get(x, y);
-                let new_h = result[idx].clamp(-5000.0, 2000.0);
+                let new_h = result[idx].clamp(-11000.0, 9000.0);
                 let diff = new_h - old_h;
 
                 if diff < 0.0 {

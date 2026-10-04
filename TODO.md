@@ -29,9 +29,9 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [ ] Connect to the fortress-mode code on the `mystery_box` branch (`src/game/`).
 
 ## Landmarks and set pieces
-- [ ] Detect extremes: highest peak, longest river, biggest waterfall, deepest gorge, crater lakes, giant trees.
+- [x] Detect extremes: highest peak, longest river, biggest waterfall, deepest gorge, crater lakes, giant trees (`lore/landmarks.rs`; labels, hover, journal).
 - [ ] Name them, tie legends/figures/deities to them, hand-tune their embark-scale look.
-- [ ] "Director" pass: every region has a focal point, contrasts next to each other, rare features spaced out.
+- [x] "Director" pass: every region has a focal point (`lore/focal.rs`: groves, oases, crater lakes planted where a region has none, spaced out). Not done: deliberate contrasts side by side.
 
 ## History and economy depth
 - [ ] Chokepoint wars (fords, passes, harbours); capitals sited on river mouths and defensible ground.
@@ -50,13 +50,22 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [ ] Settlement variety by culture: more architecture styles than stone / timber / earth (bone, crystal, living, woven, carved).
 
 ## Terrain and tectonics
-- [ ] Coupled erosion and uplift (stream-power law with the climate's real precipitation, flexural isostasy, sediment to shelves). Mountains currently outpace what erosion can grade; closed-basin/pit counts and river connectivity at 1024x512 are worse than the legacy terrain (about 45% vs 75%).
-- [ ] Sea level from a fixed ocean volume; priority-flood lakes; river discharge from precipitation.
-- [ ] Whittaker/Koppen biomes from simulated climate; soils from erosion history. Temperate and tropical forests are only 2-5% of land because the climate sim is dry.
-- [ ] Allow polar continents (currently the map's top/bottom rows are forced to ocean for flow routing).
-- [ ] Offshore islands and arcs still look like smooth ovals; dark coastal halo from the exporter's shallow-water shading.
+- [x] Coupled erosion and uplift (`erosion/landscape.rs`: stream power with the climate's precipitation, uplift from stress, flexural isostasy, sediment to lakes and shelves; `fill_pits` drainage repair after the finishing passes; 2 km erosion clamp removed).
+- [x] The legacy hi-res erosion (~45 s at 512x256) is off by default (`--legacy-erosion`); the landscape step already gives the drainage and relief, and lakes are kept. A 512x256 world now takes ~4 s.
+- [ ] Sub-tile detail (valleys narrower than a tile) only exists in zoomed regions; if the world map wants more texture, run the landscape step at 2x and downsample.
+- [x] Endorheic basins: lakes vs. salt flats from the water balance (`apply_salt_flats` on dry basin floors; legacy erosion no longer fills them).
+- [x] Sea level from the ocean's volume (priority flood: inland basins below sea level stay dry; volume fixed at birth to meet the style's land fraction, conserved through the landscape evolution).
+- [x] River discharge and lake water balance from precipitation (Budyko runoff, open-water evaporation PET - P).
+- [x] Continental crust elevation varied a lot between seeds; after the polar/area fixes it is 157-281 m (seeds 1-2024). A fixed per-style ocean volume would now give earthlike 27-38% land; the volume is still set at birth for an exact land fraction.
+- [x] Whittaker/Koppen biomes from simulated climate: precipitation model rewritten (land ~850 mm/yr), heat transport fixed, biome thresholds by aridity class (forests 22-37% of land).
+- [x] Soils (`soils.rs`: landscape position + weathering; farmland, embarks, hover). They are derived from the final terrain, not recorded from the landscape step's actual deposits.
+- [x] Tree line by the warmest season (Koppen's summer rule); perennial ice keeps polar summers cold.
+- [x] Mediterranean (winter-wet) shrubland and monsoon forest from the seasonal fields (`apply_seasonal_biomes`).
+- [x] Allow polar continents (one sea definition, `sea_mask`, instead of ocean seeded from the map edges; plate and land areas on the sphere).
+- [ ] Polar land is stretched across the whole map width (equirectangular); consider how the tile viewer and history treat the polar rows (settlements, labels, the start screen preview).
+- [x] Offshore islands and arcs looked like smooth ovals (`apply_island_coasts`); dark coastal halo in the exporter (its depth ramp was inverted).
 - [ ] Zoomed regions straddling the date line (x wrap) don't match exactly.
-- [ ] `grid_export.rs` still uses the legacy plate path.
+- [x] `grid_export.rs` still used the legacy plate path (now `terrain::generate_terrain`, shared with main and terrain_lab).
 
 ## Viewer and tooling
 - [ ] Zoom view (`Z`) shows a shaded-relief image, not tiles.
@@ -67,6 +76,6 @@ ROADMAP Update 5; game-time seasons are Update 3.
 
 ## Housekeeping
 - [ ] Decide whether `worlds/*.world` (170 MB each) should stay gitignored (currently yes) and document a standard seed set.
-- [ ] `.DS_Store` files and `world_42_legend.txt` are untracked / modified noise: add to `.gitignore`.
+- [x] `.DS_Store` files, `renders/` and `world_*_legend.txt` are ignored (the tracked `.DS_Store` files untracked).
 - [ ] Remove or silence long-standing compiler warnings in `history/simulation/step.rs`, `geomorphometry.rs`.
 - [ ] Add tests for settlement siting, road routing and town plans (only determinism / consistency tests exist today).

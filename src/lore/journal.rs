@@ -335,6 +335,24 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         let range = ranges.first().map(|r| format!(" Its longest mountains are {}.", r.name)).unwrap_or_default();
         let _ = write!(opening, " The highest summit is {}, {:.0} m above the sea.{}", p.name, p.height_m, range);
     }
+    // The other wonders of the world (`lore::landmarks`), one clause each.
+    {
+        use super::landmarks::LandmarkKind as K;
+        let marks = super::landmarks::find_landmarks(world, gaz);
+        let clause = |k: K| marks.iter().find(|l| l.kind == k).map(|l| format!("{} ({})", l.name, l.detail));
+        let mut wonders = Vec::new();
+        if let Some(c) = clause(K::LongestRiver) { wonders.push(format!("the longest river is {c}")); }
+        if let Some(c) = clause(K::LargestLake) { wonders.push(format!("the largest lake {c}")); }
+        if let Some(c) = clause(K::GreatestWaterfall) { wonders.push(format!("the greatest falls {c}")); }
+        if let Some(c) = clause(K::DeepestGorge) { wonders.push(format!("the deepest gorge {c}")); }
+        if !wonders.is_empty() {
+            let first = wonders.remove(0);
+            let mut sentence = format!(" {}{}", first[..1].to_uppercase(), &first[1..]);
+            if !wonders.is_empty() { let _ = write!(sentence, "; {}", wonders.join("; ")); }
+            sentence.push('.');
+            opening.push_str(&sentence);
+        }
+    }
     let _ = write!(body, "<p class=\"lede\">{}</p></header>", esc(&opening));
 
     let _ = write!(toc, "<li class=\"toc-part\">The Ages</li>");

@@ -9,6 +9,7 @@ pub mod geomorphometry;
 pub mod glacial;
 pub mod gpu;
 pub mod hydraulic;
+pub mod landscape;
 pub mod materials;
 pub mod params;
 pub mod river_geometry;

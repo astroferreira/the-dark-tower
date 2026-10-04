@@ -177,6 +177,10 @@ pub enum ExtendedBiome {
     FumaroleField,    // Steam vents and sulfurous terrain
     VolcanicBeach,    // Black sand beaches near volcanoes
     HotSpot,          // Active volcanic hot spot area
+
+    // ============ SEASONAL CLIMATES (appended: saved worlds keep their indices) ============
+    MediterraneanShrubland, // Winter-wet, summer-dry, mild: maquis, chaparral, olive country
+    MonsoonForest,          // Tropical forest with a long dry season, drenched in the monsoon
 }
 
 impl ExtendedBiome {
@@ -224,6 +228,8 @@ impl ExtendedBiome {
             TemperateForest => Biome::TemperateForest,
             TemperateRainforest => Biome::TemperateRainforest,
             Desert => Biome::Desert,
+            MediterraneanShrubland => Biome::TemperateGrassland,
+            MonsoonForest => Biome::TropicalForest,
             Savanna => Biome::Savanna,
             TropicalForest => Biome::TropicalForest,
             TropicalRainforest => Biome::TropicalRainforest,
@@ -366,6 +372,8 @@ impl ExtendedBiome {
             ExtendedBiome::TemperateForest => (40, 100, 40),
             ExtendedBiome::TemperateRainforest => (30, 80, 50),
             ExtendedBiome::Desert => (210, 180, 120),
+            ExtendedBiome::MediterraneanShrubland => (150, 150, 95),
+            ExtendedBiome::MonsoonForest => (85, 125, 45),
             ExtendedBiome::Savanna => (170, 160, 80),
             ExtendedBiome::TropicalForest => (30, 120, 30),
             ExtendedBiome::TropicalRainforest => (20, 90, 40),
@@ -534,6 +542,8 @@ impl ExtendedBiome {
             ExtendedBiome::TemperateGrassland => "Temperate Grassland",
             ExtendedBiome::TemperateForest => "Temperate Forest",
             ExtendedBiome::TemperateRainforest => "Temperate Rainforest",
+            ExtendedBiome::MediterraneanShrubland => "Mediterranean Shrubland",
+            ExtendedBiome::MonsoonForest => "Monsoon Forest",
             ExtendedBiome::Desert => "Desert",
             ExtendedBiome::Savanna => "Savanna",
             ExtendedBiome::TropicalForest => "Tropical Forest",
@@ -1236,6 +1246,7 @@ pub fn classify_extended(
     elevation: f32,
     temperature: f32,
     moisture: f32,
+    warmest: Option<f32>,
     stress: f32,
     x: usize,
     y: usize,
@@ -1245,7 +1256,7 @@ pub fn classify_extended(
     noise: &Perlin,
 ) -> ExtendedBiome {
     // First, get the base biome
-    let base = Biome::classify(elevation, temperature, moisture);
+    let base = Biome::classify_seasonal(elevation, temperature, moisture, warmest);
     let base_extended = ExtendedBiome::from_base(base);
 
     // Sample noise for this position (used for both highland lakes and fantasy biomes)
@@ -1854,10 +1865,13 @@ fn maybe_convert_to_fantasy(
 
 /// Generate extended biome map
 /// Generate extended biomes with parallelization for improved performance.
+/// `warmest` is the warmest season's mean temperature (from the climate simulation's seasons),
+/// which sets the polar tree line; without it the annual mean does.
 pub fn generate_extended_biomes(
     heightmap: &Tilemap<f32>,
     temperature: &Tilemap<f32>,
     moisture: &Tilemap<f32>,
+    warmest: Option<&Tilemap<f32>>,
     stress_map: &Tilemap<f32>,
     config: &WorldBiomeConfig,
     seed: u64,
@@ -1879,7 +1893,7 @@ pub fn generate_extended_biomes(
                 let stress = *stress_map.get(x, y);
 
                 classify_extended(
-                    elev, temp, moist, stress,
+                    elev, temp, moist, warmest.map(|t| *t.get(x, y)), stress,
                     x, y, width, height,
                     config, &noise,
                 )
@@ -2093,20 +2107,8 @@ pub fn get_replacement_rules() -> Vec<ReplacementRule> {
 
         // ===== DESERT REPLACEMENTS =====
 
-        // Salt Flats - replaces desert
-        ReplacementRule {
-            target: ExtendedBiome::SaltFlats,
-            replaces: vec![ExtendedBiome::Desert],
-            condition: ReplacementCondition {
-                moisture_max: 0.2,
-                elevation_min: -50.0,
-                elevation_max: 200.0,
-                ..Default::default()
-            },
-            chance: 0.06,
-            cluster_size: 8,
-            description: "Salt flats in low desert areas",
-        },
+        // (Salt flats are caused, not rolled: `water_bodies::apply_salt_flats` puts them on the dry
+        // floors of closed basins.)
 
         // Glass Desert - replaces desert near volcanic
         ReplacementRule {
@@ -3812,4 +3814,49 @@ pub fn is_fantasy_biome(b: ExtendedBiome) -> bool {
             | HighlandLake | CraterLake | Foothills | Lagoon | Swamp | Marsh | Bog | MangroveSaltmarsh
             | SaltFlats | Oasis | VolcanicWasteland | Ashlands
     )
+}
+
+/// Biomes set by the seasons of the rain (each hemisphere's own summer and winter):
+/// * Mediterranean shrubland (Koppen Cs): winter at least 3x as wet as summer, summer dry
+///   (under ~33 mm a month), mild (annual mean 10-21 C, winters above -2 C), 250-1500 mm a year;
+///   replaces temperate grassland and forest.
+/// * Monsoon forest: warm (mean 20 C+), summer at least 3x as wet as winter, 1000-3500 mm a
+///   year; replaces seasonal tropical forest and the wetter savanna.
+/// Returns (Mediterranean tiles, monsoon tiles).
+pub fn apply_seasonal_biomes(
+    biomes: &mut Tilemap<ExtendedBiome>,
+    heightmap: &Tilemap<f32>,
+    climate: &crate::climate::ClimateSimulation,
+) -> (usize, usize) {
+    let (w, h) = (biomes.width, biomes.height);
+    let (mut med, mut mon) = (0, 0);
+    for y in 0..h {
+        // Season 1 is the northern summer, season 3 the northern winter.
+        let (summer, winter) = if y < h / 2 { (1, 3) } else { (3, 1) };
+        for x in 0..w {
+            if *heightmap.get(x, y) <= 0.0 { continue; }
+            let b = *biomes.get(x, y);
+            let ps = *climate.seasonal_precipitation[summer].get(x, y);
+            let pw = *climate.seasonal_precipitation[winter].get(x, y);
+            let p = *climate.annual_precipitation.get(x, y);
+            let t = *climate.mean_temperature.get(x, y);
+            let cold = climate.seasonal_temperatures.iter().map(|s| *s.get(x, y)).fold(f32::MAX, f32::min);
+            match b {
+                ExtendedBiome::TemperateGrassland | ExtendedBiome::TemperateForest
+                    if pw >= 3.0 * ps && ps < 400.0 && (10.0..=21.0).contains(&t) && cold > -2.0 && (250.0..=1500.0).contains(&p) =>
+                {
+                    biomes.set(x, y, ExtendedBiome::MediterraneanShrubland);
+                    med += 1;
+                }
+                ExtendedBiome::TropicalForest | ExtendedBiome::Savanna
+                    if t >= 20.0 && ps >= 3.0 * pw && (1000.0..=3500.0).contains(&p) =>
+                {
+                    biomes.set(x, y, ExtendedBiome::MonsoonForest);
+                    mon += 1;
+                }
+                _ => {}
+            }
+        }
+    }
+    (med, mon)
 }

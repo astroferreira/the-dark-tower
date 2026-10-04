@@ -83,21 +83,26 @@ impl Biome {
     /// Classify lowland biomes (below mountain elevation thresholds)
     /// Based purely on temperature and moisture
     pub fn classify_lowland(temperature: f32, moisture: f32) -> Biome {
-        // Thresholds are on mean annual temperature, calibrated to Earth: ice sheets need means
-        // around -22 C or below (or snow accumulation in wet cold), Arctic tundra sits around -22
-        // to -7 C, and the taiga reaches down to about -7 C (Yakutsk ~ -8 C is forested). Moisture
-        // cut-offs match the range the climate simulation produces (rarely above ~0.6).
+        // A Whittaker diagram on mean annual temperature and the aridity index. Temperature
+        // bands are calibrated to Earth: ice sheets need means around -22 C or below (or snow
+        // accumulation in wet cold), Arctic tundra sits around -22 to -10 C, and the taiga
+        // reaches down to about -10 C (Yakutsk -9 C is forested; continental taiga goes lower,
+        // maritime tree lines sit higher). Forests need humid ground (AI above ~0.67-0.72). Moisture is P / (P + PET)
+        // (`climate::moisture_index`), i.e. the UNEP aridity index AI = P / PET as AI / (1 + AI):
+        // 0.17 = AI 0.2 (arid / semi-arid edge, deserts below), 0.33 = AI 0.5 (semi-arid /
+        // sub-humid), 0.5 = AI 1, 0.67 = AI 2 (rainforest). Because PET rises with temperature
+        // the same rainfall makes forest in the cold and steppe in the heat, as in Koppen's B
+        // climates.
         match (temperature, moisture) {
-            // Ice sheets need extreme cold or heavy snowfall; high-Arctic lowlands are tundra.
             (t, _) if t < -22.0 => Biome::Ice,
-            (t, m) if t < -15.0 && m > 0.50 => Biome::Ice,
-            (t, _) if t < -7.0 => Biome::Tundra,
+            (t, m) if t < -15.0 && m > 0.67 => Biome::Ice,
+            (t, _) if t < -10.0 => Biome::Tundra,
 
-            // Subarctic (-7 to 4 C): taiga unless very dry, then tundra / cold steppe
+            // Subarctic (-10 to 4 C): taiga unless dry, then cold steppe or tundra
             (t, m) if t < 4.0 => {
-                if m > 0.22 {
+                if m > 0.33 {
                     Biome::BorealForest
-                } else if m > 0.12 && t >= -2.0 {
+                } else if m > 0.17 && t >= -2.0 {
                     Biome::TemperateGrassland
                 } else {
                     Biome::Tundra
@@ -106,11 +111,11 @@ impl Biome {
 
             // Cool (4 to 10 C): mixed / boreal forest, steppe, cold desert
             (t, m) if t < 10.0 => {
-                if m > 0.45 {
+                if m > 0.50 {
                     Biome::TemperateForest
-                } else if m > 0.28 {
+                } else if m > 0.36 {
                     Biome::BorealForest
-                } else if m > 0.06 {
+                } else if m > 0.17 {
                     Biome::TemperateGrassland
                 } else {
                     Biome::Desert
@@ -119,11 +124,11 @@ impl Biome {
 
             // Temperate (10 to 20 C)
             (t, m) if t < 20.0 => {
-                if m > 0.56 {
+                if m > 0.67 {
                     Biome::TemperateRainforest
-                } else if m > 0.33 {
+                } else if m > 0.40 {
                     Biome::TemperateForest
-                } else if m > 0.06 {
+                } else if m > 0.17 {
                     Biome::TemperateGrassland
                 } else {
                     Biome::Desert
@@ -132,11 +137,11 @@ impl Biome {
 
             // Warm / tropical (>= 20 C)
             (_, m) => {
-                if m > 0.55 {
+                if m > 0.67 {
                     Biome::TropicalRainforest
-                } else if m > 0.36 {
+                } else if m > 0.42 {
                     Biome::TropicalForest
-                } else if m > 0.15 {
+                } else if m > 0.17 {
                     Biome::Savanna
                 } else {
                     Biome::Desert
@@ -148,6 +153,12 @@ impl Biome {
     /// Classify biome based on elevation, temperature (Celsius), and moisture (0-1)
     /// Uses proper altitudinal zonation that varies by latitude/climate zone
     pub fn classify(elevation: f32, temperature: f32, moisture: f32) -> Biome {
+        Self::classify_seasonal(elevation, temperature, moisture, None)
+    }
+
+    /// `classify` with the warmest season's mean temperature when the climate provides it:
+    /// lowland polar biomes then follow Koppen's summer rule (see `classify_lowland_seasonal`).
+    pub fn classify_seasonal(elevation: f32, temperature: f32, moisture: f32, warmest: Option<f32>) -> Biome {
         // Ocean biomes
         if elevation <= 0.0 {
             if elevation < -2000.0 {
@@ -200,6 +211,38 @@ impl Biome {
 
         // 3. Lowlands, rolling hills, and plateaus:
         // Use physical temperature and moisture classification
+        match warmest {
+            Some(w) => Self::classify_lowland_seasonal(temperature, moisture, w),
+            None => Self::classify_lowland(temperature, moisture),
+        }
+    }
+
+    /// Lowland biome with the warmest season's mean temperature (a three-month mean, ~1.5 C
+    /// below the warmest month). Trees need a warm summer, not a mild year: Koppen's polar
+    /// climates are a warmest month below 10 C (tundra) or below 0 C (ice cap), so the taiga
+    /// reaches as far as summers stay warm, even where winters drive the annual mean to -15 C
+    /// (Oymyakon), and maritime tundra starts where cool summers stop the trees. Elsewhere it
+    /// is `classify_lowland`.
+    pub fn classify_lowland_seasonal(temperature: f32, moisture: f32, warmest: f32) -> Biome {
+        const ICE_CAP_WARMEST: f32 = -1.5;
+        const TREE_LINE_WARMEST: f32 = 8.5;
+        if warmest < ICE_CAP_WARMEST || (temperature < -15.0 && moisture > 0.67) {
+            return Biome::Ice;
+        }
+        if warmest < TREE_LINE_WARMEST {
+            return Biome::Tundra;
+        }
+        if temperature < 4.0 {
+            // Subarctic with a summer warm enough for trees: taiga unless dry.
+            // Dry: cold steppe (Mongolia, the Yukon flats), and tundra where barely anything grows.
+            return if moisture > 0.33 {
+                Biome::BorealForest
+            } else if moisture > 0.17 {
+                Biome::TemperateGrassland
+            } else {
+                Biome::Tundra
+            };
+        }
         Self::classify_lowland(temperature, moisture)
     }
 

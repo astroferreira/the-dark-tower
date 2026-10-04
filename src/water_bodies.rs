@@ -42,6 +42,10 @@ pub struct WaterBodyId(pub u16);
 impl WaterBodyId {
     pub const NONE: WaterBodyId = WaterBodyId(0);
     pub const OCEAN: WaterBodyId = WaterBodyId(1);
+    /// The one body holding every river tile. Reserved so it is never mistaken for a lake: it
+    /// used to take the next free id, so `is_lake` held on every river tile (the viewer drew
+    /// river confluences as lake squares, the gazetteer named all rivers one "lake").
+    pub const RIVER: WaterBodyId = WaterBodyId(u16::MAX);
 
     pub fn is_none(&self) -> bool {
         self.0 == 0
@@ -52,7 +56,11 @@ impl WaterBodyId {
     }
 
     pub fn is_lake(&self) -> bool {
-        self.0 > 1
+        self.0 > 1 && *self != Self::RIVER
+    }
+
+    pub fn is_river(&self) -> bool {
+        *self == Self::RIVER
     }
 }
 
@@ -154,6 +162,11 @@ pub fn river_flow_threshold(width: usize) -> f32 {
     (RIVER_FLOW_THRESHOLD * k * k).max(4.0)
 }
 
+/// Runoff (mm/yr) that counts as one unit of flow per tile. Flow accumulation is summed in
+/// these units; the value keeps flows on the scale `river_flow_threshold` was calibrated with
+/// (the older moisture-index runoff averaged ~0.1 per land tile, Budyko runoff ~530 mm/yr).
+pub const RUNOFF_MM_PER_UNIT: f32 = 3500.0;
+
 /// Sea level (0.0 by convention)
 const SEA_LEVEL: f32 = 0.0;
 
@@ -177,6 +190,7 @@ pub fn detect_water_bodies_hydrological(
     heightmap: &Tilemap<f32>,
     temperature: Option<&Tilemap<f32>>,
     moisture: Option<&Tilemap<f32>>,
+    precipitation: Option<&Tilemap<f32>>,
 ) -> (
     Tilemap<WaterBodyId>,
     Vec<WaterBody>,
@@ -187,8 +201,17 @@ pub fn detect_water_bodies_hydrological(
     let width = heightmap.width;
     let height = heightmap.height;
 
-    // 1. Calculate effective runoff
-    let runoff = if let (Some(temp), Some(moist)) = (temperature, moisture) {
+    // 1. Calculate effective runoff: from precipitation (Budyko) when the climate gives it, else
+    // from the moisture index.
+    let runoff = if let (Some(temp), Some(precip)) = (temperature, precipitation) {
+        let mut r = Tilemap::new_with(width, height, 0.0f32);
+        for (x, y, &h) in heightmap.iter() {
+            if h >= 0.0 {
+                r.set(x, y, crate::climate::runoff_mm(*precip.get(x, y), *temp.get(x, y)) / RUNOFF_MM_PER_UNIT);
+            }
+        }
+        r
+    } else if let (Some(temp), Some(moist)) = (temperature, moisture) {
         compute_effective_runoff(heightmap, temp, moist)
     } else {
         let mut r = Tilemap::new_with(width, height, 0.0f32);
@@ -226,18 +249,16 @@ pub fn detect_water_bodies_hydrological(
     let mut water_bodies = Vec::new();
     let mut visited = Tilemap::new_with(width, height, false);
 
-    // Step A: Ocean detection - flood fill from polar edges (y = 0 and y = height - 1)
+    // Step A: Ocean detection - the sea (`landscape::sea_mask`: bodies big enough to be seas,
+    // wherever they are, so land may reach the poles), flood-filled through connected sea cells
     let mut ocean = WaterBody::new(WaterBodyId::OCEAN, WaterBodyType::Ocean);
     let mut queue = VecDeque::new();
 
-    for x in 0..width {
-        if *heightmap.get(x, 0) <= SEA_LEVEL {
-            queue.push_back((x, 0));
-            visited.set(x, 0, true);
-        }
-        if *heightmap.get(x, height - 1) <= SEA_LEVEL {
-            queue.push_back((x, height - 1));
-            visited.set(x, height - 1, true);
+    let sea = crate::erosion::landscape::sea_mask(heightmap, SEA_LEVEL);
+    for (x, y, &is_sea) in sea.iter() {
+        if is_sea {
+            queue.push_back((x, y));
+            visited.set(x, y, true);
         }
     }
 
@@ -284,8 +305,14 @@ pub fn detect_water_bodies_hydrological(
             0.5
         };
 
-        // Evaporation rate per unit area (higher in hot, arid zones)
-        let evap_rate = (0.5 * (avg_t / 15.0).max(0.2) * (1.2 - avg_m).max(0.2)).max(0.1);
+        // Evaporation rate per lake tile, in the same units as the runoff: open water loses
+        // about PET less the rain falling on it; without precipitation, a moisture heuristic.
+        let evap_rate = if let Some(precip) = precipitation {
+            let avg_p = basin.tiles.iter().map(|&(tx, ty)| *precip.get(tx, ty)).sum::<f32>() / basin.area as f32;
+            ((crate::climate::pet_mm(avg_t) - avg_p) / RUNOFF_MM_PER_UNIT).max(0.02)
+        } else {
+            (0.5 * (avg_t / 15.0).max(0.2) * (1.2 - avg_m).max(0.2)).max(0.1)
+        };
         let pot_evap = evap_rate * basin.area as f32;
 
         // Only evaluate endorheic water budgets when climate data is present
@@ -351,7 +378,7 @@ pub fn detect_water_bodies_hydrological(
     }
 
     // Step C: River detection - DRY LAND tiles with high flow accumulation
-    let river_id = WaterBodyId(next_id);
+    let river_id = WaterBodyId::RIVER;
     let mut river = WaterBody::new(river_id, WaterBodyType::River);
 
     for y in 0..height {
@@ -378,6 +405,7 @@ pub fn detect_water_bodies_climate(
     heightmap: &Tilemap<f32>,
     temperature: &Tilemap<f32>,
     moisture: &Tilemap<f32>,
+    precipitation: Option<&Tilemap<f32>>,
 ) -> (
     Tilemap<WaterBodyId>,
     Vec<WaterBody>,
@@ -385,7 +413,7 @@ pub fn detect_water_bodies_climate(
     Tilemap<f32>,
     Tilemap<u8>,
 ) {
-    detect_water_bodies_hydrological(heightmap, Some(temperature), Some(moisture))
+    detect_water_bodies_hydrological(heightmap, Some(temperature), Some(moisture), precipitation)
 }
 
 /// Detect and classify all water bodies in the world.
@@ -395,7 +423,7 @@ pub fn detect_water_bodies(
     heightmap: &Tilemap<f32>,
 ) -> (Tilemap<WaterBodyId>, Vec<WaterBody>, Tilemap<f32>) {
     let (water_map, water_bodies, water_depth, _, _) =
-        detect_water_bodies_hydrological(heightmap, None, None);
+        detect_water_bodies_hydrological(heightmap, None, None, None);
     (water_map, water_bodies, water_depth)
 }
 
@@ -453,27 +481,16 @@ pub fn detect_water_bodies_full(
         }
     }
 
-    // Step 2: Ocean detection - flood fill from polar edges (top/bottom of map)
-    // Only below-sea-level tiles connected to edges become ocean
+    // Step 2: Ocean detection - the sea (`landscape::sea_mask`), wherever it is
     let mut visited = Tilemap::new_with(width, height, false);
     let mut ocean = WaterBody::new(WaterBodyId::OCEAN, WaterBodyType::Ocean);
     let mut queue = VecDeque::new();
 
-    // Seed from top edge (below sea level tiles only)
-    for x in 0..width {
-        let terrain_h = *heightmap.get(x, 0);
-        if is_below_sea_level(terrain_h) {
-            queue.push_back((x, 0));
-            visited.set(x, 0, true);
-        }
-    }
-
-    // Seed from bottom edge (below sea level tiles only)
-    for x in 0..width {
-        let terrain_h = *heightmap.get(x, height - 1);
-        if is_below_sea_level(terrain_h) {
-            queue.push_back((x, height - 1));
-            visited.set(x, height - 1, true);
+    let sea = crate::erosion::landscape::sea_mask(heightmap, SEA_LEVEL);
+    for (x, y, &is_sea) in sea.iter() {
+        if is_sea {
+            queue.push_back((x, y));
+            visited.set(x, y, true);
         }
     }
 
@@ -528,47 +545,15 @@ pub fn detect_water_bodies_full(
                 }
             }
 
-            // If lake touches an edge AND is below sea level, it's actually ocean
-            let is_below_sea = lake.min_elevation <= SEA_LEVEL;
-            if (lake.touches_north_edge || lake.touches_south_edge) && is_below_sea {
-                // Reclassify this lake as ocean
-                for ly in lake.bounds.1..=lake.bounds.3 {
-                    for lx in lake.bounds.0..=lake.bounds.2 {
-                        if lx < width && ly < height && water_map.get(lx, ly).0 == lake_id.0 {
-                            water_map.set(lx, ly, WaterBodyId::OCEAN);
-                        }
-                    }
-                }
-
-                // Merge with ocean body
-                if let Some(ocean_body) = water_bodies.iter_mut().find(|wb| wb.id == WaterBodyId::OCEAN) {
-                    ocean_body.tile_count += lake.tile_count;
-                    ocean_body.min_elevation = ocean_body.min_elevation.min(lake.min_elevation);
-                    ocean_body.max_elevation = ocean_body.max_elevation.max(lake.max_elevation);
-                    let total = ocean_body.tile_count as f32;
-                    let old = (total - lake.tile_count as f32) / total;
-                    let new = lake.tile_count as f32 / total;
-                    ocean_body.avg_elevation = ocean_body.avg_elevation * old + lake.avg_elevation * new;
-                    ocean_body.bounds.0 = ocean_body.bounds.0.min(lake.bounds.0);
-                    ocean_body.bounds.1 = ocean_body.bounds.1.min(lake.bounds.1);
-                    ocean_body.bounds.2 = ocean_body.bounds.2.max(lake.bounds.2);
-                    ocean_body.bounds.3 = ocean_body.bounds.3.max(lake.bounds.3);
-                } else {
-                    lake.body_type = WaterBodyType::Ocean;
-                    lake.id = WaterBodyId::OCEAN;
-                    water_bodies.push(lake);
-                }
-                next_id -= 1;
-            } else {
-                // It's a real lake (including alpine lakes above sea level)
-                water_bodies.push(lake);
-            }
+            // A real lake (alpine, or a below-sea basin too small to be sea); the sea itself was
+            // taken by `sea_mask` above, wherever it touches the map edges or not.
+            water_bodies.push(lake);
         }
     }
 
     // Step 4: River detection - DRY LAND tiles with high flow accumulation
     // Rivers are NOT submerged - they flow on the surface
-    let river_id = WaterBodyId(next_id);
+    let river_id = WaterBodyId::RIVER;
     let mut river = WaterBody::new(river_id, WaterBodyType::River);
 
     for y in 0..height {
@@ -878,4 +863,49 @@ mod tests {
         let stats = water_body_stats(&water_bodies);
         assert!(stats.lake_count >= 1);
     }
+}
+
+/// Salt flats where water actually evaporates: the dry floor of each endorheic (closed, arid)
+/// basin, i.e. ground below the basin's spill level that its terminal lake does not cover.
+/// Basins too cold for evaporation pans (mean below 0 C) are left alone. Returns tiles changed.
+pub fn apply_salt_flats(
+    biomes: &mut Tilemap<ExtendedBiome>,
+    heightmap: &Tilemap<f32>,
+    temperature: &Tilemap<f32>,
+    water_map: &Tilemap<WaterBodyId>,
+    water_bodies: &[WaterBody],
+) -> usize {
+    let (w, h) = (heightmap.width, heightmap.height);
+    let endorheic: std::collections::HashSet<u16> = water_bodies.iter().filter(|b| b.is_endorheic).map(|b| b.id.0).collect();
+    if endorheic.is_empty() { return 0; }
+    // Hollows: cells below their spill level (same sea and routing as the landscape step).
+    let depth = crate::erosion::landscape::lake_depth(heightmap);
+    let in_hollow = |x: usize, y: usize| *depth.get(x, y) > 0.5 && *heightmap.get(x, y) > 0.0 || endorheic.contains(&water_map.get(x, y).0);
+    let mut seen = vec![false; w * h];
+    let mut changed = 0;
+    for s in 0..w * h {
+        let (sx, sy) = (s % w, s / w);
+        if seen[s] || !endorheic.contains(&water_map.get(sx, sy).0) { continue; }
+        // The basin around this endorheic lake.
+        let mut comp = vec![(sx, sy)];
+        seen[s] = true;
+        let mut k = 0;
+        while k < comp.len() {
+            let (x, y) = comp[k];
+            for (nx, ny) in heightmap.neighbors_8(x, y) {
+                let j = ny * w + nx;
+                if !seen[j] && in_hollow(nx, ny) { seen[j] = true; comp.push((nx, ny)); }
+            }
+            k += 1;
+        }
+        let mean_t = comp.iter().map(|&(x, y)| *temperature.get(x, y)).sum::<f32>() / comp.len() as f32;
+        if mean_t < 0.0 { continue; }
+        for &(x, y) in &comp {
+            if water_map.get(x, y).is_none() && *heightmap.get(x, y) > 0.0 {
+                biomes.set(x, y, ExtendedBiome::SaltFlats);
+                changed += 1;
+            }
+        }
+    }
+    changed
 }
