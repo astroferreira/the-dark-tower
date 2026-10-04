@@ -1,8 +1,9 @@
 //! Landmarks: the world's extremes and wonders, picked out of the gazetteer and the terrain.
 //!
 //! The highest peak (and each continent's own summit), the longest river, the largest and the
-//! deepest lake, the greatest waterfall, the deepest river gorge, crater lakes, groves of giant
-//! trees, and the largest desert and forest. Each carries an epithet ("the roof of the world")
+//! deepest lake, the greatest waterfall, the deepest river gorge, crater lakes and groves of giant
+//! trees (up to 6 each, including those the director pass planted, `lore::focal`), and the
+//! largest desert and forest. Each carries an epithet ("the roof of the world")
 //! and a measurement, and is tied to its gazetteer feature where it has one, so the tile viewer
 //! can label and describe it and the journal can open with it.
 
@@ -206,15 +207,15 @@ pub fn find_landmarks(world: &WorldData, gaz: &Gazetteer) -> Vec<Landmark> {
         let d = gaz.describe(x, y);
         d.split(", ").next().map(|s| s.to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| "the wilds".into())
     };
-    for comp in patches(ExtendedBiome::CraterLake).into_iter().take(3) {
+    for comp in patches(ExtendedBiome::CraterLake).into_iter().take(6) {
         let (x, y) = comp[comp.len() / 2];
         out.push(Landmark {
             kind: LandmarkKind::CraterLake, x, y, feature: None,
             name: format!("the crater lake of {}", with_article(&near(x, y))),
-            epithet: "a lake in a drowned volcano".into(), detail: format!("{} km\u{b2}", thousands(comp.len() as f32 * km * km)),
+            epithet: "a lake in an ancient crater".into(), detail: format!("{} km\u{b2}", thousands(comp.len() as f32 * km * km)),
         });
     }
-    for comp in patches(ExtendedBiome::AncientGrove).into_iter().take(3) {
+    for comp in patches(ExtendedBiome::AncientGrove).into_iter().take(6) {
         let (x, y) = comp[comp.len() / 2];
         out.push(Landmark {
             kind: LandmarkKind::GiantTrees, x, y, feature: None,

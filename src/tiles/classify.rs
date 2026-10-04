@@ -112,7 +112,10 @@ fn land_tiles(biome: ExtendedBiome, sparse: bool) -> (TileKind, Option<TileKind>
         BorealForest | SubalpineForest => (T::Grass, Some(T::Conifer)),
         TemperateForest | MontaneForest => (T::Grass, Some(T::Deciduous)),
         TemperateRainforest | CloudForest => (T::JungleFloor, Some(T::Conifer)),
-        TropicalForest | TropicalRainforest | AncientGrove => (T::JungleFloor, Some(T::Jungle)),
+        TropicalForest | TropicalRainforest => (T::JungleFloor, Some(T::Jungle)),
+        // Giant trees: the big broadleaf drawn for embarks, one to a tile.
+        AncientGrove => (T::JungleFloor, Some(T::BigBroadleaf)),
+        HighlandLake | CraterLake => (T::Lake, None),
         TemperateGrassland | AlpineMeadow | Paramo => (T::Steppe, None),
         Foothills => (T::Grass, Some(T::Hills)),
         Savanna => (T::Savanna, tree(T::Acacia)),

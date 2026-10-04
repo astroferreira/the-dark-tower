@@ -2,6 +2,7 @@
 //! history simulation, settlements, roads and ruins at every map scale.
 
 pub mod bard;
+pub mod focal;
 pub mod gazetteer;
 pub mod journal;
 pub mod landmarks;

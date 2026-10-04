@@ -31,7 +31,7 @@ ROADMAP Update 5; game-time seasons are Update 3.
 ## Landmarks and set pieces
 - [x] Detect extremes: highest peak, longest river, biggest waterfall, deepest gorge, crater lakes, giant trees (`lore/landmarks.rs`; labels, hover, journal).
 - [ ] Name them, tie legends/figures/deities to them, hand-tune their embark-scale look.
-- [ ] "Director" pass: every region has a focal point, contrasts next to each other, rare features spaced out.
+- [x] "Director" pass: every region has a focal point (`lore/focal.rs`: groves, oases, crater lakes planted where a region has none, spaced out). Not done: deliberate contrasts side by side.
 
 ## History and economy depth
 - [ ] Chokepoint wars (fords, passes, harbours); capitals sited on river mouths and defensible ground.

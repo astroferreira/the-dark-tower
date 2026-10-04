@@ -148,6 +148,17 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   drew river confluences as lake squares, the gazetteer named all rivers one huge "lake", and
   history/resources treated rivers as lakes.
 
+### Director pass: focal points (`lore/focal.rs`)
+- After the world is assembled (in `main`, before history and saving), every named region
+  (forest, jungle, desert, plains, tundra; 60+ tiles at 512x256) without a focal point (a named
+  peak or lake inside it, a volcano, or a focal biome such as a grove, oasis, crater lake, karst,
+  hot springs, ruins) gets one at its most interior tile: an ancient grove (giant trees, drawn
+  with the big broadleaf sprite) in forests and jungles, an oasis (a few palm tiles) in deserts,
+  a crater lake (drawn as lake water) on plains and tundra. Planted points keep 14 tiles (at
+  512 wide, at least 5) from each other and from existing focal points. They are biome patches
+  saved with the world; landmarks list up to 6 crater lakes and groves. Seed 42 gets 4, the dev
+  world 10. Placed features are designed, not caused (unlike scars and salt flats).
+
 ### History journal (`lore/journal.rs`)
 - `--journal PATH` (or `J` in the tile viewer, which writes `journal_<seed>.html` and opens it)
   writes the history as a self-contained HTML book: "The Annals of <largest continent>" with an

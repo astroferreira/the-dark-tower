@@ -900,6 +900,14 @@ fn main() {
     let seasonal_climate = seasons::SeasonalClimate::from_simulation(&climate_sim, &world_data.heightmap);
     world_data.seasonal_climate = Some(seasonal_climate);
 
+    // Director pass: regions with nothing worth travelling to get a grove, an oasis or a crater lake.
+    {
+        let gaz = lore::build_gazetteer(&world_data, None, master_seed);
+        let placed = lore::focal::place_focal_points(&mut world_data, &gaz, master_seed);
+        let list: Vec<String> = placed.iter().map(|p| format!("{} in {} ({}, {})", p.biome.display_name(), p.region, p.x, p.y)).collect();
+        println!("Focal points: {} planted{}{}", placed.len(), if list.is_empty() { "" } else { ": " }, list.join("; "));
+    }
+
     world_data
     };
 
