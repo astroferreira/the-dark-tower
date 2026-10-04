@@ -9,6 +9,9 @@ use super::atlas::{Atlas, TileKind, VARIANTS};
 
 /// Smallest water body (tiles) drawn as a lake.
 const MIN_LAKE_TILES: usize = 4;
+/// Jitter patterns for road and river strokes (different, so they wander independently).
+const ROAD_SALT: usize = 0x5BD1;
+const RIVER_SALT: usize = 0x91F3;
 /// Drainage area (world tiles) at which a river is drawn.
 /// One-tile-wide water deeper than this (m) is a real strait, not a river channel.
 const CHANNEL_MAX_DEPTH_M: f32 = -300.0;
@@ -39,10 +42,16 @@ pub struct TileWorld {
     pub road: Vec<u8>,
     /// Owning faction per tile (`u64::MAX` = unclaimed), for border lines.
     pub owner: Vec<u64>,
+    /// A change of owner within one tile (only there are border lines traced).
+    pub owner_edge: Vec<bool>,
     /// Settlement (living, else most recent ruin) per tile.
     pub settlement: Vec<Option<crate::history::SettlementId>>,
     /// Whether this tile or a neighbour carries a road.
     pub road_near: Vec<bool>,
+    /// Road and river geometry as curved strokes (see `Strokes`), built from the link masks
+    /// in `road` and `river`.
+    pub road_strokes: Strokes,
+    pub river_strokes: Strokes,
     /// Current season's snow cover 0..1, foliage tint (multiplier) and frozen-water flag.
     pub season_snow: Vec<f32>,
     pub season_tint: Vec<[f32; 3]>,
@@ -50,11 +59,19 @@ pub struct TileWorld {
     /// Ore deposit on this tile (colour, richness), when resource markers are shown.
     pub deposit: Vec<Option<([u8; 3], u8)>>,
     pub show_resources: bool,
+    /// A data overlay (`tiles::overlays`): per-tile colours washed over the map (empty: none),
+    /// blended between tile centres when `overlay_smooth`.
+    pub overlay: Vec<[f32; 3]>,
+    pub overlay_smooth: bool,
     /// The Shadow's corruption per tile (empty when there is no Shadow), its dominion, and its
     /// seat.
     pub shadow: Vec<f32>,
     pub dominion: Vec<bool>,
     pub shadow_seat: Option<(usize, usize)>,
+    /// Per tile: some corruption or dominion within one tile (the renderer skips the Shadow's
+    /// ink elsewhere), and a dominion border within one tile (only there is its contour traced).
+    pub shadow_near: Vec<bool>,
+    pub dominion_edge: Vec<bool>,
 }
 
 /// Distinct, muted colour for a faction's border (ink-like, to sit on the parchment palette).
@@ -192,14 +209,21 @@ impl TileWorld {
             owner: vec![u64::MAX; n],
             settlement: vec![None; n],
             road_near: vec![false; n],
+            road_strokes: Strokes::empty(n),
+            river_strokes: Strokes::empty(n),
             season_snow: vec![0.0; n],
             season_tint: vec![[1.0; 3]; n],
             season_frozen: vec![false; n],
             deposit: vec![None; n],
             show_resources: false,
+            overlay: Vec::new(),
+            overlay_smooth: true,
             shadow: Vec::new(),
             dominion: Vec::new(),
             shadow_seat: None,
+            shadow_near: Vec::new(),
+            dominion_edge: Vec::new(),
+            owner_edge: vec![false; n],
         };
         for d in &world.resources().deposits {
             if d.x < w && d.y < h {
@@ -274,11 +298,7 @@ impl TileWorld {
                 } else {
                     1.0
                 };
-                let mut col = atlas.average(ground, variant as usize);
-                if let Some(sp) = sprite {
-                    let sc = atlas.average(sp, variant as usize);
-                    col = [((col[0] as u16 + sc[0] as u16) / 2) as u8, ((col[1] as u16 + sc[1] as u16) / 2) as u8, ((col[2] as u16 + sc[2] as u16) / 2) as u8];
-                }
+                let col = tile_color(atlas, ground, sprite, variant as usize);
                 tw.ground.push(ground);
                 tw.sprite.push(sprite);
                 tw.variant.push(variant);
@@ -366,6 +386,12 @@ impl TileWorld {
                 }
             }
         }
+        // Width where two river tiles meet is their average; at the sea or a lake the river
+        // keeps its own width.
+        let widths = tw.river_width.clone();
+        tw.river_strokes = Strokes::build(&tw.river, w, h, RIVER_SALT, 0.3, |i, j| {
+            if widths[j] > 0.0 { (widths[i] + widths[j]) * 0.5 } else { widths[i] }
+        });
         for y in 0..h {
             for x in 0..w {
                 if tw.river[y * w + x] == 0 { continue; }
@@ -416,20 +442,23 @@ impl TileWorld {
     /// Overlay what history left on the land: settlements and ruins as sprites, roads, and
     /// territory ownership.
     pub fn apply_history(&mut self, world: &WorldData, history: &crate::history::world_state::WorldHistory, atlas: &Atlas) {
-        use crate::history::civilizations::settlement::SettlementType;
+        let overlay = HistoryOverlay::from_history(history, self.width, self.height);
+        self.apply_overlay(world, &overlay, atlas);
+    }
+
+    /// Apply a history overlay (see `HistoryOverlay`) to a freshly built tile world.
+    pub fn apply_overlay(&mut self, world: &WorldData, o: &HistoryOverlay, atlas: &Atlas) {
         let (w, h) = (self.width, self.height);
-        for y in 0..h {
-            for x in 0..w {
-                let t = history.tile_history.get(x, y);
-                if let Some(f) = t.current_owner { self.owner[y * w + x] = f.0; }
-                if t.has_road { self.road[y * w + x] = 0x80; } // marker, links resolved below
-            }
+        for i in 0..w * h {
+            self.owner[i] = o.owner[i];
+            if o.road[i] { self.road[i] = 0x80; } // marker, links resolved below
         }
         // Claims are scattered tile by tile; a few majority-filter passes turn them into
         // coherent territories so borders read as outlines, not a lattice.
+        use rayon::prelude::*;
         for _ in 0..3 {
             let prev = self.owner.clone();
-            for y in 0..h {
+            self.owner.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
                 for x in 0..w {
                     let mut votes: [(u64, u8); 9] = [(u64::MAX, 0); 9];
                     let mut n = 0;
@@ -445,30 +474,32 @@ impl TileWorld {
                         }
                     }
                     let best = votes[..n].iter().max_by_key(|v| v.1).unwrap();
-                    if best.1 >= 5 { self.owner[y * w + x] = best.0; }
+                    if best.1 >= 5 { row[x] = best.0; }
                 }
+            });
+        }
+        for y in 0..h {
+            for x in 0..w {
+                let own = self.owner[y * w + x];
+                let mut edge = false;
+                for dy in -1i64..=1 {
+                    let ny = (y as i64 + dy).clamp(0, h as i64 - 1) as usize;
+                    for dx in -1i64..=1 {
+                        edge |= self.owner[ny * w + (x as i64 + dx).rem_euclid(w as i64) as usize] != own;
+                    }
+                }
+                self.owner_edge[y * w + x] = edge;
             }
         }
-        // Settlements: ruins first so a living settlement on the same tile wins.
-        let mut list: Vec<_> = history.settlements.values().collect();
-        list.sort_by_key(|s| (!s.is_destroyed(), s.id.0));
-        for s in list {
-            let (x, y) = s.location;
+        // Settlements (ruins come first in the list, so a living settlement on the same tile
+        // wins).
+        for site in &o.sites {
+            let (x, y) = (site.x, site.y);
             if x >= w || y >= h { continue; }
             let i = y * w + x;
-            let kind = if s.is_destroyed() {
-                TileKind::Ruins
-            } else {
-                match s.settlement_type {
-                    SettlementType::Capital | SettlementType::Fort => TileKind::Castle,
-                    SettlementType::City | SettlementType::Port => TileKind::City,
-                    SettlementType::Town | SettlementType::Temple | SettlementType::Mine => TileKind::Town,
-                    _ => TileKind::Village,
-                }
-            };
-            self.sprite[i] = Some(kind);
-            self.settlement[i] = Some(s.id);
-            self.color[i] = atlas.average(kind, 0);
+            self.sprite[i] = Some(site.kind);
+            self.settlement[i] = Some(site.id);
+            self.color[i] = tile_color(atlas, self.ground[i], Some(site.kind), self.variant[i] as usize);
             self.road[i] |= 0x80;
         }
         // Road links between neighbouring road/settlement tiles; diagonals only where no
@@ -505,16 +536,16 @@ impl TileWorld {
                 }
             }
         }
+        self.road_strokes = Strokes::build(&self.road, w, h, ROAD_SALT, 0.36, |_, _| 0.0);
         // Ecology: fields around settlements, forests cleared or thinned.
-        if let Some(eco) = &history.ecology {
+        if !o.farmland.is_empty() {
             for i in 0..w * h {
                 if tw_is_water(self.ground[i]) { continue; }
                 let settled = matches!(self.sprite[i], Some(TileKind::Village | TileKind::Town | TileKind::City | TileKind::Castle | TileKind::Ruins));
                 let tree = matches!(self.sprite[i], Some(TileKind::Conifer | TileKind::Deciduous | TileKind::Jungle | TileKind::Palm | TileKind::Acacia));
-                let pot = eco.forest_potential[i];
-                let cover = if pot > 0.05 { eco.forest[i] / pot } else { 1.0 };
+                let cover = o.cover[i] as f32 / 255.0;
                 let mut changed = false;
-                if eco.farmland[i] > 0.4 && !settled && !matches!(self.ground[i], TileKind::Snow | TileKind::Sand | TileKind::Salt) {
+                if o.farmland[i] as f32 / 255.0 > 0.4 && !settled && !matches!(self.ground[i], TileKind::Snow | TileKind::Sand | TileKind::Salt) {
                     self.ground[i] = TileKind::Fields;
                     if tree { self.sprite[i] = None; }
                     changed = true;
@@ -526,25 +557,38 @@ impl TileWorld {
                     changed = true;
                 }
                 if changed && !settled {
-                    let v = self.variant[i] as usize;
-                    let mut col = atlas.average(self.ground[i], v);
-                    if let Some(sp) = self.sprite[i] {
-                        let sc = atlas.average(sp, v);
-                        col = [0, 1, 2].map(|k| ((col[k] as u16 + sc[k] as u16) / 2) as u8);
-                    }
-                    self.color[i] = col;
+                    self.color[i] = tile_color(atlas, self.ground[i], self.sprite[i], self.variant[i] as usize);
                 }
             }
         }
         // The Shadow: its corruption and dominion for the renderer; blighted woods die (the
         // ground is darkened by the renderer's wash, not swapped tile by tile, which reads as
         // blocks).
-        if let Some(sh) = &history.shadow {
-            self.shadow = sh.corruption.clone();
-            self.dominion = self.owner.iter().map(|&o| o == sh.faction.0).collect();
-            self.shadow_seat = (!sh.is_broken()).then_some(sh.seat);
+        if !o.shadow.is_empty() {
+            self.shadow = o.shadow.iter().map(|&c| c as f32 / 255.0).collect();
+            // Dominion is land the Shadow holds (claims around a captured port take in water).
+            self.dominion = (0..w * h).map(|i| self.owner[i] == o.shadow_faction && !tw_is_water(self.ground[i])).collect();
+            self.shadow_seat = o.shadow_seat;
+            self.shadow_near = vec![false; w * h];
+            self.dominion_edge = vec![false; w * h];
+            for y in 0..h {
+                for x in 0..w {
+                    let (mut any, mut dom, mut wild) = (false, false, false);
+                    for dy in -1i64..=1 {
+                        let ny = (y as i64 + dy).clamp(0, h as i64 - 1) as usize;
+                        for dx in -1i64..=1 {
+                            let j = ny * w + (x as i64 + dx).rem_euclid(w as i64) as usize;
+                            any |= self.shadow[j] > 0.05;
+                            if self.dominion[j] { dom = true } else { wild = true }
+                        }
+                    }
+                    self.shadow_near[y * w + x] = any || dom;
+                    self.dominion_edge[y * w + x] = dom && wild;
+                }
+            }
+            let blight = (crate::history::shadow::BLIGHT * 255.0) as u8;
             for i in 0..w * h {
-                if sh.corruption[i] < crate::history::shadow::BLIGHT || tw_is_water(self.ground[i]) { continue; }
+                if o.shadow[i] < blight || tw_is_water(self.ground[i]) { continue; }
                 if matches!(self.sprite[i], Some(TileKind::Village | TileKind::Town | TileKind::City | TileKind::Castle | TileKind::Ruins)) { continue; }
                 let tree = matches!(self.sprite[i], Some(TileKind::Conifer | TileKind::Deciduous | TileKind::Jungle | TileKind::Palm | TileKind::Acacia | TileKind::BigBroadleaf | TileKind::BigConifer | TileKind::BigJungle));
                 if tree {
@@ -552,16 +596,207 @@ impl TileWorld {
                 } else if matches!(self.sprite[i], Some(TileKind::Shrub)) {
                     self.sprite[i] = None;
                 }
-                let v = self.variant[i] as usize;
-                let mut col = atlas.average(self.ground[i], v);
-                if let Some(sp) = self.sprite[i] {
-                    let sc = atlas.average(sp, v);
-                    col = [0, 1, 2].map(|k| ((col[k] as u16 + sc[k] as u16) / 2) as u8);
-                }
-                self.color[i] = col;
+                self.color[i] = tile_color(atlas, self.ground[i], self.sprite[i], self.variant[i] as usize);
             }
         }
         let _ = world;
+    }
+}
+
+/// Curved strokes along a link mask (roads, rivers), stored per tile as line segments in
+/// tile-local coordinates: `segs[start[i]..][..len[i]]`, each `[x0, y0, x1, y1, half_width]`.
+///
+/// Each linked tile gets a node near its centre, jittered by a hash (`salt` picks the pattern,
+/// so roads and rivers wander independently). A link between two tiles passes through the
+/// midpoint of their nodes. A tile with two links draws a quadratic curve from one midpoint to
+/// the other, bending at its node; ends and junctions draw straight spokes from the node.
+/// Curves meet at the midpoints with matching direction, so a line reads as one smooth stroke
+/// instead of a staircase of grid steps. `width(i, j)` is the half-width where tile `i` meets
+/// neighbour `j` (or at `i`'s node when `j == i`); it is blended along each curve.
+#[derive(Clone)]
+pub struct Strokes {
+    pub start: Vec<u32>,
+    pub len: Vec<u8>,
+    pub segs: Vec<[f32; 5]>,
+}
+
+impl Strokes {
+    pub fn empty(n: usize) -> Self {
+        Strokes { start: vec![0; n], len: vec![0; n], segs: Vec::new() }
+    }
+
+    pub fn build(mask: &[u8], w: usize, h: usize, salt: usize, jitter: f32, width: impl Fn(usize, usize) -> f32) -> Self {
+        let (wi, hi) = (w as i64, h as i64);
+        let mut out = Strokes::empty(w * h);
+        let node = |x: i64, y: i64| -> [f32; 2] {
+            let hx = hash(x.rem_euclid(wi) as usize, y as usize ^ salt);
+            let jx = ((hx & 0xFFFF) as f32 / 65535.0 - 0.5) * jitter;
+            let jy = (((hx >> 16) & 0xFFFF) as f32 / 65535.0 - 0.5) * jitter;
+            [x as f32 + 0.5 + jx, y as f32 + 0.5 + jy]
+        };
+        for y in 0..hi {
+            for x in 0..wi {
+                let i = (y * wi + x) as usize;
+                let m = mask[i];
+                out.start[i] = out.segs.len() as u32;
+                if m == 0 { continue; }
+                let c = node(x, y);
+                let wc = width(i, i);
+                // Midpoints of the links, and the stroke half-width there.
+                let mids: Vec<([f32; 2], f32)> = DIRS.iter().enumerate()
+                    .filter(|(b, (_, dy))| m & (1 << b) != 0 && (0..hi).contains(&(y + *dy as i64)))
+                    .map(|(_, (dx, dy))| {
+                        let (nx, ny) = (x + *dx as i64, y + *dy as i64);
+                        let n = node(nx, ny);
+                        let j = (ny * wi + nx.rem_euclid(wi)) as usize;
+                        ([(c[0] + n[0]) * 0.5, (c[1] + n[1]) * 0.5], width(i, j))
+                    })
+                    .collect();
+                let local = |p: [f32; 2]| [p[0] - x as f32, p[1] - y as f32];
+                let first = out.segs.len();
+                if mids.len() == 2 {
+                    let ((a, wa), (b, wb), k) = ((local(mids[0].0), mids[0].1), (local(mids[1].0), mids[1].1), local(c));
+                    let at = |t: f32| {
+                        let u = 1.0 - t;
+                        let p = [u * u * a[0] + 2.0 * u * t * k[0] + t * t * b[0], u * u * a[1] + 2.0 * u * t * k[1] + t * t * b[1]];
+                        // Width: from one end through the node to the other.
+                        let hw = if t < 0.5 { wa + (wc - wa) * t * 2.0 } else { wc + (wb - wc) * (t - 0.5) * 2.0 };
+                        (p, hw)
+                    };
+                    let (mut prev, mut pw) = (a, wa);
+                    for s in 1..=8 {
+                        let (p, hw) = at(s as f32 / 8.0);
+                        out.segs.push([prev[0], prev[1], p[0], p[1], (pw + hw) * 0.5]);
+                        prev = p;
+                        pw = hw;
+                    }
+                } else {
+                    let k = local(c);
+                    for (mid, hw) in &mids {
+                        let p = local(*mid);
+                        out.segs.push([k[0], k[1], p[0], p[1], (wc + hw) * 0.5]);
+                    }
+                }
+                out.len[i] = (out.segs.len() - first).min(255) as u8;
+            }
+        }
+        out
+    }
+
+    /// Signed distance from tile-local point (u, v) of tile (tx, ty) to the nearest stroke
+    /// edge (negative inside), over this tile and its neighbours' strokes. `pad` is how far a
+    /// tile's strokes may reach outside it.
+    #[inline]
+    pub fn edge_distance(&self, w: usize, h: usize, tx: usize, ty: usize, u: f32, v: f32, pad: f32) -> f32 {
+        let mut edge = f32::MAX;
+        for oy in -1i64..=1 {
+            let ny = ty as i64 + oy;
+            if ny < 0 || ny >= h as i64 { continue; }
+            let lv = v - oy as f32;
+            if lv < -pad || lv > 1.0 + pad { continue; }
+            for ox in -1i64..=1 {
+                let lu = u - ox as f32;
+                if lu < -pad || lu > 1.0 + pad { continue; }
+                let j = ny as usize * w + (tx as i64 + ox).rem_euclid(w as i64) as usize;
+                let n = self.len[j] as usize;
+                if n == 0 { continue; }
+                let s0 = self.start[j] as usize;
+                for sg in &self.segs[s0..s0 + n] {
+                    let (ex, ey) = (sg[2] - sg[0], sg[3] - sg[1]);
+                    let (px, py) = (lu - sg[0], lv - sg[1]);
+                    let len2 = ex * ex + ey * ey;
+                    let t = if len2 > 0.0 { ((px * ex + py * ey) / len2).clamp(0.0, 1.0) } else { 0.0 };
+                    let (dx, dy) = (px - ex * t, py - ey * t);
+                    edge = edge.min((dx * dx + dy * dy).sqrt() - sg[4]);
+                }
+            }
+        }
+        edge
+    }
+}
+
+/// A settlement or ruin as the map draws it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Site {
+    pub id: crate::history::SettlementId,
+    pub x: usize,
+    pub y: usize,
+    pub kind: TileKind,
+}
+
+/// What history has done to the land, compactly: who holds each tile, roads, settlements and
+/// ruins, fields and forest cover, and the Shadow. Enough to draw the map at one moment of the
+/// history; the watcher records one per season (as changes) to play the history back.
+#[derive(Clone, Default, PartialEq)]
+pub struct HistoryOverlay {
+    /// Owning faction per tile (`u64::MAX` = unclaimed).
+    pub owner: Vec<u64>,
+    pub road: Vec<bool>,
+    /// Ruins first, so a living settlement on the same tile is drawn over its ruin.
+    pub sites: Vec<Site>,
+    /// Farmland and forest cover (forest / its climax potential), 0..=255; empty without ecology.
+    pub farmland: Vec<u8>,
+    pub cover: Vec<u8>,
+    /// The Shadow's corruption, 0..=255; empty without a Shadow.
+    pub shadow: Vec<u8>,
+    pub shadow_faction: u64,
+    pub shadow_seat: Option<(usize, usize)>,
+}
+
+impl HistoryOverlay {
+    pub fn from_history(history: &crate::history::world_state::WorldHistory, w: usize, h: usize) -> Self {
+        use crate::history::civilizations::settlement::SettlementType;
+        let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let mut owner = vec![u64::MAX; w * h];
+        let mut road = vec![false; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let t = history.tile_history.get(x, y);
+                if let Some(f) = t.current_owner { owner[y * w + x] = f.0; }
+                road[y * w + x] = t.has_road;
+            }
+        }
+        let mut list: Vec<_> = history.settlements.values().collect();
+        list.sort_by_key(|s| (!s.is_destroyed(), s.id.0));
+        let sites = list.into_iter().map(|s| Site {
+            id: s.id,
+            x: s.location.0,
+            y: s.location.1,
+            kind: if s.is_destroyed() {
+                TileKind::Ruins
+            } else {
+                match s.settlement_type {
+                    SettlementType::Capital | SettlementType::Fort => TileKind::Castle,
+                    SettlementType::City | SettlementType::Port => TileKind::City,
+                    SettlementType::Town | SettlementType::Temple | SettlementType::Mine => TileKind::Town,
+                    _ => TileKind::Village,
+                }
+            },
+        }).collect();
+        let (farmland, cover) = match &history.ecology {
+            Some(eco) => (
+                eco.farmland.iter().map(|&f| q(f)).collect(),
+                (0..w * h).map(|i| {
+                    let pot = eco.forest_potential[i];
+                    q(if pot > 0.05 { eco.forest[i] / pot } else { 1.0 })
+                }).collect(),
+            ),
+            None => (Vec::new(), Vec::new()),
+        };
+        let (shadow, shadow_faction, shadow_seat) = match &history.shadow {
+            Some(sh) => (sh.corruption.iter().map(|&c| q(c)).collect(), sh.faction.0, (!sh.is_broken()).then_some(sh.seat)),
+            None => (Vec::new(), u64::MAX, None),
+        };
+        HistoryOverlay { owner, road, sites, farmland, cover, shadow, shadow_faction, shadow_seat }
+    }
+}
+
+/// A tile's flat colour (minimap, far zoom): its ground, with its sprite composited over it.
+fn tile_color(atlas: &Atlas, ground: TileKind, sprite: Option<TileKind>, variant: usize) -> [u8; 3] {
+    let col = atlas.average(ground, variant);
+    match sprite {
+        Some(sp) => atlas.average_over(col, sp, variant),
+        None => col,
     }
 }
 

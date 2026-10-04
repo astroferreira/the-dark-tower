@@ -2,7 +2,7 @@
 //! Kept free of any window code so frames can be rendered (and checked) headlessly.
 
 use super::atlas::Atlas;
-use super::classify::{TileWorld, DIRS};
+use super::classify::TileWorld;
 
 /// World camera: the tile coordinate at the centre of the screen and the tile size in pixels.
 #[derive(Clone, Copy, Debug)]
@@ -163,16 +163,6 @@ fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 }
 
-/// Distance from (u, v) to the segment from the tile centre to the edge/corner in direction d.
-#[inline]
-fn seg_dist(u: f32, v: f32, d: (i32, i32)) -> f32 {
-    let (ex, ey) = (0.5 * d.0 as f32, 0.5 * d.1 as f32);
-    let (px, py) = (u - 0.5, v - 0.5);
-    let t = ((px * ex + py * ey) / (ex * ex + ey * ey)).clamp(0.0, 1.0);
-    let (dx, dy) = (px - ex * t, py - ey * t);
-    (dx * dx + dy * dy).sqrt()
-}
-
 /// Relief shading interpolated bilinearly between tile centres, so neighbouring tiles don't
 /// jump in brightness (per-tile shading looks like a patchwork).
 #[inline]
@@ -195,19 +185,30 @@ pub fn screen_to_world(cam: &Camera, sx: f32, sy: f32, w: usize, h: usize) -> (f
 }
 
 pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32], w: usize, h: usize) {
+    render_world_lod(tw, atlas, cam, buf, w, h, 1);
+}
+
+/// `render_world` computing one pixel in every `lod` x `lod` block (the rest are copies): a
+/// cheap preview with the same look, for frames where the view is moving.
+pub fn render_world_lod(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32], w: usize, h: usize, lod: usize) {
+    let lod = lod.max(1);
     let t = cam.tile_px;
     let detailed = t >= 4.0;
     let src_px = t.ceil() as usize;
-    for sy in 0..h {
-        let wy = cam.cy + (sy as f32 + 0.5 - h as f32 / 2.0) / t;
+    // Bands of `lod` rows are independent: render them in parallel.
+    use rayon::prelude::*;
+    buf[..w * h].par_chunks_mut(w * lod).enumerate().for_each(|(band, rows)| {
+        let sy = band * lod;
+        let wy = cam.cy + (sy as f32 + 0.5 * lod as f32 - h as f32 / 2.0) / t;
         if wy < 0.0 || wy >= tw.height as f32 {
-            buf[sy * w..(sy + 1) * w].iter_mut().for_each(|p| *p = OFF_MAP);
-            continue;
+            rows.fill(OFF_MAP);
+            return;
         }
+        let (row, rest) = rows.split_at_mut(w);
         let ty = wy as usize;
         let v = wy - ty as f32;
-        for sx in 0..w {
-            let wx = cam.cx + (sx as f32 + 0.5 - w as f32 / 2.0) / t;
+        for sx in (0..w).step_by(lod) {
+            let wx = cam.cx + (sx as f32 + 0.5 * lod as f32 - w as f32 / 2.0) / t;
             let txf = wx.floor();
             let u = wx - txf;
             let tx = (txf as i64).rem_euclid(tw.width as i64) as usize;
@@ -229,7 +230,8 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                     }
                 }
                 let col = shadow_ink(tw, wx, wy, sx, sy, t, col);
-                buf[sy * w + sx] = pack(col);
+                let col = overlay_tint(tw, wx, wy, col);
+                row[sx] = pack(col);
                 continue;
             }
 
@@ -328,23 +330,8 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
             // River channel, drawn under sprites so trees overhang it. Strokes from the 8
             // neighbouring tiles are included so diagonal rivers don't pinch at tile corners.
             if tw.river_near[i] {
-                let mut edge = f32::MAX; // signed distance to the nearest stroke boundary
-                for oy in -1i64..=1 {
-                    let ny = ty as i64 + oy;
-                    if ny < 0 || ny >= tw.height as i64 { continue; }
-                    for ox in -1i64..=1 {
-                        let nx = (tx as i64 + ox).rem_euclid(tw.width as i64) as usize;
-                        let j = ny as usize * tw.width + nx;
-                        let mask = tw.river[j];
-                        if mask == 0 { continue; }
-                        let (lu, lv) = (u - ox as f32, v - oy as f32);
-                        for (b, dir) in DIRS.iter().enumerate() {
-                            if mask & (1 << b) != 0 {
-                                edge = edge.min(seg_dist(lu, lv, *dir) - tw.river_width[j]);
-                            }
-                        }
-                    }
-                }
+                // Signed distance to the nearest river edge, along the curved strokes.
+                let edge = tw.river_strokes.edge_distance(tw.width, tw.height, tx, ty, u, v, 0.6);
                 let aa = 1.0 / t;
                 // Ink banks a little outside the channel, then the water on top.
                 let bank = (0.8 / t).min(0.04);
@@ -358,22 +345,10 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
                 }
             }
 
-            // Roads: thin dirt tracks, drawn like rivers but narrower.
+            // Roads: thin dirt tracks along the curves built by `TileWorld::build_road_curves`.
             if tw.road_near[i] && t >= 3.0 {
-                let mut edge = f32::MAX;
-                for oy in -1i64..=1 {
-                    let ny = ty as i64 + oy;
-                    if ny < 0 || ny >= tw.height as i64 { continue; }
-                    for ox in -1i64..=1 {
-                        let nx = (tx as i64 + ox).rem_euclid(tw.width as i64) as usize;
-                        let mask = tw.road[ny as usize * tw.width + nx];
-                        if mask == 0 { continue; }
-                        let (lu, lv) = (u - ox as f32, v - oy as f32);
-                        for (b, dir) in DIRS.iter().enumerate() {
-                            if mask & (1 << b) != 0 { edge = edge.min(seg_dist(lu, lv, *dir) - ROAD_HALF_WIDTH); }
-                        }
-                    }
-                }
+                // A tile's road stays within about a quarter tile of it.
+                let edge = tw.road_strokes.edge_distance(tw.width, tw.height, tx, ty, u, v, 0.35) - ROAD_HALF_WIDTH;
                 let aa = 1.0 / t;
                 let cover = ((aa - edge) / (2.0 * aa)).clamp(0.0, 1.0);
                 if cover > 0.0 && is_land {
@@ -383,7 +358,7 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
 
             // Territory borders: a dotted line where the owner changes, sampled through the same
             // warp as the ground so borders meander like the biomes do.
-            if is_land && t >= 10.0 {
+            if is_land && t >= 10.0 && tw.owner_edge[i] {
                 let owner_at = |x: f32, y: f32| {
                     let (a, b) = warp(tw, x, y);
                     tw.owner[tile_index(tw, a, b)]
@@ -423,10 +398,33 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
             }
 
             let col = shadow_ink(tw, wx, wy, sx, sy, t, col);
-            buf[sy * w + sx] = pack([col[0] * mottle, col[1] * mottle, col[2] * mottle]);
+            let col = overlay_tint(tw, wx, wy, col);
+            row[sx] = pack([col[0] * mottle, col[1] * mottle, col[2] * mottle]);
         }
-    }
+        if lod > 1 {
+            for sx in (0..w).step_by(lod) {
+                let v = row[sx];
+                row[sx..(sx + lod).min(w)].fill(v);
+            }
+            for r in rest.chunks_mut(w) { r.copy_from_slice(&row[..r.len()]); }
+        }
+    });
     draw_shadow_seat(tw, cam, buf, w, h);
+}
+
+/// A data overlay washed over the map. The map's own light and dark (relief, ink lines) still
+/// modulate it, so coastlines, rivers and labels stay readable through the colour.
+#[inline]
+fn overlay_tint(tw: &TileWorld, wx: f32, wy: f32, col: [f32; 3]) -> [f32; 3] {
+    if tw.overlay.is_empty() { return col; }
+    let o = if tw.overlay_smooth {
+        [0, 1, 2].map(|k| smooth_field(tw, wx, wy, |i| tw.overlay[i][k]))
+    } else {
+        tw.overlay[tile_index(tw, wx, wy)]
+    };
+    let lum = (col[0] * 0.3 + col[1] * 0.59 + col[2] * 0.11) / 200.0;
+    let lum = lum.clamp(0.25, 1.15);
+    mix(col, [o[0] * lum, o[1] * lum, o[2] * lum], 0.78)
 }
 
 /// Ink for the Shadow's own lands and its seat.
@@ -439,6 +437,8 @@ const SHADOW_INK: [f32; 3] = [30.0, 20.0, 26.0];
 #[inline]
 fn shadow_ink(tw: &TileWorld, wx: f32, wy: f32, sx: usize, sy: usize, t: f32, col: [f32; 3]) -> [f32; 3] {
     if tw.shadow.is_empty() { return col; }
+    let i = tile_index(tw, wx, wy);
+    if !tw.shadow_near[i] { return col; }
     let c = smooth_field(tw, wx, wy, |i| if tw.ground[i].is_water() { 0.0 } else { tw.shadow[i] });
     let mut col = col;
     if c > 0.08 {
@@ -453,7 +453,9 @@ fn shadow_ink(tw: &TileWorld, wx: f32, wy: f32, sx: usize, sy: usize, t: f32, co
             + 0.16 * value_noise(tw, x, y, 4.0, 77)
             + 0.07 * value_noise(tw, x, y, 11.0, 78)
     };
-    let d = dominion(wx, wy);
+    // Away from a border the dominion field is plainly in or out (its noise can't cross 0.5).
+    let edge = tw.dominion_edge[i];
+    let d = if edge { dominion(wx, wy) } else if tw.dominion[i] { 1.0 } else { 0.0 };
     if d > 0.5 {
         // Hatching in screen space, like a pen: one diagonal, crossed where the hold is deepest.
         let gap = if t < 3.0 { 4 } else { 5 };
@@ -463,7 +465,7 @@ fn shadow_ink(tw: &TileWorld, wx: f32, wy: f32, sx: usize, sy: usize, t: f32, co
             col = mix(col, SHADOW_INK, 0.6);
         }
     }
-    if (d - 0.5).abs() < 0.4 {
+    if edge && (d - 0.5).abs() < 0.4 {
         let cover = contour(dominion, wx, wy, d, 0.5, (1.4 / t).max(0.05), t);
         col = mix(col, SHADOW_INK, 0.9 * cover);
     }

@@ -28,21 +28,11 @@ use crate::seasons::Season;
 use crate::world::WorldData;
 
 use super::atlas::Atlas;
-use super::classify::{faction_color, TileWorld};
-use super::render::{render_world, screen_to_world, Camera};
+use super::classify::{faction_color, HistoryOverlay, Site, TileWorld};
+use super::render::{render_world_lod, screen_to_world, Camera};
 use super::text::{draw_ink, place_labels, text_width, Label};
+use super::ui::*;
 
-// Palette: the ink map on a dark desk.
-const DESK: u32 = 0x0026_201B;
-const PAPER: u32 = 0x00EA_DEC4;
-const PAPER_SHADE: u32 = 0x00DC_CCA8;
-const INK: u32 = 0x0038_2A20;
-const INK_FADED: u32 = 0x0080_6A52;
-const RUBRIC: u32 = 0x009A_2A1E;
-const GOLD: u32 = 0x00A8_7A26;
-const SEA: u32 = 0x0030_5670;
-const MOSS: u32 = 0x004E_6A30;
-const VIOLET: u32 = 0x0064_3A6E;
 const ROAD_GLOW: u32 = 0x00F0_B040;
 
 const PANEL_W: usize = 340;
@@ -56,7 +46,8 @@ const PACES: [(f32, &str); 5] = [(1.0, "a season a breath"), (0.4, "unhurried"),
 /// than this per season anyway.
 const DEFAULT_PACE: usize = 3;
 
-/// Controls shared with the simulation thread.
+/// Controls shared with the simulation thread. The simulation always runs at full speed and
+/// records the history; `paused` and `pace` only govern playback.
 struct Control {
     paused: AtomicBool,
     pace: AtomicUsize,
@@ -110,8 +101,65 @@ struct ShadowStats {
     broken: bool,
 }
 
-struct Frame {
-    tw: TileWorld,
+/// A full overlay is kept every this many seasons, so jumping to any season replays at most
+/// this many deltas.
+const KEYFRAME_EVERY: usize = 40;
+
+/// What changed in the history overlay from one season to the next (tile index, new value).
+#[derive(Default)]
+struct Delta {
+    owner: Vec<(u32, u64)>,
+    road: Vec<(u32, bool)>,
+    farmland: Vec<(u32, u8)>,
+    cover: Vec<(u32, u8)>,
+    shadow: Vec<(u32, u8)>,
+    /// The full settlement list when it changed.
+    sites: Option<Vec<Site>>,
+    shadow_faction: u64,
+    shadow_seat: Option<(usize, usize)>,
+}
+
+fn diff<T: Copy + PartialEq>(a: &[T], b: &[T]) -> Vec<(u32, T)> {
+    if a.len() != b.len() {
+        return b.iter().enumerate().map(|(i, &v)| (i as u32, v)).collect();
+    }
+    a.iter().zip(b).enumerate().filter(|(_, (x, y))| x != y).map(|(i, (_, &y))| (i as u32, y)).collect()
+}
+
+fn put<T: Copy>(v: &mut Vec<T>, d: &[(u32, T)], n: usize, zero: T) {
+    if d.is_empty() { return; }
+    if v.len() != n { v.resize(n, zero); }
+    for &(i, x) in d { v[i as usize] = x; }
+}
+
+impl Delta {
+    fn between(a: &HistoryOverlay, b: &HistoryOverlay) -> Delta {
+        Delta {
+            owner: diff(&a.owner, &b.owner),
+            road: diff(&a.road, &b.road),
+            farmland: diff(&a.farmland, &b.farmland),
+            cover: diff(&a.cover, &b.cover),
+            shadow: diff(&a.shadow, &b.shadow),
+            sites: (a.sites != b.sites).then(|| b.sites.clone()),
+            shadow_faction: b.shadow_faction,
+            shadow_seat: b.shadow_seat,
+        }
+    }
+
+    fn apply(&self, o: &mut HistoryOverlay, n: usize) {
+        put(&mut o.owner, &self.owner, n, u64::MAX);
+        put(&mut o.road, &self.road, n, false);
+        put(&mut o.farmland, &self.farmland, n, 0);
+        put(&mut o.cover, &self.cover, n, 255);
+        put(&mut o.shadow, &self.shadow, n, 0);
+        if let Some(sites) = &self.sites { o.sites = sites.clone(); }
+        o.shadow_faction = self.shadow_faction;
+        o.shadow_seat = self.shadow_seat;
+    }
+}
+
+/// One season of the history, as recorded for playback.
+struct Step {
     year: u32,
     season: Season,
     step: u32,
@@ -124,11 +172,14 @@ struct Frame {
     places: HashMap<u64, (String, SettlementType, u32, u64, bool)>,
     events: Vec<LogItem>,
     new_roads: Vec<(usize, usize)>,
+    delta: Delta,
 }
 
 enum Msg {
     Status(String),
-    Frame(Box<Frame>),
+    /// The overlay at the dawn of history (before the first recorded step).
+    Start(Box<HistoryOverlay>),
+    Step(Box<Step>),
     Done,
 }
 
@@ -210,8 +261,8 @@ pub fn watch_history(world: &WorldData, game_data: &GameData, config: HistoryCon
     let (tx, rx) = mpsc::channel();
     std::thread::scope(|scope| {
         let sim = {
-            let (base, ctl) = (base.clone(), &ctl);
-            scope.spawn(move || simulate(world, game_data, config, engine, base, atlas, ctl, tx))
+            let ctl = &ctl;
+            scope.spawn(move || simulate(world, game_data, config, engine, ctl, tx))
         };
         if let Err(e) = run_window(window, world, atlas, base, &ctl, rx) {
             eprintln!("Watcher error: {e}");
@@ -225,14 +276,11 @@ pub fn watch_history(world: &WorldData, game_data: &GameData, config: HistoryCon
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn simulate(
     world: &WorldData,
     game_data: &GameData,
     config: HistoryConfig,
     mut engine: HistoryEngine,
-    base: TileWorld,
-    atlas: &Atlas,
     ctl: &Control,
     tx: mpsc::Sender<Msg>,
 ) -> WorldHistory {
@@ -241,7 +289,7 @@ fn simulate(
     let _ = tx.send(Msg::Status(format!("Recalling the ages before memory: {civs} peoples, their kings and their gods...")));
     let mut history = engine.begin(world, config, game_data);
     let (w, h) = (world.width, world.height);
-    let mut roads: Vec<bool> = (0..w * h).map(|i| history.tile_history.has_road(i % w, i / w)).collect();
+    let mut prev = HistoryOverlay::from_history(&history, w, h);
     let mut seen = history.chronicle.len();
     let dawn = LogItem {
         year: history.current_date.year,
@@ -255,15 +303,12 @@ fn simulate(
         location: None,
         key: true,
     };
-    let mut first = frame(&history, world, &base, atlas, 0, total, Vec::new(), Vec::new(), Season::Summer);
+    let _ = tx.send(Msg::Start(Box::new(prev.clone())));
+    let mut first = record(&history, world, &prev, 0, total, Vec::new(), Vec::new(), Delta::default());
     first.events.push(dawn);
-    let _ = tx.send(Msg::Frame(Box::new(first)));
+    let _ = tx.send(Msg::Step(Box::new(first)));
 
     for step in 0..total {
-        while ctl.paused.load(Ordering::Relaxed) && !ctl.detached.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(30));
-        }
-        let t0 = Instant::now();
         engine.step(&mut history, world, game_data);
         if ctl.detached.load(Ordering::Relaxed) {
             if step % 40 == 0 { eprintln!("  History: year {}", history.current_date.year); }
@@ -277,23 +322,12 @@ fn simulate(
             key: style(&e.event_type).3 || e.is_major,
         }).collect();
         seen = history.chronicle.len();
-        let mut new_roads = Vec::new();
-        for (i, r) in roads.iter_mut().enumerate() {
-            if !*r && history.tile_history.has_road(i % w, i / w) {
-                *r = true;
-                new_roads.push((i % w, i / w));
-            }
-        }
-        let pace = ctl.pace.load(Ordering::Relaxed);
-        // Seasons show only when watching slowly enough to read them (otherwise they strobe).
-        let season = if pace <= 1 { history.current_date.season } else { Season::Summer };
-        let f = frame(&history, world, &base, atlas, step + 1, total, events, new_roads, season);
-        let _ = tx.send(Msg::Frame(Box::new(f)));
-        let min = Duration::from_secs_f32(PACES[pace.min(PACES.len() - 1)].0);
-        let spent = t0.elapsed();
-        if spent < min && !ctl.detached.load(Ordering::Relaxed) {
-            std::thread::sleep(min - spent);
-        }
+        let next = HistoryOverlay::from_history(&history, w, h);
+        let new_roads = (0..w * h).filter(|&i| next.road[i] && !prev.road.get(i).copied().unwrap_or(false)).map(|i| (i % w, i / w)).collect();
+        let delta = Delta::between(&prev, &next);
+        let rec = record(&history, world, &next, step + 1, total, events, new_roads, delta);
+        prev = next;
+        let _ = tx.send(Msg::Step(Box::new(rec)));
     }
     let _ = tx.send(Msg::Status("Naming the ages...".into()));
     engine.finish(&mut history);
@@ -301,21 +335,19 @@ fn simulate(
     history
 }
 
+/// Record one season: the almanac, the realms, names and places for hover and labels, and the
+/// season's events and overlay changes.
 #[allow(clippy::too_many_arguments)]
-fn frame(
+fn record(
     history: &WorldHistory,
     world: &WorldData,
-    base: &TileWorld,
-    atlas: &Atlas,
+    overlay: &HistoryOverlay,
     step: u32,
     total: u32,
     events: Vec<LogItem>,
     new_roads: Vec<(usize, usize)>,
-    season: Season,
-) -> Frame {
-    let mut tw = base.clone();
-    tw.apply_history(world, history, atlas);
-    tw.set_season(world, season);
+    delta: Delta,
+) -> Step {
     let mut realms: HashMap<u64, Realm> = HashMap::new();
     let mut places = HashMap::new();
     let mut stats = Stats::default();
@@ -342,7 +374,7 @@ fn frame(
     }
     stats.peoples = history.active_faction_count();
     stats.fallen = history.factions.len() - stats.peoples;
-    stats.roads = tw.road.iter().filter(|&&r| r != 0).count();
+    stats.roads = overlay.road.iter().filter(|&&r| r).count();
     stats.wars = history.wars.values().filter(|w| w.is_active()).count();
     stats.beasts = history.living_legendary_count();
     stats.artifacts = history.artifacts.len();
@@ -364,8 +396,7 @@ fn frame(
     });
     let mut realms: Vec<Realm> = realms.into_values().collect();
     realms.sort_by_key(|r| std::cmp::Reverse(r.population));
-    Frame {
-        tw,
+    Step {
         year: history.current_date.year,
         season: history.current_date.season,
         step,
@@ -376,6 +407,7 @@ fn frame(
         places,
         events,
         new_roads,
+        delta,
     }
 }
 
@@ -383,116 +415,17 @@ fn frame(
 // Drawing helpers
 // ---------------------------------------------------------------------------------------------
 
-#[derive(Clone, Copy, Default)]
-struct Rect { x: usize, y: usize, w: usize, h: usize }
 
-impl Rect {
-    fn contains(&self, px: f32, py: f32) -> bool {
-        px >= self.x as f32 && py >= self.y as f32 && px < (self.x + self.w) as f32 && py < (self.y + self.h) as f32
-    }
-}
 
-fn mix(a: u32, b: u32, t: f32) -> u32 {
-    let t = t.clamp(0.0, 1.0);
-    let ch = |s: u32| {
-        let (x, y) = (((a >> s) & 0xFF) as f32, ((b >> s) & 0xFF) as f32);
-        ((x + (y - x) * t) as u32) << s
-    };
-    ch(16) | ch(8) | ch(0)
-}
 
-fn hash(x: usize, y: usize) -> u32 {
-    let mut h = (x as u32).wrapping_mul(0x9E37_79B1) ^ (y as u32).wrapping_mul(0x85EB_CA77);
-    h ^= h >> 15;
-    h = h.wrapping_mul(0x2C1B_3C6D);
-    h ^ (h >> 12)
-}
 
-fn fill(buf: &mut [u32], w: usize, r: Rect, color: u32) {
-    for y in r.y..r.y + r.h {
-        buf[y * w + r.x..y * w + r.x + r.w].fill(color);
-    }
-}
 
-fn blend_px(buf: &mut [u32], w: usize, h: usize, x: i64, y: i64, color: u32, a: f32) {
-    if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
-        let k = y as usize * w + x as usize;
-        buf[k] = mix(buf[k], color, a);
-    }
-}
 
-fn hline(buf: &mut [u32], w: usize, x0: usize, x1: usize, y: usize, color: u32) {
-    buf[y * w + x0..y * w + x1].fill(color);
-}
 
-fn outline(buf: &mut [u32], w: usize, r: Rect, color: u32) {
-    hline(buf, w, r.x, r.x + r.w, r.y, color);
-    hline(buf, w, r.x, r.x + r.w, r.y + r.h - 1, color);
-    for y in r.y..r.y + r.h {
-        buf[y * w + r.x] = color;
-        buf[y * w + r.x + r.w - 1] = color;
-    }
-}
 
-/// A parchment card with a mottled wash and a double ink rule, like the map's own frame.
-fn card(buf: &mut [u32], w: usize, r: Rect) {
-    for y in r.y..r.y + r.h {
-        for x in r.x..r.x + r.w {
-            let n = (hash(x / 3, y / 3) & 0xFF) as f32 / 255.0;
-            let edge = ((x - r.x).min(r.x + r.w - 1 - x).min(y - r.y).min(r.y + r.h - 1 - y)) as f32;
-            let foxing = (1.0 - edge / 18.0).max(0.0) * 0.18;
-            buf[y * w + x] = mix(mix(PAPER, PAPER_SHADE, 0.35 * n), 0x00B8_9A6A, foxing);
-        }
-    }
-    outline(buf, w, r, INK);
-    outline(buf, w, Rect { x: r.x + 3, y: r.y + 3, w: r.w - 6, h: r.h - 6 }, INK_FADED);
-}
 
-/// Small-caps style heading with a rule under it.
-fn heading(buf: &mut [u32], w: usize, h: usize, x: usize, y: i64, width: usize, text: &str) {
-    draw_ink(buf, w, h, x as i64, y, text, RUBRIC, 1, true);
-    let tx = x + text_width(text, 1) + 6;
-    if tx < x + width {
-        let ry = (y + 4) as usize;
-        if ry < h { hline(buf, w, tx, x + width, ry, INK_FADED); }
-    }
-}
 
-/// Greedy word wrap to `max_chars` per line.
-fn wrap(text: &str, max_chars: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut line = String::new();
-    for word in text.split_whitespace() {
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > max_chars {
-            lines.push(std::mem::take(&mut line));
-        }
-        if !line.is_empty() { line.push(' '); }
-        line.push_str(word);
-    }
-    if !line.is_empty() { lines.push(line); }
-    lines
-}
 
-/// Fold accented letters to ASCII for the 8x8 font.
-fn ascii(s: &str) -> String {
-    s.chars().map(|c| match c {
-        'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' => 'a',
-        'é' | 'è' | 'ê' | 'ë' => 'e',
-        'í' | 'ì' | 'î' | 'ï' => 'i',
-        'ó' | 'ò' | 'ô' | 'ö' | 'õ' => 'o',
-        'ú' | 'ù' | 'û' | 'ü' => 'u',
-        'Á' | 'À' | 'Â' | 'Ä' => 'A',
-        'É' | 'È' => 'E',
-        'Ó' | 'Ö' => 'O',
-        '’' | '‘' => '\'',
-        '—' | '–' => '-',
-        c => c,
-    }).collect()
-}
-
-fn truncate(s: &str, max_chars: usize) -> String {
-    if s.chars().count() <= max_chars { s.to_string() } else { format!("{}.", s.chars().take(max_chars.saturating_sub(1)).collect::<String>()) }
-}
 
 fn short_num(n: u64) -> String {
     if n >= 1_000_000 { format!("{:.1}M", n as f64 / 1e6) } else if n >= 10_000 { format!("{}k", n / 1000) } else if n >= 1000 { format!("{:.1}k", n as f64 / 1e3) } else { n.to_string() }
@@ -649,18 +582,29 @@ fn fit_camera(world: &WorldData, map: Rect) -> Camera {
     Camera { cx: world.width as f32 / 2.0, cy: world.height as f32 / 2.0, tile_px }
 }
 
-/// Everything the watcher shows, apart from the window: fed frames from the simulation, drawn
-/// into a pixel buffer. The window (or a headless snapshot) drives it.
+/// Everything the watcher shows, apart from the window. The simulation's recording arrives
+/// season by season (`receive`); the view plays it back at the chosen pace (`play`), can jump
+/// to any recorded season (`jump`), and draws into a pixel buffer. The window (or a headless
+/// snapshot) drives it.
 struct View<'a> {
     world: &'a WorldData,
     atlas: &'a Atlas,
+    /// The land with no history on it; each shown season is drawn as `base` + its overlay.
+    base: TileWorld,
     tw: TileWorld,
-    latest: Option<Box<Frame>>,
+    steps: Vec<Box<Step>>,
+    keyframes: Vec<(usize, HistoryOverlay)>,
+    /// The overlay at the newest recorded season, and at the shown one.
+    head: HistoryOverlay,
+    cur: HistoryOverlay,
+    shown: Option<usize>,
+    next_advance: Instant,
+    tw_dirty: bool,
     log: VecDeque<LogItem>,
     marks: Vec<Mark>,
     banner_msg: Option<(String, Instant)>,
-    souls_hist: Vec<u64>,
     status: String,
+    /// The simulation has finished (everything is recorded).
     done: bool,
     show_all: bool,
     log_scroll: usize,
@@ -674,6 +618,18 @@ struct View<'a> {
     fitted: bool,
     last_render: Instant,
     entry_hits: Vec<(Rect, (usize, usize))>,
+    /// The timeline bar in the panel (click or drag it to jump).
+    timeline: Rect,
+    /// Smooth zoom: the zoom the wheel asked for, eased towards each frame around `zoom_at`.
+    zoom_target: f32,
+    zoom_at: (f32, f32),
+    /// Last time the view moved (pan, zoom, drag); the map is drawn at full quality again once
+    /// it has been still for a moment.
+    moved: Instant,
+    /// The map on screen is a moving-view preview, and how long a full-quality render takes.
+    preview: bool,
+    full_ms: f32,
+    last_frame: Instant,
 }
 
 impl<'a> View<'a> {
@@ -681,52 +637,118 @@ impl<'a> View<'a> {
         let lay = layout(1440, 900, world);
         let cam = fit_camera(world, lay.map);
         View {
-            world, atlas, tw: base, latest: None, log: VecDeque::new(), marks: Vec::new(),
-            banner_msg: None, souls_hist: Vec::new(), status: "Raising the land...".into(),
+            world, atlas, tw: base.clone(), base, steps: Vec::new(), keyframes: Vec::new(),
+            head: HistoryOverlay::default(), cur: HistoryOverlay::default(), shown: None,
+            next_advance: Instant::now(), tw_dirty: false,
+            log: VecDeque::new(), marks: Vec::new(),
+            banner_msg: None, status: "Raising the land...".into(),
             done: false, show_all: false, log_scroll: 0, size: (0, 0), buf: Vec::new(),
             bg: Vec::new(), map_buf: Vec::new(), map_dirty: true, lay, cam, fitted: true,
             last_render: Instant::now() - Duration::from_secs(1), entry_hits: Vec::new(),
+            timeline: Rect::default(),
+            zoom_target: cam.tile_px, zoom_at: (0.0, 0.0), moved: Instant::now() - Duration::from_secs(1),
+            preview: false, full_ms: 0.0, last_frame: Instant::now(),
         }
     }
 
+    fn tiles(&self) -> usize { self.world.width * self.world.height }
+
+    /// Take in the simulation's recording.
     fn receive(&mut self, msg: Msg) {
         match msg {
             Msg::Status(s) => self.status = s,
-            Msg::Done => {
-                self.done = true;
-                self.status = "The age is written.".into();
-                self.banner_msg = Some(("The age is written. Press Enter to walk the world.".into(), Instant::now()));
+            Msg::Done => self.done = true,
+            Msg::Start(o) => self.head = *o,
+            Msg::Step(step) => {
+                let n = self.tiles();
+                if !self.steps.is_empty() { step.delta.apply(&mut self.head, n); }
+                self.steps.push(step);
+                let k = self.steps.len() - 1;
+                if k % KEYFRAME_EVERY == 0 { self.keyframes.push((k, self.head.clone())); }
+                if self.shown.is_none() { self.jump(0); }
             }
-            Msg::Frame(f) => {
-                let now = Instant::now();
-                for &(x, y) in &f.new_roads {
-                    self.marks.push(Mark { x, y, kind: MarkKind::Road, born: now });
-                }
-                for e in &f.events {
-                    if let (Some(kind), Some((x, y))) = (style(&e.kind).2, e.location) {
-                        self.marks.push(Mark { x, y, kind, born: now });
-                    }
-                    // Someone reading older entries keeps their place as new ones arrive.
-                    if self.log_scroll > 0 && (e.key || self.show_all) { self.log_scroll += 1; }
-                    let great = e.kind.is_major() || matches!(e.kind, EventType::Authored | EventType::SettlementDestroyed | EventType::LandScarred | EventType::ShadowRepelled);
-                    if great && f.step > 0 { self.banner_msg = Some((ascii(&e.title), now)); }
-                    self.log.push_front(e.clone());
-                }
-                self.log.truncate(LOG_CAP);
-                if f.step == 0 {
-                    // The peoples of the dawn appear all at once.
-                    for (i, s) in f.tw.settlement.iter().enumerate() {
-                        if s.is_some() { self.marks.push(Mark { x: i % f.tw.width, y: i / f.tw.width, kind: MarkKind::Founded, born: now }); }
-                    }
-                }
-                // Too many glowing roads at once only blurs; keep the most recent.
-                if self.marks.len() > 4000 { let n = self.marks.len() - 4000; self.marks.drain(..n); }
-                self.souls_hist.push(f.stats.souls);
-                self.status = if f.step == 0 { "The first year dawns.".into() } else { "Writing the chronicle...".into() };
-                self.tw = f.tw.clone();
-                self.latest = Some(f);
-                self.map_dirty = true;
+        }
+    }
+
+    /// The season on show.
+    fn current(&self) -> Option<&Step> {
+        self.shown.map(|k| &*self.steps[k])
+    }
+
+    /// The last recorded season is on show and nothing more will come.
+    fn complete(&self) -> bool {
+        self.done && self.shown.map_or(false, |k| k + 1 == self.steps.len())
+    }
+
+    /// Show the next recorded season: apply its changes, mark its events on the map and add
+    /// them to the chronicle.
+    fn step_forward(&mut self) {
+        let Some(k) = self.shown else { return };
+        if k + 1 >= self.steps.len() { return; }
+        let n = self.tiles();
+        let k = k + 1;
+        self.steps[k].delta.apply(&mut self.cur, n);
+        self.shown = Some(k);
+        let now = Instant::now();
+        let step = &self.steps[k];
+        for &(x, y) in &step.new_roads {
+            self.marks.push(Mark { x, y, kind: MarkKind::Road, born: now });
+        }
+        for e in &step.events {
+            if let (Some(kind), Some((x, y))) = (style(&e.kind).2, e.location) {
+                self.marks.push(Mark { x, y, kind, born: now });
             }
+            // Someone reading older entries keeps their place as new ones arrive.
+            if self.log_scroll > 0 && (e.key || self.show_all) { self.log_scroll += 1; }
+            let great = e.kind.is_major() || matches!(e.kind, EventType::Authored | EventType::SettlementDestroyed | EventType::LandScarred | EventType::ShadowRepelled);
+            if great { self.banner_msg = Some((ascii(&e.title), now)); }
+            self.log.push_front(e.clone());
+        }
+        self.log.truncate(LOG_CAP);
+        // Too many glowing roads at once only blurs; keep the most recent.
+        if self.marks.len() > 4000 { let n = self.marks.len() - 4000; self.marks.drain(..n); }
+        self.tw_dirty = true;
+    }
+
+    /// Show recorded season `k` directly: rebuild its overlay from the nearest keyframe and its
+    /// chronicle from the seasons before it.
+    fn jump(&mut self, k: usize) {
+        if self.steps.is_empty() { return; }
+        let k = k.min(self.steps.len() - 1);
+        let n = self.tiles();
+        let (kf, overlay) = self.keyframes.iter().rev().find(|(i, _)| *i <= k).cloned().unwrap_or((0, self.head.clone()));
+        self.cur = overlay;
+        for i in kf + 1..=k { self.steps[i].delta.apply(&mut self.cur, n); }
+        self.shown = Some(k);
+        self.log.clear();
+        for step in &self.steps[..=k] {
+            for e in &step.events { self.log.push_front(e.clone()); }
+        }
+        self.log.truncate(LOG_CAP);
+        self.log_scroll = 0;
+        self.marks.clear();
+        self.banner_msg = None;
+        if k == 0 {
+            // The peoples of the dawn appear all at once.
+            let now = Instant::now();
+            for site in &self.cur.sites {
+                if site.kind != crate::tiles::TileKind::Ruins { self.marks.push(Mark { x: site.x, y: site.y, kind: MarkKind::Founded, born: now }); }
+            }
+        }
+        self.tw_dirty = true;
+    }
+
+    /// Advance playback by the pace (several seasons per frame when headlong).
+    fn play(&mut self, ctl: &Control) {
+        if ctl.paused.load(Ordering::Relaxed) || self.shown.is_none() { return; }
+        let pace = PACES[ctl.pace.load(Ordering::Relaxed).min(PACES.len() - 1)].0;
+        let now = Instant::now();
+        if now < self.next_advance { return; }
+        let n = if pace == 0.0 { 6 } else { 1 };
+        for _ in 0..n { self.step_forward(); }
+        self.next_advance = now + Duration::from_secs_f32(pace);
+        if self.complete() && self.banner_msg.as_ref().map_or(true, |b| !b.0.starts_with("The age is written")) {
+            self.banner_msg = Some(("The age is written. Press Enter to walk the world.".into(), now));
         }
     }
 
@@ -734,7 +756,7 @@ impl<'a> View<'a> {
         if (w, h) == self.size || w < 200 || h < 200 { return; }
         self.size = (w, h);
         self.lay = layout(w, h, self.world);
-        if self.fitted { self.cam = fit_camera(self.world, self.lay.map); }
+        if self.fitted { self.cam = fit_camera(self.world, self.lay.map); self.zoom_target = self.cam.tile_px; }
         let lay = &self.lay;
         self.buf = vec![0; w * h];
         self.map_buf = vec![0; lay.map.w * lay.map.h];
@@ -749,39 +771,98 @@ impl<'a> View<'a> {
         self.map_dirty = true;
     }
 
-    /// Zoom the map by `steps` around a screen point.
+    /// Ask to zoom the map by `steps` around a screen point; `animate` eases towards it.
     fn zoom(&mut self, steps: f32, at: (f32, f32)) {
+        self.zoom_target = (self.zoom_target * 1.25f32.powf(steps)).clamp(1.0, 32.0);
+        self.zoom_at = at;
+        self.fitted = false;
+    }
+
+    /// Set the zoom directly, keeping the world point under `at` in place.
+    fn set_zoom(&mut self, tile_px: f32, at: (f32, f32)) {
         let map = self.lay.map;
         let (mx, my) = (at.0 - map.x as f32, at.1 - map.y as f32);
         let before = screen_to_world(&self.cam, mx, my, map.w, map.h);
-        self.cam.tile_px = (self.cam.tile_px * 1.2f32.powf(steps)).clamp(1.0, 32.0);
+        self.cam.tile_px = tile_px;
         let after = screen_to_world(&self.cam, mx, my, map.w, map.h);
         self.cam.cx += before.0 - after.0;
-        self.cam.cy += before.1 - after.1;
+        self.cam.cy = (self.cam.cy + before.1 - after.1).clamp(0.0, self.world.height as f32);
+        self.moved();
+    }
+
+    /// Pan by screen pixels.
+    fn pan(&mut self, dx: f32, dy: f32) {
+        self.cam.cx += dx / self.cam.tile_px;
+        self.cam.cy = (self.cam.cy + dy / self.cam.tile_px).clamp(0.0, self.world.height as f32);
         self.fitted = false;
+        self.moved();
+    }
+
+    fn moved(&mut self) {
+        self.moved = Instant::now();
         self.map_dirty = true;
+    }
+
+    /// Per-frame motion: ease the zoom towards its target (a fixed share of the gap per
+    /// second, so it feels the same at any frame rate).
+    fn animate(&mut self) {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        self.last_frame = now;
+        let ratio = self.zoom_target / self.cam.tile_px;
+        if (ratio - 1.0).abs() > 0.002 {
+            let k = 1.0 - (-dt * 14.0).exp();
+            let next = if (ratio - 1.0).abs() < 0.01 { self.zoom_target } else { self.cam.tile_px * ratio.powf(k) };
+            self.set_zoom(next, self.zoom_at);
+        }
     }
 
     fn look_at(&mut self, x: usize, y: usize, tile_px: f32) {
         self.cam = Camera { cx: x as f32 + 0.5, cy: y as f32 + 0.5, tile_px };
+        self.zoom_target = tile_px;
         self.fitted = false;
         self.map_dirty = true;
     }
 
-    /// Draw the whole window. `immediate` re-renders the map now (while dragging or zooming);
-    /// otherwise a changing world re-renders it at most ~8 times a second.
-    fn draw(&mut self, mouse: (f32, f32), hovering: bool, immediate: bool, ctl: &Control) {
+    fn fit(&mut self) {
+        self.cam = fit_camera(self.world, self.lay.map);
+        self.zoom_target = self.cam.tile_px;
+        self.fitted = true;
+        self.map_dirty = true;
+    }
+
+    /// Draw the whole window. While the view moves the map is re-rendered every frame, as a
+    /// half-resolution preview when a full render would not keep up; it sharpens once the view
+    /// is still. A changing world re-renders it at most ~30 times a second.
+    fn draw(&mut self, mouse: (f32, f32), hovering: bool, ctl: &Control) {
         let (w, h) = self.size;
         let world = self.world;
         self.cam.cx = self.cam.cx.rem_euclid(world.width as f32);
-        let lay = Layout { map: self.lay.map, log: self.lay.log, panel: self.lay.panel };
+        let lay = self.lay;
         let now = Instant::now();
-        if self.map_dirty && (immediate || now.duration_since(self.last_render) > Duration::from_millis(120)) {
+        if self.tw_dirty {
+            let mut tw = self.base.clone();
+            tw.apply_overlay(world, &self.cur, self.atlas);
+            // Seasons show only when playing slowly enough to read them (otherwise they strobe).
+            let slow = ctl.pace.load(Ordering::Relaxed) <= 1 || ctl.paused.load(Ordering::Relaxed);
+            let season = self.current().filter(|_| slow).map_or(Season::Summer, |s| s.season);
+            if season != Season::Summer { tw.set_season(world, season); }
+            self.tw = tw;
+            self.tw_dirty = false;
+            self.map_dirty = true;
+        }
+        let moving = now.duration_since(self.moved) < Duration::from_millis(120);
+        if self.preview && !moving { self.map_dirty = true; }
+        if self.map_dirty && (moving || now.duration_since(self.last_render) > Duration::from_millis(30)) {
             let cam = self.cam;
-            render_world(&self.tw, self.atlas, &cam, &mut self.map_buf, lay.map.w, lay.map.h);
+            let t0 = Instant::now();
+            let lod = if moving && self.full_ms > 14.0 { 2 } else { 1 };
+            render_world_lod(&self.tw, self.atlas, &cam, &mut self.map_buf, lay.map.w, lay.map.h, lod);
             overlay_realms(&self.tw, &cam, &mut self.map_buf, lay.map.w, lay.map.h);
-            if let Some(f) = &self.latest {
-                let labels = settlement_labels(f);
+            if lod == 1 { self.full_ms = t0.elapsed().as_secs_f32() * 1e3; }
+            self.preview = lod > 1;
+            if let Some(step) = self.shown.map(|k| &*self.steps[k]).filter(|_| !self.preview) {
+                let labels = settlement_labels(step, &self.tw);
                 let ww = world.width as f32;
                 let (mw, mh) = (lay.map.w, lay.map.h);
                 place_labels(&labels, cam.tile_px, mw, mh, &mut self.map_buf, |x, y| {
@@ -795,6 +876,7 @@ impl<'a> View<'a> {
             self.last_render = now;
         }
 
+        let complete = self.complete();
         let buf = &mut self.buf;
         buf.copy_from_slice(&self.bg);
         for y in 0..lay.map.h {
@@ -811,11 +893,11 @@ impl<'a> View<'a> {
 
         // Hover chip: what is under the mouse.
         if hovering && lay.map.contains(mouse.0, mouse.1) {
-            if let Some(f) = &self.latest {
+            if let Some(step) = self.shown.map(|k| &*self.steps[k]) {
                 let (wx, wy) = screen_to_world(&self.cam, mouse.0 - lay.map.x as f32, mouse.1 - lay.map.y as f32, lay.map.w, lay.map.h);
                 if wy >= 0.0 && (wy as usize) < world.height {
                     let (tx, ty) = ((wx.floor() as i64).rem_euclid(world.width as i64) as usize, wy as usize);
-                    let text = hover_text(f, &self.tw, tx, ty);
+                    let text = hover_text(step, &self.tw, tx, ty);
                     if !text.is_empty() {
                         let r = Rect { x: lay.map.x + 8, y: lay.map.y + lay.map.h - 22, w: (text_width(&text, 1) + 12).min(lay.map.w - 16), h: 15 };
                         fill(buf, w, r, PAPER);
@@ -829,11 +911,21 @@ impl<'a> View<'a> {
         // Banner for great events (the closing one stays).
         if let Some((text, born)) = &self.banner_msg {
             let age = now.saturating_duration_since(*born).as_secs_f32();
-            let alpha = if self.done { 1.0 } else { (1.0 - (age - 4.0) / 0.8).clamp(0.0, 1.0) };
+            let alpha = if complete { 1.0 } else { (1.0 - (age - 4.0) / 0.8).clamp(0.0, 1.0) };
             if alpha > 0.0 { banner(buf, w, h, lay.map, text, alpha); } else { self.banner_msg = None; }
         }
 
-        draw_panel(buf, w, h, lay.panel, self.latest.as_deref(), &self.souls_hist, &self.status, ctl, self.done);
+        let shown = self.shown.unwrap_or(0);
+        let souls: Vec<u64> = self.steps[..(shown + 1).min(self.steps.len())].iter().map(|s| s.stats.souls).collect();
+        let status = match self.shown {
+            None => self.status.clone(),
+            Some(k) if k + 1 < self.steps.len() => "Reading from the chronicle...".to_string(),
+            Some(_) if self.done => "The age is written.".to_string(),
+            Some(_) => "The scribes are still writing...".to_string(),
+        };
+        let current = self.shown.map(|k| &*self.steps[k]);
+        let written = self.steps.len().saturating_sub(1) as u32;
+        self.timeline = draw_panel(buf, w, h, lay.panel, current, &souls, &status, ctl, complete, written);
         self.entry_hits = draw_log(buf, w, h, lay.log, &self.log, self.show_all, &mut self.log_scroll, mouse);
     }
 }
@@ -842,6 +934,7 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
     window.set_target_fps(60);
     let mut view = View::new(world, atlas, base);
     let mut drag: Option<((f32, f32), (f32, f32))> = None;
+    let mut scrubbing = false;
     let mut was_down = false;
 
     while window.is_open() {
@@ -856,11 +949,12 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         let clicked = down && !was_down;
         was_down = down;
         let pressed = |k: Key| window.is_key_pressed(k, KeyRepeat::No);
-        if pressed(Key::Escape) && !view.done { break; }
-        if view.done && (pressed(Key::Enter) || pressed(Key::Escape) || pressed(Key::Q)) { break; }
+        if pressed(Key::Escape) && !view.complete() { break; }
+        if view.complete() && (pressed(Key::Enter) || pressed(Key::Escape) || pressed(Key::Q)) { break; }
         if pressed(Key::Space) {
             let p = !ctl.paused.load(Ordering::Relaxed);
             ctl.paused.store(p, Ordering::Relaxed);
+            view.tw_dirty = true;
         }
         if pressed(Key::LeftBracket) || pressed(Key::Minus) {
             let p = ctl.pace.load(Ordering::Relaxed);
@@ -870,41 +964,65 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
             let p = ctl.pace.load(Ordering::Relaxed);
             ctl.pace.store((p + 1).min(PACES.len() - 1), Ordering::Relaxed);
         }
+        // Step one season back or forward while paused.
+        if window.is_key_pressed(Key::Comma, KeyRepeat::Yes) {
+            if let Some(k) = view.shown { view.jump(k.saturating_sub(1)); }
+        }
+        if window.is_key_pressed(Key::Period, KeyRepeat::Yes) { view.step_forward(); }
         if pressed(Key::L) { view.show_all = !view.show_all; view.log_scroll = 0; }
-        if pressed(Key::H) || pressed(Key::Home) {
-            view.cam = fit_camera(world, view.lay.map);
-            view.fitted = true;
-            view.map_dirty = true;
+        if pressed(Key::H) || pressed(Key::Home) { view.fit(); }
+        // Keyboard panning (Shift: faster), steady per second.
+        let held = |k: Key| window.is_key_down(k);
+        let kx = (held(Key::D) || held(Key::Right)) as i32 - (held(Key::A) || held(Key::Left)) as i32;
+        let ky = (held(Key::S) || held(Key::Down)) as i32 - (held(Key::W) || held(Key::Up)) as i32;
+        if kx != 0 || ky != 0 {
+            let speed = if held(Key::LeftShift) || held(Key::RightShift) { 30.0 } else { 12.0 };
+            view.pan(kx as f32 * speed, ky as f32 * speed);
         }
         if pressed(Key::P) {
-            let path = format!("watch_{}_{}.png", world.seed(), view.latest.as_ref().map(|f| f.year).unwrap_or(0));
+            let path = format!("watch_{}_{}.png", world.seed(), view.current().map(|s| s.year).unwrap_or(0));
             view.status = save_png(&path, &view.buf, w, h);
+        }
+        // The timeline: click or drag to jump to any recorded season.
+        let bar = view.timeline;
+        let on_bar = Rect { x: bar.x, y: bar.y.saturating_sub(4), w: bar.w, h: bar.h + 8 }.contains(mouse.0, mouse.1);
+        if clicked && on_bar { scrubbing = true; }
+        if !down { scrubbing = false; }
+        if scrubbing && bar.w > 0 {
+            if let Some(total) = view.current().map(|s| s.total) {
+                let frac = ((mouse.0 - bar.x as f32) / bar.w as f32).clamp(0.0, 1.0);
+                let k = (frac * total as f32).round() as usize;
+                if Some(k.min(view.steps.len() - 1)) != view.shown { view.jump(k); }
+            }
         }
         let over_map = view.lay.map.contains(mouse.0, mouse.1);
         if wheel != 0.0 && over_map { view.zoom(wheel.signum(), mouse); }
         if wheel != 0.0 && view.lay.log.contains(mouse.0, mouse.1) {
             view.log_scroll = if wheel > 0.0 { view.log_scroll.saturating_sub(3) } else { view.log_scroll + 3 };
         }
-        match (down, drag) {
+        match (down && !scrubbing, drag) {
             (true, None) if over_map => drag = Some((mouse, (view.cam.cx, view.cam.cy))),
             (true, Some((start, c0))) => {
-                if (mouse.0 - start.0).abs() + (mouse.1 - start.1).abs() > 1.0 {
-                    view.cam.cx = c0.0 - (mouse.0 - start.0) / view.cam.tile_px;
-                    view.cam.cy = (c0.1 - (mouse.1 - start.1) / view.cam.tile_px).clamp(0.0, world.height as f32);
+                let (cx, cy) = (c0.0 - (mouse.0 - start.0) / view.cam.tile_px, (c0.1 - (mouse.1 - start.1) / view.cam.tile_px).clamp(0.0, world.height as f32));
+                if (cx - view.cam.cx).abs() + (cy - view.cam.cy).abs() > 1e-4 {
+                    view.cam.cx = cx;
+                    view.cam.cy = cy;
                     view.fitted = false;
-                    view.map_dirty = true;
+                    view.moved();
                 }
             }
             (false, _) => drag = None,
             _ => {}
         }
-        if clicked {
+        if clicked && !on_bar {
             if let Some(&(_, (x, y))) = view.entry_hits.iter().find(|(r, _)| r.contains(mouse.0, mouse.1)) {
                 view.look_at(x, y, 10.0);
             }
         }
 
-        view.draw(mouse, drag.is_none(), drag.is_some() || wheel != 0.0, ctl);
+        view.animate();
+        view.play(ctl);
+        view.draw(mouse, drag.is_none() && !scrubbing, ctl);
         window.update_with_buffer(&view.buf, w, h)?;
     }
     Ok(())
@@ -922,43 +1040,40 @@ fn save_png(path: &str, buf: &[u32], w: usize, h: usize) -> String {
 }
 
 /// Simulate `config`'s history without a window and save watcher frames as
-/// `<prefix>_y<year>.png` at a few points (a quarter, half, the end) plus a close-up of the
-/// busiest place, for checking the watcher's look headlessly.
+/// `<prefix>_y<year>.png` at a quarter, half and the end, plus a close-up of the last event
+/// with a place, for checking the watcher's look headlessly.
 pub fn watch_snapshots(world: &WorldData, game_data: &GameData, config: HistoryConfig, engine: HistoryEngine, atlas: &Atlas, prefix: &str) -> (WorldHistory, Vec<String>) {
     let mut base = TileWorld::build(world, atlas);
     base.set_season(world, Season::Summer);
-    let total = config.total_steps();
-    let ctl = Control { paused: AtomicBool::new(false), pace: AtomicUsize::new(PACES.len() - 1), detached: AtomicBool::new(false) };
+    let total = config.total_steps() as usize;
+    let ctl = Control { paused: AtomicBool::new(true), pace: AtomicUsize::new(PACES.len() - 1), detached: AtomicBool::new(false) };
     let (tx, rx) = mpsc::channel();
     let mut files = Vec::new();
     let history = std::thread::scope(|scope| {
         let sim = {
-            let (base, ctl) = (base.clone(), &ctl);
-            scope.spawn(move || simulate(world, game_data, config, engine, base, atlas, ctl, tx))
+            let ctl = &ctl;
+            scope.spawn(move || simulate(world, game_data, config, engine, ctl, tx))
         };
         let mut view = View::new(world, atlas, base);
         view.resize(1440, 900);
-        let shots = [total / 4, total / 2, total];
-        for msg in rx.iter() {
-            let step = match &msg { Msg::Frame(f) => Some(f.step), _ => None };
-            let done = matches!(msg, Msg::Done);
-            view.receive(msg);
-            if step.map(|s| shots[..2].contains(&s)).unwrap_or(false) || done {
-                view.draw((0.0, 0.0), false, true, &ctl);
-                let path = format!("{prefix}_y{}.png", view.latest.as_ref().map(|f| f.year).unwrap_or(0));
-                save_png(&path, &view.buf, 1440, 900);
-                files.push(path);
-            }
-            if done {
-                // A close-up of the most recent event with a place, with the chronicle as is.
-                if let Some((x, y)) = view.log.iter().find_map(|e| e.location) {
-                    view.look_at(x, y, 10.0);
-                    view.draw((0.0, 0.0), false, true, &ctl);
-                    let path = format!("{prefix}_closeup.png");
-                    save_png(&path, &view.buf, 1440, 900);
-                    files.push(path);
-                }
-            }
+        for msg in rx.iter() { view.receive(msg); }
+        for k in [total / 4, total / 2, total] {
+            view.jump(k);
+            // Show the season's own events as fresh marks, as during playback.
+            if k > 0 { view.jump(k - 1); view.step_forward(); }
+            view.last_render = Instant::now() - Duration::from_secs(1);
+            view.draw((0.0, 0.0), false, &ctl);
+            let path = format!("{prefix}_y{}.png", view.current().map(|s| s.year).unwrap_or(0));
+            save_png(&path, &view.buf, 1440, 900);
+            files.push(path);
+        }
+        if let Some((x, y)) = view.log.iter().find_map(|e| e.location) {
+            view.look_at(x, y, 10.0);
+            view.last_render = Instant::now() - Duration::from_secs(1);
+            view.draw((0.0, 0.0), false, &ctl);
+            let path = format!("{prefix}_closeup.png");
+            save_png(&path, &view.buf, 1440, 900);
+            files.push(path);
         }
         sim.join().expect("history simulation panicked")
     });
@@ -999,23 +1114,25 @@ fn overlay_realms(tw: &TileWorld, cam: &Camera, buf: &mut [u32], w: usize, h: us
         }
     }
     if t < 3.0 {
+        // Roads along the same curves the tile renderer draws close up.
         let (x0, y0) = screen_to_world(cam, 0.0, 0.0, w, h);
         let (x1, y1) = screen_to_world(cam, w as f32, h as f32, w, h);
         let road = mix(0x0088_5C3C, INK, 0.2);
         for ty in (y0.floor().max(0.0) as usize)..(y1.ceil().max(0.0) as usize).min(tw.height) {
             for txi in x0.floor() as i64..=x1.ceil() as i64 {
                 let tx = txi.rem_euclid(tw.width as i64) as usize;
-                let mask = tw.road[ty * tw.width + tx];
-                if mask == 0 { continue; }
-                let sx = w as f32 / 2.0 + (txi as f32 + 0.5 - cam.cx) * t;
-                let sy = h as f32 / 2.0 + (ty as f32 + 0.5 - cam.cy) * t;
-                // Each link once: N, NE, E, SE (the others are their neighbours' links).
-                for (b, (dx, dy)) in super::classify::DIRS.iter().enumerate().take(4) {
-                    if mask & (1 << b) == 0 { continue; }
-                    let steps = (t.ceil() as i64).max(1);
-                    for k in 0..=steps {
-                        let f = k as f32 / steps as f32;
-                        blend_px(buf, w, h, (sx + *dx as f32 * t * f) as i64, (sy + *dy as f32 * t * f) as i64, road, 0.9);
+                let j = ty * tw.width + tx;
+                let n = tw.road_strokes.len[j] as usize;
+                if n == 0 { continue; }
+                let ox = w as f32 / 2.0 + (txi as f32 - cam.cx) * t;
+                let oy = h as f32 / 2.0 + (ty as f32 - cam.cy) * t;
+                let s0 = tw.road_strokes.start[j] as usize;
+                for sg in &tw.road_strokes.segs[s0..s0 + n] {
+                    let len = ((sg[2] - sg[0]).hypot(sg[3] - sg[1]) * t).ceil().max(1.0) as i64;
+                    for k in 0..=len {
+                        let f = k as f32 / len as f32;
+                        let (px, py) = (ox + (sg[0] + (sg[2] - sg[0]) * f) * t, oy + (sg[1] + (sg[3] - sg[1]) * f) * t);
+                        blend_px(buf, w, h, px as i64, py as i64, road, 0.9);
                     }
                 }
             }
@@ -1024,10 +1141,10 @@ fn overlay_realms(tw: &TileWorld, cam: &Camera, buf: &mut [u32], w: usize, h: us
 }
 
 /// Labels for the larger living settlements (capitals first).
-fn settlement_labels(f: &Frame) -> Vec<Label> {
+fn settlement_labels(f: &Step, tw: &TileWorld) -> Vec<Label> {
     let mut by_id: HashMap<u64, (usize, usize)> = HashMap::new();
-    for (i, s) in f.tw.settlement.iter().enumerate() {
-        if let Some(id) = s { by_id.insert(id.0, (i % f.tw.width, i / f.tw.width)); }
+    for (i, s) in tw.settlement.iter().enumerate() {
+        if let Some(id) = s { by_id.insert(id.0, (i % tw.width, i / tw.width)); }
     }
     let mut labels: Vec<Label> = f.places.iter().filter_map(|(id, (name, kind, pop, _, ruined))| {
         if *ruined { return None; }
@@ -1044,7 +1161,7 @@ fn settlement_labels(f: &Frame) -> Vec<Label> {
     labels
 }
 
-fn hover_text(f: &Frame, tw: &TileWorld, x: usize, y: usize) -> String {
+fn hover_text(f: &Step, tw: &TileWorld, x: usize, y: usize) -> String {
     let i = y * tw.width + x;
     let mut parts = Vec::new();
     if let Some(id) = tw.settlement[i] {
@@ -1060,7 +1177,8 @@ fn hover_text(f: &Frame, tw: &TileWorld, x: usize, y: usize) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Frame>, souls_hist: &[u64], status: &str, ctl: &Control, done: bool) {
+/// The almanac panel. Returns the timeline bar's rectangle (click or drag it to jump).
+fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, souls_hist: &[u64], status: &str, ctl: &Control, done: bool, written: u32) -> Rect {
     let x = p.x + 16;
     let iw = p.w - 32;
     let mut y = p.y as i64 + 16;
@@ -1077,7 +1195,7 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Frame>, s
             draw_ink(buf, w, h, x as i64, y, &line, INK, 1, false);
             y += LINE;
         }
-        return;
+        return Rect::default();
     };
 
     // Year and season, large.
@@ -1086,12 +1204,19 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Frame>, s
     y += 28;
     draw_ink(buf, w, h, x as i64, y, season_name(f.season), INK_FADED, 2, false);
     y += 22;
-    // Progress through the age, with a tick every 50 years.
+    // The timeline: written so far (pale), shown (gold), a tick every 50 years. Click or drag
+    // it to jump.
     let bar = Rect { x, y: y as usize, w: iw, h: 9 };
     outline(buf, w, bar, INK);
-    let frac = if f.total > 0 { f.step as f32 / f.total as f32 } else { 1.0 };
-    let filled = ((bar.w - 4) as f32 * frac) as usize;
+    let span = (bar.w - 4) as f32;
+    let total = f.total.max(1) as f32;
+    let written_w = (span * (written as f32 / total).min(1.0)) as usize;
+    if written_w > 0 { fill(buf, w, Rect { x: bar.x + 2, y: bar.y + 2, w: written_w, h: bar.h - 4 }, mix(PAPER_SHADE, INK_FADED, 0.35)); }
+    let filled = (span * (f.step as f32 / total).min(1.0)) as usize;
     if filled > 0 { fill(buf, w, Rect { x: bar.x + 2, y: bar.y + 2, w: filled, h: bar.h - 4 }, mix(INK, GOLD, 0.6)); }
+    // The playhead.
+    let hx = (bar.x + 2 + filled).min(bar.x + bar.w - 1);
+    for ty in bar.y.saturating_sub(2)..bar.y + bar.h + 2 { buf[ty * w + hx] = RUBRIC; }
     let years = f.total / 4;
     for k in (50..years).step_by(50) {
         let tx = bar.x + ((bar.w as f32) * k as f32 / years.max(1) as f32) as usize;
@@ -1188,7 +1313,7 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Frame>, s
     heading(buf, w, h, x, y, iw, "GREAT REALMS");
     y += 16;
     let top = f.realms.first().map(|r| r.population).unwrap_or(1).max(1);
-    let footer_top = (p.y + p.h) as i64 - 66;
+    let footer_top = (p.y + p.h) as i64 - 80;
     for r in &f.realms {
         if y + 22 > footer_top { break; }
         let sw = Rect { x, y: y as usize, w: 10, h: 10 };
@@ -1208,14 +1333,16 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Frame>, s
     let mut fy = footer_top + 6;
     hline(buf, w, x, x + iw, fy as usize - 4, INK_FADED);
     for line in [
-        "SPACE pause    [ ] pace    L log filter",
-        "wheel zoom   drag pan   H fit the map",
+        "SPACE pause   [ ] pace   < > one season",
+        "drag the timeline to any year   L log",
+        "wheel zoom   drag/WASD pan   H fit map",
         if done { "ENTER walk the world" } else { "click an entry: go there   ESC hurry" },
     ] {
         fy += 2;
         draw_ink(buf, w, h, x as i64, fy, line, INK_FADED, 1, false);
         fy += LINE + 2;
     }
+    bar
 }
 
 /// The chronicle: newest entries first, red year rubrics, glyphs by kind. Returns the clickable

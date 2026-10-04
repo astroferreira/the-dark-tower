@@ -209,6 +209,23 @@ impl Atlas {
     }
 
     /// Average colour of a tile (used for the minimap and very small zoom levels).
+    /// The colour of a tile as drawn: `sprite` composited over the ground colour `under`, each
+    /// pixel weighted by its opacity, then averaged. A small sprite (a boulder, a shrub) only
+    /// tints its tile; averaging just its opaque pixels would be mostly ink outline and leave
+    /// dark specks all over a zoomed-out map.
+    pub fn average_over(&self, under: [u8; 3], sprite: TileKind, variant: usize) -> [u8; 3] {
+        let (t, _) = self.tile_for(sprite, variant, 1);
+        let mut acc = [0.0f32; 3];
+        let mut n = 0.0f32;
+        for p in t {
+            let a = p[3] as f32 / 255.0;
+            for c in 0..3 { acc[c] += p[c] as f32 * a + under[c] as f32 * (1.0 - a); }
+            n += 1.0;
+        }
+        let n = n.max(1.0);
+        [(acc[0] / n) as u8, (acc[1] / n) as u8, (acc[2] / n) as u8]
+    }
+
     pub fn average(&self, kind: TileKind, variant: usize) -> [u8; 3] {
         let (t, _) = self.tile_for(kind, variant, 1);
         let (mut acc, mut n) = ([0u32; 3], 0u32);

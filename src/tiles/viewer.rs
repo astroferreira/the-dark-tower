@@ -17,6 +17,7 @@ use super::text::{place_labels, Label};
 use crate::world::WorldData;
 
 use super::atlas::Atlas;
+use super::overlays::{self, Overlay};
 use super::classify::TileWorld;
 use super::render::{render_local, render_minimap, render_world, render_zoom, screen_to_world, Camera, LocalCamera, ZoomCamera};
 use crate::local::{generate_local, LocalMap, Plant, Shape, LOCAL_SIZE, TILE_M};
@@ -256,6 +257,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut local_active = false;
 
         let mut show_minimap = true;
+        // Data overlay (O cycles): height, temperature, moisture, drainage, plates, stress, biomes.
+        let mut overlay = Overlay::None;
         let mut buf: Vec<u32> = Vec::new();
         let mut size = (0usize, 0usize);
         let mut dirty = true;
@@ -556,6 +559,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                 }
                 if pressed(Key::R) { tw.show_resources = !tw.show_resources; dirty = true; }
+                if pressed(Key::O) {
+                    let back = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+                    overlay = overlay.cycle(if back { -1 } else { 1 });
+                    tw.overlay = overlays::colors(world, overlay);
+                    tw.overlay_smooth = overlay.smooth();
+                    dirty = true;
+                }
                 if pressed(Key::C) {
                     auto_season = if auto_season.is_some() { None } else { Some(std::time::Instant::now()) };
                 }
@@ -568,9 +578,10 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     dirty = true;
                 }
                 let place = describe_tile(world, history, &gaz, &tw, tile.0, tile.1);
+                let shown = if overlay == Overlay::None { String::new() } else { format!("{}: {} | ", overlay.name(), overlays::describe(world, overlay, tile.0, tile.1)) };
                 let title = format!(
-                    "({},{}) {} | {:.0} m | {} {}°C | T season, C auto{}, L labels, R resources | {}",
-                    tile.0, tile.1, place, world.heightmap.get(tile.0, tile.1), season.name(),
+                    "{}({},{}) {} | {:.0} m | {} {}°C | O overlays, T season, C auto{}, L labels, R resources | {}",
+                    shown, tile.0, tile.1, place, world.heightmap.get(tile.0, tile.1), season.name(),
                     format!("{:.1}", world.seasonal_climate.as_ref().map(|c| c.get_temperature(tile.0, tile.1, season, tile.1 < tw.height / 2)).unwrap_or(*world.temperature.get(tile.0, tile.1))),
                     if auto_season.is_some() { " ON" } else { "" }, status
                 );
@@ -599,6 +610,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     if show_labels {
                         draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
                     }
+                    overlays::draw_legend(&mut buf, w, h, overlay);
                     minimap_rect = if show_minimap {
                         let (hx, hy) = screen_to_world(&cam, mouse.0, mouse.1, w, h);
                         render_minimap(&tw, &cam, Some((hx, hy, zoom_tiles as f32 / 2.0)), &mut buf, w, h)
@@ -622,11 +634,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
 /// Render viewer frames headlessly (no window): the whole map, then 16 and 32 px/tile close-ups
 /// around `center` (or the most interesting region). Writes `<prefix>_overview.png`, `<prefix>_16px.png`,
 /// `<prefix>_32px.png`.
-pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, prefix: &str, center: Option<(usize, usize)>, season: crate::seasons::Season) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, prefix: &str, center: Option<(usize, usize)>, season: crate::seasons::Season, overlay: Overlay) -> Result<Vec<String>, Box<dyn Error>> {
     let mut tw = TileWorld::build(world, atlas);
     tw.show_resources = true;
     tw.set_season(world, season);
     if let Some(h) = history { tw.apply_history(world, h, atlas); }
+    tw.overlay = overlays::colors(world, overlay);
+    tw.overlay_smooth = overlay.smooth();
     let gaz = build_gazetteer(world, history, world.seed());
     let labels = build_labels(world, history, &gaz);
     let (cx, cy) = center.unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
@@ -643,6 +657,7 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         render_world(&tw, atlas, &cam, &mut buf, w, h);
         draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
         render_minimap(&tw, &cam, Some((cx as f32, cy as f32, ZoomParams::default().tiles as f32 / 2.0)), &mut buf, w, h);
+        overlays::draw_legend(&mut buf, w, h, overlay);
         let path = format!("{prefix}_{name}.png");
         let img = image::RgbImage::from_fn(w as u32, h as u32, |x, y| {
             let p = buf[y as usize * w + x as usize];

@@ -132,6 +132,11 @@ struct Args {
     #[arg(long)]
     legacy_explorer: bool,
 
+    /// Open the start screen to tailor the world before generating it (also shown when run
+    /// with no arguments); other options pre-fill it
+    #[arg(long)]
+    start: bool,
+
     /// Tileset PNG for the tile viewer: an edited atlas from --export-tileset, or a
     /// Dwarf Fortress style 16x16 CP437 sheet
     #[arg(long)]
@@ -144,6 +149,11 @@ struct Args {
     /// Render tile-viewer frames to <PREFIX>_overview/_16px/_32px.png without opening a window
     #[arg(long)]
     tiles_snapshot: Option<String>,
+
+    /// Data overlay for --tiles-snapshot: height, temperature, moisture, drainage, plates,
+    /// stress or biomes (in the window, O cycles them)
+    #[arg(long)]
+    overlay: Option<String>,
 
     /// Render a playable area (embark) at --tiles-center to <PREFIX>_surface/_z*/_section.png
     #[arg(long)]
@@ -468,7 +478,42 @@ fn legendary_creatures_for(width: usize, height: usize) -> u32 {
 const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 
 fn main() {
-    let args = parse_args();
+    let mut args = parse_args();
+    // The start screen: run with no arguments (or with --start) to tailor the world first.
+    if args.start || std::env::args().len() == 1 {
+        let initial = tiles::start::StartConfig {
+            width: args.width,
+            height: args.height,
+            seed: args.seed.unwrap_or_else(|| rand::random::<u64>() % 1_000_000_000),
+            style: plates::WorldStyle::from_str(&args.world_style).unwrap_or_default(),
+            plates: args.plates,
+            tectonic_myr: args.tectonic_myr,
+            fantasy: args.fantasy,
+            history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
+            civilizations: args.civilizations,
+            shadow: !args.no_shadow,
+            watch: args.watch,
+        };
+        match tiles::start::run_start_screen(initial) {
+            Ok(Some(cfg)) => {
+                args.width = cfg.width;
+                args.height = cfg.height;
+                args.seed = Some(cfg.seed);
+                args.world_style = cfg.style.to_string();
+                args.plates = cfg.plates;
+                args.tectonic_myr = cfg.tectonic_myr;
+                args.fantasy = cfg.fantasy;
+                args.history_years = cfg.history_years;
+                args.no_history = cfg.history_years == 0;
+                args.civilizations = cfg.civilizations;
+                args.no_shadow = !cfg.shadow;
+                args.watch = cfg.watch;
+                println!("Making a {}x{} {} world, seed {}", cfg.width, cfg.height, cfg.style, cfg.seed);
+            }
+            Ok(None) => return,
+            Err(e) => eprintln!("Start screen unavailable ({e}); using the command-line options"),
+        }
+    }
 
     if let Some(path) = &args.export_tileset {
         match tiles::Atlas::generated().save_png(std::path::Path::new(path)) {
@@ -1550,6 +1595,15 @@ fn main() {
                 "autumn" | "fall" => seasons::Season::Autumn,
                 "winter" => seasons::Season::Winter,
                 _ => seasons::Season::Summer,
+            }, match args.overlay.as_deref().map(|s| s.to_lowercase()).as_deref() {
+                Some("height") => tiles::overlays::Overlay::Height,
+                Some("temperature" | "temp") => tiles::overlays::Overlay::Temperature,
+                Some("moisture") => tiles::overlays::Overlay::Moisture,
+                Some("drainage" | "flow" | "rivers") => tiles::overlays::Overlay::Drainage,
+                Some("plates") => tiles::overlays::Overlay::Plates,
+                Some("stress") => tiles::overlays::Overlay::Stress,
+                Some("biomes" | "biome") => tiles::overlays::Overlay::Biomes,
+                _ => tiles::overlays::Overlay::None,
             }) {
                 Ok(files) => println!("Saved tile snapshots: {}", files.join(", ")),
                 Err(e) => eprintln!("Tile snapshot failed: {e}"),

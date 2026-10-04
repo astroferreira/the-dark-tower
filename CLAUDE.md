@@ -12,8 +12,11 @@ Direction: an autonomous, story-first colony simulator; see `ROADMAP.md` (six up
 # Build
 cargo build --release
 
-# Run (generates world + 250 years of history, opens the tile viewer)
+# Start screen: tailor the world (size, seed, style, plates, fantasy, history, peoples,
+# the Shadow, watching), then generate it and open the tile viewer
 cargo run --release
+# ...or with options pre-filled
+cargo run --release -- --start --seed 42 --world-style pangaea
 
 # Skip the history (faster), or open the frozen legacy terminal explorer
 cargo run --release -- --no-history
@@ -189,19 +192,54 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
 
 ### Watching history being written (`tiles/watcher.rs`)
 - `--watch` simulates the history in a window (DF world-gen style, dressed as the ink map),
-  then opens the tile viewer. The simulation runs on a background thread
-  (`HistoryEngine::begin` / `step` / `finish`) and sends a frame per season (a `TileWorld`
-  with the history applied, stats, realms, new events and new road tiles).
+  then opens the tile viewer. The simulation runs on a background thread at full speed
+  (`HistoryEngine::begin` / `step` / `finish`) and *records* every season: a `Step` with the
+  almanac, realms, places, events, new roads and a `Delta` of the `HistoryOverlay` (owners,
+  roads, sites, fields/forest cover, Shadow corruption; `classify.rs`), with a full keyframe
+  every 40 seasons. The window *plays the recording back* at the chosen pace, independent of
+  how slow the simulation is, and can jump anywhere already written.
+- Playback: Space pause, `[` `]` pace, `<` `>` one season back/forward, click or drag the
+  timeline bar (pale = written, gold = shown, red playhead) to jump; the chronicle is rebuilt
+  for the shown season. Each shown season = `base.clone()` + `apply_overlay` (~1-20 ms).
+- Smooth view: wheel zoom eases towards its target, WASD/arrows pan (Shift faster), drag pans;
+  while the view moves the map renders as a half-resolution preview (`render_world_lod`, same
+  look) when a full render is over ~14 ms, and sharpens once still. `render_world` is
+  row-parallel (rayon): ~6-15 ms fitted on 512x256, ~10-28 ms on the dev world (11 px/tile,
+  detailed path), previews 2-10 ms. Per-tile flags keep the costly per-pixel work local:
+  `shadow_near` / `dominion_edge` (Shadow ink), `owner_edge` (borders), road curves per tile.
 - Map: settlements, fields, territories (faction wash + borders) and roads appear as they
   spread; `overlay_realms` draws borders/roads at zooms where `render_world` omits them. New
   roads glow, foundings ring, battles/razings/disasters flare; great events get a banner.
-- Panel: year/season, progress, almanac, souls sparkline, great realms. Chronicle below:
-  key events (`style()` decides glyph, colour, map mark and whether it is key), `L` = all.
-- Keys: Space pause, `[` `]` pace, wheel zoom (or scroll chronicle), drag pan, `H` fit,
-  click an entry to fly there, `P` screenshot, Esc = finish unwatched, Enter at the end.
+- Panel: year/season, timeline, almanac, souls sparkline, the Shadow, great realms. Chronicle
+  below: key events (`style()` decides glyph, colour, map mark and whether it is key), `L` = all.
 - `--watch-snapshot PREFIX --headless` renders frames at 1/4, 1/2, the end and a close-up to
   PNG without a window (for checking the look). The window doesn't redraw while hidden, so
   screen capture is unreliable; use this.
+
+### Start screen (`tiles/start.rs`)
+- Shown when the game runs with no arguments, or with `--start` (other flags pre-fill it).
+  Rows: world size (Dev 96x48 / Small / Standard / Large), seed (type digits, R rerolls),
+  shape of the lands (`WorldStyle`), tectonic plates, age of the crust (`--tectonic-myr`),
+  fantasy, written history (years, 0 = none), founding peoples, the Shadow, watch it unfold;
+  a help panel explains the selected row and a rough time estimate shows by Begin.
+- `main` copies the choices into `Args` (width, height, seed, world_style, plates,
+  tectonic_myr, fantasy, history_years / no_history, civilizations, no_shadow, watch) and
+  generation continues as with flags. The window closes during world generation (progress is
+  printed); the watcher or tile viewer opens after.
+- Shared drawing for the viewer's own screens (palette, parchment `card`, `heading`, `wrap`,
+  ...) lives in `tiles/ui.rs`.
+
+### Roads and tile colours (`tiles/classify.rs`)
+- Roads and rivers are drawn as curves (`Strokes::build`): each linked tile gets a
+  hash-jittered node (separate patterns for roads and rivers); links pass through the
+  midpoints between nodes; a two-link tile is a quadratic curve bending at its node,
+  ends/junctions are spokes. Stored per tile as segments with a half-width
+  (`road_strokes`, `river_strokes`; river width blends between tiles and grows downstream);
+  `Strokes::edge_distance` is the per-pixel query used by `render.rs`, and the watcher's
+  far-zoom overlay draws the road segments.
+- Flat tile colours (minimap, far zoom) composite the sprite over the ground by opacity
+  (`Atlas::average_over`); averaging only a sprite's opaque pixels was mostly ink outline and
+  speckled zoomed-out maps with dark dots.
 
 ### Saving worlds
 - `--save-world worlds/x.world` writes the generated world plus any simulated history (bincode,
@@ -231,6 +269,12 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   and swapped in; zoom terrain is seamless, so you can walk across the world.
 - `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/16px/32px
   frames to PNG without a window (for checking rendering).
+- Data overlays (`tiles/overlays.rs`; the old terminal explorer's V views): `O` cycles (Shift+O
+  back) Map, Height, Temperature, Moisture, Drainage (log flow), Tectonic plates, Tectonic
+  stress, Biomes. Muted palettes washed over the map (`render.rs::overlay_tint`, modulated by
+  the map's own light/dark so ink lines stay readable), a legend card bottom-left, and the
+  value under the cursor in the window title. `--overlay NAME` applies one to
+  `--tiles-snapshot`.
 - Tiles: `atlas.rs` draws a 32x32 atlas in an ink-cartography style (ground kinds +
   transparent sprites, 4 variants each): muted washes on parchment, sepia ink outlines, shadow
   sides hatched (never darkened), symbols built from shape masks so all share one treatment.

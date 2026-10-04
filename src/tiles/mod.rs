@@ -3,8 +3,11 @@
 
 pub mod atlas;
 pub mod classify;
+pub mod overlays;
 pub mod render;
+pub mod start;
 pub mod text;
+mod ui;
 pub mod viewer;
 pub mod watcher;
 
