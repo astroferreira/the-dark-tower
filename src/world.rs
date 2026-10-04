@@ -82,12 +82,20 @@ pub struct WorldData {
     /// Resources derived from geology (computed on first use, never serialized).
     #[serde(skip)]
     resources: std::sync::OnceLock<crate::lore::ResourceMap>,
+    /// Soils derived from terrain and climate (computed on first use, never serialized).
+    #[serde(skip)]
+    soils: std::sync::OnceLock<crate::soils::SoilMap>,
 }
 
 impl WorldData {
     /// Ore deposits, farmland, timber and fish, derived from the world (cached).
     pub fn resources(&self) -> &crate::lore::ResourceMap {
         self.resources.get_or_init(|| crate::lore::compute_resources(self))
+    }
+
+    /// Soil kind and depth per tile, from terrain and climate (cached).
+    pub fn soils(&self) -> &crate::soils::SoilMap {
+        self.soils.get_or_init(|| crate::soils::compute_soils(self))
     }
 
     /// Convenience accessor for master seed
@@ -146,6 +154,7 @@ impl WorldData {
             lava_map: None,
             volcanoes: Vec::new(),
             resources: std::sync::OnceLock::new(),
+        soils: std::sync::OnceLock::new(),
         }
     }
 
@@ -204,6 +213,7 @@ impl WorldData {
             lava_map: None,
             volcanoes: Vec::new(),
             resources: std::sync::OnceLock::new(),
+        soils: std::sync::OnceLock::new(),
         }
     }
 
@@ -708,6 +718,7 @@ pub fn generate_test_world() -> WorldData {
         lava_map: None,
         volcanoes: Vec::new(),
         resources: std::sync::OnceLock::new(),
+        soils: std::sync::OnceLock::new(),
     }
 }
 

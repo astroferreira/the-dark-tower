@@ -191,6 +191,9 @@ pub fn compute_resources(world: &WorldData) -> ResourceMap {
     }
 
     // ---- Land quality ----
+    // Farmland: a warm, wet enough climate on good soil (`world.soils()`: black earth, alluvium
+    // and volcanic soil are rich, laterite, podzol and thin stony soils poor).
+    let soils = world.soils();
     let mut fertility = Tilemap::new_with(w, h, 0.0f32);
     let mut timber = Tilemap::new_with(w, h, 0.0f32);
     for y in 0..h {
@@ -201,19 +204,17 @@ pub fn compute_resources(world: &WorldData) -> ResourceMap {
             let m = *world.moisture.get(x, y);
             let warm = smoothstep(-6.0, 8.0, t) * (1.0 - smoothstep(30.0, 38.0, t));
             let wet = smoothstep(0.05, 0.4, m) * (1.0 - 0.3 * smoothstep(0.7, 1.0, m));
-            let low = 1.0 - smoothstep(200.0, 1600.0, e);
-            let mut f = warm * wet * low;
-            let flow = world.flow_accumulation.as_ref().map(|a| *a.get(x, y)).unwrap_or(0.0);
-            if flow > 0.5 * crate::water_bodies::river_flow_threshold(w) { f += 0.25; }
-            let vd = *volc.get(x, y);
-            if vd < 10.0 { f += 0.2 * (1.0 - vd / 10.0); }
+            let low = 1.0 - 0.6 * smoothstep(200.0, 2500.0, e);
+            let soil = soils.kind.get(x, y).fertility();
+            let f = warm * wet * low * (0.15 + 0.85 * soil);
             let biome = *world.biomes.get(x, y);
-            if matches!(biome, ExtendedBiome::Desert | ExtendedBiome::Ice | ExtendedBiome::SnowyPeaks | ExtendedBiome::SaltFlats) { f *= 0.1; }
             fertility.set(x, y, f.clamp(0.0, 1.0));
             let tr = match biome {
                 ExtendedBiome::TemperateForest | ExtendedBiome::TemperateRainforest | ExtendedBiome::TropicalRainforest
                 | ExtendedBiome::TropicalForest | ExtendedBiome::MontaneForest | ExtendedBiome::CloudForest => 1.0,
                 ExtendedBiome::BorealForest | ExtendedBiome::SubalpineForest => 0.85,
+                ExtendedBiome::MonsoonForest => 0.8,
+                ExtendedBiome::MediterraneanShrubland => 0.2,
                 ExtendedBiome::Savanna | ExtendedBiome::Swamp | ExtendedBiome::MangroveSaltmarsh => 0.3,
                 _ => 0.0,
             };

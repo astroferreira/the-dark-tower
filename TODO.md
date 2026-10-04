@@ -58,7 +58,7 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [x] River discharge and lake water balance from precipitation (Budyko runoff, open-water evaporation PET - P).
 - [ ] Continental crust elevation varies a lot between seeds (mean -700 to +500 m over 47-65% of the map), so how much continental shelf is drowned depends on the seed.
 - [x] Whittaker/Koppen biomes from simulated climate: precipitation model rewritten (land ~850 mm/yr), heat transport fixed, biome thresholds by aridity class (forests 22-37% of land).
-- [ ] Soils from erosion history (sediment depth from the landscape step, weathering by climate).
+- [x] Soils (`soils.rs`: landscape position + weathering; farmland, embarks, hover). They are derived from the final terrain, not recorded from the landscape step's actual deposits.
 - [x] Tree line by the warmest season (Koppen's summer rule); perennial ice keeps polar summers cold.
 - [x] Mediterranean (winter-wet) shrubland and monsoon forest from the seasonal fields (`apply_seasonal_biomes`).
 - [x] Allow polar continents (one sea definition, `sea_mask`, instead of ocean seeded from the map edges; plate and land areas on the sphere).

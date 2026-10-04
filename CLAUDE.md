@@ -77,6 +77,18 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
 
 ## Features
 
+### Soils (`soils.rs`)
+- `world.soils()` (lazy, never serialized) gives each land tile a soil kind and depth from its
+  place in the landscape and its climate: depth 0.4-3 m by weathering (warm and wet deepest),
+  +4 m on floodplains and in closed hollows, thinned by local relief; kinds alluvium
+  (floodplains), black earth (temperate grassland), volcanic soil, brown forest soil, red clay
+  (Mediterranean), leached laterite (wet tropics), podzol (taiga), peat, desert soil, thin stony
+  soil, frozen ground. `SoilKind::fertility` (black earth 1.0 ... frozen 0.05).
+- Used by farmland (`resources.rs`: fertility = climate x altitude x soil; seed 42 fertile land
+  44.7% -> 28.6%), embarks (soil levels = depth / 2 m, material by kind: clay for laterite and
+  red clay, sand for podzol and desert, gravel for stony) and the viewer's hover.
+  `--resource-stats` prints the soil mix.
+
 ### Resources and history (`lore/resources.rs`, `history/simulation`)
 - `world.resources()` (lazy, never serialized) derives the world's wealth from its geology:
   copper/gold/silver/gems in high-stress arcs and orogens and around volcanoes, tin and silver in
@@ -332,6 +344,7 @@ src/
 ├── biomes.rs         # 50+ biome types
 ├── water_bodies.rs   # Lakes/rivers/ocean detection
 ├── scale.rs          # Physical scale (km/tile)
+├── soils.rs          # Soil kind and depth from terrain and climate (world.soils())
 ├── ascii.rs          # LEGACY, frozen: ASCII rendering for the terminal UI
 │
 ├── plates/           # Tectonic plates

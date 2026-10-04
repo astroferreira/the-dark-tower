@@ -355,6 +355,12 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         ((region.world_y0 * s + cy as i64).div_euclid(s)).clamp(0, world.height as i64 - 1) as usize,
     );
     let hs = world.handshakes.as_ref().map(|h| h.get(world_tile.0, world_tile.1).tile.clone()).unwrap_or_default();
+    // The world tile's soil (`world.soils()`): its kind picks the soil material, its depth the
+    // number of soil levels before rock.
+    let (soil_kind, soil_depth_m) = {
+        let s = world.soils();
+        (*s.kind.get(world_tile.0, world_tile.1), *s.depth_m.get(world_tile.0, world_tile.1))
+    };
 
     let seed = region.params.seed as u32;
     let relief_noise = Perlin::new(seed.wrapping_add(701));
@@ -465,17 +471,22 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let underwater = c.water_level.map(|w| w > c.e).unwrap_or(false);
             let near_river = c.river_hw > 0.0 && c.river_d < c.river_hw + (c.river_hw * 0.6).max(1.5);
 
-            // Soil: deeper on gentle, wet ground; none on cliffs.
+            // Soil: the world tile's soil depth, thinner on slopes, none on cliffs; deeper by the
+            // river where floods lay silt.
             let soil_levels = if c.slope > 0.9 {
                 0
             } else {
-                ((hs.sediment_depth as f32).min(8.0) * (1.0 - c.slope * 1.1).clamp(0.15, 1.0)).round().max(1.0) as i32
+                let levels = soil_depth_m / Z_STEP_M + if near_river { 1.0 } else { 0.0 };
+                (levels.min(8.0) * (1.0 - c.slope * 1.1).clamp(0.15, 1.0)).round().max(1.0) as i32
             };
+            use crate::soils::SoilKind as SK;
             let soil = if near_river || c.sea && c.e > -3.0 {
                 if hash(gtx, gty, 1) < 0.5 { Material::Sand } else { Material::Gravel }
-            } else if matches!(biome, Biome::Desert) || c.moist < 0.08 {
+            } else if matches!(biome, Biome::Desert) || c.moist < 0.08 || matches!(soil_kind, SK::DesertSoil | SK::Podzol) {
                 Material::Sand
-            } else if c.moist > 0.6 && c.slope < 0.05 {
+            } else if matches!(soil_kind, SK::Rocky) {
+                Material::Gravel
+            } else if matches!(soil_kind, SK::Laterite | SK::TerraRossa) || (c.moist > 0.6 && c.slope < 0.05) {
                 Material::Clay
             } else {
                 Material::Soil

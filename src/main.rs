@@ -31,6 +31,7 @@ mod region;
 mod scale;
 mod seasons;
 mod seeds;
+mod soils;
 mod terrain;
 mod tilemap;
 mod tiles;
@@ -1384,6 +1385,20 @@ fn main() {
         let land: Vec<f32> = r.fertility.iter().zip(world_data.heightmap.iter()).filter(|(_, h)| *h.2 > 0.0).map(|(f, _)| *f.2).collect();
         let fertile = land.iter().filter(|&&f| f > 0.5).count();
         println!("  farmland: {:.1}% of land is fertile (>0.5), mean {:.2}", 100.0 * fertile as f32 / land.len() as f32, land.iter().sum::<f32>() / land.len() as f32);
+        let soils = world_data.soils();
+        let mut by_kind: std::collections::BTreeMap<&str, (usize, f32)> = Default::default();
+        let mut total = 0usize;
+        for (x, y, k) in soils.kind.iter() {
+            if *k == soils::SoilKind::None { continue; }
+            let e = by_kind.entry(k.name()).or_default();
+            e.0 += 1;
+            e.1 += *soils.depth_m.get(x, y);
+            total += 1;
+        }
+        let mut kinds: Vec<_> = by_kind.into_iter().collect();
+        kinds.sort_by_key(|(_, (n, _))| std::cmp::Reverse(*n));
+        let line: Vec<String> = kinds.iter().map(|(k, (n, d))| format!("{} {:.0}% ({:.1} m)", k, 100.0 * *n as f32 / total.max(1) as f32, d / *n as f32)).collect();
+        println!("  soils: {}", line.join(", "));
     }
 
     if args.gazetteer {

@@ -158,6 +158,7 @@ fn describe_tile(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazett
         parts.push(format!("{} {} deposit", q, crate::lore::resource_name(d.kind)));
     }
     let (fert, fish) = (*res.fertility.get(x, y), *res.fish.get(x, y));
+    if let Some(soil) = world.soils().describe(x, y) { parts.push(soil); }
     if fert > 0.6 { parts.push("rich farmland".to_string()); } else if fert > 0.35 { parts.push("farmland".to_string()); }
     if fish > 0.35 { parts.push("fishing grounds".to_string()); }
     if let Some(h) = history {
