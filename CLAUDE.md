@@ -456,14 +456,21 @@ the zoomed region around a point.
   out), the rest to the deep sea. ~0.6 s at 512x256, ~4 s at 1024x512.
 - K was retuned (5e-7 -> 1.2e-7) when precipitation went from ~100 to ~850 mm/yr on land, to
   keep ~29M km3 eroded over 10 Myr; retune it again if precipitation changes a lot.
+- `heightmap::apply_island_coasts` (a finishing pass, before the beaches) breaks up the coasts of
+  small islands (< 200 cells at 512x256) with tile-scale ridged noise near sea level (+-420 m,
+  fading by 500 m), so arcs and hotspot islands get bays, headlands and satellite islets instead
+  of eroded ovals (seed 42: 21 -> 34 islands, raggedness 2.9 -> 3.5). Shaping the volcanic
+  edifices in the crust instead made no difference after erosion.
 - `landscape::fill_pits(hm, 4, 10.0)` runs after the finishing passes (coastline, fjords,
-  regional noise, volcanoes, beaches), which pock the land with pits: hollows under 4 cells or
+  regional noise, volcanoes, island coasts, beaches), which pock the land with pits: hollows under 4 cells or
   10 m deep are filled and flats tilted (0.05 m/cell) so every cell outside a lake drains;
   bigger hollows stay lakes. `landscape::lake_depth` gives the standing water per cell.
 - `terrain_lab` (`cargo run --release --bin terrain_lab -- <seed> <w> <h> <style> <out_dir>`)
   runs the terrain pipeline without history or window and prints, per stage, land %,
   elevation quantiles, closed-basin share and where water from big-river cells ends up by
   raw steepest descent (sea / lake / pit or flat), plus `terrain_<stage>.png`.
+  It also counts islands (land bodies under 200 cells) and their raggedness (perimeter^2 /
+  (4 pi area); a grid disc is ~1.6). `LAB_NO_ISLANDS=1` skips `apply_island_coasts`.
   `LAB_VERBOSE=1` reports after every finishing pass; `LAB_ONLY_LEM=1` stops after the
   landscape step; `LAB_NO_LEM=1` skips it; `LEM_K`, `LEM_U`, `LEM_D`, `LEM_T`, `LEM_STEPS`,
   `LEM_FLEX` override its parameters.

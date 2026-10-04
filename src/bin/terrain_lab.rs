@@ -110,6 +110,7 @@ fn report(stage: &str, hm: &Tilemap<f32>, out: &str, precip: Option<&Tilemap<f32
     let tot = (to_sea + to_lake + to_pit).max(1) as f32;
     println!("    big-river descent: sea {:.1}%  lake {:.1}%  pit/flat {:.1}%", 100.0 * to_sea as f32 / tot, 100.0 * to_lake as f32 / tot, 100.0 * to_pit as f32 / tot);
     let _ = img.save(format!("{out}/terrain_{stage}.png"));
+    if stage == "final" { island_report(hm); }
     println!(
         "[{stage:>10}] land {:5.1}%  p50 {:5.0}  p90 {:5.0}  p99 {:5.0}  max {:5.0}  HI {:.2}  basins {:5.1}% of land  big rivers trapped {:5.1}% ({} cells)",
         100.0 * land.len() as f32 / (w * h) as f32,
@@ -117,6 +118,38 @@ fn report(stage: &str, hm: &Tilemap<f32>, out: &str, precip: Option<&Tilemap<f32
         100.0 * trapped as f32 / land.len().max(1) as f32,
         100.0 * big_trapped as f32 / big.max(1) as f32, big,
     );
+}
+
+/// Islands (land bodies under 200 cells): count, and how compact they are on average
+/// (perimeter^2 / (4 pi area): 1 = disc-like blob, higher = ragged with bays and headlands).
+fn island_report(hm: &Tilemap<f32>) {
+    let (w, h) = (hm.width, hm.height);
+    let land: Vec<bool> = hm.iter().map(|(_, _, &e)| e > 0.0).collect();
+    let mut seen = vec![false; w * h];
+    let (mut count, mut ratio_sum, mut ratio_n, mut cells) = (0usize, 0.0f64, 0usize, 0usize);
+    for s in 0..w * h {
+        if !land[s] || seen[s] { continue; }
+        let mut comp = vec![s];
+        seen[s] = true;
+        let mut k = 0;
+        while k < comp.len() {
+            let i = comp[k];
+            for (nx, ny) in hm.neighbors(i % w, i / w) {
+                let j = ny * w + nx;
+                if land[j] && !seen[j] { seen[j] = true; comp.push(j); }
+            }
+            k += 1;
+        }
+        if comp.len() >= 200 { continue; }
+        count += 1;
+        cells += comp.len();
+        if comp.len() >= 6 {
+            let perim: usize = comp.iter().map(|&i| hm.neighbors(i % w, i / w).iter().filter(|&&(nx, ny)| !land[ny * w + nx]).count()).sum();
+            ratio_sum += (perim * perim) as f64 / (4.0 * std::f64::consts::PI * comp.len() as f64);
+            ratio_n += 1;
+        }
+    }
+    println!("    islands: {count} ({cells} cells), raggedness of those >= 6 cells {:.2} (n={ratio_n})", ratio_sum / ratio_n.max(1) as f64);
 }
 
 fn main() {
@@ -194,6 +227,7 @@ fn main() {
         println!("polar land: north 10% of rows {:.1}%, south {:.1}%, edge rows {:.1}% / {:.1}%",
             frac(0..band), frac(h - band..h), frac(0..1), frac(h - 1..h));
     }
+    island_report(&hm);
     if std::env::var("LAB_ONLY_TECTONIC").is_ok() { return; }
 
     let climate_config = climate::ClimateConfig::default();
@@ -323,6 +357,7 @@ fn main() {
     if verbose { report("noise", &hm, &out, None); }
     heightmap::apply_volcano_pass(&mut hm, &t.stress_map, seeds.heightmap);
     if verbose { report("volcanoes", &hm, &out, None); }
+    if std::env::var("LAB_NO_ISLANDS").is_err() { heightmap::apply_island_coasts(&mut hm, seeds.heightmap); }
     heightmap::apply_coastal_beaches(&mut hm, &t.stress_map, &map_scale, erosion::landscape::tile_km(w));
     if verbose { report("beaches", &hm, &out, None); }
     println!("ocean volume after erosion and finishing passes: {:.0} m GEL (born with {:.0})", plates::crust::ocean_volume_gel(&hm, 0.0), t.ocean_gel_m);

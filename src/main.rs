@@ -840,6 +840,7 @@ fn main() {
 
     // Enforce coastal beach strips near sea level (except high-stress cliffs)
     println!("Applying coastal beach pass...");
+    heightmap::apply_island_coasts(&mut heightmap, seeds.heightmap);
     heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale, erosion::landscape::tile_km(width));
 
     // The detail passes above leave pits that would end rivers; fill them so the land drains

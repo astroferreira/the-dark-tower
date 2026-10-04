@@ -2768,6 +2768,77 @@ pub fn apply_inland_uplift(
     }
 }
 
+/// Break up the coasts of small islands. Volcanic arcs and hotspot islands come out of the
+/// tectonic model as smooth cones, and erosion rounds them further, so at tile scale they read
+/// as ovals. Around land bodies smaller than ~200 cells (at 512x256) and the sea within two
+/// cells of them, ridged noise at one to two tiles raises or lowers ground near sea level only
+/// (summits and the deep sea are untouched): coasts gain bays and headlands, and new islets
+/// break the surface beside the main island. Returns the number of cells changed.
+pub fn apply_island_coasts(heightmap: &mut Tilemap<f32>, seed: u64) -> usize {
+    const AMPLITUDE_M: f32 = 420.0;
+    const BAND_M: f32 = 500.0;
+    let (w, h) = (heightmap.width, heightmap.height);
+    let n = w * h;
+    let max_cells = ((200.0 * (w * h) as f32 / (512.0 * 256.0)).round() as usize).max(12);
+    let land: Vec<bool> = heightmap.iter().map(|(_, _, &e)| e > 0.0).collect();
+
+    // Small land bodies.
+    let mut small = vec![false; n];
+    let mut seen = vec![false; n];
+    for s0 in 0..n {
+        if !land[s0] || seen[s0] { continue; }
+        let mut comp = vec![s0];
+        seen[s0] = true;
+        let mut k = 0;
+        while k < comp.len() {
+            let c = comp[k];
+            for (nx, ny) in heightmap.neighbors_8(c % w, c / w) {
+                let j = ny * w + nx;
+                if land[j] && !seen[j] { seen[j] = true; comp.push(j); }
+            }
+            k += 1;
+        }
+        if comp.len() < max_cells {
+            for &c in &comp { small[c] = true; }
+        }
+    }
+
+    // The zone: small islands and the sea up to two cells from them.
+    let mut dist = vec![u8::MAX; n];
+    let mut q = std::collections::VecDeque::new();
+    for i in 0..n {
+        if small[i] { dist[i] = 0; q.push_back(i); }
+    }
+    while let Some(i) = q.pop_front() {
+        if dist[i] >= 2 { continue; }
+        for (nx, ny) in heightmap.neighbors_8(i % w, i / w) {
+            let j = ny * w + nx;
+            if dist[j] == u8::MAX && !land[j] { dist[j] = dist[i] + 1; q.push_back(j); }
+        }
+    }
+
+    let noise = Perlin::new(1).set_seed((seed as u32).wrapping_add(0x15_1A));
+    let detail = Perlin::new(1).set_seed((seed as u32).wrapping_add(0x15_1B));
+    let f = 30.0 * (w as f64 / 512.0).max(0.25);
+    let mut changed = 0;
+    for i in 0..n {
+        if dist[i] == u8::MAX { continue; }
+        let (x, y) = (i % w, i / w);
+        let lat = std::f64::consts::FRAC_PI_2 - (y as f64 + 0.5) / h as f64 * std::f64::consts::PI;
+        let lon = (x as f64 + 0.5) / w as f64 * std::f64::consts::TAU;
+        let p = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
+        let ridge = 1.0 - noise.get([p[0] * f, p[1] * f, p[2] * f]).abs();
+        let fine = detail.get([p[0] * f * 2.1 + 7.0, p[1] * f * 2.1, p[2] * f * 2.1]);
+        let v = (ridge * ridge - 0.45) as f32 * 2.0 + 0.35 * fine as f32;
+        let e = *heightmap.get(x, y);
+        let band = (-(e / BAND_M).powi(2)).exp();
+        heightmap.set(x, y, e + AMPLITUDE_M * band * v);
+        changed += 1;
+    }
+    changed
+}
+
+
 /// Apply a coastal beach/shore strip near sea level for most coastlines.
 /// High-stress convergent coastlines can preserve steep cliffs.
 /// `tile_km` is the physical width of a tile: where the beach or nearshore strip is narrower

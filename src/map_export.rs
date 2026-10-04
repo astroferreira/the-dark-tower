@@ -699,13 +699,14 @@ pub fn export_visual_map(
 
             let (r, g, b) = if h < 0.0 {
                 // Ocean - depth-based color with subtle specular
-                let depth_factor = ((-h) / 500.0).min(1.0);
+                // Shallow shelves are light, the deep ocean dark (this ramp used to run the other
+                // way, which drew a dark halo along every coast). sqrt spreads the shelf range.
+                let depth_factor = ((-h) / 4000.0).min(1.0).sqrt();
                 let spec = compute_water_specular(&world.heightmap, nearest_x, nearest_y) * 0.3;
 
-                // Deep ocean is darker, shallow is lighter
-                let base_r = 15.0 + depth_factor * 15.0;
-                let base_g = 40.0 + depth_factor * 40.0;
-                let base_b = 90.0 + depth_factor * 110.0;
+                let base_r = 70.0 - depth_factor * 55.0;
+                let base_g = 140.0 - depth_factor * 100.0;
+                let base_b = 185.0 - depth_factor * 90.0;
 
                 let r = (base_r + spec * 200.0).clamp(0.0, 255.0) as u8;
                 let g = (base_g + spec * 200.0).clamp(0.0, 255.0) as u8;

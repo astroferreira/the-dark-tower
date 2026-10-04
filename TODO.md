@@ -61,7 +61,7 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [ ] Biomes use annual means only: tree line by warmest-month temperature, Mediterranean (winter-wet) and monsoon climates from the seasonal fields.
 - [x] Allow polar continents (one sea definition, `sea_mask`, instead of ocean seeded from the map edges; plate and land areas on the sphere).
 - [ ] Polar land is stretched across the whole map width (equirectangular); consider how the tile viewer and history treat the polar rows (settlements, labels, the start screen preview).
-- [ ] Offshore islands and arcs still look like smooth ovals; dark coastal halo from the exporter's shallow-water shading.
+- [x] Offshore islands and arcs looked like smooth ovals (`apply_island_coasts`); dark coastal halo in the exporter (its depth ramp was inverted).
 - [ ] Zoomed regions straddling the date line (x wrap) don't match exactly.
 - [ ] `grid_export.rs` still uses the legacy plate path.
 
