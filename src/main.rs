@@ -754,6 +754,10 @@ fn main() {
         seeds.biomes,
     );
 
+    // Seasonal climates: Mediterranean shrubland (winter rain) and monsoon forest (summer rain).
+    let (med, mon) = biomes::apply_seasonal_biomes(&mut extended_biomes, &heightmap, &climate_sim);
+    println!("Seasonal climates: {} Mediterranean, {} monsoon tiles", med, mon);
+
     // Apply biome replacement rules (rare biomes replace common ones)
     println!("Applying rare biome replacements...");
     let rare_biome_clusters = biomes::apply_biome_replacements(

@@ -2076,11 +2076,12 @@ use crate::history::det::HashMap;
         // Base cost by biome type (higher = harder to build roads)
         let base_cost = match biome {
             // Easy terrain - open land
-            ExtendedBiome::TemperateGrassland | ExtendedBiome::Savanna | 
-            ExtendedBiome::Foothills => 4,
+            ExtendedBiome::TemperateGrassland | ExtendedBiome::Savanna |
+            ExtendedBiome::Foothills | ExtendedBiome::MediterraneanShrubland => 4,
             
             // Moderate - some vegetation
-            ExtendedBiome::TemperateForest | ExtendedBiome::TropicalForest => 8,
+            ExtendedBiome::TemperateForest | ExtendedBiome::TropicalForest |
+            ExtendedBiome::MonsoonForest => 8,
             
             // Dense vegetation - harder
             ExtendedBiome::TropicalRainforest | ExtendedBiome::TemperateRainforest |

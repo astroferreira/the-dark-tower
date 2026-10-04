@@ -60,7 +60,8 @@ impl ResourceType {
                 resources.clear();
                 resources.extend_from_slice(&[ResourceType::Salt, ResourceType::Stone]);
             }
-            ExtendedBiome::Savanna | ExtendedBiome::TemperateGrassland => {
+            ExtendedBiome::Savanna | ExtendedBiome::TemperateGrassland
+            | ExtendedBiome::MediterraneanShrubland | ExtendedBiome::MonsoonForest => {
                 resources.extend_from_slice(&[ResourceType::Food]); // Extra food
             }
             ExtendedBiome::Swamp | ExtendedBiome::Marsh | ExtendedBiome::Bog => {

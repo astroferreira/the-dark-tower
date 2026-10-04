@@ -298,10 +298,10 @@ fn region_class(b: ExtendedBiome) -> Option<RegionClass> {
         TemperateForest | TemperateRainforest | BorealForest | MontaneForest | SubalpineForest
         | CloudForest | AncientGrove | DeadForest | PetrifiedForest | MushroomForest
         | BioluminescentForest | CrystalForest => RegionClass::Forest,
-        TropicalForest | TropicalRainforest => RegionClass::Jungle,
+        TropicalForest | TropicalRainforest | MonsoonForest => RegionClass::Jungle,
         Desert | SaltFlats | SingingDunes | GlassDesert | Ashlands | VolcanicWasteland => RegionClass::Desert,
         Swamp | Marsh | Bog | MangroveSaltmarsh | Shadowfen => RegionClass::Marsh,
-        TemperateGrassland | Savanna | AlpineMeadow | Paramo => RegionClass::Plains,
+        TemperateGrassland | Savanna | AlpineMeadow | Paramo | MediterraneanShrubland => RegionClass::Plains,
         Tundra | AlpineTundra | AuroraWastes => RegionClass::Tundra,
         Ice | SnowyPeaks => RegionClass::Ice,
         _ => return None,

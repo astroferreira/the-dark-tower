@@ -129,6 +129,7 @@ impl RaceType {
             RaceType::Human => vec![
                 ExtendedBiome::TemperateGrassland, ExtendedBiome::TemperateForest,
                 ExtendedBiome::Savanna, ExtendedBiome::Foothills,
+                ExtendedBiome::MediterraneanShrubland,
             ],
             RaceType::Dwarf => vec![
                 ExtendedBiome::AlpineTundra, ExtendedBiome::SnowyPeaks,

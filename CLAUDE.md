@@ -449,6 +449,13 @@ the zoomed region around a point.
   summers stay warm however cold the winters. Seed 42: forests ~40%, desert 18%, grass/savanna
   28%, tundra 10% of land tiles; seed 7 (land on both poles) 24% ice. Embarks and the legacy
   world path still classify by annual means only.
+- Seasonal rain (`biomes::apply_seasonal_biomes`, after biome generation, each hemisphere's own
+  summer/winter): `MediterraneanShrubland` (winter 3x+ wetter than a dry summer, mild, 250-1500
+  mm; replaces temperate grassland/forest; drawn as steppe with shrubs) and `MonsoonForest`
+  (warm, summer 3x+ wetter, 1000-3500 mm; replaces seasonal tropical forest and wet savanna;
+  savanna ground with deciduous trees). Seed 42: ~1700 Mediterranean tiles at 20-45 deg, ~1000
+  monsoon tiles at 0-20 deg. Both appended at the end of `ExtendedBiome` (old saves load) and
+  added to ecology, races, economy, road costs and gazetteer regions next to their analogues.
 - `--fantasy 0..1` (default 0.2, old behaviour 0.5) scales fantasy/special biomes, including
   the rare-biome replacement pass. `--biome-stats` prints the land-biome mix, land
   temperature/moisture percentiles and a zonal temperature/land profile.

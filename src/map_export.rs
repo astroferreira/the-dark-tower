@@ -86,6 +86,8 @@ pub(crate) fn get_biome_family(biome: ExtendedBiome) -> (BiomeFamily, f32, f32) 
 
         // Temperate dry family
         TemperateGrassland => (BiomeFamily::TemperateDry, 0.0, 0.0),
+        MediterraneanShrubland => (BiomeFamily::TemperateDry, 0.1, -0.1),
+        MonsoonForest => (BiomeFamily::Tropical, -0.1, 0.05),
         AlpineMeadow => (BiomeFamily::TemperateDry, 0.1, 0.1),
         Foothills => (BiomeFamily::TemperateDry, -0.1, -0.05),
         Savanna => (BiomeFamily::TemperateDry, 0.1, -0.1),

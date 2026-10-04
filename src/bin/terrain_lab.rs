@@ -250,7 +250,20 @@ fn climate_report(hm: &Tilemap<f32>, sim: &climate::ClimateSimulation, stress: &
         println!();
     }
     let cfg = planet_generator::biomes::WorldBiomeConfig { fantasy_intensity: 0.0, ..Default::default() };
-    let b = planet_generator::biomes::generate_extended_biomes(&hm, &sim.mean_temperature, &sim.mean_moisture, Some(&sim.warmest_season()), stress, &cfg, seeds.biomes);
+    let mut b = planet_generator::biomes::generate_extended_biomes(&hm, &sim.mean_temperature, &sim.mean_moisture, Some(&sim.warmest_season()), stress, &cfg, seeds.biomes);
+    let (med, mon) = planet_generator::biomes::apply_seasonal_biomes(&mut b, hm, sim);
+    println!("seasonal climates: {med} Mediterranean, {mon} monsoon tiles");
+    for (name, kind) in [("Mediterranean", planet_generator::biomes::ExtendedBiome::MediterraneanShrubland), ("monsoon", planet_generator::biomes::ExtendedBiome::MonsoonForest)] {
+        if let Some((x, y, _)) = b.iter().filter(|(_, _, &k)| k == kind).nth(b.iter().filter(|(_, _, &k)| k == kind).count() / 2) {
+            print!("  e.g. ({x},{y});");
+        }
+        print!("  {name} by |lat| band:");
+        for band in 0..9 {
+            let c = b.iter().filter(|(_, y, &k)| k == kind && ((90.0 - (*y as f32 + 0.5) / h as f32 * 180.0).abs() / 10.0) as usize == band).count();
+            print!(" {band}0s:{c}");
+        }
+        println!();
+    }
     planet_generator::biomes::print_biome_stats(&b, &hm, &sim.mean_temperature, &sim.mean_moisture);
 }
 

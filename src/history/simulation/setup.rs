@@ -277,7 +277,7 @@ fn pick_race_for_biome(
                 (RaceType::Elf, ExtendedBiome::TemperateForest | ExtendedBiome::TemperateRainforest |
                  ExtendedBiome::AncientGrove | ExtendedBiome::CloudForest) => 5.0,
                 (RaceType::Orc, ExtendedBiome::Savanna |
-                 ExtendedBiome::TemperateGrassland) => 5.0,
+                 ExtendedBiome::TemperateGrassland | ExtendedBiome::MonsoonForest) => 5.0,
                 (RaceType::Goblin, ExtendedBiome::Swamp | ExtendedBiome::Marsh |
                  ExtendedBiome::Bog) => 5.0,
                 (RaceType::Human, _) => 3.0, // Humans can live anywhere

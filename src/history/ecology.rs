@@ -256,6 +256,8 @@ fn forest_potential(biome: ExtendedBiome) -> f32 {
         | CloudForest | TropicalForest | TropicalRainforest | AncientGrove => 0.9,
         MushroomForest | BioluminescentForest | CrystalForest | DeadForest | PetrifiedForest => 0.0,
         Savanna => 0.15,
+        MonsoonForest => 0.75,
+        MediterraneanShrubland => 0.3,
         Foothills => 0.3,
         Swamp | Marsh | Bog | MangroveSaltmarsh => 0.3,
         _ => match get_biome_family(biome).0 {

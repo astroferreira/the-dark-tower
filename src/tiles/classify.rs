@@ -116,6 +116,8 @@ fn land_tiles(biome: ExtendedBiome, sparse: bool) -> (TileKind, Option<TileKind>
         TemperateGrassland | AlpineMeadow | Paramo => (T::Steppe, None),
         Foothills => (T::Grass, Some(T::Hills)),
         Savanna => (T::Savanna, tree(T::Acacia)),
+        MediterraneanShrubland => (T::Steppe, Some(T::Shrub)),
+        MonsoonForest => (T::Savanna, Some(T::Deciduous)),
         Desert | SingingDunes | GlassDesert => (T::Sand, None),
         Oasis => (T::Sand, Some(T::Palm)),
         SaltFlats => (T::Salt, None),

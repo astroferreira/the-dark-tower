@@ -81,6 +81,8 @@ pub fn biome_char(biome: &ExtendedBiome) -> char {
         ExtendedBiome::Desert => 'd',
         ExtendedBiome::Savanna => ';',
         ExtendedBiome::TropicalForest => 't',
+        ExtendedBiome::MediterraneanShrubland => '"',
+        ExtendedBiome::MonsoonForest => 't',
         ExtendedBiome::TropicalRainforest => 'r',
 
         // Mountain biomes (altitudinal zones)
