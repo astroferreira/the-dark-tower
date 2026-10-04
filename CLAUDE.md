@@ -31,8 +31,8 @@ cargo run --release -- --width 1024 --height 512
 
 ### Dev world (fast iteration on history and story)
 `cargo run --release -- --dev` generates a 96x48 world (seed 76, 8 civilizations) with 250 years
-of history in about a second, vs ~6 min at 512x256 (almost all of it history). It has 3 named rivers, 2 lakes, 6 mountain
-ranges, forests, a desert, an island and two continents. Any of `--width`/`--height`/`--seed`/
+of history in about a second, vs ~6 min at 512x256 (almost all of it history). It has 4 named rivers, 2 lakes, 6 mountain
+ranges, forests, a desert and two continents. Any of `--width`/`--height`/`--seed`/
 `--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
 `--journal`, `--gazetteer`, `--director` as usual. Seed 76 came from a search over 96x48 seeds
 scored by gazetteer landmarks (`scripts/dev_seed_search.sh`, then the top seeds checked with
@@ -483,7 +483,9 @@ the zoomed region around a point.
   to the spill level and on shelves around river mouths (40 m deep + 60 m per cell, 10 cells
   out), the rest to the deep sea. ~0.6 s at 512x256, ~4 s at 1024x512.
 - K was retuned (5e-7 -> 1.2e-7) when precipitation went from ~100 to ~850 mm/yr on land, to
-  keep ~29M km3 eroded over 10 Myr; retune it again if precipitation changes a lot.
+  keep ~29M km3 eroded over 10 Myr; retune it again if precipitation changes a lot. K is
+  defined at 512 wide and scaled by (cell size / 78 km)^-0.27, so the mean depth eroded is the
+  same at any map size (it was ~1.5x deeper on the 96x48 dev world).
 - `heightmap::apply_island_coasts` (a finishing pass, before the beaches) breaks up the coasts of
   small islands (< 200 cells at 512x256) with tile-scale ridged noise near sea level (+-420 m,
   fading by 500 m), so arcs and hotspot islands get bays, headlands and satellite islets instead

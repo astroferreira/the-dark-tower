@@ -39,7 +39,9 @@ pub struct LandscapeParams {
     /// Simulated span (years) and number of implicit steps.
     pub duration_yr: f32,
     pub steps: usize,
-    /// Erodibility K for `K Q^m S` with Q in m^3/yr (effective value for ~80 km cells).
+    /// Erodibility K for `K Q^m S` with Q in m^3/yr, as calibrated on a 512-wide map (~78 km
+    /// cells). `evolve` scales it by (cell size / 78 km)^-0.27: coarser grids otherwise erode
+    /// deeper (96x48 removed ~1.5x the mean depth of 512x256 and raised the sea twice as much).
     pub k_fluvial: f32,
     /// Discharge exponent m (slope exponent n = 1).
     pub m: f32,
@@ -284,6 +286,7 @@ pub fn evolve(
         .map(|(_, _, &s)| p.uplift_m_per_yr * smoothstep(p.uplift_stress.0, p.uplift_stress.1, s))
         .collect();
     let dt = p.duration_yr / p.steps.max(1) as f32;
+    let k_eff = p.k_fluvial * (g.dx / (CIRCUMFERENCE_M / 512.0)).powf(-0.27);
     let sigma = (p.flexure_km * 1000.0 / g.dx).max(0.5);
     let km3 = |m: f64| m * area as f64 * 1e-9;
 
@@ -348,7 +351,7 @@ pub fn evolve(
                 let (dxc, dyc) = ((i % w) as i64 - (rc % w) as i64, (i / w) as i64 - (rc / w) as i64);
                 if dxc != 0 && dyc != 0 { g.dx * std::f32::consts::SQRT_2 } else { g.dx }
             };
-            let f = p.k_fluvial * dt * q[i].powf(p.m) / d;
+            let f = k_eff * dt * q[i].powf(p.m) / d;
             let new = (h[i] + f * base) / (1.0 + f);
             eroded[i] = h[i] - new;
             h[i] = new;
