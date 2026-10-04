@@ -1,4 +1,5 @@
-//! Runs the world's terrain pipeline (tectonics -> climate -> erosion -> finishing passes)
+//! Runs the world's terrain pipeline (`terrain::generate_terrain`: tectonics -> climate ->
+//! landscape -> erosion -> finishing passes)
 //! without history or a window and prints drainage and relief metrics after each stage.
 //!
 //! Usage: terrain_lab [seed] [width] [height] [style] [out_dir]
@@ -9,8 +10,7 @@ use planet_generator::erosion::{self, rivers};
 use planet_generator::plates::{self, WorldStyle};
 use planet_generator::seeds::WorldSeeds;
 use planet_generator::tilemap::Tilemap;
-use planet_generator::{climate, coastline, heightmap, scale, water_bodies};
-use rand::SeedableRng;
+use planet_generator::{climate, terrain, water_bodies};
 use rand_chacha::ChaCha8Rng;
 
 fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
@@ -152,6 +152,95 @@ fn island_report(hm: &Tilemap<f32>) {
     println!("    islands: {count} ({cells} cells), raggedness of those >= 6 cells {:.2} (n={ratio_n})", ratio_sum / ratio_n.max(1) as f64);
 }
 
+/// Climate diagnostics (LAB_CLIMATE): precipitation by latitude and distance from the coast,
+/// runoff, the biome mix, and `precip.png`.
+fn climate_report(hm: &Tilemap<f32>, sim: &climate::ClimateSimulation, stress: &Tilemap<f32>, out: &str, seeds: &WorldSeeds) {
+    let (w, h) = (hm.width, hm.height);
+    let p = &sim.annual_precipitation;
+    let mut land: Vec<f32> = hm.iter().filter(|(_, _, &e)| e > 0.0).map(|(x, y, _)| *p.get(x, y)).collect();
+    land.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let q = |f: f32| land[((land.len() - 1) as f32 * f) as usize];
+    let mean = land.iter().sum::<f32>() / land.len() as f32;
+    let ocean: Vec<f32> = hm.iter().filter(|(_, _, &e)| e <= 0.0).map(|(x, y, _)| *p.get(x, y)).collect();
+    println!("land precip mm/yr: mean {:.0} p10 {:.0} p25 {:.0} p50 {:.0} p75 {:.0} p90 {:.0} p99 {:.0}; ocean mean {:.0}",
+        mean, q(0.1), q(0.25), q(0.5), q(0.75), q(0.9), q(0.99), ocean.iter().sum::<f32>() / ocean.len().max(1) as f32);
+    print!("zonal ocean precip (signed lat bands of 10, N to S):");
+    for b in 0..18 {
+        let (mut sum, mut cnt) = (0.0f32, 0);
+        for (x, y, &e) in hm.iter() {
+            let lat = 90.0 - (y as f32 + 0.5) / h as f32 * 180.0;
+            if e <= 0.0 && ((90.0 - lat) / 10.0) as usize == b { sum += *p.get(x, y); cnt += 1; }
+        }
+        print!(" {}:{:.0}", 80 - 10 * b as i32, if cnt > 0 { sum / cnt as f32 } else { f32::NAN });
+    }
+    println!();
+    print!("zonal land precip (|lat| bands of 10):");
+    for b in 0..9 {
+        let (mut sum, mut cnt) = (0.0f32, 0);
+        for (x, y, &e) in hm.iter() {
+            let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+            if e > 0.0 && (lat / 10.0) as usize == b { sum += *p.get(x, y); cnt += 1; }
+        }
+        print!(" {}0s:{:.0}", b, if cnt > 0 { sum / cnt as f32 } else { f32::NAN });
+    }
+    println!();
+    {
+        // Precipitation and wind speed by distance from the coast (cells).
+        use std::collections::VecDeque;
+        let mut d = vec![usize::MAX; w * h];
+        let mut qd = VecDeque::new();
+        for (x, y, &e) in hm.iter() { if e <= 0.0 { d[y * w + x] = 0; qd.push_back((x, y)); } }
+        while let Some((x, y)) = qd.pop_front() {
+            for (nx, ny) in hm.neighbors(x, y) {
+                if d[ny * w + nx] == usize::MAX { d[ny * w + nx] = d[y * w + x] + 1; qd.push_back((nx, ny)); }
+            }
+        }
+        print!("by coast distance (precip mm / wind m/s):");
+        for (lo, hi) in [(1, 2), (2, 4), (4, 8), (8, 16), (16, 32), (32, 999)] {
+            let (mut sp, mut sw, mut c) = (0.0f32, 0.0f32, 0);
+            for (x, y, _) in hm.iter() {
+                let di = d[y * w + x];
+                if di >= lo && di < hi { sp += *p.get(x, y); let (u, v) = *sim.prevailing_winds.get(x, y); sw += (u * u + v * v).sqrt(); c += 1; }
+            }
+            if c > 0 { print!(" {lo}-{hi}: {:.0}/{:.1} ({c})", sp / c as f32, sw / c as f32); }
+        }
+        println!();
+    }
+    {
+        let mut img = RgbImage::new(w as u32, h as u32);
+        for (x, y, &e) in hm.iter() {
+            let v = *p.get(x, y);
+            let c = if e <= 0.0 {
+                let t = (v / 3000.0).clamp(0.0, 1.0);
+                lerp([30.0, 40.0, 70.0], [60.0, 90.0, 160.0], t)
+            } else {
+                let t = (v.max(1.0).log10() - 1.0) / 2.6; // 10 mm .. 4000 mm
+                let t = t.clamp(0.0, 1.0);
+                if t < 0.5 { lerp([200.0, 160.0, 90.0], [230.0, 220.0, 120.0], t * 2.0) } else { lerp([230.0, 220.0, 120.0], [20.0, 120.0, 40.0], t * 2.0 - 1.0) }
+            };
+            img.put_pixel(x as u32, y as u32, Rgb([c[0] as u8, c[1] as u8, c[2] as u8]));
+        }
+        let _ = img.save(format!("{out}/precip.png"));
+    }
+    {
+        let heur = climate::compute_effective_runoff(&hm, &sim.mean_temperature, &sim.mean_moisture);
+        let (mut a, mut b, mut n) = (0.0f64, 0.0f64, 0usize);
+        let mut phys: Vec<f32> = Vec::new();
+        for (x, y, &e) in hm.iter() {
+            if e <= 0.0 { continue; }
+            a += *heur.get(x, y) as f64;
+            let r = climate::runoff_mm(*p.get(x, y), *sim.mean_temperature.get(x, y));
+            b += r as f64; n += 1; phys.push(r);
+        }
+        phys.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        let q = |f: f32| phys[((phys.len() - 1) as f32 * f) as usize];
+        println!("runoff: heuristic mean {:.3}; Budyko mean {:.0} mm/yr (p25 {:.0}, p50 {:.0}, p75 {:.0}, p90 {:.0}, p99 {:.0})", a / n as f64, b / n as f64, q(0.25), q(0.5), q(0.75), q(0.9), q(0.99));
+    }
+    let cfg = planet_generator::biomes::WorldBiomeConfig { fantasy_intensity: 0.0, ..Default::default() };
+    let b = planet_generator::biomes::generate_extended_biomes(&hm, &sim.mean_temperature, &sim.mean_moisture, stress, &cfg, seeds.biomes);
+    planet_generator::biomes::print_biome_stats(&b, &hm, &sim.mean_temperature, &sim.mean_moisture);
+}
+
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let arg = |i: usize, d: &str| a.get(i).cloned().unwrap_or_else(|| d.to_string());
@@ -161,6 +250,7 @@ fn main() {
     let style = WorldStyle::from_str(&arg(4, "earthlike")).unwrap_or_default();
     let out = arg(5, ".");
     let verbose = std::env::var("LAB_VERBOSE").is_ok();
+    let flag = |k: &str| std::env::var(k).is_ok();
     std::fs::create_dir_all(&out).ok();
     let seeds = WorldSeeds::from_master(seed);
     let t0 = std::time::Instant::now();
@@ -191,181 +281,91 @@ fn main() {
         }
         return;
     }
-    let params = plates::TectonicParams::default();
-    let t = plates::generate_tectonic_terrain(w, h, None, style, &seeds, &params);
-    let mut hm = t.heightmap;
-    report("tectonic", &hm, &out, None);
-    if std::env::var("LAB_GEL").is_ok() {
-        let mut v: Vec<f32> = hm.iter().map(|(_, _, &e)| e).collect();
-        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let target = style.target_land_fraction();
-        let q = v[((1.0 - target) * (v.len() - 1) as f64) as usize];
-        let ocean = plates::crust::ocean_volume_gel(&hm, 0.0);
-        let cont = t.crust.thickness_km.iter().filter(|(_, _, &k)| k >= 20.0).count() as f32 / (w * h) as f32;
-        let cont_e: Vec<f32> = hm.iter().filter(|(x, y, _)| *t.crust.thickness_km.get(*x, *y) >= 30.0).map(|(_, _, &e)| e).collect();
-        let mean_cont = cont_e.iter().sum::<f32>() / cont_e.len().max(1) as f32;
-        println!("GEL now {:.0} m; for {:.0}% land: sea level {:+.0} m, GEL {:.0} m; continental crust {:.1}% of map, mean elevation of crust >=30 km {:.0} m",
-            ocean, target * 100.0, q, plates::crust::ocean_volume_gel(&hm, q), cont * 100.0, mean_cont);
-    }
-    {
-        let band = (h / 10).max(1);
-        let frac = |rows: std::ops::Range<usize>| {
-            let (mut l, mut t) = (0, 0);
-            for y in rows { for x in 0..w { t += 1; if *hm.get(x, y) > 0.0 { l += 1; } } }
-            100.0 * l as f32 / t as f32
-        };
-        print!("continental crust (>=25 km) by |lat| band:");
-        for b in 0..9 {
-            let (mut c, mut tot) = (0, 0);
-            for (_, y, &k) in t.crust.thickness_km.iter() {
-                let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
-                if (lat / 10.0) as usize == b { tot += 1; if k >= 25.0 { c += 1; } }
-            }
-            print!(" {}0s:{:.0}%", b, 100.0 * c as f32 / tot.max(1) as f32);
-        }
-        println!();
-        println!("polar land: north 10% of rows {:.1}%, south {:.1}%, edge rows {:.1}% / {:.1}%",
-            frac(0..band), frac(h - band..h), frac(0..1), frac(h - 1..h));
-    }
-    island_report(&hm);
-    if std::env::var("LAB_ONLY_TECTONIC").is_ok() { return; }
 
-    let climate_config = climate::ClimateConfig::default();
-    let sim = climate::run_climate_simulation(&hm, &climate_config, seeds.climate);
-    if std::env::var("LAB_CLIMATE").is_ok() {
-        let t1 = std::time::Instant::now();
-        let _ = climate::run_climate_simulation(&hm, &climate_config, seeds.climate);
-        println!("climate in {:.2}s", t1.elapsed().as_secs_f32());
-        let p = &sim.annual_precipitation;
-        let mut land: Vec<f32> = hm.iter().filter(|(_, _, &e)| e > 0.0).map(|(x, y, _)| *p.get(x, y)).collect();
-        land.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let q = |f: f32| land[((land.len() - 1) as f32 * f) as usize];
-        let mean = land.iter().sum::<f32>() / land.len() as f32;
-        let ocean: Vec<f32> = hm.iter().filter(|(_, _, &e)| e <= 0.0).map(|(x, y, _)| *p.get(x, y)).collect();
-        println!("land precip mm/yr: mean {:.0} p10 {:.0} p25 {:.0} p50 {:.0} p75 {:.0} p90 {:.0} p99 {:.0}; ocean mean {:.0}",
-            mean, q(0.1), q(0.25), q(0.5), q(0.75), q(0.9), q(0.99), ocean.iter().sum::<f32>() / ocean.len().max(1) as f32);
-        print!("zonal ocean precip (signed lat bands of 10, N to S):");
-        for b in 0..18 {
-            let (mut sum, mut cnt) = (0.0f32, 0);
-            for (x, y, &e) in hm.iter() {
-                let lat = 90.0 - (y as f32 + 0.5) / h as f32 * 180.0;
-                if e <= 0.0 && ((90.0 - lat) / 10.0) as usize == b { sum += *p.get(x, y); cnt += 1; }
-            }
-            print!(" {}:{:.0}", 80 - 10 * b as i32, if cnt > 0 { sum / cnt as f32 } else { f32::NAN });
-        }
-        println!();
-        print!("zonal land precip (|lat| bands of 10):");
-        for b in 0..9 {
-            let (mut sum, mut cnt) = (0.0f32, 0);
-            for (x, y, &e) in hm.iter() {
-                let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
-                if e > 0.0 && (lat / 10.0) as usize == b { sum += *p.get(x, y); cnt += 1; }
-            }
-            print!(" {}0s:{:.0}", b, if cnt > 0 { sum / cnt as f32 } else { f32::NAN });
-        }
-        println!();
-        {
-            // Precipitation and wind speed by distance from the coast (cells).
-            use std::collections::VecDeque;
-            let mut d = vec![usize::MAX; w * h];
-            let mut qd = VecDeque::new();
-            for (x, y, &e) in hm.iter() { if e <= 0.0 { d[y * w + x] = 0; qd.push_back((x, y)); } }
-            while let Some((x, y)) = qd.pop_front() {
-                for (nx, ny) in hm.neighbors(x, y) {
-                    if d[ny * w + nx] == usize::MAX { d[ny * w + nx] = d[y * w + x] + 1; qd.push_back((nx, ny)); }
+    let mut cfg = terrain::TerrainConfig::new(w, h, style);
+    let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f32>().ok());
+    if let Some(v) = env("LEM_K") { cfg.landscape.k_fluvial = v; }
+    if let Some(v) = env("LEM_U") { cfg.landscape.uplift_m_per_yr = v; }
+    if let Some(v) = env("LEM_D") { cfg.landscape.diffusion_m2_per_yr = v; }
+    if let Some(v) = env("LEM_T") { cfg.landscape.duration_yr = v; }
+    if let Some(v) = env("LEM_STEPS") { cfg.landscape.steps = v as usize; }
+    if let Some(v) = env("LEM_FLEX") { cfg.landscape.flexure_km = v; }
+    if flag("LAB_NO_LEM") { cfg.landscape.steps = 0; }
+    cfg.island_coasts = !flag("LAB_NO_ISLANDS");
+
+    let result = terrain::generate_terrain(&cfg, &seeds, &mut |st: &terrain::Stage| {
+        let hm = st.heightmap;
+        match st.name {
+            "tectonic" => {
+                report("tectonic", hm, &out, None);
+                if let Some(crust) = st.crust {
+                    if flag("LAB_GEL") {
+                        let mut v: Vec<f32> = hm.iter().map(|(_, _, &e)| e).collect();
+                        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                        let target = style.target_land_fraction();
+                        let q = v[((1.0 - target) * (v.len() - 1) as f64) as usize];
+                        let ocean = plates::crust::ocean_volume_gel(hm, 0.0);
+                        let cont = crust.thickness_km.iter().filter(|(_, _, &k)| k >= 20.0).count() as f32 / (w * h) as f32;
+                        let cont_e: Vec<f32> = hm.iter().filter(|(x, y, _)| *crust.thickness_km.get(*x, *y) >= 30.0).map(|(_, _, &e)| e).collect();
+                        let mean_cont = cont_e.iter().sum::<f32>() / cont_e.len().max(1) as f32;
+                        println!("GEL now {:.0} m; for {:.0}% land: sea level {:+.0} m, GEL {:.0} m; continental crust {:.1}% of map, mean elevation of crust >=30 km {:.0} m",
+                            ocean, target * 100.0, q, plates::crust::ocean_volume_gel(hm, q), cont * 100.0, mean_cont);
+                    }
+                    print!("continental crust (>=25 km) by |lat| band:");
+                    for b in 0..9 {
+                        let (mut c, mut tot) = (0, 0);
+                        for (_, y, &k) in crust.thickness_km.iter() {
+                            let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+                            if (lat / 10.0) as usize == b { tot += 1; if k >= 25.0 { c += 1; } }
+                        }
+                        print!(" {}0s:{:.0}%", b, 100.0 * c as f32 / tot.max(1) as f32);
+                    }
+                    println!();
                 }
-            }
-            print!("by coast distance (precip mm / wind m/s):");
-            for (lo, hi) in [(1, 2), (2, 4), (4, 8), (8, 16), (16, 32), (32, 999)] {
-                let (mut sp, mut sw, mut c) = (0.0f32, 0.0f32, 0);
-                for (x, y, _) in hm.iter() {
-                    let di = d[y * w + x];
-                    if di >= lo && di < hi { sp += *p.get(x, y); let (u, v) = *sim.prevailing_winds.get(x, y); sw += (u * u + v * v).sqrt(); c += 1; }
-                }
-                if c > 0 { print!(" {lo}-{hi}: {:.0}/{:.1} ({c})", sp / c as f32, sw / c as f32); }
-            }
-            println!();
-        }
-        {
-            let mut img = RgbImage::new(w as u32, h as u32);
-            for (x, y, &e) in hm.iter() {
-                let v = *p.get(x, y);
-                let c = if e <= 0.0 {
-                    let t = (v / 3000.0).clamp(0.0, 1.0);
-                    lerp([30.0, 40.0, 70.0], [60.0, 90.0, 160.0], t)
-                } else {
-                    let t = (v.max(1.0).log10() - 1.0) / 2.6; // 10 mm .. 4000 mm
-                    let t = t.clamp(0.0, 1.0);
-                    if t < 0.5 { lerp([200.0, 160.0, 90.0], [230.0, 220.0, 120.0], t * 2.0) } else { lerp([230.0, 220.0, 120.0], [20.0, 120.0, 40.0], t * 2.0 - 1.0) }
+                let band = (h / 10).max(1);
+                let frac = |rows: std::ops::Range<usize>| {
+                    let (mut l, mut t) = (0, 0);
+                    for y in rows { for x in 0..w { t += 1; if *hm.get(x, y) > 0.0 { l += 1; } } }
+                    100.0 * l as f32 / t as f32
                 };
-                img.put_pixel(x as u32, y as u32, Rgb([c[0] as u8, c[1] as u8, c[2] as u8]));
+                println!("polar land: north 10% of rows {:.1}%, south {:.1}%, edge rows {:.1}% / {:.1}%",
+                    frac(0..band), frac(h - band..h), frac(0..1), frac(h - 1..h));
+                island_report(hm);
+                print!("cells above 5000 m by |lat| band:");
+                for b in 0..9 {
+                    let c = hm.iter().filter(|(_, y, &e)| e > 5000.0 && ((90.0 - (*y as f32 + 0.5) / h as f32 * 180.0).abs() / 10.0) as usize == b).count();
+                    print!(" {}0s:{}", b, c);
+                }
+                println!();
+                !flag("LAB_ONLY_TECTONIC")
             }
-            let _ = img.save(format!("{out}/precip.png"));
-        }
-        {
-            let heur = climate::compute_effective_runoff(&hm, &sim.mean_temperature, &sim.mean_moisture);
-            let (mut a, mut b, mut n) = (0.0f64, 0.0f64, 0usize);
-            let mut phys: Vec<f32> = Vec::new();
-            for (x, y, &e) in hm.iter() {
-                if e <= 0.0 { continue; }
-                a += *heur.get(x, y) as f64;
-                let r = climate::runoff_mm(*p.get(x, y), *sim.mean_temperature.get(x, y));
-                b += r as f64; n += 1; phys.push(r);
+            "climate" => {
+                if flag("LAB_CLIMATE") {
+                    climate_report(hm, st.climate.unwrap(), st.stress_map, &out, &seeds);
+                    return false;
+                }
+                true
             }
-            phys.sort_by(|x, y| x.partial_cmp(y).unwrap());
-            let q = |f: f32| phys[((phys.len() - 1) as f32 * f) as usize];
-            println!("runoff: heuristic mean {:.3}; Budyko mean {:.0} mm/yr (p25 {:.0}, p50 {:.0}, p75 {:.0}, p90 {:.0}, p99 {:.0})", a / n as f64, b / n as f64, q(0.25), q(0.5), q(0.75), q(0.9), q(0.99));
+            "landscape" => {
+                report("landscape", hm, &out, st.climate.map(|c| &c.annual_precipitation));
+                !flag("LAB_ONLY_LEM")
+            }
+            "erosion" => { report("erosion", hm, &out, None); true }
+            "beaches" => {
+                if verbose { report("beaches", hm, &out, None); }
+                if let Some(gel) = st.ocean_gel_m {
+                    println!("ocean volume after erosion and finishing passes: {:.0} m GEL (born with {:.0})", plates::crust::ocean_volume_gel(hm, 0.0), gel);
+                }
+                true
+            }
+            "final" => { report("final", hm, &out, None); true }
+            name => { if verbose { report(name, hm, &out, None); } true }
         }
-        let cfg = planet_generator::biomes::WorldBiomeConfig { fantasy_intensity: 0.0, ..Default::default() };
-        let b = planet_generator::biomes::generate_extended_biomes(&hm, &sim.mean_temperature, &sim.mean_moisture, &t.stress_map, &cfg, seeds.biomes);
-        planet_generator::biomes::print_biome_stats(&b, &hm, &sim.mean_temperature, &sim.mean_moisture);
-        return;
-    }
+    });
+    let Some(t) = result else { return };
 
-    if std::env::var("LAB_NO_LEM").is_err() {
-        let t1 = std::time::Instant::now();
-        let mut lp = erosion::landscape::LandscapeParams::default();
-        let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f32>().ok());
-        if let Some(v) = env("LEM_K") { lp.k_fluvial = v; }
-        if let Some(v) = env("LEM_U") { lp.uplift_m_per_yr = v; }
-        if let Some(v) = env("LEM_D") { lp.diffusion_m2_per_yr = v; }
-        if let Some(v) = env("LEM_T") { lp.duration_yr = v; }
-        if let Some(v) = env("LEM_STEPS") { lp.steps = v as usize; }
-        if let Some(v) = env("LEM_FLEX") { lp.flexure_km = v; }
-        let r = erosion::landscape::evolve(&mut hm, &sim.annual_precipitation, &t.stress_map, &lp);
-        println!("landscape: {:?} in {:.2}s", r, t1.elapsed().as_secs_f32());
-        let rise = plates::crust::relevel_to_volume(&mut hm, t.ocean_gel_m);
-        println!("sea level {rise:+.1} m after landscape (ocean {:.0} m GEL)", t.ocean_gel_m);
-        report("landscape", &hm, &out, Some(&sim.annual_precipitation));
-    }
-    if std::env::var("LAB_ONLY_LEM").is_ok() { return; }
-
-    let mut ep = erosion::ErosionParams::from_preset(erosion::ErosionPreset::Normal);
-    ep.tune_for_heightmap(&hm);
-    let mut rng = ChaCha8Rng::seed_from_u64(seeds.erosion);
-    erosion::simulate_erosion(&mut hm, &t.plate_map, &t.plates, &t.stress_map, &sim.mean_temperature, &ep, &mut rng, seeds.erosion);
-    report("erosion", &hm, &out, None);
-
-    let map_scale = scale::MapScale::default();
-    let cp = coastline::CoastlineParams::default();
-    let net = coastline::generate_coastline_network(&hm, &cp, seeds.coastline);
-    coastline::apply_coastline_to_heightmap(&net, &mut hm, cp.blend_width);
-    if verbose { report("coastline", &hm, &out, None); }
-    heightmap::apply_fjord_incisions(&mut hm, seeds.heightmap, &map_scale);
-    if verbose { report("fjords", &hm, &out, None); }
-    heightmap::apply_regional_noise_stacks(&mut hm, &t.stress_map, seeds.heightmap);
-    if verbose { report("noise", &hm, &out, None); }
-    heightmap::apply_volcano_pass(&mut hm, &t.stress_map, seeds.heightmap);
-    if verbose { report("volcanoes", &hm, &out, None); }
-    if std::env::var("LAB_NO_ISLANDS").is_err() { heightmap::apply_island_coasts(&mut hm, seeds.heightmap); }
-    heightmap::apply_coastal_beaches(&mut hm, &t.stress_map, &map_scale, erosion::landscape::tile_km(w));
-    if verbose { report("beaches", &hm, &out, None); }
-    println!("ocean volume after erosion and finishing passes: {:.0} m GEL (born with {:.0})", plates::crust::ocean_volume_gel(&hm, 0.0), t.ocean_gel_m);
-    let filled = erosion::landscape::fill_pits(&mut hm, 4, 10.0);
-    println!("filled {filled} hollow cells");
-    report("final", &hm, &out, None);
-
-    let (_, bodies, _, _, _) = water_bodies::detect_water_bodies_climate(&hm, &sim.mean_temperature, &sim.mean_moisture, Some(&sim.annual_precipitation));
+    let sim = &t.climate;
+    let (_, bodies, _, _, _) = water_bodies::detect_water_bodies_climate(&t.heightmap, &sim.mean_temperature, &sim.mean_moisture, Some(&sim.annual_precipitation));
     let mut lakes: Vec<_> = bodies.iter().filter(|b| b.id.is_lake()).collect();
     lakes.sort_by_key(|b| std::cmp::Reverse(b.tile_count));
     for b in lakes.iter().take(8) {

@@ -31,6 +31,7 @@ mod region;
 mod scale;
 mod seasons;
 mod seeds;
+mod terrain;
 mod tilemap;
 mod tiles;
 mod underground_water;
@@ -55,7 +56,7 @@ struct Args {
     #[arg(short = 'H', long, default_value = "256")]
     height: usize,
 
-    /// Small development world for fast iteration on history and story: 96x48, seed 31,
+    /// Small development world for fast iteration on history and story: 96x48, seed 76,
     /// 8 civilizations, 250 years of history (each overridable). Generates with history in about a second and has a
     /// river system, a lake, mountain ranges, forests, deserts, islands and two continents
     #[arg(long)]
@@ -426,11 +427,11 @@ struct Args {
     upscale_factor: usize,
 }
 
-/// Seed, size and peoples of `--dev`, the small development world. Seed 31 was picked by a
-/// search over 96x48 worlds for the most landmarks (3 rivers, a lake, 3 ranges, forests,
-/// deserts, islands, 2 continents); 64x32 worlds get no rivers. Re-run the search if worldgen
-/// changes move the landmarks.
-const DEV_WORLD: (usize, usize, u64, u32) = (96, 48, 31, 8);
+/// Seed, size and peoples of `--dev`, the small development world. Seed 76 was picked by a
+/// search over 96x48 worlds for the most landmarks (`scripts/dev_seed_search.sh`: 4 rivers,
+/// 2 lakes, 6 ranges, forests, a desert, an island, 2 continents with its history); 64x32
+/// worlds get no rivers. Re-run the search if worldgen changes move the landmarks.
+const DEV_WORLD: (usize, usize, u64, u32) = (96, 48, 76, 8);
 
 /// Parse the command line; `--dev` fills in the development world's settings for any of
 /// width, height, seed and civilizations not given explicitly.
@@ -698,157 +699,22 @@ fn main() {
     // Create map scale for coordinate scaling (used throughout generation)
     let map_scale = scale::MapScale::default();
 
-    let (plate_map, plates, stress_map, mut heightmap, ocean_gel) = if args.legacy_tectonics {
-        // Legacy path: static Voronoi-like plates, boundary stress and noise-driven terrain.
-        let mut tectonic_rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
-        println!("Generating tectonic plates (legacy)...");
-        let (plate_map, plates) = plates::generate_plates(width, height, plates_count, world_style, &mut tectonic_rng);
-        let continental_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Continental).count();
-        let oceanic_count = plates.iter().filter(|p| p.plate_type == plates::PlateType::Oceanic).count();
-        println!("Created {} plates ({} continental, {} oceanic)", plates.len(), continental_count, oceanic_count);
-
-        println!("Calculating plate stress...");
-        let stress_map = plates::calculate_stress(&plate_map, &plates);
-
-        println!("Generating heightmap...");
-        let land_mask = heightmap::generate_land_mask(&plate_map, &plates, seeds.heightmap);
-        let land_count = (0..height).flat_map(|y| (0..width).map(move |x| (x, y)))
-            .filter(|&(x, y)| *land_mask.get(x, y)).count();
-        println!("Land mask: {} cells are land ({:.1}%)", land_count, 100.0 * land_count as f64 / (width * height) as f64);
-        let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
-        heightmap::apply_inland_uplift(&mut heightmap, &stress_map, &map_scale);
-        (plate_map, plates, stress_map, heightmap, None)
-    } else {
-        // Tectonic simulation: plates drift on a sphere, collide, subduct and rift; terrain
-        // follows from crustal thickness (isostasy) and seafloor age.
-        println!("Simulating plate tectonics ({} Myr)...", args.tectonic_myr);
-        let params = plates::TectonicParams { total_myr: args.tectonic_myr, ..Default::default() };
-        let t = plates::generate_tectonic_terrain(width, height, plates_count, world_style, &seeds, &params);
-        let continental_count = t.plates.iter().filter(|p| p.plate_type == plates::PlateType::Continental).count();
-        let oceanic_count = t.plates.len() - continental_count;
-        println!("Tectonic history complete: {} plates survive ({} continental, {} oceanic)", t.plates.len(), continental_count, oceanic_count);
-        // (Interior seaward slope is built into the tectonic terrain itself, before sea level.)
-        println!("Ocean: {:.0} m of water as a global layer (Earth ~2640 m)", t.ocean_gel_m);
-        (t.plate_map, t.plates, t.stress_map, t.heightmap, Some(t.ocean_gel_m))
+    // Terrain: tectonics -> climate -> landscape evolution -> erosion -> finishing passes ->
+    // drainage repair (`terrain::generate_terrain`, shared with terrain_lab and grid exports).
+    let terrain_config = terrain::TerrainConfig {
+        plates: plates_count,
+        tectonic_myr: args.tectonic_myr,
+        legacy_tectonics: args.legacy_tectonics,
+        erosion_preset,
+        climate: climate_config.clone(),
+        no_hires: args.no_hires,
+        ..terrain::TerrainConfig::new(width, height, world_style)
     };
-    let mut min_h = f32::MAX;
-    let mut max_h = f32::MIN;
-    for (_, _, &h) in heightmap.iter() {
-        if h < min_h { min_h = h; }
-        if h > max_h { max_h = h; }
-    }
-    let above_sea = (0..height).flat_map(|y| (0..width).map(move |x| (x, y)))
-        .filter(|&(x, y)| *heightmap.get(x, y) > 0.0).count();
-    println!("Heightmap range: {:.1}m to {:.1}m ({:.1}% above sea level)", min_h, max_h,
-        100.0 * above_sea as f64 / (width * height) as f64);
-
-    // Generate physical climate (energy balance, 3-cell circulation, winds, ocean currents, moisture advection)
-    println!("Simulating physical climate (mode: {}, rainfall: {})...", climate_config.mode, climate_config.rainfall);
-    let climate_sim = climate::run_climate_simulation(&heightmap, &climate_config, seeds.climate);
-    let temperature = climate_sim.mean_temperature.clone();
+    let terrain::Terrain {
+        plate_map, plates, stress_map, mut heightmap, climate: climate_sim, hardness: hardness_map,
+        flow_accumulation, volcanoes, ..
+    } = terrain::generate_terrain(&terrain_config, &seeds, &mut |_| true).expect("terrain generation runs to the end");
     let moisture = climate_sim.mean_moisture.clone();
-
-    // Report climate stats
-    let mut min_temp = f32::MAX;
-    let mut max_temp = f32::MIN;
-    for (_, _, &t) in temperature.iter() {
-        if t < min_temp { min_temp = t; }
-        if t > max_temp { max_temp = t; }
-    }
-    let mut min_precip = f32::MAX;
-    let mut max_precip = f32::MIN;
-    for (_, _, &p) in climate_sim.annual_precipitation.iter() {
-        if p < min_precip { min_precip = p; }
-        if p > max_precip { max_precip = p; }
-    }
-    println!("Temperature range: {:.1}°C to {:.1}°C", min_temp, max_temp);
-    println!("Precipitation range: {:.0}mm to {:.0}mm/yr", min_precip, max_precip);
-
-    // Landscape evolution: uplift where plates converge against river incision driven by the
-    // climate's precipitation, with flexural rebound and sediment filling lakes and shelves.
-    if !args.legacy_tectonics {
-        println!("Evolving the landscape (uplift, rivers, sediment, isostasy)...");
-        let lp = erosion::landscape::LandscapeParams::default();
-        let r = erosion::landscape::evolve(&mut heightmap, &climate_sim.annual_precipitation, &stress_map, &lp);
-        println!("  {:.1} Myr: eroded {:.2}M km3 (lakes {:.2}M, shelves {:.2}M, deep sea {:.2}M), uplifted {:.2}M km3; {} land cells hold lakes",
-            lp.duration_yr / 1e6, r.eroded_km3 / 1e6, r.into_lakes_km3 / 1e6, r.onto_shelves_km3 / 1e6,
-            r.to_deep_sea_km3 / 1e6, r.uplifted_km3 / 1e6, r.lake_cells);
-    }
-    if let Some(gel) = ocean_gel {
-        // Sediment on the shelves displaced sea water: the same ocean now stands higher.
-        let rise = plates::crust::relevel_to_volume(&mut heightmap, gel);
-        println!("  Sea level {:+.1} m (same ocean volume)", rise);
-    }
-
-    // Apply erosion
-    println!("Simulating erosion (preset: {})...", erosion_preset);
-    let mut erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
-    erosion_params.tune_for_heightmap(&heightmap);
-
-    // Override simulation_scale if --no-hires flag is set
-    if args.no_hires {
-        erosion_params.simulation_scale = 1;
-        println!("  High-resolution erosion disabled (--no-hires)");
-    }
-
-    let mut erosion_rng = ChaCha8Rng::seed_from_u64(seeds.erosion);
-
-    let (stats, hardness_map, flow_accumulation) = erosion::simulate_erosion(
-        &mut heightmap,
-        &plate_map,
-        &plates,
-        &stress_map,
-        &temperature,
-        &erosion_params,
-        &mut erosion_rng,
-        seeds.erosion,
-    );
-
-    println!("Erosion complete:");
-    println!("  Total eroded: {:.1} units", stats.total_eroded);
-    println!("  Total deposited: {:.1} units", stats.total_deposited);
-    println!("  Max erosion: {:.2} units", stats.max_erosion);
-    println!("  Max deposition: {:.2} units", stats.max_deposition);
-
-    // Update heightmap stats after erosion
-    min_h = f32::MAX;
-    max_h = f32::MIN;
-    for (_, _, &h) in heightmap.iter() {
-        if h < min_h { min_h = h; }
-        if h > max_h { max_h = h; }
-    }
-    println!("Post-erosion heightmap range: {:.1}m to {:.1}m", min_h, max_h);
-
-    // Apply coastline jittering for more organic shorelines
-    println!("Applying coastline jittering...");
-    let coastline_params = coastline::CoastlineParams::default();
-    let coastline_network = coastline::generate_coastline_network(&heightmap, &coastline_params, seeds.coastline);
-    coastline::apply_coastline_to_heightmap(&coastline_network, &mut heightmap, coastline_params.blend_width);
-
-    // Carve fjord channels into coastal terrain (creates narrow inlets like Norwegian fjords)
-    println!("Carving fjord channels...");
-    heightmap::apply_fjord_incisions(&mut heightmap, seeds.heightmap, &map_scale);
-
-    // Apply terrain noise layers based on region type
-    println!("Applying terrain noise layers...");
-    heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
-
-
-    // Apply volcano pass to add volcanic cones based on tectonic stress
-    println!("Placing volcanoes...");
-    let volcanoes = heightmap::apply_volcano_pass(&mut heightmap, &stress_map, seeds.heightmap);
-
-    // Enforce coastal beach strips near sea level (except high-stress cliffs)
-    println!("Applying coastal beach pass...");
-    heightmap::apply_island_coasts(&mut heightmap, seeds.heightmap);
-    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale, erosion::landscape::tile_km(width));
-
-    // The detail passes above leave pits that would end rivers; fill them so the land drains
-    // to the sea again (larger hollows stay as lakes).
-    if !args.legacy_tectonics {
-        let filled = erosion::landscape::fill_pits(&mut heightmap, 4, 10.0);
-        println!("Restored drainage: filled {} pit cells", filled);
-    }
 
     // Generate lava for active volcanoes
     println!("Generating lava flows...");

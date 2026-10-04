@@ -34,6 +34,7 @@ pub mod microclimate;
 pub mod plates;
 pub mod region;
 pub mod scale;
+pub mod terrain;
 pub mod seasons;
 pub mod seeds;
 pub mod tilemap;

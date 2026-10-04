@@ -63,7 +63,7 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [ ] Polar land is stretched across the whole map width (equirectangular); consider how the tile viewer and history treat the polar rows (settlements, labels, the start screen preview).
 - [x] Offshore islands and arcs looked like smooth ovals (`apply_island_coasts`); dark coastal halo in the exporter (its depth ramp was inverted).
 - [ ] Zoomed regions straddling the date line (x wrap) don't match exactly.
-- [ ] `grid_export.rs` still uses the legacy plate path.
+- [x] `grid_export.rs` still used the legacy plate path (now `terrain::generate_terrain`, shared with main and terrain_lab).
 
 ## Viewer and tooling
 - [ ] Zoom view (`Z`) shows a shaded-relief image, not tiles.

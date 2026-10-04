@@ -9,17 +9,12 @@ use std::error::Error;
 use image::{ImageBuffer, Rgb, RgbImage};
 
 use crate::biomes;
-use crate::climate::{self, ClimateConfig, ClimateMode, RainfallLevel};
-use crate::coastline;
-use crate::erosion::{self, ErosionPreset};
-use crate::heightmap;
-use crate::plates::{self, WorldStyle};
-use crate::scale::MapScale;
+use crate::climate::{ClimateConfig, ClimateMode, RainfallLevel};
+use crate::erosion::ErosionPreset;
+use crate::plates::WorldStyle;
 use crate::seeds::WorldSeeds;
+use crate::terrain;
 use crate::tilemap::Tilemap;
-
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 
 /// Configuration for grid export
 pub struct GridExportConfig {
@@ -48,91 +43,38 @@ impl Default for GridExportConfig {
     }
 }
 
-/// Generate a single world with specific settings and return biome colors
+/// Generate a single world with specific settings and return biome colors. Uses the same
+/// terrain pipeline as the game (`terrain::generate_terrain`: simulated tectonics, physical
+/// climate, landscape evolution, erosion, finishing passes), at the grid's small size and
+/// without the 4x erosion pass.
 fn generate_world_image(
     config: &GridExportConfig,
     erosion_preset: ErosionPreset,
     climate_config: &ClimateConfig,
 ) -> RgbImage {
     let seeds = WorldSeeds::builder(config.seed).build();
-    let mut tectonic_rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
+    let terrain_config = terrain::TerrainConfig {
+        plates: config.plates,
+        erosion_preset,
+        climate: climate_config.clone(),
+        no_hires: true,
+        ..terrain::TerrainConfig::new(config.width, config.height, config.world_style)
+    };
+    let t = terrain::generate_terrain(&terrain_config, &seeds, &mut |_| true)
+        .expect("terrain generation runs to the end");
 
-    // Generate tectonic plates
-    let (plate_map, plates) = plates::generate_plates(
-        config.width,
-        config.height,
-        config.plates,
-        config.world_style,
-        &mut tectonic_rng,
-    );
-
-    // Calculate stress
-    let stress_map = plates::calculate_stress(&plate_map, &plates);
-
-    // Generate heightmap
-    let _land_mask = heightmap::generate_land_mask(&plate_map, &plates, seeds.heightmap);
-    let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
-    let map_scale = MapScale::default();
-    heightmap::apply_inland_uplift(&mut heightmap, &stress_map, &map_scale);
-
-    // Generate climate with config
-    let temperature = climate::generate_temperature_with_config(
-        &heightmap,
-        config.width,
-        config.height,
-        climate_config.mode,
-    );
-
-    // Apply erosion if not None
-    if erosion_preset != ErosionPreset::None {
-        let mut erosion_params = erosion::ErosionParams::from_preset(erosion_preset);
-        erosion_params.tune_for_heightmap(&heightmap);
-        let mut erosion_rng = ChaCha8Rng::seed_from_u64(seeds.erosion);
-
-        let _ = erosion::simulate_erosion(
-            &mut heightmap,
-            &plate_map,
-            &plates,
-            &stress_map,
-            &temperature,
-            &erosion_params,
-            &mut erosion_rng,
-            seeds.erosion,
-        );
-    }
-
-    // Apply coastline jittering
-    let coastline_params = coastline::CoastlineParams::default();
-    let coastline_network = coastline::generate_coastline_network(&heightmap, &coastline_params, seeds.coastline);
-    coastline::apply_coastline_to_heightmap(&coastline_network, &mut heightmap, coastline_params.blend_width);
-
-    // Apply terrain noise
-    heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
-
-    // Enforce coastal beach strips near sea level
-    heightmap::apply_coastal_beaches(&mut heightmap, &stress_map, &map_scale, map_scale.km_per_tile);
-
-    // Generate moisture with config
-    let moisture = climate::generate_moisture_with_config(
-        &heightmap,
-        config.width,
-        config.height,
-        climate_config,
-    );
-
-    // Generate biomes
     let biome_config = biomes::WorldBiomeConfig::default();
     let biomes = biomes::generate_extended_biomes(
-        &heightmap,
-        &temperature,
-        &moisture,
-        &stress_map,
+        &t.heightmap,
+        &t.climate.mean_temperature,
+        &t.climate.mean_moisture,
+        &t.stress_map,
         &biome_config,
         seeds.biomes,
     );
 
     // Render to image with hillshading
-    render_biome_image(&heightmap, &biomes)
+    render_biome_image(&t.heightmap, &biomes)
 }
 
 /// Render biomes to an image with hillshading

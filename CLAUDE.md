@@ -30,13 +30,15 @@ cargo run --release -- --width 1024 --height 512
 ```
 
 ### Dev world (fast iteration on history and story)
-`cargo run --release -- --dev` generates a 96x48 world (seed 31, 8 civilizations) with 250 years
-of history in about a second, vs ~9 min at 512x256. It has 3 named rivers, a lake, 3 mountain
-ranges, forests, deserts, islands and two continents. Any of `--width`/`--height`/`--seed`/
+`cargo run --release -- --dev` generates a 96x48 world (seed 76, 8 civilizations) with 250 years
+of history in about a second, vs ~9 min at 512x256. It has 4 named rivers, 2 lakes, 6 mountain
+ranges, forests, a desert, an island and two continents. Any of `--width`/`--height`/`--seed`/
 `--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
-`--journal`, `--gazetteer`, `--director` as usual. Seed 31 came from a search over 96x48 seeds
-scored by gazetteer landmarks (`DEV_WORLD` in `main.rs`); 64x32 worlds get no rivers at all.
-If worldgen changes move the landmarks, re-run that search.
+`--journal`, `--gazetteer`, `--director` as usual. Seed 76 came from a search over 96x48 seeds
+scored by gazetteer landmarks (`scripts/dev_seed_search.sh`, then the top seeds checked with
+`--dev --seed N --headless --gazetteer`, since the history renames and reshapes features;
+`DEV_WORLD` in `main.rs`); 64x32 worlds get no rivers at all. If worldgen changes move the
+landmarks, re-run that search (it was re-run 2026-10-04 after the polar/area changes).
 - Small maps: the river threshold (`water_bodies::river_flow_threshold`) scales with
   (width/512)^2 below 512 wide (unchanged at 512+), and legendary creatures scale with map
   area (`legendary_creatures_for` in `main.rs`; 1500 at 512x256).
@@ -306,6 +308,7 @@ src/
 ├── main.rs           # CLI entry point
 ├── explorer.rs       # LEGACY, frozen: terminal UI (ratatui), --legacy-explorer only
 ├── menu.rs           # LEGACY, frozen: terminal pre-generation menu
+├── terrain.rs        # The terrain pipeline (generate_terrain), shared by main, terrain_lab, grid exports
 ├── world.rs          # WorldData structure
 ├── tilemap.rs        # 2D grid with wrapping
 ├── heightmap.rs      # Terrain generation
@@ -333,6 +336,11 @@ src/
 ---
 
 ## World Generation Pipeline
+
+`terrain::generate_terrain(&TerrainConfig, &seeds, on_stage)` runs steps 1-6 below plus the
+finishing passes and drainage repair; `main`, `terrain_lab` and the comparison grids
+(`grid_export.rs`) all call it, so they can't drift apart. `on_stage` sees the heightmap (and
+crust/climate) after each named stage and can stop early (the lab's metrics hook in there).
 
 1. **Tectonic Plates** - BFS flood-fill creates 6-15 initial plates
 2. **Tectonic Simulation** - Plates rotate about Euler poles on a sphere for ~200 Myr; the
@@ -384,8 +392,11 @@ src/
   water-body detection seed from it instead of from the map's top/bottom rows. Plate areas,
   continental-crust area and the land fraction are measured on the sphere (rows weighted by
   cos latitude); counting map cells had made polar plates look big, so they were picked as
-  continents and the poles came out continental. Polar land now averages roughly Earth's (seeds
-  1-2024: ~45% of the polar 10% of rows, some worlds with a continent on a pole).
+  continents and the poles came out continental. Collision and arc deposits are scaled by
+  the source/receiving cell area too (`Grid::deposit_scale`): every overlapping polar cell used
+  to add a full cell's crust, piling crust up to 9-11 km elevations at the poles (hidden while
+  the poles were forced underwater). Some worlds now get a polar continent (seed 7), most
+  little polar land.
 - `stress_map` is derived from simulated convergence/divergence + standing orogens, scaled to
   the range downstream passes expect (0.15 volcanic, 0.3 mountain building).
 - Preview tool: `cargo run --release --bin tectonic_preview -- <seed> <w> <h> <style> <myr> <steps> <out_dir>`
