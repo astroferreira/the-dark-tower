@@ -53,7 +53,9 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [x] Coupled erosion and uplift (`erosion/landscape.rs`: stream power with the climate's precipitation, uplift from stress, flexural isostasy, sediment to lakes and shelves; `fill_pits` drainage repair after the finishing passes; 2 km erosion clamp removed).
 - [ ] The legacy hi-res erosion (`simulate_erosion_hires`: particle + river carving + flat depression fills at 4x) still runs after the landscape step and dominates the run time (~45 s at 512x256, ~6 min at 1024x512); replace it with landscape evolution at 2-4x for detail, keeping lakes instead of filling every depression.
 - [ ] Endorheic basins: the landscape step keeps arid hollows as lakes, but the legacy erosion fills them all; decide lakes vs. salt flats from the water balance (evaporation vs. inflow).
-- [ ] Sea level from a fixed ocean volume; priority-flood lakes; river discharge from precipitation.
+- [x] Sea level from the ocean's volume (priority flood: inland basins below sea level stay dry; volume fixed at birth to meet the style's land fraction, conserved through the landscape evolution).
+- [ ] River discharge and lake water balance from precipitation: blocked on the climate's precipitation (draining land ~100 mm/yr, Budyko runoff averages 17 mm/yr vs Earth ~300). Do it with the climate/biome card: runoff = P - AET with Fu's curve (w 2.6), PET ~ 300 + 50 T mm/yr.
+- [ ] Continental crust elevation varies a lot between seeds (mean -700 to +500 m over 47-65% of the map), so how much continental shelf is drowned depends on the seed.
 - [ ] Whittaker/Koppen biomes from simulated climate; soils from erosion history. Temperate and tropical forests are only 2-5% of land because the climate sim is dry.
 - [ ] Allow polar continents (currently the map's top/bottom rows are forced to ocean for flow routing).
 - [ ] Offshore islands and arcs still look like smooth ovals; dark coastal halo from the exporter's shallow-water shading.

@@ -698,7 +698,7 @@ fn main() {
     // Create map scale for coordinate scaling (used throughout generation)
     let map_scale = scale::MapScale::default();
 
-    let (plate_map, plates, stress_map, mut heightmap) = if args.legacy_tectonics {
+    let (plate_map, plates, stress_map, mut heightmap, ocean_gel) = if args.legacy_tectonics {
         // Legacy path: static Voronoi-like plates, boundary stress and noise-driven terrain.
         let mut tectonic_rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
         println!("Generating tectonic plates (legacy)...");
@@ -717,7 +717,7 @@ fn main() {
         println!("Land mask: {} cells are land ({:.1}%)", land_count, 100.0 * land_count as f64 / (width * height) as f64);
         let mut heightmap = heightmap::generate_heightmap(&plate_map, &plates, &stress_map, seeds.heightmap);
         heightmap::apply_inland_uplift(&mut heightmap, &stress_map, &map_scale);
-        (plate_map, plates, stress_map, heightmap)
+        (plate_map, plates, stress_map, heightmap, None)
     } else {
         // Tectonic simulation: plates drift on a sphere, collide, subduct and rift; terrain
         // follows from crustal thickness (isostasy) and seafloor age.
@@ -728,7 +728,8 @@ fn main() {
         let oceanic_count = t.plates.len() - continental_count;
         println!("Tectonic history complete: {} plates survive ({} continental, {} oceanic)", t.plates.len(), continental_count, oceanic_count);
         // (Interior seaward slope is built into the tectonic terrain itself, before sea level.)
-        (t.plate_map, t.plates, t.stress_map, t.heightmap)
+        println!("Ocean: {:.0} m of water as a global layer (Earth ~2640 m)", t.ocean_gel_m);
+        (t.plate_map, t.plates, t.stress_map, t.heightmap, Some(t.ocean_gel_m))
     };
     let mut min_h = f32::MAX;
     let mut max_h = f32::MIN;
@@ -772,6 +773,11 @@ fn main() {
         println!("  {:.1} Myr: eroded {:.2}M km3 (lakes {:.2}M, shelves {:.2}M, deep sea {:.2}M), uplifted {:.2}M km3; {} land cells hold lakes",
             lp.duration_yr / 1e6, r.eroded_km3 / 1e6, r.into_lakes_km3 / 1e6, r.onto_shelves_km3 / 1e6,
             r.to_deep_sea_km3 / 1e6, r.uplifted_km3 / 1e6, r.lake_cells);
+    }
+    if let Some(gel) = ocean_gel {
+        // Sediment on the shelves displaced sea water: the same ocean now stands higher.
+        let rise = plates::crust::relevel_to_volume(&mut heightmap, gel);
+        println!("  Sea level {:+.1} m (same ocean volume)", rise);
     }
 
     // Apply erosion

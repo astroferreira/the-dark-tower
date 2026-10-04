@@ -350,8 +350,17 @@ src/
 - Slab pull speeds plates up, continental collision locks them. Mantle hotspots are fixed in
   the global frame and leave volcanic chains. Mountains relax by erosion (tau = 140 Myr).
 - Elevation: Airy isostasy (continents), Parsons-Sclater sqrt(age) law (ocean), trenches from
-  recent subduction, then procedural detail. Sea level is solved for the style's land
-  fraction but cannot drop below -300 m (continental area is seeded to make that sufficient).
+  recent subduction, then procedural detail.
+- Sea level is the planet's water poured into the basins (`crust.rs`): a priority flood from the
+  deepest cell gives each cell the water level at which it joins the ocean, so closed basins
+  inland stay dry even below sea level. The volume is set at birth so the style's land fraction
+  is met (`sea_level_for_land_fraction`), stored as `TectonicTerrain::ocean_gel_m` (global
+  equivalent layer; earthlike ~2.4-2.8 km, Earth 2.64), and kept after the landscape evolution
+  (`relevel_to_volume`: shelf sediment displaces water, the sea rises ~40 m at 512x256, ~165 m
+  on the dev world). A fixed volume per style was tried: land fraction then swung 4-42% between
+  earthlike seeds, because the simulated continental crust (47-65% of the map) stands at a mean
+  -700 to +500 m depending on the seed. The legacy erosion and finishing passes don't conserve
+  mass, so the sea is not re-levelled after them.
 - Initial continents are the zero contour of a noise-perturbed spherical signed-distance field;
   each continent and its shelf belongs to one plate, plate borders are domain-warped, and
   detached plate fragments are absorbed (otherwise they plough trails through continents).
@@ -417,7 +426,7 @@ the zoomed region around a point.
 
 ### Landscape evolution (`erosion/landscape.rs`)
 - `landscape::evolve` runs in `main` after the climate and before the legacy erosion (tectonic
-  terrain only): 40 implicit steps over 10 Myr on the world grid. Each step: flexural response
+  terrain only; followed by `relevel_to_volume`): 40 implicit steps over 10 Myr on the world grid. Each step: flexural response
   to the last step's load (rebound 0.82 of rock removed, subsidence 0.6 of sediment, Gaussian
   over 150 km), hillslope creep (sea = base level), priority-flood routing from the sea (enclosed
   seas of 50+ cells at 512x256 count; hollows fill to their spill level and drain through it),

@@ -136,6 +136,19 @@ fn main() {
     let t = plates::generate_tectonic_terrain(w, h, None, style, &seeds, &params);
     let mut hm = t.heightmap;
     report("tectonic", &hm, &out, None);
+    if std::env::var("LAB_GEL").is_ok() {
+        let mut v: Vec<f32> = hm.iter().map(|(_, _, &e)| e).collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let target = style.target_land_fraction();
+        let q = v[((1.0 - target) * (v.len() - 1) as f64) as usize];
+        let ocean = plates::crust::ocean_volume_gel(&hm, 0.0);
+        let cont = t.crust.thickness_km.iter().filter(|(_, _, &k)| k >= 20.0).count() as f32 / (w * h) as f32;
+        let cont_e: Vec<f32> = hm.iter().filter(|(x, y, _)| *t.crust.thickness_km.get(*x, *y) >= 30.0).map(|(_, _, &e)| e).collect();
+        let mean_cont = cont_e.iter().sum::<f32>() / cont_e.len().max(1) as f32;
+        println!("GEL now {:.0} m; for {:.0}% land: sea level {:+.0} m, GEL {:.0} m; continental crust {:.1}% of map, mean elevation of crust >=30 km {:.0} m",
+            ocean, target * 100.0, q, plates::crust::ocean_volume_gel(&hm, q), cont * 100.0, mean_cont);
+    }
+    if std::env::var("LAB_ONLY_TECTONIC").is_ok() { return; }
 
     let climate_config = climate::ClimateConfig::default();
     let sim = climate::run_climate_simulation(&hm, &climate_config, seeds.climate);
@@ -152,6 +165,8 @@ fn main() {
         if let Some(v) = env("LEM_FLEX") { lp.flexure_km = v; }
         let r = erosion::landscape::evolve(&mut hm, &sim.annual_precipitation, &t.stress_map, &lp);
         println!("landscape: {:?} in {:.2}s", r, t1.elapsed().as_secs_f32());
+        let rise = plates::crust::relevel_to_volume(&mut hm, t.ocean_gel_m);
+        println!("sea level {rise:+.1} m after landscape (ocean {:.0} m GEL)", t.ocean_gel_m);
         report("landscape", &hm, &out, Some(&sim.annual_precipitation));
     }
     if std::env::var("LAB_ONLY_LEM").is_ok() { return; }
@@ -175,6 +190,7 @@ fn main() {
     if verbose { report("volcanoes", &hm, &out, None); }
     heightmap::apply_coastal_beaches(&mut hm, &t.stress_map, &map_scale, erosion::landscape::tile_km(w));
     if verbose { report("beaches", &hm, &out, None); }
+    println!("ocean volume after erosion and finishing passes: {:.0} m GEL (born with {:.0})", plates::crust::ocean_volume_gel(&hm, 0.0), t.ocean_gel_m);
     let filled = erosion::landscape::fill_pits(&mut hm, 4, 10.0);
     println!("filled {filled} hollow cells");
     report("final", &hm, &out, None);
