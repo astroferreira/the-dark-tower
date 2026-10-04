@@ -1401,6 +1401,11 @@ fn main() {
             }).collect();
             println!("  {:>14} x{:<4} {}", kind, fs.len(), sample.join("; "));
         }
+        let landmarks = lore::find_landmarks(&world_data, &gaz);
+        println!("Landmarks:");
+        for l in &landmarks {
+            println!("  {:?} at ({}, {}): {}", l.kind, l.x, l.y, l.line());
+        }
     }
 
     if let Some(path) = &args.save_world {

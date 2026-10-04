@@ -29,7 +29,7 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [ ] Connect to the fortress-mode code on the `mystery_box` branch (`src/game/`).
 
 ## Landmarks and set pieces
-- [ ] Detect extremes: highest peak, longest river, biggest waterfall, deepest gorge, crater lakes, giant trees.
+- [x] Detect extremes: highest peak, longest river, biggest waterfall, deepest gorge, crater lakes, giant trees (`lore/landmarks.rs`; labels, hover, journal).
 - [ ] Name them, tie legends/figures/deities to them, hand-tune their embark-scale look.
 - [ ] "Director" pass: every region has a focal point, contrasts next to each other, rare features spaced out.
 

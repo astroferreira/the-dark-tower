@@ -31,7 +31,7 @@ cargo run --release -- --width 1024 --height 512
 
 ### Dev world (fast iteration on history and story)
 `cargo run --release -- --dev` generates a 96x48 world (seed 76, 8 civilizations) with 250 years
-of history in about a second, vs ~9 min at 512x256. It has 4 named rivers, 2 lakes, 6 mountain
+of history in about a second, vs ~9 min at 512x256. It has 4 named rivers, a lake, 6 mountain
 ranges, forests, a desert, an island and two continents. Any of `--width`/`--height`/`--seed`/
 `--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
 `--journal`, `--gazetteer`, `--director` as usual. Seed 76 came from a search over 96x48 seeds
@@ -119,6 +119,22 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   dens with bones, and bones on bone fields (`LocalMap::features`).
 - The history summary prints an ecology report (forest %, farmed tiles, species vs. start,
   scars by kind, chronicle counts).
+
+### Landmarks (`lore/landmarks.rs`)
+- `find_landmarks(world, gazetteer)` picks the world's extremes: the highest peak ("the roof of
+  the world") and each continent's summit, the longest river (measured along its main stem in
+  km at the real tile size), the largest and the deepest lake, the greatest waterfall on a
+  named river, the deepest gorge (river tile with high ground on both banks), up to 3 crater
+  lakes and 3 groves of giant trees (CraterLake / AncientGrove patches), the largest desert and
+  forest. Each has a name, an epithet and a measurement.
+- Shown: `--gazetteer` prints them; tile-viewer labels of landmark features rank above their
+  kind and show from 2 px/tile (falls, gorges, crater lakes and groves get their own labels);
+  hover adds "the longest river in the world (4,700 km)" on every tile of the feature; the
+  journal's opening names the longest river, largest lake, greatest falls and deepest gorge.
+- Water bodies: the body holding every river tile has the reserved id `WaterBodyId::RIVER`
+  (65535). It used to take the next free id, so `is_lake()` held on river tiles: the viewer
+  drew river confluences as lake squares, the gazetteer named all rivers one huge "lake", and
+  history/resources treated rivers as lakes.
 
 ### History journal (`lore/journal.rs`)
 - `--journal PATH` (or `J` in the tile viewer, which writes `journal_<seed>.html` and opens it)

@@ -11,7 +11,7 @@ use std::error::Error;
 use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 
 use crate::history::world_state::WorldHistory;
-use crate::lore::{build_gazetteer, FeatureKind, Gazetteer};
+use crate::lore::{build_gazetteer, FeatureKind, Gazetteer, Landmark};
 use crate::region::zoom::{generate_zoom, ZoomParams, ZoomRegion};
 use super::text::{place_labels, Label};
 use crate::world::WorldData;
@@ -81,11 +81,11 @@ fn draw_region_labels(l: &crate::lore::RegionLore, cam: &ZoomCamera, buf: &mut [
 }
 
 /// Everything named on the world map: geographic features and settlements, highest rank first.
-fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazetteer) -> Vec<Label> {
+fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazetteer, landmarks: &[Landmark]) -> Vec<Label> {
     use crate::history::civilizations::settlement::SettlementType;
     let mut labels = Vec::new();
     for f in &gaz.features {
-        let (min_tile_px, color) = match f.kind {
+        let (min_tile_px, color): (f32, u32) = match f.kind {
             FeatureKind::Ocean | FeatureKind::Continent => (0.0, if f.kind.is_water() { 0x0026_4A60 } else { 0x003A_2A1E }),
             FeatureKind::Sea | FeatureKind::MountainRange | FeatureKind::Desert | FeatureKind::IceField => (2.0, if f.kind.is_water() { 0x0026_4A60 } else { 0x003A_2A1E }),
             FeatureKind::Forest | FeatureKind::Jungle | FeatureKind::Plains | FeatureKind::Tundra | FeatureKind::Gulf => (4.0, if f.kind.is_water() { 0x0026_4A60 } else { 0x004A_3828 }),
@@ -94,9 +94,15 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
             FeatureKind::Peak => (10.0, 0x0030_1E14),
         };
         let text = if f.kind == FeatureKind::Peak { format!("{} {:.0}m", f.name, f.height_m) } else { f.name.clone() };
-        // Bigger features of a kind rank above smaller ones.
-        let rank = f.kind.rank() * 10 + ((f.size as f32).log2() as u32).min(9);
+        // Bigger features of a kind rank above smaller ones; landmarks (the world's extremes)
+        // rank above their kind and show from further out.
+        let landmark = landmarks.iter().any(|l| l.feature == Some(f.id));
+        let rank = f.kind.rank() * 10 + ((f.size as f32).log2() as u32).min(9) + if landmark { 400 } else { 0 };
+        let min_tile_px = if landmark { min_tile_px.min(2.0) } else { min_tile_px };
         labels.push(Label { x: f.anchor.0 as f32 + 0.5, y: f.anchor.1 as f32 + 0.5, text, rank, min_tile_px, color });
+    }
+    for l in landmarks.iter().filter(|l| l.feature.is_none()) {
+        labels.push(Label { x: l.x as f32 + 0.5, y: l.y as f32 + 0.5, text: l.name.clone(), rank: 600, min_tile_px: 6.0, color: 0x0030_1E14 });
     }
     if let Some(h) = history {
         for s in h.settlements.values() {
@@ -132,7 +138,7 @@ fn draw_labels(labels: &[Label], cam: &Camera, world_w: usize, buf: &mut [u32], 
 }
 
 /// What is known about a world tile: place names, owner, settlement or ruin.
-fn describe_tile(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazetteer, tw: &TileWorld, x: usize, y: usize) -> String {
+fn describe_tile(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazetteer, landmarks: &[Landmark], tw: &TileWorld, x: usize, y: usize) -> String {
     let mut parts = Vec::new();
     if let (Some(h), Some(sid)) = (history, tw.settlement[y * tw.width + x]) {
         if let Some(s) = h.settlements.get(&sid) {
@@ -145,6 +151,7 @@ fn describe_tile(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazett
     }
     let place = gaz.describe(x, y);
     if !place.is_empty() { parts.push(place); }
+    parts.extend(crate::lore::landmarks::describe_at(landmarks, gaz, x, y));
     let res = world.resources();
     for d in res.deposits_at(x, y) {
         let q = ["poor", "good", "rich"][(d.richness - 1) as usize];
@@ -222,7 +229,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
     let mut tw = TileWorld::build(world, &atlas);
     if let Some(h) = history { tw.apply_history(world, h, &atlas); }
     let gaz = build_gazetteer(world, history, world.seed());
-    let labels = build_labels(world, history, &gaz);
+    let landmarks = crate::lore::find_landmarks(world, &gaz);
+    let labels = build_labels(world, history, &gaz, &landmarks);
     let mut show_labels = true;
     // Seasons: T steps through them, C toggles an automatic year cycle.
     let mut season = crate::seasons::Season::Summer;
@@ -577,7 +585,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     if auto_season.is_some() { auto_season = Some(std::time::Instant::now()); }
                     dirty = true;
                 }
-                let place = describe_tile(world, history, &gaz, &tw, tile.0, tile.1);
+                let place = describe_tile(world, history, &gaz, &landmarks, &tw, tile.0, tile.1);
                 let shown = if overlay == Overlay::None { String::new() } else { format!("{}: {} | ", overlay.name(), overlays::describe(world, overlay, tile.0, tile.1)) };
                 let title = format!(
                     "{}({},{}) {} | {:.0} m | {} {}°C | O overlays, T season, C auto{}, L labels, R resources | {}",
@@ -642,7 +650,8 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
     tw.overlay = overlays::colors(world, overlay);
     tw.overlay_smooth = overlay.smooth();
     let gaz = build_gazetteer(world, history, world.seed());
-    let labels = build_labels(world, history, &gaz);
+    let landmarks = crate::lore::find_landmarks(world, &gaz);
+    let labels = build_labels(world, history, &gaz, &landmarks);
     let (cx, cy) = center.unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
     let (w, h) = (1280usize, 800usize);
     let fit = (w as f32 / tw.width as f32).min(h as f32 / tw.height as f32);

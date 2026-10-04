@@ -42,6 +42,10 @@ pub struct WaterBodyId(pub u16);
 impl WaterBodyId {
     pub const NONE: WaterBodyId = WaterBodyId(0);
     pub const OCEAN: WaterBodyId = WaterBodyId(1);
+    /// The one body holding every river tile. Reserved so it is never mistaken for a lake: it
+    /// used to take the next free id, so `is_lake` held on every river tile (the viewer drew
+    /// river confluences as lake squares, the gazetteer named all rivers one "lake").
+    pub const RIVER: WaterBodyId = WaterBodyId(u16::MAX);
 
     pub fn is_none(&self) -> bool {
         self.0 == 0
@@ -52,7 +56,11 @@ impl WaterBodyId {
     }
 
     pub fn is_lake(&self) -> bool {
-        self.0 > 1
+        self.0 > 1 && *self != Self::RIVER
+    }
+
+    pub fn is_river(&self) -> bool {
+        *self == Self::RIVER
     }
 }
 
@@ -370,7 +378,7 @@ pub fn detect_water_bodies_hydrological(
     }
 
     // Step C: River detection - DRY LAND tiles with high flow accumulation
-    let river_id = WaterBodyId(next_id);
+    let river_id = WaterBodyId::RIVER;
     let mut river = WaterBody::new(river_id, WaterBodyType::River);
 
     for y in 0..height {
@@ -545,7 +553,7 @@ pub fn detect_water_bodies_full(
 
     // Step 4: River detection - DRY LAND tiles with high flow accumulation
     // Rivers are NOT submerged - they flow on the surface
-    let river_id = WaterBodyId(next_id);
+    let river_id = WaterBodyId::RIVER;
     let mut river = WaterBody::new(river_id, WaterBodyType::River);
 
     for y in 0..height {
