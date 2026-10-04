@@ -743,10 +743,12 @@ fn main() {
         fantasy_intensity: args.fantasy.clamp(0.0, 1.0),
         ..biomes::WorldBiomeConfig::default()
     };
+    let warmest = climate_sim.warmest_season();
     let mut extended_biomes = biomes::generate_extended_biomes(
         &heightmap,
         &temperature,
         &moisture,
+        Some(&warmest),
         &stress_map,
         &biome_config,
         seeds.biomes,

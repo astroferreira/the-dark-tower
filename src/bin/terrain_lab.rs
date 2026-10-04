@@ -236,8 +236,21 @@ fn climate_report(hm: &Tilemap<f32>, sim: &climate::ClimateSimulation, stress: &
         let q = |f: f32| phys[((phys.len() - 1) as f32 * f) as usize];
         println!("runoff: heuristic mean {:.3}; Budyko mean {:.0} mm/yr (p25 {:.0}, p50 {:.0}, p75 {:.0}, p90 {:.0}, p99 {:.0})", a / n as f64, b / n as f64, q(0.25), q(0.5), q(0.75), q(0.9), q(0.99));
     }
+    {
+        let warm = sim.warmest_season();
+        print!("warmest season on land by |lat| band (C):");
+        for b in 0..9 {
+            let (mut sum, mut cnt) = (0.0f32, 0);
+            for (x, y, &e) in hm.iter() {
+                let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+                if e > 0.0 && (lat / 10.0) as usize == b { sum += *warm.get(x, y); cnt += 1; }
+            }
+            print!(" {}0s:{:.1}", b, if cnt > 0 { sum / cnt as f32 } else { f32::NAN });
+        }
+        println!();
+    }
     let cfg = planet_generator::biomes::WorldBiomeConfig { fantasy_intensity: 0.0, ..Default::default() };
-    let b = planet_generator::biomes::generate_extended_biomes(&hm, &sim.mean_temperature, &sim.mean_moisture, stress, &cfg, seeds.biomes);
+    let b = planet_generator::biomes::generate_extended_biomes(&hm, &sim.mean_temperature, &sim.mean_moisture, Some(&sim.warmest_season()), stress, &cfg, seeds.biomes);
     planet_generator::biomes::print_biome_stats(&b, &hm, &sim.mean_temperature, &sim.mean_moisture);
 }
 

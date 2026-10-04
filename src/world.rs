@@ -492,6 +492,7 @@ pub fn generate_world_with_style(width: usize, height: usize, seed: u64, world_s
         &heightmap,
         &temperature,
         &moisture,
+        None,
         &stress_map,
         &biome_config,
         seeds.biomes,

@@ -443,8 +443,12 @@ the zoomed region around a point.
   index AI as AI / (1 + AI)): deserts below 0.17 (AI 0.2), steppe / savanna to 0.33-0.42,
   forests above ~0.4 (AI ~0.67), rainforest above 0.67 (AI 2). PET rises with temperature,
   so the same rain makes forest in the cold and steppe in the heat (Koppen's B rule).
-  Seed 42: forests 22%, desert 21%, grass/savanna 26%, tundra 27% of land tiles (seeds 7 / 99:
-  forests 37% / 28%); tiles over-weight high latitudes, so tundra is smaller by area.
+  The polar band follows Koppen's summer rule when the warmest season is known
+  (`Biome::classify_seasonal`, `generate_extended_biomes(.., Some(&warmest), ..)`): ice cap
+  below -1.5 C, tundra below 8.5 C (a 3-month mean ~ a 10 C warmest month), taiga as far as
+  summers stay warm however cold the winters. Seed 42: forests ~40%, desert 18%, grass/savanna
+  28%, tundra 10% of land tiles; seed 7 (land on both poles) 24% ice. Embarks and the legacy
+  world path still classify by annual means only.
 - `--fantasy 0..1` (default 0.2, old behaviour 0.5) scales fantasy/special biomes, including
   the rare-biome replacement pass. `--biome-stats` prints the land-biome mix, land
   temperature/moisture percentiles and a zonal temperature/land profile.
@@ -525,7 +529,12 @@ the zoomed region around a point.
 
 ### Climate (`climate/`)
 - Temperature: Budyko-Sellers energy balance per season (`ebm.rs`), heat transport D = 3.0
-  W/(m2 C) (zonal land means within ~2-4 C of Earth's), continentality, lapse rate.
+  W/(m2 C) (zonal land means within ~2-4 C of Earth's), continentality, lapse rate. The
+  annual mean is solved first; where its surface temperature is below -20 C
+  (`PERENNIAL_ICE_C`) the seasons keep ice albedo, so ice sheets survive the polar summer
+  (solving each season from scratch had melted them: +10 C summers at 80-90 deg). Seed 42
+  warmest season on land: ~10 C at 60-70 deg, ~6 C at 70-80, -7 C at 80-90.
+  `ClimateSimulation::warmest_season()` is the max of the four seasonal means.
 - Precipitation (`moisture.rs`): vapour evaporates from the sea (toward 80% humidity), rides
   the steering-level wind (3.5x the surface wind, ~a cell per step: one step = a cell
   crossing, so the scheme is resolution-independent), and rains out at (step / 9-day

@@ -59,7 +59,8 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [ ] Continental crust elevation varies a lot between seeds (mean -700 to +500 m over 47-65% of the map), so how much continental shelf is drowned depends on the seed.
 - [x] Whittaker/Koppen biomes from simulated climate: precipitation model rewritten (land ~850 mm/yr), heat transport fixed, biome thresholds by aridity class (forests 22-37% of land).
 - [ ] Soils from erosion history (sediment depth from the landscape step, weathering by climate).
-- [ ] Biomes use annual means only: tree line by warmest-month temperature, Mediterranean (winter-wet) and monsoon climates from the seasonal fields.
+- [x] Tree line by the warmest season (Koppen's summer rule); perennial ice keeps polar summers cold.
+- [ ] Mediterranean (winter-wet) shrubland and monsoon forest from the seasonal fields: needs new biome kinds (enum at the end, atlas tiles, colours).
 - [x] Allow polar continents (one sea definition, `sea_mask`, instead of ocean seeded from the map edges; plate and land areas on the sphere).
 - [ ] Polar land is stretched across the whole map width (equirectangular); consider how the tile viewer and history treat the polar rows (settlements, labels, the start screen preview).
 - [x] Offshore islands and arcs looked like smooth ovals (`apply_island_coasts`); dark coastal halo in the exporter (its depth ramp was inverted).

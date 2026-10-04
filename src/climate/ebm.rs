@@ -15,6 +15,10 @@ pub const OLR_A: f32 = 205.0;               // W/m^2 (Budyko-Sellers linear OLR 
 pub const OLR_B: f32 = 2.2;                 // W/(m^2 * C) (Budyko-Sellers OLR slope)
 pub const ATM_DIFFUSION_D: f32 = 0.68;      // W/(m^2 * C) (atmospheric heat diffusion coefficient)
 pub const ELEVATION_LAPSE_RATE: f32 = 6.5;  // C per 1000m
+/// Annual mean surface temperature (C, from the annual-mean solve) below which ice persists all
+/// year (ice sheets, perennial sea ice): seasons keep its albedo. -8 C iced over the 60-70 deg
+/// band (where Siberia's warm summers grow taiga); -20 C gives Earth-like polar summers.
+pub const PERENNIAL_ICE_C: f32 = -20.0;
 
 /// Calculate latitude in radians for a given grid row y
 /// Returns latitude in [-PI/2, +PI/2] (North pole at y=0, South pole at y=H-1)
@@ -133,6 +137,7 @@ pub fn solve_energy_balance(
     solar_const: f32,
     is_annual_mean: bool,
     seed: u64,
+    perennial: Option<&Tilemap<f32>>,
 ) -> (Tilemap<f32>, Tilemap<f32>) {
     let width = heightmap.width;
     let height = heightmap.height;
@@ -225,7 +230,16 @@ pub fn solve_energy_balance(
                 let elev = *heightmap.get(x, y);
                 let curr_t = *t_sealevel.get(x, y);
                 let eff_lat = *effective_lat_map.get(x, y);
-                let albedo = surface_albedo(elev, curr_t, eff_lat);
+                let mut albedo = surface_albedo(elev, curr_t, eff_lat);
+                // Ice sheets persist through the summer: where the annual mean at the surface is
+                // ice-sheet cold, a season keeps ice albedo whatever its own temperature (solving
+                // each season from scratch let polar summers melt their ice and warm by ~25 C).
+                if let Some(annual) = perennial {
+                    let annual_surface = *annual.get(x, y) - (elev.max(0.0) / 1000.0) * ELEVATION_LAPSE_RATE;
+                    if annual_surface < PERENNIAL_ICE_C {
+                        albedo = albedo.max(if elev <= 0.0 { 0.65 } else { 0.75 });
+                    }
+                }
                 let s = *insolation_map.get(x, y);
                 let asr = s * (1.0 - albedo);
                 asr_map.set(x, y, asr);

@@ -1236,6 +1236,7 @@ pub fn classify_extended(
     elevation: f32,
     temperature: f32,
     moisture: f32,
+    warmest: Option<f32>,
     stress: f32,
     x: usize,
     y: usize,
@@ -1245,7 +1246,7 @@ pub fn classify_extended(
     noise: &Perlin,
 ) -> ExtendedBiome {
     // First, get the base biome
-    let base = Biome::classify(elevation, temperature, moisture);
+    let base = Biome::classify_seasonal(elevation, temperature, moisture, warmest);
     let base_extended = ExtendedBiome::from_base(base);
 
     // Sample noise for this position (used for both highland lakes and fantasy biomes)
@@ -1854,10 +1855,13 @@ fn maybe_convert_to_fantasy(
 
 /// Generate extended biome map
 /// Generate extended biomes with parallelization for improved performance.
+/// `warmest` is the warmest season's mean temperature (from the climate simulation's seasons),
+/// which sets the polar tree line; without it the annual mean does.
 pub fn generate_extended_biomes(
     heightmap: &Tilemap<f32>,
     temperature: &Tilemap<f32>,
     moisture: &Tilemap<f32>,
+    warmest: Option<&Tilemap<f32>>,
     stress_map: &Tilemap<f32>,
     config: &WorldBiomeConfig,
     seed: u64,
@@ -1879,7 +1883,7 @@ pub fn generate_extended_biomes(
                 let stress = *stress_map.get(x, y);
 
                 classify_extended(
-                    elev, temp, moist, stress,
+                    elev, temp, moist, warmest.map(|t| *t.get(x, y)), stress,
                     x, y, width, height,
                     config, &noise,
                 )

@@ -70,6 +70,7 @@ fn generate_world_image(
         &t.heightmap,
         &t.climate.mean_temperature,
         &t.climate.mean_moisture,
+        Some(&t.climate.warmest_season()),
         &t.stress_map,
         &biome_config,
         seeds.biomes,
