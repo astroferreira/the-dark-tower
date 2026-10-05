@@ -9,6 +9,7 @@
 //! from the world and the site. Built and judged headless with `--sim-snapshot`.
 
 pub mod nav;
+pub mod arc;
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -171,7 +172,7 @@ pub struct ColonyMark {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MarkKind { Grave, Stone }
+pub enum MarkKind { Grave, Stone, Scorch }
 
 /// How far a grove stone keeps the axe away.
 pub const GROVE_RADIUS: i32 = 7;
@@ -185,6 +186,17 @@ pub struct Colony {
     pub stones: Vec<(StoneKind, Pos)>,
     /// What happened here, left on the ground.
     pub marks: Vec<ColonyMark>,
+    /// Every patron's act, as a replayable line "tick verb args" (`apply_intervention`): the
+    /// same world code and the same interventions tell the same story on any machine.
+    pub interventions: Vec<String>,
+    /// Script lines up to this tick have been applied (`run_days_scripted`).
+    script_at: u64,
+    /// The first arc (`arc.rs`), planned from the history at founding.
+    pub arc: Option<arc::Arc>,
+    /// A banner for a great moment: (text, tick shown).
+    pub banner: Option<(String, u64)>,
+    /// Who keeps watch tonight (the arc).
+    pub(crate) watcher: Option<usize>,
     /// Everyone who laid a log in the hut, in order.
     builders: Vec<usize>,
     pub clock: Clock,
@@ -260,7 +272,7 @@ impl Colony {
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
             log: Vec::new(), decisions: Vec::new(), rng, milestones: Default::default(), basket: Default::default(),
             patron: Patron { favour: FAVOUR_MAX, marks: Vec::new(), favourite: None, dreams: Vec::new(), last_refill_day: 1 },
-            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(),
+            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, watcher: None,
         };
         c.hut = c.find_hut_site().map(|at| Hut { at, logs_used: 0, done: false });
         let site = c.hut.as_ref().map(|h| format!(" and a hut site at {},{}", h.at.0, h.at.1)).unwrap_or_default();
@@ -282,6 +294,7 @@ impl Colony {
         self.spend()?;
         self.patron.marks.retain(|m| m.at != at);
         self.patron.marks.push(PlaceMark { at, radius, forbidden });
+        self.interventions.push(format!("{} {} {} {} {}", self.clock.tick, if forbidden { "forbid" } else { "bless" }, at.0, at.1, radius));
         let line = format!("The patron {} the ground about {},{}. (your doing)", if forbidden { "forbade" } else { "blessed" }, at.0, at.1);
         self.note(line.clone());
         Ok(line)
@@ -292,6 +305,7 @@ impl Colony {
         if !self.settlers.get(i).map_or(false, |s| s.alive) { return Err("no one there".into()); }
         self.spend()?;
         self.patron.favourite = Some(i);
+        self.interventions.push(format!("{} favour {}", self.clock.tick, i));
         let name = self.settlers[i].name.clone();
         let line = format!("The patron favours {}; the others notice. (your doing)", name);
         self.note(line.clone());
@@ -305,6 +319,7 @@ impl Colony {
         let until = self.clock.tick + TICKS_PER_DAY;
         self.patron.dreams.retain(|d| d.0 != i);
         self.patron.dreams.push((i, dream, until));
+        self.interventions.push(format!("{} dream {} {:?}", self.clock.tick, i, dream));
         let name = self.settlers[i].name.clone();
         let line = format!("{} dreamt of {}. (your doing)", name, dream.word());
         self.note(line.clone());
@@ -321,6 +336,7 @@ impl Colony {
         if !nav::passable(&self.map, at) { return Err("no footing for a stone there".into()); }
         self.stones.retain(|s| !(s.0 == kind && kind == StoneKind::Hall));
         self.stones.push((kind, at));
+        self.interventions.push(format!("{} stone {:?} {} {}", self.clock.tick, kind, at.0, at.1));
         if kind == StoneKind::Shrine {
             let k = at.1 as usize * self.map.width + at.0 as usize;
             self.map.features[k] = crate::local::wildlife::Feature::Stone;
@@ -362,6 +378,7 @@ impl Colony {
     /// Name the colony.
     pub fn name_colony(&mut self, name: &str) {
         self.name = Some(name.to_string());
+        self.interventions.push(format!("{} name {}", self.clock.tick, name));
         self.note(format!("The settlement is called {} by its patron. (your doing)", name));
     }
 
@@ -429,6 +446,7 @@ impl Colony {
             self.patron.last_refill_day = day;
             self.patron.favour = (self.patron.favour + 1).min(FAVOUR_MAX);
         }
+        if self.arc.is_some() { self.arc_tick(); }
         let night = self.clock.is_night();
         for i in 0..self.settlers.len() {
             if !self.settlers[i].alive { continue; }
@@ -521,6 +539,12 @@ impl Colony {
         let wander_to = spots.into_iter().find(|&p| nav::passable(&self.map, p) && !self.in_hut(p) && p != rest_at).unwrap_or(self.camp);
         options.push((0.05, Job::Wander(wander_to), format!("Nothing needs doing; {}", rest_why)));
 
+        // The night's watch (the first arc): the watcher stays up at the camp's edge.
+        if self.watcher == Some(i) && night {
+            let threat = self.arc.as_ref().map(|a| a.threat.name.clone()).unwrap_or_default();
+            let edge = self.spot_from_camp(0, -6);
+            options.push((2.5, Job::Wander(edge), format!("Keeping watch at the camp's edge, for fear of {}", threat)));
+        }
         // The patron's hand: favoured ground pulls, dreams pull, the favourite works with heart.
         // Work in a favoured place: look there too, and prefer it.
         if self.patron.marks.iter().any(|m| !m.forbidden) {
@@ -978,6 +1002,45 @@ impl Colony {
 
     /// The nearest tree to the camp that would be felled.
     pub fn nearest_tree_to_camp(&self) -> Option<Pos> { self.nearest(self.camp, |c, p| c.is_felling_tree(p)) }
+
+    /// Replay one recorded act ("tick verb args", as `interventions` writes them); the tick is
+    /// the caller's business. Returns what happened, or why not.
+    pub fn apply_intervention(&mut self, line: &str) -> Result<String, String> {
+        let w: Vec<&str> = line.split_whitespace().collect();
+        let num = |k: usize| w.get(k).and_then(|x| x.parse::<u16>().ok()).ok_or_else(|| format!("bad intervention: {line}"));
+        match w.get(1).copied() {
+            Some("bless") | Some("forbid") => self.mark_place((num(2)?, num(3)?), num(4)?, w[1] == "forbid"),
+            Some("favour") => self.favour_settler(num(2)? as usize),
+            Some("dream") => {
+                let d = match w.get(3).copied() { Some("Hut") => Dream::Hut, Some("Plenty") => Dream::Plenty, _ => Dream::Rest };
+                self.send_dream(num(2)? as usize, d)
+            }
+            Some("stone") => {
+                let k = match w.get(2).copied() { Some("Hall") => StoneKind::Hall, Some("Grove") => StoneKind::Grove, _ => StoneKind::Shrine };
+                self.place_stone(k, (num(3)?, num(4)?))
+            }
+            Some("name") => { let n = w[2..].join(" "); self.name_colony(&n); Ok(n) }
+            _ => Err(format!("unknown intervention: {line}")),
+        }
+    }
+
+    /// Live `days` days, applying the scripted interventions ("tick verb args") at their ticks.
+    pub fn run_days_scripted(&mut self, days: u64, script: &[String]) {
+        let end = self.clock.tick + days * TICKS_PER_DAY;
+        while self.clock.tick < end {
+            // Every line whose tick has come and not yet run (lines timed before the colony's
+            // first morning run at once).
+            let now = self.clock.tick;
+            for line in script {
+                let t = line.split_whitespace().next().and_then(|t| t.parse::<u64>().ok()).unwrap_or(u64::MAX);
+                if t >= self.script_at && t <= now {
+                    if let Err(e) = self.apply_intervention(line) { self.note(format!("(intervention failed: {e})")); }
+                }
+            }
+            self.script_at = now + 1;
+            self.tick();
+        }
+    }
 
     pub fn run_days(&mut self, days: u64) {
         let end = self.clock.tick + days * TICKS_PER_DAY;

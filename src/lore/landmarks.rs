@@ -207,20 +207,44 @@ pub fn find_landmarks(world: &WorldData, gaz: &Gazetteer) -> Vec<Landmark> {
         let d = gaz.describe(x, y);
         d.split(", ").next().map(|s| s.to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| "the wilds".into())
     };
+    // Crater lakes and groves are small things on large tiles: their size comes from their kind
+    // (a crater a few km across, a grove some hectares), and each has a name of its own (naming
+    // them after the region gave three "crater lakes of Neaslind").
+    let mut taken: Vec<String> = Vec::new();
+    let mut own_name = |x: usize, y: usize, salt: u64, form: &dyn Fn(&str) -> String| -> String {
+        use rand::SeedableRng;
+        let style = crate::history::naming::styles::NamingStyle::from_archetype(
+            crate::history::NamingStyleId(0), crate::history::naming::styles::NamingArchetype::Flowing);
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(world.seed() ^ salt ^ ((x as u64) << 32) ^ y as u64);
+        for _ in 0..20 {
+            let n = form(&crate::history::naming::generator::NameGenerator::place_name(&style, &mut rng));
+            if !taken.contains(&n) { taken.push(n.clone()); return n; }
+        }
+        format!("{} {}", form("Nameless"), taken.len())
+    };
+    let unit = |x: usize, y: usize, salt: u64| -> f32 {
+        let mut h = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ salt ^ world.seed();
+        h ^= h >> 31; h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9); h ^= h >> 29;
+        (h % 10_000) as f32 / 10_000.0
+    };
     for comp in patches(ExtendedBiome::CraterLake).into_iter().take(6) {
         let (x, y) = comp[comp.len() / 2];
+        let across = 2.0 + 10.0 * unit(x, y, 0xC4A7);
         out.push(Landmark {
             kind: LandmarkKind::CraterLake, x, y, feature: None,
-            name: format!("the crater lake of {}", with_article(&near(x, y))),
-            epithet: "a lake in an ancient crater".into(), detail: format!("{} km\u{b2}", thousands(comp.len() as f32 * km * km)),
+            name: own_name(x, y, 0xC4A7, &|n| format!("Lake {}", n)),
+            epithet: format!("a lake in an ancient crater, in {}", with_article(&near(x, y))),
+            detail: format!("{:.1} km across", across),
         });
     }
     for comp in patches(ExtendedBiome::AncientGrove).into_iter().take(6) {
         let (x, y) = comp[comp.len() / 2];
+        let hectares = 20.0 + 380.0 * unit(x, y, 0x6E0E).powi(2);
         out.push(Landmark {
             kind: LandmarkKind::GiantTrees, x, y, feature: None,
-            name: format!("the giant trees of {}", with_article(&near(x, y))),
-            epithet: "a grove of trees older than any people".into(), detail: format!("{} km\u{b2}", thousands(comp.len() as f32 * km * km)),
+            name: own_name(x, y, 0x6E0E, &|n| format!("the {} Wood", n)),
+            epithet: format!("a grove of trees older than any people, in {}", with_article(&near(x, y))),
+            detail: format!("{} hectares", thousands(hectares.round())),
         });
     }
 

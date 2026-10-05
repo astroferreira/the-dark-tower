@@ -181,6 +181,8 @@ enum Msg {
     /// The overlay at the dawn of history (before the first recorded step).
     Start(Box<HistoryOverlay>),
     Step(Box<Step>),
+    /// The world as the game inherits it: lines for the closing card.
+    Present(Vec<String>),
     Done,
 }
 
@@ -296,6 +298,7 @@ fn simulate(
     let (w, h) = (world.width, world.height);
     let mut prev = HistoryOverlay::from_history(&history, w, h);
     let mut seen = history.chronicle.len();
+    let mut treasures = 0usize;
     let dawn = LogItem {
         year: history.current_date.year,
         kind: EventType::Other,
@@ -319,13 +322,24 @@ fn simulate(
             if step % 40 == 0 { eprintln!("  History: year {}", history.current_date.year); }
             continue;
         }
-        let events: Vec<LogItem> = history.chronicle.events[seen..].iter().map(|e| LogItem {
+        let treasure = |k: &EventType| matches!(k, EventType::ArtifactFound | EventType::ArtifactLost | EventType::ArtifactCreated | EventType::ArtifactDestroyed | EventType::MasterworkCreated);
+        let mut events: Vec<LogItem> = history.chronicle.events[seen..].iter().map(|e| LogItem {
             year: e.date.year,
             kind: e.event_type.clone(),
             title: e.title.clone(),
             location: e.location,
-            key: style(&e.event_type).3 || e.is_major,
+            // Treasures made, found and lost are told once a decade, not one by one.
+            key: (style(&e.event_type).3 || e.is_major) && !treasure(&e.event_type),
         }).collect();
+        treasures += events.iter().filter(|e| treasure(&e.kind)).count();
+        if history.current_date.season == crate::seasons::Season::Winter && history.current_date.year % 10 == 0 && treasures > 0 {
+            events.push(LogItem {
+                year: history.current_date.year, kind: EventType::ArtifactFound,
+                title: format!("In ten years {} treasure{} {} made, found or lost", treasures, if treasures == 1 { "" } else { "s" }, if treasures == 1 { "was" } else { "were" }),
+                location: None, key: true,
+            });
+            treasures = 0;
+        }
         seen = history.chronicle.len();
         let next = HistoryOverlay::from_history(&history, w, h);
         let new_roads = (0..w * h).filter(|&i| next.road[i] && !prev.road.get(i).copied().unwrap_or(false)).map(|i| (i % w, i / w)).collect();
@@ -336,6 +350,22 @@ fn simulate(
     }
     let _ = tx.send(Msg::Status("Naming the ages...".into()));
     engine.finish(&mut history);
+    // The world today, for the closing card.
+    let present = history.present();
+    let gaz = crate::lore::build_gazetteer(world, Some(&history), world.seed());
+    let name = gaz.features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the world".into());
+    let mut lines = vec![crate::lore::claims::sentence(&name, &crate::lore::claims::claims(&history))];
+    let n = |k: usize, one: &str, many: &str| format!("{} {}", k, if k == 1 { one } else { many });
+    lines.push(format!("{} remain; {} fought and {} held.", n(present.peoples, "people", "peoples"), n(present.wars.len(), "war is", "wars are"), n(present.grudges.len(), "grudge", "grudges")));
+    if !present.frontier.is_empty() {
+        lines.push(format!("The Shadow presses on {} towns{}.", present.frontier.len(),
+            present.stronghold.as_ref().map(|s| format!("; in its path stands {}", s.split(" (").next().unwrap_or(s))).unwrap_or_default()));
+    }
+    if let Some(w) = present.weaknesses.first() { lines.push(format!("What can wound it: {}.", w.split(" (since").next().unwrap_or(w))); }
+    let near = present.beasts.iter().filter(|b| b.town.is_some()).count();
+    if near > 0 { lines.push(format!("{} near towns.", n(near, "beast of legend lairs", "beasts of legend lair"))); }
+    if !present.fallen.is_empty() { lines.push(format!("{} towns fell in the last {} years; their survivors are on the roads.", present.fallen.len(), crate::history::present::RECENT_YEARS)); }
+    let _ = tx.send(Msg::Present(lines));
     let _ = tx.send(Msg::Done);
     history
 }
@@ -609,6 +639,8 @@ struct View<'a> {
     log: VecDeque<LogItem>,
     marks: Vec<Mark>,
     banner_msg: Option<(String, Instant)>,
+    /// The closing card: the world today.
+    present: Vec<String>,
     status: String,
     /// The simulation has finished (everything is recorded).
     done: bool,
@@ -647,7 +679,7 @@ impl<'a> View<'a> {
             head: HistoryOverlay::default(), cur: HistoryOverlay::default(), shown: None,
             next_advance: Instant::now(), tw_dirty: false,
             log: VecDeque::new(), marks: Vec::new(),
-            banner_msg: None, status: "Raising the land...".into(),
+            banner_msg: None, present: Vec::new(), status: "Raising the land...".into(),
             done: false, show_all: false, log_scroll: 0, size: (0, 0), buf: Vec::new(),
             bg: Vec::new(), map_buf: Vec::new(), map_dirty: true, lay, cam, fitted: true,
             last_render: Instant::now() - Duration::from_secs(1), entry_hits: Vec::new(),
@@ -663,6 +695,7 @@ impl<'a> View<'a> {
     fn receive(&mut self, msg: Msg) {
         match msg {
             Msg::Status(s) => self.status = s,
+            Msg::Present(lines) => self.present = lines,
             Msg::Done => self.done = true,
             Msg::Start(o) => self.head = *o,
             Msg::Step(step) => {
@@ -752,9 +785,14 @@ impl<'a> View<'a> {
         if now < self.next_advance { return; }
         let n = if pace == 0.0 { 6 } else { 1 };
         for _ in 0..n { self.step_forward(); }
-        self.next_advance = now + Duration::from_secs_f32(pace);
+        // Paced by drama: quiet seasons hurry by, falls and razings linger.
+        let drama = self.current().map_or(1.0, |st| {
+            let great = st.events.iter().any(|e| e.kind.is_major() || matches!(e.kind, EventType::SettlementDestroyed | EventType::ShadowConquest | EventType::ShadowAlliance));
+            if great { 2.5 } else if st.events.iter().any(|e| e.key) { 1.0 } else { 0.35 }
+        });
+        self.next_advance = now + Duration::from_secs_f32(pace * drama);
         if self.complete() && self.banner_msg.as_ref().map_or(true, |b| !b.0.starts_with("The age is written")) {
-            self.banner_msg = Some(("The age is written. Press Enter to walk the world.".into(), now));
+            self.banner_msg = Some(("The age is written. Press Enter to choose where to settle.".into(), now));
         }
     }
 
@@ -799,7 +837,7 @@ impl<'a> View<'a> {
     /// Pan by screen pixels.
     fn pan(&mut self, dx: f32, dy: f32) {
         self.cam.cx += dx / self.cam.tile_px;
-        self.cam.cy = (self.cam.cy + dy / self.cam.tile_px).clamp(0.0, self.world.height as f32);
+        self.cam.cy = self.clamp_cy(self.cam.cy + dy / self.cam.tile_px, self.cam.tile_px);
         self.fitted = false;
         self.moved();
     }
@@ -823,8 +861,17 @@ impl<'a> View<'a> {
         }
     }
 
+    /// Keep the view from running past the poles: when the map is taller than the view, its
+    /// centre stays half a view from the top and bottom rows.
+    fn clamp_cy(&self, cy: f32, tile_px: f32) -> f32 {
+        let half = self.lay.map.h as f32 / 2.0 / tile_px;
+        let hgt = self.world.height as f32;
+        if half * 2.0 >= hgt { hgt / 2.0 } else { cy.clamp(half, hgt - half) }
+    }
+
     fn look_at(&mut self, x: usize, y: usize, tile_px: f32) {
-        self.cam = Camera { cx: x as f32 + 0.5, cy: y as f32 + 0.5, tile_px };
+        let cy = self.clamp_cy(y as f32 + 0.5, tile_px);
+        self.cam = Camera { cx: x as f32 + 0.5, cy, tile_px };
         self.zoom_target = tile_px;
         self.fitted = false;
         self.map_dirty = true;
@@ -919,6 +966,29 @@ impl<'a> View<'a> {
             let age = now.saturating_duration_since(*born).as_secs_f32();
             let alpha = if complete { 1.0 } else { (1.0 - (age - 4.0) / 0.8).clamp(0.0, 1.0) };
             if alpha > 0.0 { banner(buf, w, h, lay.map, text, alpha); } else { self.banner_msg = None; }
+        }
+
+        // The world today: once the age is written, the present the game inherits.
+        if complete && !self.present.is_empty() {
+            let m = lay.map;
+            let cw = (m.w * 3 / 5).max(320).min(m.w - 20);
+            let chars = (cw - 32) / 7;
+            let wrapped: Vec<Vec<String>> = self.present.iter().map(|l| wrap(&ascii(l), chars)).collect();
+            let lines: usize = wrapped.iter().map(|v| v.len()).sum::<usize>() + wrapped.len();
+            let ch = (40 + lines * 11 + 26).min(m.h - 20);
+            let r = Rect { x: m.x + (m.w - cw) / 2, y: m.y + (m.h - ch) / 2, w: cw, h: ch };
+            card(buf, w, r);
+            heading(buf, w, h, r.x + 16, (r.y + 14) as i64, cw - 32, "THE WORLD TODAY");
+            let mut y = r.y as i64 + 34;
+            for (k, block) in wrapped.iter().enumerate() {
+                for l in block {
+                    if y + 10 > (r.y + r.h) as i64 - 22 { break; }
+                    draw_ink(buf, w, h, (r.x + 16) as i64, y, l, if k == 0 { RUBRIC } else { INK }, 1, false);
+                    y += 11;
+                }
+                y += 6;
+            }
+            draw_ink(buf, w, h, (r.x + 16) as i64, (r.y + r.h) as i64 - 18, "ENTER choose where to settle", INK_FADED, 1, true);
         }
 
         let shown = self.shown.unwrap_or(0);
@@ -1464,7 +1534,7 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         "SPACE pause   [ ] pace   < > one season",
         "drag the timeline to any year   L log   G gif",
         "wheel zoom   drag/WASD pan   H fit map",
-        if done { "ENTER walk the world" } else { "click an entry: go there   ESC hurry" },
+        if done { "ENTER choose where to settle" } else { "click an entry: go there   ESC hurry" },
     ] {
         fy += 2;
         draw_ink(buf, w, h, x as i64, fy, line, INK_FADED, 1, false);

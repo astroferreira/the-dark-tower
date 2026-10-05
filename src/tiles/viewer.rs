@@ -334,6 +334,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut drag: Option<((f32, f32), (f32, f32))> = None;
         // The inspector: a stack of pages (click on the map opens one, links push more).
         let mut inspect: Vec<super::inspector::Subject> = Vec::new();
+        // The player's notes on the map, and one being written (the tile, the text so far).
+        let mut notes = crate::lore::notes::load(seed);
+        let mut note_input: Option<((usize, usize), String)> = None;
         // The site report for the embark box: (where it was computed, the line).
         let mut site_line: (Option<(i64, i64)>, String) = (None, String::new());
         let mut inspect_hits: Vec<super::inspector::Hit> = Vec::new();
@@ -361,8 +364,30 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             let right_clicked = !right && was_right;
             was_down = down;
             was_right = right;
-            let pressed = |k: Key| window.is_key_pressed(k, KeyRepeat::No);
-            let held = |k: Key| window.is_key_down(k);
+            // Writing a note (M): the keys write until Enter pins it or Esc drops it.
+            let typing = note_input.is_some();
+            if typing {
+                let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+                for k in window.get_keys_pressed(KeyRepeat::Yes) {
+                    let (at, text) = note_input.as_mut().unwrap();
+                    match k {
+                        Key::Enter => {
+                            if !text.trim().is_empty() {
+                                let note = crate::lore::notes::Note { x: at.0, y: at.1, text: text.trim().to_string() };
+                                status = match crate::lore::notes::add(seed, note) { Ok(all) => { notes = all; format!("note pinned ({})", crate::lore::notes::path(seed)) } Err(e) => format!("note not saved: {e}") };
+                            }
+                            note_input = None;
+                            break;
+                        }
+                        Key::Escape => { note_input = None; break; }
+                        Key::Backspace => { text.pop(); }
+                        _ => if let Some(c) = key_char(k, shift) { if text.len() < 120 { text.push(c); } },
+                    }
+                }
+                dirty = true;
+            }
+            let pressed = |k: Key| !typing && window.is_key_pressed(k, KeyRepeat::No);
+            let held = |k: Key| !typing && window.is_key_down(k);
             let pan_x = (held(Key::Right) || held(Key::D)) as i32 - (held(Key::Left) || held(Key::A)) as i32;
             let pan_y = (held(Key::Down) || held(Key::S)) as i32 - (held(Key::Up) || held(Key::W)) as i32;
             let running = held(Key::LeftShift) || held(Key::RightShift);
@@ -395,6 +420,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     local_active = false;
                     inspect.clear();
                     dirty = true;
+                    // The patron's acts, replayable with --code ... --interventions FILE.
+                    if !colony.interventions.is_empty() {
+                        let path = format!("interventions_{}.txt", seed);
+                        let code = super::plates::world_code(colony.map.world_tile).unwrap_or_default();
+                        let body = format!("# world code {}\n{}\n", code, colony.interventions.join("\n"));
+                        status = match std::fs::write(&path, body) { Ok(()) => format!("saved {path}"), Err(e) => format!("could not save {path}: {e}") };
+                    }
                 }
                 if (pressed(Key::Backspace) || right_clicked) && !inspect.is_empty() {
                     inspect.pop();
@@ -514,8 +546,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     .map(|s| format!("{}: {} - {} | ", s.name, s.job.verb(), s.why)).unwrap_or_default();
                 let clock = format!("{} {}", colony.clock.stamp(), if speed == 0 { "(paused)".to_string() } else { format!("{}x", speed) });
                 let title = format!(
-                    "{} | favour {} | {}{} | {} | Space pause, 1/2/3 speed, F bless, X forbid, G favour, D dream, H/J/K hall/grove/shrine stone, </> level, V surface, Esc back | {}",
-                    clock, colony.patron.favour, who, view, info, status
+                    "{} | {} | favour {} | {}{} | {} | Space pause, 1/2/3 speed, F bless, X forbid, G favour, D dream, H/J/K hall/grove/shrine stone, </> level, V surface, Esc back | {}",
+                    clock, super::plates::world_code(colony.map.world_tile).unwrap_or_default(), colony.patron.favour, who, view, info, status
                 );
                 if title != last_title { window.set_title(&title); last_title = title; }
             } else if zoom_active {
@@ -692,11 +724,17 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 cam.cx = cam.cx.rem_euclid(tw.width as f32);
                 cam.cy = cam.cy.clamp(0.0, tw.height as f32);
                 if pressed(Key::N) { show_minimap = !show_minimap; dirty = true; }
+                if pressed(Key::M) {
+                    let (hx, hy) = screen_to_world(&cam, mouse.0, mouse.1, w, h);
+                    note_input = Some(((hx.rem_euclid(tw.width as f32) as usize, (hy.max(0.0) as usize).min(tw.height - 1)), String::new()));
+                    status = "write a note: Enter pins it, Esc drops it".into();
+                }
                 if pressed(Key::P) {
                     // A plate: the map without the interface, framed, captioned and numbered.
                     let mut plate = vec![0u32; w * h];
                     render_world(&tw, &atlas, &cam, &mut plate, w, h);
                     if show_labels { draw_labels(&labels, &cam, tw.width, &mut plate, w, h); }
+                    draw_notes(&notes, None, &cam, tw.width, &mut plate, w, h);
                     let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
                     super::plates::decorate(&mut plate, w, h, &info);
                     let path = super::plates::next_path(seed);
@@ -787,7 +825,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     inspect_hits.clear();
                     if let Some(&subject) = inspect.last() {
                         let page = match subject {
-                            super::inspector::Subject::Settler(i) => colony.settlers.get(i).map(|st| super::inspector::settler_page(history, st)),
+                            super::inspector::Subject::Settler(i) => colony.settlers.get(i).map(|st| super::inspector::settler_page_with(history, st, wounded_in(colony, &st.name))),
                             super::inspector::Subject::ColonyMark(i) => colony.marks.get(i).map(super::inspector::mark_page),
                             other => history.map(|hist| super::inspector::page(world, hist, other)),
                         };
@@ -812,6 +850,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         let avoid = if show_minimap { vec![minimap_box(tw.width, tw.height, w, h)] } else { Vec::new() };
                         draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &avoid);
                     }
+                    draw_notes(&notes, note_input.as_ref(), &cam, tw.width, &mut buf, w, h);
                     overlays::draw_legend(&mut buf, w, h, overlay);
                     minimap_rect = if show_minimap {
                         let (hx, hy) = screen_to_world(&cam, mouse.0, mouse.1, w, h);
@@ -1022,6 +1061,44 @@ pub fn save_poster(world: &WorldData, history: Option<&WorldHistory>, atlas: &At
     Ok((w, h))
 }
 
+/// A typed key as a character (letters, digits, space and a little punctuation).
+fn key_char(k: Key, shift: bool) -> Option<char> {
+    let c = match k {
+        Key::A => 'a', Key::B => 'b', Key::C => 'c', Key::D => 'd', Key::E => 'e', Key::F => 'f', Key::G => 'g',
+        Key::H => 'h', Key::I => 'i', Key::J => 'j', Key::K => 'k', Key::L => 'l', Key::M => 'm', Key::N => 'n',
+        Key::O => 'o', Key::P => 'p', Key::Q => 'q', Key::R => 'r', Key::S => 's', Key::T => 't', Key::U => 'u',
+        Key::V => 'v', Key::W => 'w', Key::X => 'x', Key::Y => 'y', Key::Z => 'z',
+        Key::Key0 => '0', Key::Key1 => '1', Key::Key2 => '2', Key::Key3 => '3', Key::Key4 => '4',
+        Key::Key5 => '5', Key::Key6 => '6', Key::Key7 => '7', Key::Key8 => '8', Key::Key9 => '9',
+        Key::Space => ' ', Key::Period => '.', Key::Comma => ',', Key::Apostrophe => '\'', Key::Minus => '-', Key::Semicolon => ';',
+        _ => return None,
+    };
+    Some(if shift { c.to_ascii_uppercase() } else { c })
+}
+
+/// The player's notes on the world map: an ink pin and the words in a hand.
+fn draw_notes(notes: &[crate::lore::notes::Note], typing: Option<&((usize, usize), String)>, cam: &Camera, world_w: usize, buf: &mut [u32], w: usize, h: usize) {
+    use super::fonts::{self, Face};
+    if cam.tile_px < 2.0 { return; }
+    let ww = world_w as f32;
+    let to_screen = |x: f32, y: f32| {
+        let mut dx = x - cam.cx;
+        if dx > ww / 2.0 { dx -= ww; }
+        if dx < -ww / 2.0 { dx += ww; }
+        (w as f32 / 2.0 + dx * cam.tile_px, h as f32 / 2.0 + (y - cam.cy) * cam.tile_px)
+    };
+    let mut all: Vec<(usize, usize, String)> = notes.iter().map(|n| (n.x, n.y, n.text.clone())).collect();
+    if let Some(((x, y), t)) = typing { all.push((*x, *y, format!("{}|", t))); }
+    for (x, y, text) in all {
+        let (sx, sy) = to_screen(x as f32 + 0.5, y as f32 + 0.5);
+        if sx < -200.0 || sy < -40.0 || sx > w as f32 + 10.0 || sy > h as f32 + 40.0 { continue; }
+        for dy in -3i64..=3 { for dx in -3i64..=3 {
+            if dx * dx + dy * dy <= 9 { super::ui::blend_px(buf, w, h, sx as i64 + dx, sy as i64 + dy, if dx * dx + dy * dy >= 6 { 0x0020_2A40 } else { 0x00B0_3020 }, 1.0); }
+        } }
+        fonts::draw(buf, w, h, sx + 8.0, sy - 14.0, &text, Face::Hand, 19.0, 0.0, 0x002C_4A7A, Some(0x00EE_E4CC));
+    }
+}
+
 /// Walking pace for travel times on the province map: a loaded party on foot, in km a day.
 const KM_PER_DAY: f64 = 25.0;
 /// Paths wind: straight-line distance times this is the distance walked.
@@ -1181,6 +1258,97 @@ pub fn marks_trial(world: &WorldData, history: Option<&WorldHistory>, atlas: &At
     Ok(())
 }
 
+/// The night a settler was struck down and lived (the first arc's rescue), for their scar.
+pub fn wounded_in(colony: &crate::colony::Colony, name: &str) -> Option<(String, u64)> {
+    colony.arc.as_ref()?.events.iter().find(|e| e.title == "The raid" && e.text.contains(&format!("{} was struck down", name)))
+        .map(|e| (format!("From the raid of day {}", e.day), e.day))
+}
+
+/// The saga page: a colony in one image. Its map, a cartouche (name, days, year, world code),
+/// the cast with their peoples' arms, what they were and their fate, and a timeline of the key
+/// moments (the log's milestones and the arc). Written by `--sim-snapshot` as `<prefix>_saga.png`.
+pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, colony: &crate::colony::Colony, path: &str) -> Result<(), Box<dyn Error>> {
+    use super::fonts::{self, Face};
+    use super::local_ink::draw_colony;
+    let (w, h) = (1600usize, 1000usize);
+    let mut buf = vec![0x00EA_DEC4u32; w * h];
+    // The map, left: the camp and its surroundings.
+    let (mw, mh) = (980usize, 700usize);
+    let mut map = vec![0u32; mw * mh];
+    let cam = LocalCamera { cx: colony.camp.0 as f32 + 4.0, cy: colony.camp.1 as f32, tile_px: 9.0, z: 0, surface_view: true };
+    render_local(&colony.map, atlas, &cam, &mut map, mw, mh);
+    draw_colony(colony, &cam, &mut map, mw, mh);
+    let (mx, my) = (30usize, 140usize);
+    for y in 0..mh { for x in 0..mw { buf[(my + y) * w + mx + x] = map[y * mw + x]; } }
+    super::ui::outline(&mut buf, w, super::ui::Rect { x: mx - 1, y: my - 1, w: mw + 2, h: mh + 2 }, 0x0038_2A20);
+    super::ui::outline(&mut buf, w, super::ui::Rect { x: mx - 5, y: my - 5, w: mw + 10, h: mh + 10 }, 0x0080_6A52);
+    // The cartouche.
+    let name = colony.name.clone().unwrap_or_else(|| format!("The camp at {},{}", colony.map.world_tile.0, colony.map.world_tile.1));
+    let year = history.map(|h| h.current_date.year).unwrap_or(0);
+    let days = colony.clock.day().saturating_sub(1).max(1);
+    fonts::draw(&mut buf, w, h, 34.0, 26.0, &format!("The Saga of {}", name), Face::SmallCaps, 46.0, 2.0, 0x009A_2A1E, None);
+    let code = super::plates::world_code(colony.map.world_tile).unwrap_or_else(|| format!("seed {}", world.seed()));
+    fonts::draw(&mut buf, w, h, 36.0, 84.0, &format!("{} days in the year {}  ·  world code {}", days, year, code), Face::Italic, 19.0, 0.0, 0x0038_2A20, None);
+    // The cast.
+    let (cx0, mut cy) = (1040.0f32, 140.0f32);
+    fonts::draw(&mut buf, w, h, cx0, cy, "The Company", Face::SmallCaps, 24.0, 1.5, 0x009A_2A1E, None);
+    cy += 36.0;
+    for st in &colony.settlers {
+        super::portraits::draw(&mut buf, w, h, cx0 as i64 - 14, cy as i64 - 4, 40, &super::portraits::of_settler(st, history, wounded_in(colony, &st.name)));
+        if let (Some(hist), Some(f)) = (history, st.past.as_ref().and_then(|p| p.people)) {
+            super::heraldry::draw(&mut buf, w, h, cx0 as i64 + 28, cy as i64 + 22, 14, &super::heraldry::arms_of(world, hist, f));
+        }
+        let fate = if st.alive { "lives".to_string() } else {
+            colony.marks.iter().find(|m| m.kind == crate::colony::MarkKind::Grave && m.title.ends_with(&st.name)).map(|m| format!("died on day {}", m.day)).unwrap_or_else(|| "died".into())
+        };
+        fonts::draw(&mut buf, w, h, cx0 + 46.0, cy, &st.name, Face::Roman, 18.0, 0.0, if st.alive { 0x0038_2A20 } else { 0x009A_2A1E }, None);
+        let calling = st.past.as_ref().map(|p| format!("{}, {}; {}", p.age, p.calling, fate)).unwrap_or(fate);
+        let short: String = calling.chars().take(58).collect();
+        fonts::draw(&mut buf, w, h, cx0 + 46.0, cy + 19.0, &short, Face::Italic, 14.0, 0.0, 0x0080_6A52, None);
+        cy += 44.0;
+        if cy > 820.0 { break; }
+    }
+    // The timeline: milestones and the arc, by day.
+    let mut moments: Vec<(u64, String)> = Vec::new();
+    for l in &colony.log {
+        let Some(rest) = l.strip_prefix("Day ") else { continue };
+        let day: u64 = rest.split(',').next().and_then(|d| d.parse().ok()).unwrap_or(0);
+        let text = l.splitn(2, "  ").nth(1).unwrap_or("").to_string();
+        let key = ["make camp", "first", "finishes the hut", "rumour", "Refugees", "raid", "bury", "died", "favours", "dreamt", "called"].iter().any(|k| text.contains(k));
+        if key && !text.contains("keeps watch") { moments.push((day, text)); }
+    }
+    // The most telling ten (the arc, deaths, the hut, the camp, then firsts), in day order.
+    let weight = |t: &str| if ["rumour", "Refugees", "raid"].iter().any(|k| t.contains(k)) { 0 }
+        else if t.contains("bury") || t.contains("died") { 1 } else if t.contains("hut") || t.contains("make camp") { 2 }
+        else if t.contains("called") || t.contains("favours") || t.contains("dreamt") { 3 } else { 4 };
+    let mut ranked: Vec<(usize, &(u64, String))> = moments.iter().enumerate().collect();
+    ranked.sort_by_key(|(i, m)| (weight(&m.1), *i));
+    ranked.truncate(10);
+    ranked.sort_by_key(|(i, _)| *i);
+    let chosen: Vec<&(u64, String)> = ranked.into_iter().map(|(_, m)| m).collect();
+    let (tx0, tx1, ty) = (40.0f32, w as f32 - 40.0, 900.0f32);
+    for x in tx0 as usize..tx1 as usize { buf[ty as usize * w + x] = 0x0038_2A20; buf[(ty as usize + 1) * w + x] = 0x0038_2A20; }
+    let n = chosen.len().max(1) as f32;
+    for (k, (day, text)) in chosen.iter().enumerate() {
+        let x = tx0 + (tx1 - tx0) * (k as f32 + 0.5) / n;
+        let up = k % 2 == 0;
+        for d in 0..14 { let y = if up { ty as usize - d } else { ty as usize + 2 + d }; buf[y * w + x as usize] = 0x0038_2A20; }
+        fonts::draw(&mut buf, w, h, x - 6.0, if up { ty - 40.0 } else { ty + 18.0 }, &format!("Day {}", day), Face::SmallCaps, 13.0, 0.5, 0x009A_2A1E, None);
+        // An arc line ("The raid: ...") shows what happened; others their first clause.
+        let body = match text.split_once(": ") { Some((head, rest)) if head.len() < 12 => rest, _ => text.as_str() };
+        let clause = body.split(['.', ';']).next().unwrap_or("");
+        let mut short = String::new();
+        for word in clause.split_whitespace() {
+            if short.len() + word.len() + 1 > 40 { short.push('…'); break; }
+            if !short.is_empty() { short.push(' '); }
+            short.push_str(word);
+        }
+        fonts::draw(&mut buf, w, h, x - 6.0, if up { ty - 26.0 } else { ty + 32.0 }, &short, Face::Italic, 13.0, 0.0, 0x0038_2A20, None);
+    }
+    save_rgb_png(path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+    Ok(())
+}
+
 /// Found the colony on an embark at world `tile`: with a history, the settlers come out of it
 /// (`history::settlers::roster`: survivors, veterans, kin); without one they are nameless
 /// wanderers with stock names.
@@ -1191,6 +1359,8 @@ fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, til
             let names: Vec<String> = roster.iter().map(|r| r.0.clone()).collect();
             let mut colony = crate::colony::Colony::found(map, &names, seed);
             for (st, (_, past)) in colony.settlers.iter_mut().zip(roster) { st.past = Some(past); }
+            // The first arc: the world will reach this camp.
+            colony.arc = Some(crate::colony::arc::plan(h, tile, seed));
             colony
         }
         None => crate::colony::Colony::found(map, &settler_names(seed, n), seed),
@@ -1229,7 +1399,7 @@ pub fn colony_bench(world: &WorldData, history: Option<&WorldHistory>, tile: (us
 /// Headless run of the first colony: found it on the embark at `tile`, let it live 30 days
 /// unattended, and write frames on days 1, 10 and 30 (`<prefix>_dayN.png`, the whole area at
 /// 6 px and a close-up of the camp at 16 px) and its log (`<prefix>_log.txt`).
-pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize), prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize), prefix: &str, script: &[String]) -> Result<Vec<String>, Box<dyn Error>> {
     use super::local_ink::draw_colony;
     let zs = load_region(world, history, tile, world.seed());
     let s = cells_per_tile() as f64;
@@ -1260,7 +1430,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
     let mut day_done = 0u64;
     for day in [1u64, 10, 30] {
         let t0 = std::time::Instant::now();
-        colony.run_days(day - day_done);
+        colony.run_days_scripted(day - day_done, script);
         day_done = day;
         println!("Colony day {}: {} alive, {} food, {} logs stored, hut {}, simulated in {:.2}s",
             colony.clock.day() - 1, colony.alive(), colony.food_stored(), colony.logs_stored(),
@@ -1288,7 +1458,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         let cam = LocalCamera { cx: st.pos.0 as f32 + 0.5, cy: st.pos.1 as f32 + 0.5, tile_px: 16.0, z: 0, surface_view: true };
         render_local(&colony.map, atlas, &cam, &mut buf, w, h);
         draw_colony(&colony, &cam, &mut buf, w, h);
-        let page = super::inspector::settler_page(history, st);
+        let page = super::inspector::settler_page_with(history, st, wounded_in(&colony, &st.name));
         super::inspector::draw(&page, &mut buf, w, h, 1);
         let path = format!("{prefix}_settler.png");
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
@@ -1300,8 +1470,51 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
     let path = format!("{prefix}_decisions.txt");
     std::fs::write(&path, colony.decisions.join("\n") + "\n")?;
     written.push(path);
+    // One number for the whole story: the world's chronicle and the colony's log. The same world
+    // code and the same interventions give the same hash on any machine.
+    let mut hsh: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |t: &str| for b in t.bytes() { hsh ^= b as u64; hsh = hsh.wrapping_mul(0x100_0000_01b3); };
+    if let Some(hist) = history { for e in &hist.chronicle.events { feed(&e.title); feed(&e.description); } }
+    for l in &colony.log { feed(l); }
+    println!("Colony hash: {:016x} ({} interventions)", hsh, colony.interventions.len());
     let stuck: u32 = colony.settlers.iter().map(|s| s.stuck).sum();
-    println!("Colony after 30 days: {} of 7 alive, {} times a settler found no way to a target, {} log lines", colony.alive(), stuck, colony.log.len());
+    println!("Colony after 30 days: {} of {} alive, {} times a settler found no way to a target, {} log lines", colony.alive(), colony.settlers.len(), stuck, colony.log.len());
+    {
+        let path = format!("{prefix}_saga.png");
+        saga_plate(world, history, atlas, &colony, &path)?;
+        written.push(path);
+    }
+    {
+        // The faces at 48 px, and how far apart the two most alike are.
+        let n = colony.settlers.len();
+        let (fw, fh) = (n * 120 + 20, 190usize);
+        let mut buf = vec![0x00EA_DEC4u32; fw * fh];
+        let mut tiles: Vec<Vec<u32>> = Vec::new();
+        for (k, st) in colony.settlers.iter().enumerate() {
+            let p = super::portraits::of_settler(st, history, wounded_in(&colony, &st.name));
+            super::portraits::draw(&mut buf, fw, fh, (20 + k * 120) as i64, 10, 96, &p);
+            let mut t = vec![0x00EA_DEC4u32; 48 * 48];
+            super::portraits::draw(&mut t, 48, 48, 0, 0, 48, &p);
+            super::portraits::draw(&mut buf, fw, fh, (44 + k * 120) as i64, 112, 48, &p);
+            super::text::draw_ink(&mut buf, fw, fh, (20 + k * 120) as i64, 172, &super::ui::truncate(&super::ui::ascii(&st.name), 15), 0x0038_2A20, 1, false);
+            tiles.push(t);
+        }
+        let mut least = f32::MAX;
+        for a in 0..n { for b in a + 1..n {
+            let d = tiles[a].iter().zip(&tiles[b]).filter(|(x, y)| x != y).count() as f32 / (48.0 * 48.0);
+            least = least.min(d);
+        } }
+        let path = format!("{prefix}_faces.png");
+        save_rgb_png(&path, fw, fh, |x, y| { let p = buf[y * fw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+        written.push(path);
+        println!("Faces: {} settlers; the two most alike differ in {:.0}% of their 48 px pixels", n, least * 100.0);
+    }
+    if colony.arc.is_some() {
+        let path = format!("{prefix}_tale.html");
+        std::fs::write(&path, colony.tale(history))?;
+        written.push(path);
+        for e in &colony.arc.as_ref().unwrap().events { println!("Arc day {}: {} {} ({})", e.day, e.title, e.text, e.because); }
+    }
     Ok(written)
 }
 
@@ -1335,6 +1548,7 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         let cam = Camera { cx: cx as f32 + 0.5, cy: cy as f32 + 0.5, tile_px: 16.0 };
         render_world(&tw, atlas, &cam, &mut buf, w, h);
         draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
+        draw_notes(&crate::lore::notes::load(world.seed()), None, &cam, tw.width, &mut buf, w, h);
         let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
         super::plates::decorate(&mut buf, w, h, &info);
         let path = format!("{prefix}_plate.png");
@@ -1353,6 +1567,7 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         let t0 = std::time::Instant::now();
         draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &[minimap_box(tw.width, tw.height, w, h)]);
         println!("labels {name}: {:.1} ms", t0.elapsed().as_secs_f32() * 1000.0);
+        draw_notes(&crate::lore::notes::load(world.seed()), None, &cam, tw.width, &mut buf, w, h);
         render_minimap(&tw, &cam, Some((cx as f32, cy as f32, ZoomParams::default().tiles as f32 / 2.0)), &mut buf, w, h);
         overlays::draw_legend(&mut buf, w, h, overlay);
         let path = format!("{prefix}_{name}.png");

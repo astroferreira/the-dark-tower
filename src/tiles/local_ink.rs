@@ -558,6 +558,14 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
                 for k in -ri..=ri / 3 { put(cx as i64, cy as i64 + k, INK, 0.95); }
                 for k in -ri / 2..=ri / 2 { put(cx as i64 + k, cy as i64 - ri / 2, INK, 0.95); }
             }
+            crate::colony::MarkKind::Scorch => {
+                let ri = (r * 1.6) as i64;
+                for dy in -ri..=ri { for dx in -ri..=ri {
+                    let d = ((dx * dx + dy * dy) as f32).sqrt() / ri as f32;
+                    let n = ((dx * 7 + dy * 13).rem_euclid(5)) as f32 / 5.0;
+                    if d < 1.0 { put(cx as i64 + dx, cy as i64 + dy, [70.0, 56.0, 46.0], (0.75 - d * 0.5) * (0.6 + 0.4 * n)); }
+                } }
+            }
             crate::colony::MarkKind::Stone => {
                 let (rw, rh) = ((r * 0.5) as i64, r as i64);
                 for dy in -rh..=rh { for dx in -rw..=rw {
@@ -600,5 +608,19 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
         let face = if px > 18.0 { super::fonts::Face::SmallCaps } else { super::fonts::Face::Italic };
         let tw = super::fonts::width(&n, face, px, 1.0);
         super::fonts::draw(buf, w, h, sx - tw / 2.0, sy - px, &n, face, px, 1.0, 0x0030_1E14, Some(0x00EE_E4CC));
+    }
+    // A banner for a great moment, for half a game day.
+    if let Some((text, at)) = &colony.banner {
+        if colony.clock.tick < at + 720 {
+            let px = 26.0;
+            let tw = super::fonts::width(text, super::fonts::Face::SmallCaps, px, 2.0);
+            let (bx, by) = (w as f32 / 2.0 - tw / 2.0 - 24.0, 18.0);
+            for y in by as usize..(by + px * 1.7) as usize {
+                for x in bx.max(0.0) as usize..((bx + tw + 48.0) as usize).min(w) {
+                    if y < h { let k = y * w + x; buf[k] = 0x00EA_DEC4; }
+                }
+            }
+            super::fonts::draw(buf, w, h, bx + 24.0, by + 4.0, text, super::fonts::Face::SmallCaps, px, 2.0, 0x009A_2A1E, None);
+        }
     }
 }

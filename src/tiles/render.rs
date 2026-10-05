@@ -226,6 +226,125 @@ pub fn screen_to_world(cam: &Camera, sx: f32, sy: f32, w: usize, h: usize) -> (f
     (cam.cx + (sx - w as f32 / 2.0) / cam.tile_px, cam.cy + (sy - h as f32 / 2.0) / cam.tile_px)
 }
 
+#[inline]
+fn h01(a: i64, b: i64, salt: u64) -> f32 {
+    let mut x = (a as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (b as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ salt;
+    x = (x ^ (x >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    ((x ^ (x >> 29)) & 0xFFFF) as f32 / 65535.0
+}
+
+/// Distance from (px, py) to the segment a-b.
+#[inline]
+fn seg_dist(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let (dx, dy) = (bx - ax, by - ay);
+    let t = (((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy).max(1e-6)).clamp(0.0, 1.0);
+    ((px - ax - t * dx).powi(2) + (py - ay - t * dy).powi(2)).sqrt()
+}
+
+/// The scarred lands' own ink: ashlands cracked and strewn with cinders, dead woods with fallen
+/// trunks on grey ground, bone fields pale and scattered with bones.
+fn scar_ink(tw: &TileWorld, g: usize, wx: f32, wy: f32, t: f32, col: [f32; 3]) -> [f32; 3] {
+    let line = (0.9 / t).max(0.01);
+    match (tw.ground[g], tw.sprite[g]) {
+        (TileKind::Ash, _) => {
+            let mut c = mix(col, [96.0, 88.0, 82.0], 0.35);
+            let n = value_noise(tw, wx, wy, 3.0, 71) + 0.5 * value_noise(tw, wx, wy, 7.0, 72);
+            if n.abs() < 0.035 { c = mix(c, INK, 0.6); }
+            let (cx, cy) = ((wx * 9.0).floor() as i64, (wy * 9.0).floor() as i64);
+            let r = h01(cx, cy, 73);
+            if r < 0.18 {
+                let (px, py) = ((cx as f32 + 0.5) / 9.0, (cy as f32 + 0.5) / 9.0);
+                if ((wx - px).powi(2) + (wy - py).powi(2)).sqrt() < 0.018 + line * 0.5 { c = if r < 0.06 { [150.0, 50.0, 30.0] } else { [40.0, 34.0, 30.0] }; }
+            }
+            c
+        }
+        (TileKind::Tundra, Some(TileKind::DeadTree)) => {
+            let mut c = mix(col, [150.0, 138.0, 118.0], 0.3);
+            for (ox, oy) in [(0i64, 0i64), (1, 0), (0, 1), (1, 1)] {
+                let (cx, cy) = ((wx * 3.0).floor() as i64 + ox - 1, (wy * 3.0).floor() as i64 + oy - 1);
+                if h01(cx, cy, 81) > 0.45 { continue; }
+                let (ax, ay) = ((cx as f32 + h01(cx, cy, 82)) / 3.0, (cy as f32 + h01(cx, cy, 83)) / 3.0);
+                let ang = h01(cx, cy, 84) * std::f32::consts::PI;
+                let len = 0.12 + 0.1 * h01(cx, cy, 85);
+                let (bx, by) = (ax + len * ang.cos(), ay + len * ang.sin());
+                let d = seg_dist(wx, wy, ax, ay, bx, by);
+                if d < 0.012 + line * 0.4 { c = if d < 0.012 { [120.0, 96.0, 70.0] } else { INK }; }
+            }
+            c
+        }
+        (_, Some(TileKind::Bones)) => {
+            let mut c = mix(col, [212.0, 200.0, 168.0], 0.35);
+            let (cx, cy) = ((wx * 6.0).floor() as i64, (wy * 6.0).floor() as i64);
+            if h01(cx, cy, 91) < 0.5 {
+                let (ax, ay) = ((cx as f32 + 0.25 + 0.5 * h01(cx, cy, 92)) / 6.0, (cy as f32 + 0.25 + 0.5 * h01(cx, cy, 93)) / 6.0);
+                let ang = h01(cx, cy, 94) * std::f32::consts::PI;
+                let len = 0.05;
+                let (bx, by) = (ax + len * ang.cos(), ay + len * ang.sin());
+                let d = seg_dist(wx, wy, ax, ay, bx, by);
+                let knob = ((wx - ax).powi(2) + (wy - ay).powi(2)).sqrt().min(((wx - bx).powi(2) + (wy - by).powi(2)).sqrt());
+                if d < 0.008 || knob < 0.013 { c = [240.0, 234.0, 214.0]; } else if d < 0.008 + line * 0.6 || knob < 0.013 + line * 0.6 { c = mix(c, INK, 0.8); }
+            }
+            c
+        }
+        _ => col,
+    }
+}
+
+/// Whether this tile or one below it carries a range (peaks reach up into the tile above).
+#[inline]
+fn mountain_near(tw: &TileWorld, tx: usize, ty: usize) -> bool {
+    let m = |x: i64, y: i64| {
+        if y < 0 || y >= tw.height as i64 { return false; }
+        let i = y as usize * tw.width + x.rem_euclid(tw.width as i64) as usize;
+        matches!(tw.sprite[i], Some(TileKind::Mountain | TileKind::SnowPeak))
+    };
+    let (x, y) = (tx as i64, ty as i64);
+    m(x, y) || m(x, y + 1) || m(x - 1, y + 1) || m(x + 1, y + 1) || m(x - 1, y) || m(x + 1, y)
+}
+
+/// A range drawn as overlapping peaks: on a jittered half-tile grid, a peak stands wherever a
+/// mountain tile lies beneath, taller with the land's height; nearer (lower) peaks overlap
+/// those behind. Lit face pale, shadow face hatched, inked outline, snow only near the top of
+/// high or cold peaks. Returns the colour and its cover.
+fn mountain_ink(tw: &TileWorld, wx: f32, wy: f32, t: f32, snow_here: f32) -> Option<[f32; 4]> {
+    const STEP: f32 = 0.5;
+    let (gx, gy) = ((wx / STEP).floor() as i64, (wy / STEP).floor() as i64);
+    let mut best: Option<(f32, [f32; 4])> = None;
+    for dy in 0..=3i64 {
+        for dx in -2..=2i64 {
+            let (cx, cy) = (gx + dx, gy + dy);
+            if h01(cx, cy, 101) < 0.15 { continue; }
+            let px = (cx as f32 + 0.2 + 0.6 * h01(cx, cy, 102)) * STEP;
+            let py = (cy as f32 + 0.3 + 0.6 * h01(cx, cy, 103)) * STEP;
+            let i = tile_index(tw, px, py);
+            let snowy = match tw.sprite[i] { Some(TileKind::SnowPeak) => true, Some(TileKind::Mountain) => false, _ => continue };
+            let e = tw.elev[i];
+            let hgt = (0.32 + 0.55 * ((e - 1800.0) / 3500.0).clamp(0.0, 1.0)) * (0.75 + 0.5 * h01(cx, cy, 104));
+            let half_w = hgt * (0.62 + 0.25 * h01(cx, cy, 105));
+            let depth = py - wy; // 0 at the base, hgt at the apex
+            if depth < 0.0 || depth > hgt { continue; }
+            let skew = (h01(cx, cy, 106) - 0.5) * 0.3 * half_w;
+            let apex_x = px + skew;
+            let along = 1.0 - depth / hgt; // 0 at apex, 1 at base
+            let (lx, rx) = (apex_x - half_w * along, apex_x + half_w * along);
+            if wx < lx || wx > rx { continue; }
+            if best.map_or(false, |b| b.0 >= py) { continue; }
+            let line = (1.1 / t).max(0.012);
+            let lit = wx < apex_x + (along * 0.08 - 0.02) * half_w;
+            let mut c: [f32; 3] = if lit { [226.0, 218.0, 200.0] } else { [196.0, 186.0, 166.0] };
+            if !lit && (((wx - wy) * t * 0.55).rem_euclid(2.4) < 1.0) { c = mix(c, INK, 0.45); }
+            // Snow near the top of cold or high peaks, with a ragged lower edge.
+            let cap = if snowy || e > 3600.0 || snow_here > 0.5 { 0.38 + 0.12 * h01((wx * 20.0) as i64, cy, 107) } else { 0.0 };
+            if along < cap { c = if lit { [246.0, 244.0, 238.0] } else { [214.0, 220.0, 228.0] }; }
+            // Ink: the two slopes, heavier on the shadow side.
+            let on_edge = (wx - lx).abs() * (hgt / half_w.max(1e-3)) < line * 1.3 || (rx - wx).abs() * (hgt / half_w.max(1e-3)) < line * 1.7;
+            if on_edge { c = INK; }
+            best = Some((py, [c[0], c[1], c[2], 1.0]));
+        }
+    }
+    best.map(|b| b.1)
+}
+
 pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32], w: usize, h: usize) {
     render_world_lod(tw, atlas, cam, buf, w, h, 1);
 }
@@ -330,12 +449,27 @@ pub fn render_world_lod(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [
             let (gt, gs) = atlas.tile_for(ground, var, src_px);
             let (gx, gy) = (((u * gs as f32) as usize).min(gs - 1), ((v * gs as f32) as usize).min(gs - 1));
             let gp = sample_tile(gt, gs, u, v, t);
+            // Wet edges: where a looser warp lands on another kind of ground of the same class,
+            // the two washes bleed into each other instead of meeting at a line.
+            let gp = if t >= 4.0 && tw.ground[g].is_water() != is_land {
+                let (bx, by) = (wx + 0.55 * value_noise(tw, wx, wy, 1.6, 61), wy + 0.55 * value_noise(tw, wx, wy, 1.6, 62));
+                let k2 = tw.ground[tile_index(tw, bx, by)];
+                if k2 != tw.ground[g] && k2.is_water() == tw.ground[g].is_water() && !k2.is_water() {
+                    let (t2, s2) = atlas.tile_for(k2, var, src_px);
+                    let gp2 = sample_tile(t2, s2, u, v, t);
+                    let a = 0.42 + 0.18 * value_noise(tw, wx, wy, 6.0, 63);
+                    [0, 1, 2, 3].map(|k| gp[k] + (gp2[k] - gp[k]) * a)
+                } else { gp }
+            } else { gp };
             // Seasonal tint and snow blend smoothly between tiles (with a ragged edge for snow).
             let tint = [0, 1, 2].map(|k| smooth_field(tw, wx, wy, |n| tw.season_tint[n][k]));
             let mut col = [0, 1, 2].map(|k| gp[k] * sh[k] * tint[k]);
+            if is_land && t >= 4.0 { col = scar_ink(tw, g, wx, wy, t, col); }
             let frozen = tw.season_frozen[g];
             let snow = if is_land {
                 let s = smooth_field(tw, wx, wy, |n| tw.season_snow[n]);
+                // Snow lies on the peaks, not across a range's whole floor (`mountain_ink` caps them).
+                let s = if t >= 6.0 && matches!(tw.sprite[i], Some(TileKind::Mountain | TileKind::SnowPeak)) && tw.ground[i] != TileKind::Snow { s * 0.3 } else { s };
                 if s > 0.0 { (s + 0.25 * value_noise(tw, wx, wy, 4.0, 51)).clamp(0.0, 1.0) } else { 0.0 }
             } else {
                 0.0
@@ -426,7 +560,12 @@ pub fn render_world_lod(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [
                 }
             }
 
-            if let Some(sp) = tw.sprite[i].filter(|_| is_land || tw.ground[i].is_water()) {
+            let ranges = t >= 6.0;
+            if ranges && is_land && mountain_near(tw, tx, ty) {
+                if let Some(m) = mountain_ink(tw, wx, wy, t, snow) { col = mix(col, [m[0], m[1], m[2]], m[3]); }
+            }
+            if let Some(sp) = tw.sprite[i].filter(|_| is_land || tw.ground[i].is_water())
+                .filter(|sp| !(ranges && matches!(sp, TileKind::Mountain | TileKind::SnowPeak))) {
                 let (st, ss) = atlas.tile_for(sp, var, src_px);
                 let p = sample_tile(st, ss, u, v, t);
                 if p[3] > 0.0 {
