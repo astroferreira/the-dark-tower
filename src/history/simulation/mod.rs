@@ -6,6 +6,7 @@
 
 pub mod engine;
 pub mod harness;
+pub mod invariants;
 pub mod metrics;
 pub mod playback;
 pub mod setup;

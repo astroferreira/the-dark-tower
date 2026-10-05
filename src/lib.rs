@@ -21,6 +21,7 @@ pub mod biomes;
 pub mod cartography;
 pub mod climate;
 pub mod coastline;
+pub mod colony;
 pub mod erosion;
 pub mod explorer;
 pub mod exr_export;

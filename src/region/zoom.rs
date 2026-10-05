@@ -532,6 +532,47 @@ impl<'a> Ctx<'a> {
 
 type ChunkKey = (u64, usize, usize, i64, i64);
 
+/// Simulated chunks kept on disk between runs, so a region the game has generated once loads in
+/// a fraction of a second instead of minutes of CPU (an 8x8-tile region is ~200 chunks). Chunks
+/// depend only on the world (its heightmap fingerprint) and the zoom parameters, which are in
+/// the key. Bump `FORMAT` whenever `simulate_chunk` changes what it produces.
+/// Location: `$PLANET_CHUNK_CACHE`, else `~/.cache/planet_generator/chunks`; set the variable to
+/// an empty string to turn the disk cache off.
+mod disk {
+    use super::ChunkKey;
+    use std::path::PathBuf;
+
+    const FORMAT: u32 = 1;
+
+    fn dir() -> Option<PathBuf> {
+        match std::env::var("PLANET_CHUNK_CACHE") {
+            Ok(v) if v.is_empty() => None,
+            Ok(v) => Some(PathBuf::from(v)),
+            Err(_) => std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache/planet_generator/chunks")),
+        }
+    }
+
+    fn path(k: ChunkKey) -> Option<PathBuf> {
+        let (fp, s, iters, cx, cy) = k;
+        dir().map(|d| d.join(format!("{fp:016x}")).join(format!("v{FORMAT}_{s}_{iters}_{cx}_{cy}.f32")))
+    }
+
+    pub fn load(k: ChunkKey, len: usize) -> Option<Vec<f32>> {
+        let bytes = std::fs::read(path(k)?).ok()?;
+        if bytes.len() != len * 4 { return None; }
+        Some(bytes.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
+    }
+
+    pub fn store(k: ChunkKey, chunk: &[f32]) {
+        let Some(p) = path(k) else { return };
+        if let Some(parent) = p.parent() { let _ = std::fs::create_dir_all(parent); }
+        let bytes: Vec<u8> = chunk.iter().flat_map(|v| v.to_le_bytes()).collect();
+        // Write then rename, so a half-written file is never read back.
+        let tmp = p.with_extension(format!("tmp{}", std::process::id()));
+        if std::fs::write(&tmp, bytes).is_ok() { let _ = std::fs::rename(&tmp, &p); }
+    }
+}
+
 fn chunk_cache() -> &'static std::sync::Mutex<std::collections::HashMap<ChunkKey, std::sync::Arc<Vec<f32>>>> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<ChunkKey, std::sync::Arc<Vec<f32>>>>> =
         std::sync::OnceLock::new();
@@ -564,18 +605,23 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         keys.iter().filter_map(|&k| cache.get(&key_of(k)).map(|c| (k, c.clone()))).collect()
     };
     let missing: Vec<(i64, i64)> = keys.iter().copied().filter(|k| !chunks.contains_key(k)).collect();
-    let fresh: Vec<((i64, i64), std::sync::Arc<Vec<f32>>)> = missing
+    let chunk_len = 4 * s * s;
+    let fresh: Vec<((i64, i64), std::sync::Arc<Vec<f32>>, bool)> = missing
         .par_iter()
-        .map(|&(cx, cy)| ((cx, cy), std::sync::Arc::new(ctx.simulate_chunk(cx, cy))))
+        .map(|&(cx, cy)| match disk::load(key_of((cx, cy)), chunk_len) {
+            Some(c) => ((cx, cy), std::sync::Arc::new(c), false),
+            None => ((cx, cy), std::sync::Arc::new(ctx.simulate_chunk(cx, cy)), true),
+        })
         .collect();
     {
         let mut cache = chunk_cache().lock().unwrap();
         if cache.len() + fresh.len() > CHUNK_CACHE_LIMIT { cache.clear(); }
-        for (k, c) in &fresh {
+        for (k, c, _) in &fresh {
             cache.insert(key_of(*k), c.clone());
         }
     }
-    chunks.extend(fresh);
+    fresh.par_iter().filter(|f| f.2).for_each(|(k, c, _)| disk::store(key_of(*k), c));
+    chunks.extend(fresh.into_iter().map(|(k, c, _)| (k, c)));
 
     // 2. Blend: each cell mixes the two nearest chunk centres in x and in y (tent weights).
     let mut h = vec![0.0f32; n];

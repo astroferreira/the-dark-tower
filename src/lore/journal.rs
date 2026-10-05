@@ -298,6 +298,10 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
     if ages.is_empty() {
         ages.push(("The Age of Beginning".into(), 1, history.current_date.year));
     }
+    // An age in which nothing was recorded (a quiet stretch before the first people) is not a book.
+    while ages.len() > 1 && !events.iter().any(|e| e.date.year >= ages[0].1 && e.date.year <= ages[0].2) {
+        ages.remove(0);
+    }
     if let Some(first) = ages.first_mut() {
         first.1 = first.1.min(events.iter().map(|e| e.date.year).min().unwrap_or(1));
     }
@@ -364,7 +368,7 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
     // year), then the seat. The separate capital-founding and crowning entries are dropped.
     let mut founding_story: HashMap<FactionId, String> = HashMap::default();
     let mut folded: HashSet<EventId> = HashSet::default();
-    for f in events.iter().filter(|e| e.event_type == EventType::FactionFounded) {
+    for f in events.iter().filter(|e| e.event_type == EventType::FactionFounded && !is_revival(e)) {
         let Some(&fid) = f.factions_involved.first() else { continue };
         let fname = history.factions.get(&fid).map(|x| x.name.clone()).unwrap_or_default();
         for e in events.iter().filter(|e| e.date.year == f.date.year) {
@@ -428,7 +432,7 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
             FactionFounded => {
                 let fid = e.factions_involved.first().copied();
                 let seat = e.description.rsplit(" at ").next().map(|s| s.trim_end_matches('.').to_string());
-                let html = match fid.and_then(|f| founding_story.get(&f)) {
+                let html = match fid.and_then(|f| founding_story.get(&f)).filter(|_| !is_revival(e)) {
                     Some(story) => match &seat {
                         Some(seat) => format!("{} Its seat was {}.", story, esc(seat)),
                         None => story.clone(),
@@ -990,4 +994,10 @@ mod tests {
         let html = links.link_names("Ann & Annabel met Annabel", vec![("p1".into(), "Annabel".into()), ("p2".into(), "Ann".into())]);
         assert_eq!(html, "<a href=\"#p2\">Ann</a> &amp; <a href=\"#p1\">Annabel</a> met Annabel");
     }
+}
+
+/// A fallen people restored in its old seat (`step_revivals`) is recorded as a founding, but its
+/// story is the rising, not the people's original founding myth.
+fn is_revival(e: &Event) -> bool {
+    e.event_type == EventType::FactionFounded && e.title.ends_with(" rises again")
 }

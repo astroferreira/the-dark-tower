@@ -104,6 +104,8 @@ pub enum EventType {
     ShadowConquest,
     ShadowRepelled,
     ShadowBroken,
+    /// A town the Shadow held is freed by the free peoples (appended: older saves still decode).
+    ShadowLiberated,
 }
 
 impl EventType {

@@ -189,6 +189,11 @@ fn plan_for(site: &Site, lore: &RegionLore, cell_m: f64) -> Plan {
 /// What a plan puts at a point (frame metres).
 enum Feature { Street, Plaza, Wall(bool), HouseWall(bool, bool), HouseFloor(bool, bool), Door(bool), Field(u64, bool), Garden, None }
 
+/// The index of the house whose footprint (walls, floor, door) covers a point, if any.
+fn house_at(plan: &Plan, u: f64, v: f64) -> Option<usize> {
+    plan.houses.iter().position(|h| ((u - h.u).powi(2) + (v - h.v).powi(2)).sqrt() <= h.reach + 1.0 && rect_dist((u, v), h) <= 0.0)
+}
+
 fn feature_at(plan: &Plan, u: f64, v: f64) -> Feature {
     let ruined = plan.site.destroyed_year.is_some();
     let t = TILE_M as f64;
@@ -256,6 +261,8 @@ pub fn apply(map: &mut LocalMap, region: &ZoomRegion, lore: &RegionLore, cx: f64
         }
     }
     if plans.is_empty() && roads.is_empty() { return; }
+    // Columns under each standing house's roof: (plan, house) -> cells.
+    let mut roofed: std::collections::BTreeMap<(usize, usize), (bool, Vec<(usize, usize)>)> = Default::default();
     for j in 0..n {
         for i in 0..n {
             let x_m = (cx + (i as f64 + 0.5 - n as f64 / 2.0) * tile_cells) * cell_m;
@@ -269,11 +276,16 @@ pub fn apply(map: &mut LocalMap, region: &ZoomRegion, lore: &RegionLore, cx: f64
             let (gx, gy) = ((x_m / TILE_M as f64).floor() as i64, (y_m / TILE_M as f64).floor() as i64);
 
             let mut done = false;
-            for plan in &plans {
+            for (pi, plan) in plans.iter().enumerate() {
                 let (u, v) = plan.to_frame(x_m, y_m);
                 if u.abs() > plan.site.fields_m.max(plan.site.core_m) as f64 * 1.1 + 5.0 || v.abs() > plan.site.fields_m.max(plan.site.core_m) as f64 * 1.1 + 5.0 { continue; }
                 let f = feature_at(plan, u, v);
                 if matches!(f, Feature::None) { continue; }
+                if plan.site.destroyed_year.is_none() && !underwater {
+                    if let Some(hi) = house_at(plan, u, v) {
+                        roofed.entry((pi, hi)).or_insert_with(|| (plan.houses[hi].stone, Vec::new())).1.push((i, j));
+                    }
+                }
                 // Streets, houses and fields stop at the water's edge.
                 if underwater { continue; }
                 let wobble = hash(gx, gy, 31);
@@ -357,5 +369,24 @@ pub fn apply(map: &mut LocalMap, region: &ZoomRegion, lore: &RegionLore, cx: f64
                 }
             }
         }
+    }
+    // Roofs: each house's ridge runs along the long axis of its footprint (principal axis of
+    // its cells), half its width to either side.
+    for (_, (stone, cells)) in roofed {
+        if cells.len() < 4 { continue; }
+        let k = cells.len() as f32;
+        let (mx, my) = cells.iter().fold((0.0, 0.0), |a, &(i, j)| (a.0 + i as f32 + 0.5, a.1 + j as f32 + 0.5));
+        let (mx, my) = (mx / k, my / k);
+        let (mut sxx, mut syy, mut sxy) = (0.0f32, 0.0f32, 0.0f32);
+        for &(i, j) in &cells {
+            let (dx, dy) = (i as f32 + 0.5 - mx, j as f32 + 0.5 - my);
+            sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+        }
+        let ang = 0.5 * (2.0 * sxy).atan2(sxx - syy);
+        let axis = (ang.cos(), ang.sin());
+        let half_width = cells.iter().map(|&(i, j)| ((i as f32 + 0.5 - mx) * -axis.1 + (j as f32 + 0.5 - my) * axis.0).abs()).fold(0.0, f32::max) + 0.5;
+        map.houses.push(crate::local::RoofPlan { cx: mx, cy: my, axis, half_width, stone });
+        let id = map.houses.len() as u32;
+        for (i, j) in cells { map.roofs[j * n + i] = id; }
     }
 }

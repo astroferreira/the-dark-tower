@@ -107,9 +107,9 @@ impl HistoryEngine {
             let burned = history.chronicle.events.iter().filter(|e| e.event_type == EventType::ShadowConquest && e.title.contains("burned")).count();
             let (reach, blight) = sh.extent();
             eprintln!(
-                "Shadow: {} ({}) - {} towns fallen ({} burned), {} held against it, strength {:.2}, reach {} tiles, blight {}{}",
+                "Shadow: {} ({}) - {} towns fallen ({} burned), {} held against it, strength {:.2}, reach {} tiles ({:.0}% of the land), holds {:.0}% of the land, blight {}{}",
                 sh.name, sh.lord(history), count(EventType::ShadowConquest), burned, count(EventType::ShadowRepelled),
-                sh.strength, reach, blight, if sh.is_broken() { ", BROKEN" } else { "" }
+                sh.strength, reach, sh.land_share() * 100.0, sh.held_share(history) * 100.0, blight, if sh.is_broken() { ", BROKEN" } else { "" }
             );
         }
 

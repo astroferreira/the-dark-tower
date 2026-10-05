@@ -10,9 +10,58 @@ use super::styles::NamingStyle;
 /// Name generator that produces names from a `NamingStyle`.
 pub struct NameGenerator;
 
+/// Longest personal name, in letters ("Lothrothall" is 11 and already hard to say).
+pub const MAX_PERSONAL_LETTERS: usize = 9;
+/// Longest place or realm-root name, in letters ("Silverdale", "Thundermount").
+pub const MAX_PLACE_LETTERS: usize = 12;
+/// Tries before settling for the shortest candidate.
+const NAME_TRIES: usize = 16;
+
+/// Whether a reader can say the name: 3 to `max_letters` letters, at most two vowels in a row,
+/// three consonants in a row, one apostrophe or hyphen, and no letter three times running.
+/// Names used to run to "Creiinclueerlluiagroea" and "Guuakghzkoorgkwukhrgh": nobody can retell a
+/// story whose cast they can't pronounce.
+pub fn pronounceable(name: &str, max_letters: usize) -> bool {
+    let letters: Vec<char> = name.chars().filter(|c| c.is_alphabetic()).flat_map(|c| c.to_lowercase()).collect();
+    if letters.len() < 3 || letters.len() > max_letters { return false; }
+    if name.chars().filter(|c| *c == '\'' || *c == '-').count() > 1 { return false; }
+    if !letters.iter().any(|c| !is_vowel(*c)) || !letters.iter().any(|c| is_vowel(*c)) { return false; }
+    let (mut vowels, mut consonants, mut same) = (0, 0, 0);
+    let mut prev = ' ';
+    for c in name.chars().flat_map(|c| c.to_lowercase()) {
+        if !c.is_alphabetic() { vowels = 0; consonants = 0; same = 0; prev = ' '; continue; }
+        if is_vowel(c) { vowels += 1; consonants = 0; } else { consonants += 1; vowels = 0; }
+        same = if c == prev { same + 1 } else { 1 };
+        prev = c;
+        if vowels > 2 || consonants > 3 || same > 2 { return false; }
+    }
+    true
+}
+
+fn is_vowel(c: char) -> bool { matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'y') }
+
+/// Draw names until one passes `pronounceable`; fall back to the shortest drawn.
+fn sayable(max_letters: usize, rng: &mut impl Rng, mut draw: impl FnMut(&mut dyn rand::RngCore) -> String) -> String
+where
+    for<'a> &'a mut dyn rand::RngCore: Rng,
+{
+    let mut best: Option<String> = None;
+    for _ in 0..NAME_TRIES {
+        let n = draw(rng as &mut dyn rand::RngCore);
+        if pronounceable(&n, max_letters) { return n; }
+        let letters = |s: &str| s.chars().filter(|c| c.is_alphabetic()).count();
+        if best.as_ref().map_or(true, |b| letters(&n) < letters(b)) { best = Some(n); }
+    }
+    best.unwrap_or_default()
+}
+
 impl NameGenerator {
-    /// Generate a personal name (e.g., "Krath", "Aelindra", "Grukash").
+    /// Generate a personal name (e.g., "Krath", "Aelindra", "Grukash"), short enough to say.
     pub fn personal_name(style: &NamingStyle, rng: &mut impl Rng) -> String {
+        sayable(MAX_PERSONAL_LETTERS, rng, |r| Self::raw_personal_name(style, r))
+    }
+
+    fn raw_personal_name(style: &NamingStyle, rng: &mut dyn rand::RngCore) -> String {
         let syllables = rng.gen_range(style.syllable_range.0..=style.syllable_range.1);
         let mut name = String::new();
 
@@ -84,6 +133,10 @@ impl NameGenerator {
     /// Uses compound prefix+suffix pattern with a chance of falling back to
     /// a syllable-based name with a place suffix.
     pub fn place_name(style: &NamingStyle, rng: &mut impl Rng) -> String {
+        sayable(MAX_PLACE_LETTERS, rng, |r| Self::raw_place_name(style, r))
+    }
+
+    fn raw_place_name(style: &NamingStyle, rng: &mut dyn rand::RngCore) -> String {
         let use_compound = !style.place_prefixes.is_empty()
             && !style.place_suffixes.is_empty()
             && rng.gen_bool(0.6);
@@ -94,7 +147,7 @@ impl NameGenerator {
             format!("{}{}", prefix, suffix)
         } else {
             // Syllable-based name, optionally with a place suffix
-            let base = Self::personal_name(style, rng);
+            let base = Self::raw_personal_name(style, rng);
             if !style.place_suffixes.is_empty() && rng.gen_bool(0.5) {
                 let suffix = &style.place_suffixes[rng.gen_range(0..style.place_suffixes.len())];
                 format!("{}{}", base, suffix)
@@ -121,6 +174,26 @@ impl NameGenerator {
             format!("{} {}", name, ep)
         } else {
             name
+        }
+    }
+
+    /// A realm's name from its root and how it is ruled: "The Kingdom of Galost", "The Vozuuk
+    /// Horde", "The Republic of Celiel". `government` is the culture's form of rule (Debug name of
+    /// `GovernmentType`); `race` the race label (orcs and goblins call a kingdom a horde).
+    pub fn realm_name(style: &NamingStyle, rng: &mut impl Rng, government: &str, race: &str) -> String {
+        let root = sayable(MAX_PERSONAL_LETTERS, rng, |r| Self::raw_place_name(style, r));
+        let horde = matches!(race, "Orc" | "Goblin");
+        match government {
+            "Monarchy" if horde => format!("The {} Horde", root),
+            "Monarchy" => format!("The Kingdom of {}", root),
+            "Theocracy" => format!("The Theocracy of {}", root),
+            "Republic" => format!("The Republic of {}", root),
+            "Oligarchy" => format!("The {} League", root),
+            "TribalCouncil" => format!("The {} Clans", root),
+            "Dictatorship" => format!("The {} Dominion", root),
+            "Magocracy" => format!("The {} Conclave", root),
+            "HiveCollective" => format!("The {} Hive", root),
+            _ => format!("The Realm of {}", root),
         }
     }
 

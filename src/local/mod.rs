@@ -127,6 +127,24 @@ pub struct LocalMap {
     pub biome: Biome,
     /// Signs of animal life on each column's surface (trails, burrows, nests, dens, bones).
     pub features: Vec<wildlife::Feature>,
+    /// Which roofed house covers each column (index + 1 into `houses`; 0 = open sky).
+    pub roofs: Vec<u32>,
+    /// The standing houses' roofs, for drawing the surface from above.
+    pub houses: Vec<RoofPlan>,
+}
+
+/// A house's roof seen from above, in cell units: a pitched roof whose ridge runs along the
+/// house's long axis through its centre.
+#[derive(Clone, Copy, Debug)]
+pub struct RoofPlan {
+    pub cx: f32,
+    pub cy: f32,
+    /// Unit vector along the ridge.
+    pub axis: (f32, f32),
+    /// Half the house's width across the ridge (cells).
+    pub half_width: f32,
+    /// Stone houses have tiled roofs; timber and earth ones thatch.
+    pub stone: bool,
 }
 
 impl LocalMap {
@@ -457,6 +475,8 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         world_tile,
         biome: Biome::classify(cols[n * n / 2 + n / 2].e, cols[n * n / 2 + n / 2].temp, cols[n * n / 2 + n / 2].moist),
         features: vec![wildlife::Feature::None; n * n],
+        roofs: vec![0; n * n],
+        houses: Vec::new(),
     };
 
     for j in 0..n {

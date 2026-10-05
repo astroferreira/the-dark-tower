@@ -3,6 +3,8 @@
 
 pub mod atlas;
 pub mod classify;
+pub mod inspector;
+pub mod local_ink;
 pub mod overlays;
 pub mod render;
 pub mod start;

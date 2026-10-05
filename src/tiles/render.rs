@@ -747,6 +747,11 @@ fn tile_px(atlas: &Atlas, kind: TileKind, var: usize, u: f32, v: f32, px: usize)
 }
 
 pub fn render_local(map: &LocalMap, atlas: &Atlas, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
+    // The surface is drawn in ink (local_ink.rs); z-level slices keep the tiles below.
+    if cam.surface_view {
+        super::local_ink::render_local_ink(map, cam, buf, w, h);
+        return;
+    }
     let t = cam.tile_px;
     let src_px = t.ceil() as usize;
     let (mw, mh) = (map.width, map.height);
