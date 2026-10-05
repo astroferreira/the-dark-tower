@@ -27,7 +27,7 @@ cargo run --release -- --legacy-explorer
 
 ### Dev world (fast iteration on history and story)
 `cargo run --release -- --dev` generates a 96x48 world (seed 76, 8 civilizations) with 250 years
-of history in about a second, vs ~3 min at 512x256 (almost all of it history). It has 4 named rivers, 2 lakes, 6 mountain
+of history in about a second, vs ~12 s at 512x256 (`--history-profile` prints time per phase). It has 4 named rivers, 2 lakes, 6 mountain
 ranges, forests, a desert and two continents. Any of `--width`/`--height`/`--seed`/
 `--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
 `--journal`, `--gazetteer`, `--director`, `--present` (the state the game starts in) as usual.
@@ -77,7 +77,7 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   ~170 MB at 512x256); `--load-world worlds/x.world` loads it in ~0.1 s instead of regenerating
   (~4 s world + ~6 min history). The tile viewer simulates 250 years of history by default
   (`--no-history` to skip), so save once with history and reload from then on.
-- The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`, now 2: the
+- The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`, now 6 (v6 added `people`); at v2 the
   ecology is appended after the history; version-1 files still load, without ecology); bump it
   when any serialized type changes. New `EventType` variants go at the end of the enum so old
   histories still decode. `worlds/` is gitignored-worthy local data.

@@ -22,6 +22,39 @@ use crate::history::naming::styles::NamingStyle;
 use crate::history::naming::generator::NameGenerator;
 use crate::history::religion::worship::{Religion, Doctrine};
 
+/// Per-phase timing of the history simulation (`--history-profile`): off unless enabled, so the
+/// simulation pays only an atomic load per phase.
+pub mod profile {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+    pub static ON: AtomicBool = AtomicBool::new(false);
+    static TOTALS: Mutex<Vec<(&'static str, f64, u64)>> = Mutex::new(Vec::new());
+
+    pub fn enabled() -> bool { ON.load(Ordering::Relaxed) }
+    pub fn add(name: &'static str, secs: f64) {
+        let mut t = TOTALS.lock().unwrap();
+        match t.iter_mut().find(|e| e.0 == name) {
+            Some(e) => { e.1 += secs; e.2 += 1; }
+            None => t.push((name, secs, 1)),
+        }
+    }
+    /// Phases by total time, slowest first: (name, seconds, calls).
+    pub fn take() -> Vec<(&'static str, f64, u64)> {
+        let mut t = std::mem::take(&mut *TOTALS.lock().unwrap());
+        t.sort_by(|a, b| b.1.total_cmp(&a.1));
+        t
+    }
+}
+
+#[inline]
+fn timed<T>(name: &'static str, f: impl FnOnce() -> T) -> T {
+    if !profile::enabled() { return f(); }
+    let t0 = std::time::Instant::now();
+    let r = f();
+    profile::add(name, t0.elapsed().as_secs_f64());
+    r
+}
+
 /// Run one season of simulation.
 pub fn simulate_step(
     history: &mut WorldHistory,
@@ -32,81 +65,82 @@ pub fn simulate_step(
     let date = history.current_date;
 
     // 1. Population growth
-    step_population_growth(history);
+    timed("population_growth", || step_population_growth(history));
 
     // 2. Settlement upgrades
-    step_settlement_upgrades(history);
+    timed("settlement_upgrades", || step_settlement_upgrades(history));
 
     // 2.5 Territory expansion
-    step_territory_expansion(history, world, rng);
+    timed("territory_expansion", || step_territory_expansion(history, world, rng));
 
     // 2.6 Colonization (new villages) and abandonment of dying settlements
-    step_colonization(history, world, game_data, rng);
+    timed("colonization", || step_colonization(history, world, game_data, rng));
 
 
     // 3. Opinion friction (border disputes, rivalries)
-    step_opinion_friction(history, rng);
+    timed("opinion_friction", || step_opinion_friction(history, rng));
 
     // 4. Peaceful diplomacy (treaties, alliances)
-    step_diplomacy_peaceful(history, rng);
+    timed("diplomacy_peaceful", || step_diplomacy_peaceful(history, rng));
 
     // 5. War declarations
-    step_diplomacy(history, rng);
+    timed("diplomacy", || step_diplomacy(history, rng));
 
     // 5. Alliance obligations and treaty enforcement
-    step_alliance_obligations(history, rng);
+    timed("alliance_obligations", || step_alliance_obligations(history, rng));
 
     // 5a. Active wars: battles
-    step_wars(history, rng);
+    timed("wars", || step_wars(history, world, rng));
 
     // 5.5. Active sieges: attrition, resolution
-    step_sieges(history, rng);
+    timed("sieges", || step_sieges(history, rng));
 
     // 5.6. The Shadow spreads and strikes (no RNG draws)
-    crate::history::shadow::step(history);
+    timed("shadow", || crate::history::shadow::step(history));
 
     // 6. Creature activity
-    step_creatures(history, rng);
+    timed("creatures", || step_creatures(history, rng));
     if date.season == crate::seasons::Season::Spring {
-        step_broods(history, rng);
-        step_revivals(history, game_data, rng);
+        timed("broods", || step_broods(history, rng));
+        timed("revivals", || step_revivals(history, game_data, rng));
     }
 
     // 7. Figure lifecycle (births, deaths, succession)
-    step_figures(history, game_data, rng);
+    timed("figures", || step_figures(history, game_data, rng));
 
     // 8. Artifact and monument creation
-    step_artifacts(history, rng);
+    timed("artifacts", || step_artifacts(history, rng));
 
     // 9. Trade route establishment
-    step_trade(history, world, rng);
+    timed("trade", || step_trade(history, world, rng));
 
     // 10. Religious events (conversion, schisms, sacrifice)
-    step_religion(history, rng);
+    timed("religion", || step_religion(history, rng));
 
     // 11. Natural events
-    step_natural_events(history, rng);
+    timed("natural_events", || step_natural_events(history, rng));
 
     // 12. Hero quests
-    step_quests(history, rng);
+    timed("quests", || step_quests(history, rng));
 
     // 13. Assassination & Intrigue
-    step_assassination(history, game_data, rng);
+    timed("assassination", || step_assassination(history, game_data, rng));
 
     // 13. Artifact lifecycle (inheritance, loss, hoarding, destruction)
-    step_artifact_lifecycle(history, rng);
+    timed("artifact_lifecycle", || step_artifact_lifecycle(history, rng));
 
     // 13. Wealth tick (income, trade revenue, war costs)
-    step_wealth_tick(history, rng);
+    timed("wealth_tick", || step_wealth_tick(history, rng));
 
     // 14. Ecology, once a year: land cover, wildlife and what people do to them.
     if date.season == crate::seasons::Season::Spring {
-        crate::history::ecology::step_year(history, world);
+        timed("ecology", || crate::history::ecology::step_year(history, world));
     }
 
     // 15. Keep the state consistent: no war or siege outlives a people, every living people has a
     //     living ruler, and diplomatic stances match the wars actually being fought.
-    step_integrity(history, game_data, rng);
+    timed("integrity", || step_integrity(history, game_data, rng));
+    timed("people", || crate::history::people::step(history, game_data, rng));
 
     // 16. Advance date
     history.current_date = date.next();
@@ -230,9 +264,9 @@ fn step_settlement_upgrades(history: &mut WorldHistory) {
                     event_id,
                     EventType::SettlementGrew,
                     date,
-                    format!("{} grows to a {:?}", settlement.name, settlement.settlement_type),
-                    format!("{} has grown from a {:?} to a {:?}.",
-                        settlement.name, old_type, settlement.settlement_type),
+                    format!("{} grows into a {}", settlement.name, plain_words(&format!("{:?}", settlement.settlement_type))),
+                    format!("{} has grown from a {} into a {}.",
+                        settlement.name, plain_words(&format!("{:?}", old_type)), plain_words(&format!("{:?}", settlement.settlement_type))),
                 )
                 .at_location(settlement.location.0, settlement.location.1)
                 .with_faction(settlement.faction)
@@ -494,9 +528,10 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
             .map(|fig| &fig.personality);
         let envy_here = resource_envy(history, fid_a, fid_b).0;
         let cause = if envy_here > 10.0 && rng.gen::<f32>() < 0.6 { WarCause::Resource } else { pick_war_cause(leader_p, rng) };
+        let envied = resource_envy(history, fid_a, fid_b).1;
 
         let event_id = history.id_generators.next_event();
-        let war_name = format!("{:?} War of {} and {}", cause, name_a, name_b);
+        let war_name = war_name(history, cause, fid_a, fid_b, envied);
         let mut war = War::new(war_id, war_name.clone(), fid_a, fid_b, date, cause);
         war.declaration_event = Some(event_id);
         history.wars.insert(war_id, war);
@@ -581,7 +616,7 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
             let cause = pick_war_cause(leader_p, rng);
 
             let event_id = history.id_generators.next_event();
-            let war_name = format!("{:?} War of {} and {}", cause, name_a, name_b);
+            let war_name = war_name(history, cause, fid_a, fid_b, None);
             let mut war = War::new(war_id, war_name.clone(), fid_a, fid_b, date, cause);
             war.declaration_event = Some(event_id);
             history.wars.insert(war_id, war);
@@ -660,7 +695,7 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
             .map(|fig| &fig.personality);
         let cause = pick_war_cause(leader_p, rng);
 
-        let war_name = format!("{:?} War of {} and {}", cause, name_a, name_b);
+        let war_name = war_name(history, cause, fid_a, fid_b, None);
         let mut war = War::new(war_id, war_name.clone(), fid_a, fid_b, date, cause);
         war.declaration_event = Some(event_id);
         history.wars.insert(war_id, war);
@@ -729,7 +764,7 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
         let name_b = history.factions.get(&fid_b).map(|f| f.name.clone()).unwrap_or_default();
         let leader_id_a = history.factions.get(&fid_a).and_then(|f| f.current_leader);
 
-        let war_name = format!("Holy Crusade of {} against {}", name_a, name_b);
+        let war_name = war_name(history, WarCause::HolyWar, fid_a, fid_b, None);
         let mut war = War::new(war_id, war_name.clone(), fid_a, fid_b, date, WarCause::HolyWar);
         war.declaration_event = Some(event_id);
         history.wars.insert(war_id, war);
@@ -761,25 +796,151 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
     }
 }
 
-/// Where a battle between two factions is fought: the defender's living settlement closest to
-/// any of the attacker's (computed, not rolled).
-fn battle_site(history: &WorldHistory, agg: FactionId, def: FactionId) -> Option<(usize, usize)> {
+/// The defender's town nearest the attacker: where a war's battles are fought.
+fn battle_town(history: &WorldHistory, agg: FactionId, def: FactionId) -> Option<SettlementId> {
     let w = history.tile_history.width as i64;
-    let alive = |f: FactionId| history.settlements.values().filter(move |s| s.faction == f && !s.is_destroyed()).map(|s| (s.id.0, s.location));
-    let mut best: Option<(i64, u64, (usize, usize))> = None;
+    let alive = |f: FactionId| history.settlements.values().filter(move |s| s.faction == f && !s.is_destroyed()).map(|s| (s.id, s.location));
+    let mut best: Option<(i64, SettlementId)> = None;
     for (did, d) in alive(def) {
         for (_, a) in alive(agg) {
             let mut dx = (d.0 as i64 - a.0 as i64).abs();
             dx = dx.min(w - dx);
             let dy = d.1 as i64 - a.1 as i64;
             let dist = dx * dx + dy * dy;
-            if best.map_or(true, |b| (dist, did) < (b.0, b.1)) { best = Some((dist, did, d)); }
+            if best.map_or(true, |b| (dist, did) < (b.0, b.1)) { best = Some((dist, did)); }
         }
     }
-    best.map(|b| b.2)
+    best.map(|b| b.1)
 }
 
-fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
+/// What the ground at a battle gives the defender, and what the battle is called after.
+#[derive(Clone, Copy, PartialEq)]
+enum Ground { Walls, Ford, Pass, Wood, Field }
+
+fn battle_ground(history: &WorldHistory, world: &WorldData, town: SettlementId) -> Ground {
+    use crate::history::civilizations::settlement::WallLevel;
+    let Some(t) = history.settlements.get(&town) else { return Ground::Field };
+    let (x, y) = t.location;
+    if matches!(t.walls, WallLevel::StoneWall | WallLevel::Fortified | WallLevel::Citadel) { return Ground::Walls; }
+    let (w, h) = (world.width, world.height);
+    let near = |dx: i64, dy: i64| (((x as i64 + dx).rem_euclid(w as i64)) as usize, (y as i64 + dy).clamp(0, h as i64 - 1) as usize);
+    let around: Vec<(usize, usize)> = (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (dx, dy))).map(|(dx, dy)| near(dx, dy)).collect();
+    if world.river_network.as_ref().map_or(false, |rn| around.iter().any(|&(i, j)| rn.has_significant_flow(i, j))) { return Ground::Ford; }
+    let hs: Vec<f32> = around.iter().map(|&(i, j)| *world.heightmap.get(i, j)).collect();
+    let relief = hs.iter().cloned().fold(f32::MIN, f32::max) - hs.iter().cloned().fold(f32::MAX, f32::min);
+    if *world.heightmap.get(x, y) > 1200.0 || relief > 900.0 { return Ground::Pass; }
+    let b = format!("{:?}", world.biomes.get(x, y));
+    if b.contains("Forest") || b.contains("Jungle") || b.contains("Taiga") { return Ground::Wood; }
+    Ground::Field
+}
+
+impl Ground {
+    /// The defender's multiplier.
+    fn hold(self) -> f32 { match self { Ground::Walls => 1.6, Ground::Pass => 1.4, Ground::Ford => 1.25, Ground::Wood => 1.1, Ground::Field => 1.0 } }
+    fn battle_name(self, town: &str, n: u64) -> String {
+        match self {
+            Ground::Walls => format!("the Battle before the Walls of {}", town),
+            Ground::Ford => format!("the Battle of {} Ford", town),
+            Ground::Pass => format!("the Battle of the {} Pass", town),
+            Ground::Wood => if n % 2 == 0 { format!("the Battle of {} Wood", town) } else { format!("the Battle in the Woods of {}", town) },
+            Ground::Field => match n % 3 { 0 => format!("the Battle of {}", town), 1 => format!("the Battle of the Fields of {}", town), _ => format!("the Battle of {} Field", town) },
+        }
+    }
+}
+
+/// A war's name from its cause and where it is fought ("The Salt War", "The Conquest of
+/// Galost", "The Second War of the Mirrorwish Succession"); repeated names get an ordinal.
+fn war_name(history: &WorldHistory, cause: WarCause, a: FactionId, b: FactionId, envied: Option<ResourceType>) -> String {
+    let town = |s: Option<SettlementId>| s.and_then(|s| history.settlements.get(&s)).map(|t| t.name.clone());
+    let place = town(battle_town(history, a, b)).or_else(|| town(history.factions.get(&b).and_then(|f| f.capital))).unwrap_or_else(|| "the Marches".into());
+    let seat = |f: FactionId| town(history.factions.get(&f).and_then(|x| x.capital)).unwrap_or_else(|| place.clone());
+    let stem = match cause {
+        WarCause::Resource => match envied {
+            Some(r) => format!("{} War", resource_word(r)),
+            None => format!("War for the Wealth of {}", place),
+        },
+        WarCause::Territorial => format!("War for {}", place),
+        WarCause::Conquest => format!("Conquest of {}", place),
+        WarCause::Succession => format!("War of the {} Succession", seat(b)),
+        WarCause::Religious => format!("War of the Altars at {}", place),
+        WarCause::HolyWar => format!("Holy War on {}", seat(b)),
+        WarCause::Revenge => format!("Vengeance of {}", seat(a)),
+        WarCause::Independence => format!("War of {}'s Independence", place),
+        WarCause::DefensivePact => format!("{} War", place),
+    };
+    let before = history.wars.values().filter(|w| w.name.ends_with(&stem)).count();
+    const ORD: [&str; 9] = ["Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth"];
+    match before {
+        0 => format!("The {}", stem),
+        n if n <= ORD.len() => format!("The {} {}", ORD[n - 1], stem),
+        n => format!("The {}th {}", n + 1, stem),
+    }
+}
+
+fn resource_word(r: ResourceType) -> &'static str {
+    match r {
+        ResourceType::Food => "Grain", ResourceType::Wood => "Timber", ResourceType::Stone => "Quarry",
+        ResourceType::Iron => "Iron", ResourceType::Copper => "Copper", ResourceType::Gold => "Gold",
+        ResourceType::Silver => "Silver", ResourceType::Mithril => "Mithril", ResourceType::Adamantine => "Adamant",
+        ResourceType::Gems => "Jewel", ResourceType::Diamonds => "Diamond", ResourceType::Rubies => "Ruby",
+        ResourceType::Emeralds => "Emerald", ResourceType::Spices => "Spice", ResourceType::Silk => "Silk",
+        ResourceType::Wine => "Wine", ResourceType::Salt => "Salt", ResourceType::Herbs => "Herb",
+        ResourceType::MagicalComponents => "Spellstone", ResourceType::AncientRelics => "Relic",
+        ResourceType::DragonScale => "Dragonscale", ResourceType::MonsterBones => "Bone", ResourceType::Ichor => "Ichor",
+        ResourceType::Coal => "Coal", ResourceType::Tin => "Tin", ResourceType::Fish => "Fishing",
+    }
+}
+
+/// An enum's name as running text: "MagicalComponents" -> "magical components".
+pub(crate) fn plain_words(debug: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in debug.chars().enumerate() {
+        if c.is_uppercase() && i > 0 { out.push(' '); }
+        out.extend(c.to_lowercase());
+    }
+    out
+}
+
+/// A people whose seat its enemy now holds.
+fn lost_seat(history: &WorldHistory, f: FactionId, to: FactionId) -> bool {
+    history.factions.get(&f).and_then(|x| x.capital).and_then(|c| history.settlements.get(&c))
+        .map_or(false, |t| !t.is_destroyed() && t.faction == to)
+}
+
+/// Who leads a people's host: the captain of its town nearest the field, else its ruler.
+fn commander(history: &WorldHistory, f: FactionId, at: (usize, usize)) -> Option<FigureId> {
+    use crate::history::people::Role;
+    let people = history.people.as_ref();
+    let mut best: Option<(usize, FigureId)> = None;
+    if let Some(p) = people {
+        for (fig, town) in &p.home {
+            if p.role.get(fig) != Some(&Role::Captain) { continue; }
+            let Some(x) = history.figures.get(fig) else { continue };
+            if !x.is_alive() || x.faction != Some(f) { continue; }
+            let Some(t) = history.settlements.get(town) else { continue };
+            let d = t.location.0.abs_diff(at.0) + t.location.1.abs_diff(at.1);
+            if best.map_or(true, |b| (d, *fig) < b) { best = Some((d, *fig)); }
+        }
+    }
+    best.map(|b| b.1).or_else(|| history.factions.get(&f).and_then(|x| x.current_leader).filter(|l| history.figures.get(l).map_or(false, |x| x.is_alive())))
+}
+
+/// A commander's gift for war, fixed for life (0.8-1.25; 1 for a host without one).
+fn talent(c: Option<FigureId>) -> f32 {
+    c.map_or(1.0, |f| {
+        let mut x = f.0 as u64 ^ 0x9E37_79B9_7F4A_7C15;
+        x = (x ^ (x >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        x ^= x >> 29;
+        0.8 + 0.45 * (x % 1000) as f32 / 1000.0
+    })
+}
+
+/// A people's field army: about one in twenty-five souls, more for a martial people.
+fn army_size(history: &WorldHistory, f: FactionId) -> u32 {
+    history.factions.get(&f).map_or(50, |x| ((x.total_population / 25) as f32 * (0.6 + (x.military_strength as f32 / 400.0).min(1.4))) as u32).max(40)
+}
+
+fn step_wars(history: &mut WorldHistory, world: &WorldData, rng: &mut impl Rng) {
     let date = history.current_date;
     let active_war_ids: Vec<WarId> = history.wars.keys()
         .copied()
@@ -787,37 +948,36 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
         .collect();
 
     for war_id in active_war_ids {
+        let (agg, def) = {
+            let Some(war) = history.wars.get(&war_id) else { continue };
+            (*war.aggressors.first().unwrap_or(&FactionId(0)), *war.defenders.first().unwrap_or(&FactionId(0)))
+        };
+        // Set when a battle decides the war outright (a ruler slain in the field).
+        let mut decided: Option<FactionId> = None;
         // Battle chance per season
         if rng.gen::<f32>() < 0.15 {
-            let (agg, def) = {
-                let war = match history.wars.get(&war_id) {
-                    Some(w) => w,
-                    None => continue,
-                };
-                let agg = *war.aggressors.first().unwrap_or(&FactionId(0));
-                let def = *war.defenders.first().unwrap_or(&FactionId(0));
-                (agg, def)
-            };
+            let town = battle_town(history, agg, def);
+            let ground = town.map_or(Ground::Field, |t| battle_ground(history, world, t));
+            let site = town.and_then(|t| history.settlements.get(&t)).map(|t| t.location);
+            let town_name = town.and_then(|t| history.settlements.get(&t)).map(|t| t.name.clone()).unwrap_or_else(|| "the Marches".into());
+            let at = site.unwrap_or((0, 0));
+            let (cmd_a, cmd_d) = (commander(history, agg, at), commander(history, def, at));
+            let (army_a, army_d) = (army_size(history, agg), army_size(history, def));
+            // Strength: numbers (damped: a host ten times the size is about twice as strong, so
+            // small peoples win some), who leads it, a roll for the day, the ground for the defender.
+            let force_a = (army_a as f32).powf(0.35) * talent(cmd_a) * rng.gen_range(0.5..1.5);
+            let force_d = (army_d as f32).powf(0.35) * talent(cmd_d) * rng.gen_range(0.5..1.5) * ground.hold();
+            let agg_won = force_a > force_d;
+            let margin = if agg_won { force_a / force_d.max(1.0) } else { force_d / force_a.max(1.0) };
+            let (win_army, lose_army) = if agg_won { (army_a, army_d) } else { (army_d, army_a) };
+            let lose_losses = ((lose_army as f32) * rng.gen_range(0.05..0.15) * margin.min(2.0)).max(5.0) as u32;
+            let win_losses = ((win_army as f32) * rng.gen_range(0.02..0.06)).max(2.0) as u32;
+            let (agg_losses, def_losses) = if agg_won { (win_losses, lose_losses) } else { (lose_losses, win_losses) };
 
-            let agg_strength = history.factions.get(&agg).map(|f| f.military_strength).unwrap_or(100);
-            let def_strength = history.factions.get(&def).map(|f| f.military_strength).unwrap_or(100);
-
-            let agg_roll: f32 = rng.gen::<f32>() * agg_strength.max(1) as f32;
-            let def_roll: f32 = rng.gen::<f32>() * def_strength.max(1) as f32;
-
-            let agg_losses = rng.gen_range(10..100);
-            let def_losses = rng.gen_range(10..100);
-
-            // Update casualties
             if let Some(war) = history.wars.get_mut(&war_id) {
                 war.casualties.aggressor_losses += agg_losses;
                 war.casualties.defender_losses += def_losses;
             }
-
-            // Update populations
-            let agg_name = history.factions.get(&agg).map(|f| f.name.clone()).unwrap_or_default();
-            let def_name = history.factions.get(&def).map(|f| f.name.clone()).unwrap_or_default();
-
             if let Some(faction) = history.factions.get_mut(&agg) {
                 faction.total_population = faction.total_population.saturating_sub(agg_losses);
             }
@@ -825,46 +985,93 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
                 faction.total_population = faction.total_population.saturating_sub(def_losses);
             }
 
-            // Record battle event (caused by the war declaration)
+            let agg_name = history.factions.get(&agg).map(|f| f.name.clone()).unwrap_or_default();
+            let def_name = history.factions.get(&def).map(|f| f.name.clone()).unwrap_or_default();
+            let fig_name = |c: Option<FigureId>| c.and_then(|c| history.figures.get(&c)).map(|x| x.full_name());
+            let (win_fac, lose_fac) = if agg_won { (agg, def) } else { (def, agg) };
+            let (win_cmd, lose_cmd) = if agg_won { (cmd_a, cmd_d) } else { (cmd_d, cmd_a) };
+            let (win_name, lose_name) = if agg_won { (agg_name.clone(), def_name.clone()) } else { (def_name.clone(), agg_name.clone()) };
+            let battle = ground.battle_name(&town_name, war_id.0 as u64 + history.wars.get(&war_id).map_or(0, |w| w.battles.len() as u64));
+            let mut title = battle.clone();
+            if let Some(c) = title.get_mut(0..1) { c.make_ascii_uppercase(); }
+
+            // The commanders' fates: the beaten one may fall, the victor of a rout earns a name.
+            let lose_cmd_dies = lose_cmd.is_some() && rng.gen::<f32>() < 0.12 + 0.12 * (margin - 1.0).min(1.0);
+            let ruler_slain = lose_cmd_dies && history.factions.get(&lose_fac).and_then(|f| f.current_leader) == lose_cmd;
+            let mut text = match (fig_name(win_cmd), fig_name(lose_cmd)) {
+                (Some(w), Some(l)) => format!("{} of {} beat {} of {} in {}", w, win_name, l, lose_name, battle),
+                (Some(w), None) => format!("{} led {} to victory over {} in {}", w, win_name, lose_name, battle),
+                (None, Some(l)) => format!("{} beat {}'s host under {} in {}", win_name, lose_name, l, battle),
+                (None, None) => format!("{} beat {} in {}", win_name, lose_name, battle),
+            };
+            text.push_str(&format!(" ({} of {} fell, {} of {}).", lose_losses, lose_army, win_losses, win_army));
+            if ground != Ground::Field && !agg_won {
+                text.push_str(match ground { Ground::Walls => " The walls held.", Ground::Ford => " The ford was held.", Ground::Pass => " The pass was held.", _ => " The woods hid the defenders." });
+            }
+            if lose_cmd_dies {
+                if let Some(l) = fig_name(lose_cmd) { text.push_str(&format!(" {} died on the field.", l)); }
+            } else if let Some(l) = fig_name(lose_cmd) {
+                if margin > 1.3 { text.push_str(&format!(" {} escaped and swore to return.", l)); }
+            }
+            let win_epithet = win_cmd.filter(|c| margin > 1.6 && history.figures.get(c).map_or(false, |x| x.epithet.is_none()));
+            // Defenders who hold their town are its shield; attackers who take the field its
+            // victor, hammer or scourge; a name already borne goes to the next.
+            let epithet = win_epithet.and_then(|_| {
+                let forms: &[&str] = if agg_won { &["the Victor of", "the Hammer of", "the Scourge of", "the Bane of"] } else { &["the Shield of", "the Wall of", "the Warden of", "the Defender of"] };
+                forms.iter().map(|f| format!("{} {}", f, town_name))
+                    .find(|e| !history.figures.values().any(|x| x.epithet.as_deref() == Some(e.as_str())))
+            });
+            if let (Some(ep), Some(w)) = (&epithet, fig_name(win_cmd)) {
+                text.push_str(&format!(" {} was called {} after.", w, ep));
+            }
+
             let event_id = history.id_generators.next_event();
-            let outcome = if agg_roll > def_roll { "attacker victory" } else { "defender victory" };
-            let declaration_evt = history.wars.get(&war_id)
-                .and_then(|w| w.declaration_event);
-            let mut event = Event::new(
-                event_id,
-                EventType::BattleFought,
-                date,
-                format!("Battle between {} and {}", agg_name, def_name),
-                format!("Battle result: {}. Losses: {} ({}) vs {} ({}).",
-                    outcome, agg_losses, agg_name, def_losses, def_name),
-            )
-            .with_faction(agg)
-            .with_faction(def);
+            let declaration_evt = history.wars.get(&war_id).and_then(|w| w.declaration_event);
+            let mut event = Event::new(event_id, EventType::BattleFought, date, title, text)
+                .with_faction(agg)
+                .with_faction(def);
+            for c in [win_cmd, lose_cmd].into_iter().flatten() { event = event.with_participant(EntityId::Figure(c)); }
+            if let Some(t) = town { event = event.with_participant(EntityId::Settlement(t)); }
             if let Some(decl_id) = declaration_evt {
                 event = event.caused_by(decl_id);
             }
-
-            // Fought outside the defender's settlement nearest the attacker.
-            if let Some((x, y)) = battle_site(history, agg, def) {
+            if let Some((x, y)) = site {
                 event = event.at_location(x, y);
                 history.tile_history.record_event(x, y, event_id);
             }
-
             if let Some(war) = history.wars.get_mut(&war_id) {
                 war.battles.push(event_id);
             }
             history.chronicle.record(event);
+
+            if lose_cmd_dies {
+                if let Some(c) = lose_cmd.and_then(|c| history.figures.get_mut(&c)) { c.kill(date, crate::history::entities::traits::DeathCause::Battle); }
+                if let (Some(w), Some(l)) = (win_cmd, lose_cmd) {
+                    if let Some(x) = history.figures.get_mut(&w) { x.kills.push(EntityId::Figure(l)); }
+                }
+            } else if lose_cmd.is_some() && margin > 1.3 {
+                // A beaten commander who lived carries the grudge home.
+                if let Some(f) = history.factions.get_mut(&lose_fac) { f.get_relation_mut(win_fac, 0.0).adjust_opinion(-12); }
+            }
+            if let (Some(w), Some(ep)) = (win_epithet, epithet) {
+                if let Some(x) = history.figures.get_mut(&w) { x.epithet = Some(ep); }
+            }
+            if ruler_slain { decided = Some(win_fac); }
         }
 
-        // Check war exhaustion / end condition
-        let should_end = {
+        // A war ends when a ruler falls in battle, when a side's seat is lost, or by exhaustion
+        // (which builds each year: most wars end in 3-10 years, none outlast 20).
+        if decided.is_none() {
+            if lost_seat(history, def, agg) { decided = Some(agg); }
+            else if lost_seat(history, agg, def) { decided = Some(def); }
+        }
+        let should_end = decided.is_some() || {
             let war = match history.wars.get(&war_id) {
                 Some(w) => w,
                 None => continue,
             };
-            // Exhaustion builds each year: most wars end in 3-10 years, some drag on past 15.
             let duration = date.year.saturating_sub(war.started.year);
-            duration >= 1 && rng.gen::<f32>() < 0.012 + 0.006 * duration as f32
+            duration >= 20 || (duration >= 1 && rng.gen::<f32>() < 0.010 + 0.005 * duration as f32)
         };
 
         if should_end {
@@ -880,7 +1087,10 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
                 .map(|w| w.casualties.aggressor_losses).unwrap_or(0);
             let def_losses = history.wars.get(&war_id)
                 .map(|w| w.casualties.defender_losses).unwrap_or(0);
-            let victor = if agg_losses <= def_losses { Some(agg) } else { Some(def) };
+            let victor = decided.or_else(|| {
+                let (ra, rd) = (agg_losses as f32 / army_size(history, agg) as f32, def_losses as f32 / army_size(history, def) as f32);
+                Some(if ra <= rd { agg } else { def })
+            });
             let loser = if victor == Some(agg) { def } else { agg };
 
             if let Some(war) = history.wars.get_mut(&war_id) {
@@ -901,6 +1111,13 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
             let def_name = history.factions.get(&def).map(|f| f.name.clone()).unwrap_or_default();
             let victor_name = victor.and_then(|v| history.factions.get(&v).map(|f| f.name.clone()))
                 .unwrap_or_else(|| "none".to_string());
+            let war_title = history.wars.get(&war_id).map(|w| w.name.clone()).unwrap_or_default();
+            let years = history.wars.get(&war_id).map_or(0, |w| date.year.saturating_sub(w.started.year));
+            let why = match decided {
+                Some(v) if lost_seat(history, loser, v) => format!(", having taken the seat of {}", history.factions.get(&loser).map(|f| f.name.clone()).unwrap_or_default()),
+                Some(_) => ", its foe's ruler slain in the field".to_string(),
+                None => String::new(),
+            };
 
             // War conquest: victor initiates sieges instead of instant transfer
             // Settlement transfers now happen through the siege system
@@ -911,8 +1128,10 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
                 } else {
                     agg_losses as f32 / total_casualties.max(1) as f32
                 };
-                let conquest_chance = 0.65 + loser_casualty_ratio * 0.3;
-                let settlements_to_take = if loser_casualty_ratio > 0.6 { 2 } else { 1 };
+                // Battles are lopsided (the beaten side loses several times more), so the loser
+                // usually carries 0.6-0.8 of the dead; only a rout takes two towns.
+                let conquest_chance = 0.55 + loser_casualty_ratio * 0.3;
+                let settlements_to_take = if loser_casualty_ratio > 0.85 { 2 } else { 1 };
 
                 if rng.gen::<f32>() < conquest_chance {
                     for _ in 0..settlements_to_take {
@@ -1014,8 +1233,10 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
                 event_id,
                 EventType::WarEnded,
                 date,
-                format!("End of the war between {} and {}", agg_name, def_name),
-                format!("The war has ended. Victor: {}.", victor_name),
+                format!("End of {}", war_title),
+                format!("{} ended after {} between {} and {}: {} prevailed{}.", war_title,
+                    match years { 0 => "less than a year".to_string(), 1 => "a year".to_string(), n => format!("{} years", n) },
+                    agg_name, def_name, victor_name, why),
             )
             .with_faction(agg)
             .with_faction(def);
@@ -1192,7 +1413,7 @@ fn step_revivals(history: &mut WorldHistory, game_data: &GameData, rng: &mut imp
         // The holder fights to take it back.
         let war_id = history.id_generators.next_war();
         let war_event = history.id_generators.next_event();
-        let war_name = format!("War of {}'s Independence", seat_name);
+        let war_name = format!("The War of {}'s Independence", seat_name);
         let mut war = War::new(war_id, war_name.clone(), holder, fid, date, WarCause::Independence);
         war.declaration_event = Some(war_event);
         history.wars.insert(war_id, war);
@@ -1232,6 +1453,14 @@ fn step_broods(history: &mut WorldHistory, rng: &mut impl Rng) {
     let living = history.legendary_creatures.values().filter(|c| c.is_alive()).count();
     let floor = ((history.config.initial_legendary_creatures as f32 * BROOD_FLOOR).ceil() as usize).max(3);
     if living >= floor || rng.gen::<f32>() >= BROOD_CHANCE { return; }
+    // Far below the floor, several broods come of age in one year.
+    let n = 1 + (floor - living) / 4;
+    for _ in 0..n { rise_brood(history, rng); }
+}
+
+/// One brood rises from the most recent slaying that has none yet.
+fn rise_brood(history: &mut WorldHistory, rng: &mut impl Rng) {
+    let date = history.current_date;
 
     // The most recent slaying whose beast has no brood yet.
     let has_brood: Vec<EventId> = history.chronicle.events.iter()
@@ -1280,6 +1509,9 @@ pub(crate) fn succeed(history: &mut WorldHistory, dead_leader_id: FigureId, fact
     // A people that has ended crowns no one.
     if !history.factions.get(&faction_id).map_or(false, |f| f.is_active()) { return; }
     let date = history.current_date;
+    // The crowning (or the crisis) follows the old ruler's death.
+    let death = history.chronicle.last_of(EntityId::Figure(dead_leader_id));
+    let after_death = |e: Event| match death { Some(d) => e.caused_by(d), None => e };
     let dead_name = history.figures.get(&dead_leader_id)
         .map(|f| f.full_name())
         .unwrap_or_default();
@@ -1378,7 +1610,7 @@ pub(crate) fn succeed(history: &mut WorldHistory, dead_leader_id: FigureId, fact
         .with_faction(faction_id)
         .with_participant(EntityId::Figure(new_leader_id))
         .with_participant(EntityId::Figure(rival_id));
-        history.chronicle.record(crisis_event);
+        history.chronicle.record(after_death(crisis_event));
 
         // Determine crisis outcome: coup (30%) or civil unrest (70%)
         if rng.gen::<f32>() < 0.30 {
@@ -1463,7 +1695,7 @@ pub(crate) fn succeed(history: &mut WorldHistory, dead_leader_id: FigureId, fact
         )
         .with_faction(faction_id)
         .with_participant(EntityId::Figure(new_leader_id));
-        history.chronicle.record(event);
+        history.chronicle.record(after_death(event));
     }
 }
 
@@ -1697,21 +1929,48 @@ fn step_artifacts(history: &mut WorldHistory, rng: &mut impl Rng) {
                 _ => ArtifactQuality::Divine,
             };
 
-            let creator = history.factions.get(&fid)
-                .and_then(|f| f.notable_figures.last().copied());
-
-            // Generate unique name (retry if duplicate)
-            let existing_names: Vec<&str> = history.artifacts.values()
-                .map(|a| a.name.as_str()).collect();
-            let mut art_name = generate_artifact_name(art_type, quality, rng);
-            let mut attempts = 0;
-            while existing_names.contains(&art_name.as_str()) && attempts < 10 {
-                art_name = generate_artifact_name(art_type, quality, rng);
-                attempts += 1;
-            }
+            // Made by a real hand (a smith of theirs, else the ruler) to remember a real deed.
+            use crate::history::remembrance as mem;
+            let (creator, town) = mem::maker(history, fid);
+            let deed = mem::recent_deed(history, fid, 40);
+            let salt = art_id.0 as u64;
+            let item = mem::item_word(art_type, salt);
+            let maker_name = creator.and_then(|c| history.figures.get(&c)).map(|x| x.name.clone());
+            let maker_full = creator.and_then(|c| history.figures.get(&c)).map(|x| x.full_name());
+            let town_name = town.and_then(|t| history.settlements.get(&t)).map(|t| t.name.clone());
+            let art_name = mem::artifact_name(history, item, maker_name.as_deref(), town_name.as_deref(), deed.as_ref(), salt)
+                .unwrap_or_else(|| {
+                    // No maker, town or deed: the old stock name, kept unique.
+                    let existing: Vec<&str> = history.artifacts.values().map(|a| a.name.as_str()).collect();
+                    let mut n = generate_artifact_name(art_type, quality, rng);
+                    let mut attempts = 0;
+                    while existing.contains(&n.as_str()) && attempts < 10 { n = generate_artifact_name(art_type, quality, rng); attempts += 1; }
+                    n
+                });
             let mut artifact = Artifact::new(
                 art_id, art_name.clone(), art_type, quality, date, creator,
             );
+            let quality_word = plain_words(&format!("{:?}", quality));
+            let made = match (&maker_full, &town_name) {
+                (Some(m), Some(t)) => format!("{} {} {} made by {} at {} in the year {}", mem::article(&quality_word), quality_word, item.to_lowercase(), m, t, date.year),
+                (Some(m), None) => format!("{} {} {} made by {} in the year {}", mem::article(&quality_word), quality_word, item.to_lowercase(), m, date.year),
+                (None, _) => format!("{} {} {} made in the year {}", mem::article(&quality_word), quality_word, item.to_lowercase(), date.year),
+            };
+            artifact.description = match &deed {
+                Some(d) => format!("{}, to remember {} ({}).", capitalize_first(&made), d.phrase, d.year),
+                None => format!("{}.", capitalize_first(&made)),
+            };
+            if let Some(d) = &deed {
+                let mut refers: Vec<EntityId> = d.who.clone();
+                if let Some(c) = creator { refers.push(EntityId::Figure(c)); }
+                artifact.inscriptions.push(crate::history::objects::artifacts::Inscription {
+                    text: format!("{} made me, for {}.", maker_name.clone().unwrap_or_else(|| "A smith".into()), d.phrase),
+                    translation: String::new(),
+                    refers_to: refers,
+                    date_inscribed: date,
+                });
+            }
+            artifact.creation_location = town.and_then(|t| history.settlements.get(&t)).map(|t| t.location);
 
             // Assign to faction leader
             if let Some(leader_id) = history.factions.get(&fid).and_then(|f| f.current_leader) {
@@ -1725,14 +1984,24 @@ fn step_artifacts(history: &mut WorldHistory, rng: &mut impl Rng) {
 
             let faction_name = history.factions.get(&fid).map(|f| f.name.clone()).unwrap_or_default();
             let event_id = history.id_generators.next_event();
-            let event = Event::new(
+            let mut event = Event::new(
                 event_id,
                 EventType::ArtifactCreated,
                 date,
                 format!("Creation of {}", art_name),
-                format!("{} was crafted by {}.", art_name, faction_name),
+                match (&maker_full, &deed) {
+                    (Some(m), Some(d)) => format!("{} of {} made {}, to remember {}.", m, faction_name, art_name, d.phrase),
+                    (Some(m), None) => format!("{} of {} made {}.", m, faction_name, art_name),
+                    (None, Some(d)) => format!("{} was made for {}, to remember {}.", art_name, faction_name, d.phrase),
+                    (None, None) => format!("{} was crafted by {}.", art_name, faction_name),
+                },
             )
-            .with_faction(fid);
+            .with_faction(fid)
+            .with_participant(EntityId::Artifact(art_id));
+            if let Some(c) = creator { event = event.with_participant(EntityId::Figure(c)); }
+            if let Some(d) = &deed { event = event.caused_by(d.event); }
+            if let Some(l) = artifact.creation_location { event = event.at_location(l.0, l.1); }
+            artifact.creation_event = Some(event_id);
             history.chronicle.record(event);
 
             history.artifacts.insert(art_id, artifact);
@@ -1750,29 +2019,53 @@ fn step_artifacts(history: &mut WorldHistory, rng: &mut impl Rng) {
                 let mon_type = pick_monument_type(leader_p, rng);
                 let purpose = pick_monument_purpose(leader_p, rng);
 
+                // Raised for a real deed, and named after it.
+                let deed = crate::history::remembrance::recent_deed(history, fid, 40);
                 let faction_name = history.factions.get(&fid).map(|f| f.name.clone()).unwrap_or_default();
-                let type_str = format!("{:?}", mon_type);
+                let capital_name = capital.and_then(|c| history.settlements.get(&c)).map(|t| t.name.clone()).unwrap_or_default();
+                let type_str = plain_words(&format!("{:?}", mon_type));
+                let type_title = format!("{:?}", mon_type);
                 let place_word = strip_the(&faction_name).split_whitespace().next().unwrap_or("Grand");
-                let mon_name = format!("The {} {}", place_word, type_str);
-                let monument = Monument::new(
+                let mut mon_name = match &deed {
+                    Some(d) if d.subject.starts_with("the ") => format!("The {} of {}", type_title, d.subject),
+                    Some(d) => format!("The {} of {}", type_title, d.subject),
+                    None => format!("The {} {}", place_word, type_title),
+                };
+                if history.monuments.values().any(|m| m.name == mon_name) {
+                    mon_name = format!("{} at {}", mon_name, capital_name);
+                }
+                let mut monument = Monument::new(
                     mon_id, mon_name.clone(), mon_type, (mx, my),
                     fid, date, purpose,
                 );
+                monument.commissioned_by = history.factions.get(&fid).and_then(|f| f.current_leader);
 
-                let article = match mon_type {
-                    MonumentType::Obelisk => "an",
-                    _ => "a",
-                };
                 let event_id = history.id_generators.next_event();
-                let event = Event::new(
+                let mut event = Event::new(
                     event_id,
                     EventType::MonumentBuilt,
                     date,
                     format!("Construction of {}", mon_name),
-                    format!("{} built {} {} at their capital.", faction_name, article, type_str.to_lowercase()),
+                    match &deed {
+                        Some(d) => format!("{} raised {} {} at {} to remember {} ({}).", faction_name, crate::history::remembrance::article(&type_str), type_str, capital_name, d.phrase, d.year),
+                        None => format!("{} raised {} {} at {}.", faction_name, crate::history::remembrance::article(&type_str), type_str, capital_name),
+                    },
                 )
                 .at_location(mx, my)
                 .with_faction(fid);
+                if let Some(c) = capital { event = event.with_participant(EntityId::Settlement(c)); }
+                if let Some(d) = &deed {
+                    event = event.caused_by(d.event);
+                    monument.commemorates = Some(d.event);
+                    monument.honors = d.who.clone();
+                    monument.inscriptions.push(crate::history::objects::artifacts::Inscription {
+                        text: format!("Raised by {} in the year {}, to remember {}.", faction_name, date.year, d.phrase),
+                        translation: String::new(),
+                        refers_to: d.who.clone(),
+                        date_inscribed: date,
+                    });
+                }
+                monument.construction_event = Some(event_id);
                 history.chronicle.record(event);
                 history.tile_history.record_event(mx, my, event_id);
 
@@ -1822,6 +2115,13 @@ fn step_religion(history: &mut WorldHistory, rng: &mut impl Rng) {
                 .unwrap_or(0.5);
             let conversion_chance = 0.005 * (1.0 - xenophobia * 0.7);
 
+            // Missionaries come from a neighbouring people that keeps the faith; no neighbour of
+            // the faith, no conversion (faith spreads by contact, not by chance across the map).
+            let missionary = follower_factions.iter().copied()
+                .filter(|&m| m != fid && history.factions.get(&m).map_or(false, |f| f.is_active()))
+                .find(|&m| factions_are_neighbors(history, fid, m, 30));
+            let Some(missionary) = missionary else { continue };
+
             if rng.gen::<f32>() < conversion_chance {
                 let religion_name = history.religions.get(&rid)
                     .map(|r| r.name.clone()).unwrap_or_default();
@@ -1854,9 +2154,11 @@ fn step_religion(history: &mut WorldHistory, rng: &mut impl Rng) {
                     EventType::Miracle,
                     date,
                     format!("{} converts to {}", faction_name, religion_name),
-                    format!("{} adopted {}, converting from their old faith.", faction_name, religion_name),
+                    format!("{} adopted {}, carried to them by missionaries of {}.", faction_name, religion_name,
+                        history.factions.get(&missionary).map(|f| f.name.clone()).unwrap_or_default()),
                 )
-                .with_faction(fid);
+                .with_faction(fid)
+                .with_faction(missionary);
                 history.chronicle.record(event);
 
                 conversions_this_step += 1;
@@ -2314,7 +2616,7 @@ fn step_trade(history: &mut WorldHistory, world: &WorldData, rng: &mut impl Rng)
         
         let name_a = history.settlements.get(sid_a).map(|s| s.name.clone()).unwrap_or_default();
         let name_b = history.settlements.get(sid_b).map(|s| s.name.clone()).unwrap_or_default();
-        let goods_str: Vec<String> = traded.iter().map(|g| format!("{:?}", g)).collect();
+        let goods_str: Vec<String> = traded.iter().map(|g| plain_words(&format!("{:?}", g))).collect();
         
         let event_id = history.id_generators.next_event();
         let event = Event::new(
@@ -2323,7 +2625,10 @@ fn step_trade(history: &mut WorldHistory, world: &WorldData, rng: &mut impl Rng)
             date,
             format!("Trade route: {} ↔ {}", name_a, name_b),
             format!("A trade route was established between {} and {} for {}.",
-                name_a, name_b, goods_str.join(", ")),
+                name_a, name_b, match goods_str.split_last() {
+                    Some((last, rest)) if !rest.is_empty() => format!("{} and {}", rest.join(", "), last),
+                    _ => goods_str.join(""),
+                }),
         )
         .at_location(loc_a.0, loc_a.1)
         .with_faction(*fid_a)
@@ -2337,49 +2642,19 @@ fn step_trade(history: &mut WorldHistory, world: &WorldData, rng: &mut impl Rng)
     }
 }
 
-/// Find a path between two locations using A* that prefers existing roads.
-/// Existing roads have much lower traversal cost, causing routes to converge.
-fn find_trade_path(
-    world: &WorldData,
-    tile_history: &crate::history::world_state::tile_history::TileHistoryMap,
-    from: (usize, usize),
-    to: (usize, usize),
-) -> Vec<(usize, usize)> {
-    use std::collections::BinaryHeap;
-use crate::history::det::HashMap;
-    use std::cmp::Ordering;
-
-    #[derive(Clone, Eq, PartialEq)]
-    struct Node {
-        pos: (usize, usize),
-        cost: u32,
-        heuristic: u32,
-    }
-
-    impl Ord for Node {
-        fn cmp(&self, other: &Self) -> Ordering {
-            (other.cost + other.heuristic).cmp(&(self.cost + self.heuristic))
-        }
-    }
-    impl PartialOrd for Node {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    let width = world.width;
-    let height = world.height;
-
-    // Terrain traversal cost - roads are MUCH cheaper
-    // Costs reflect difficulty of building and traversing roads
-    let terrain_cost = |x: usize, y: usize| -> u32 {
+/// The road-building cost of each tile that doesn't change during the history (biome, rivers,
+/// height, the waviness noise), or 0 where no road can go. Computed once per world: the river
+/// query scans every river segment, and the trade A* used to ask it 80,000 times per route
+/// (95% of a 512x256 history).
+fn static_road_costs(world: &WorldData) -> std::sync::Arc<Vec<u32>> {
+    use rayon::prelude::*;
+    static CACHE: std::sync::Mutex<Option<(u64, std::sync::Arc<Vec<u32>>)>> = std::sync::Mutex::new(None);
+    let (width, height) = (world.width, world.height);
+    let mut key = world.seed() ^ ((width as u64) << 40) ^ ((height as u64) << 20);
+    for i in (0..width * height).step_by(97) { key = key.rotate_left(7) ^ world.heightmap.get(i % width, i / width).to_bits() as u64; }
+    if let Some((k, c)) = CACHE.lock().unwrap().as_ref() { if *k == key { return c.clone(); } }
+    let cost = |x: usize, y: usize| -> u32 {
         use crate::biomes::ExtendedBiome;
-        
-        // Check if there's already a road - very cheap to use!
-        if tile_history.has_road(x, y) {
-            return 1; // Roads are super cheap - natural convergence
-        }
-        
         let h = *world.heightmap.get(x, y);
         let biome = *world.biomes.get(x, y);
         
@@ -2448,27 +2723,6 @@ use crate::history::det::HashMap;
             _ => 10,
         };
         
-        // Check for parallel roads: if we are not a road, but adjacent to one,
-        // apply a huge penalty. This forces paths to either merge onto the road
-        // or stay at least 1 tile away, preventing double-width roads.
-        let mut parallel_penalty = 0;
-        if !tile_history.has_road(x, y) {
-             for dy in -1..=1 {
-                for dx in -1..=1 {
-                    if dx == 0 && dy == 0 { continue; }
-                    let nx = x as i32 + dx;
-                    let ny = y as i32 + dy;
-                    if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
-                        if tile_history.has_road(nx as usize, ny as usize) {
-                             parallel_penalty = 50; 
-                             break;
-                        }
-                    }
-                }
-                if parallel_penalty > 0 { break; }
-            }
-        }
-
         // Add varying noise to make roads wavy instead of straight
         // Using sin/cos based on coordinates creates consistent "organic" curves
         let noise_val = ((x as f32 * 0.15).sin() + (y as f32 * 0.25).cos());
@@ -2477,7 +2731,72 @@ use crate::history::det::HashMap;
         // Height penalty for hills (not mountains)
         let height_penalty = if h > 2000.0 { 8 } else if h > 1200.0 { 4 } else { 0 };
         
-        base_cost + river_penalty + height_penalty + parallel_penalty + noise_cost
+        base_cost + river_penalty + height_penalty + noise_cost
+    };
+    let costs: Vec<u32> = (0..width * height).into_par_iter().map(|i| cost(i % width, i / width)).collect();
+    let costs = std::sync::Arc::new(costs);
+    *CACHE.lock().unwrap() = Some((key, costs.clone()));
+    costs
+}
+
+/// Find a path between two locations using A* that prefers existing roads.
+/// Existing roads have much lower traversal cost, causing routes to converge.
+fn find_trade_path(
+    world: &WorldData,
+    tile_history: &crate::history::world_state::tile_history::TileHistoryMap,
+    from: (usize, usize),
+    to: (usize, usize),
+) -> Vec<(usize, usize)> {
+    use std::collections::BinaryHeap;
+use crate::history::det::HashMap;
+    use std::cmp::Ordering;
+
+    #[derive(Clone, Eq, PartialEq)]
+    struct Node {
+        pos: (usize, usize),
+        cost: u32,
+        heuristic: u32,
+    }
+
+    impl Ord for Node {
+        fn cmp(&self, other: &Self) -> Ordering {
+            (other.cost + other.heuristic).cmp(&(self.cost + self.heuristic))
+        }
+    }
+    impl PartialOrd for Node {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    let width = world.width;
+    let height = world.height;
+
+    // Terrain traversal cost - roads are MUCH cheaper (static part precomputed per world).
+    let fixed = static_road_costs(world);
+    let terrain_cost = |x: usize, y: usize| -> u32 {
+        // Check if there's already a road - very cheap to use!
+        if tile_history.has_road(x, y) {
+            return 1; // Roads are super cheap - natural convergence
+        }
+        let base = fixed[y * width + x];
+        if base == 0 { return 0; }
+        // Check for parallel roads: if we are not a road, but adjacent to one,
+        // apply a huge penalty. This forces paths to either merge onto the road
+        // or stay at least 1 tile away, preventing double-width roads.
+        let mut parallel_penalty = 0;
+        'n: for dy in -1..=1 {
+            for dx in -1..=1 {
+                if dx == 0 && dy == 0 { continue; }
+                let nx = x as i32 + dx;
+                let ny = y as i32 + dy;
+                if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 && tile_history.has_road(nx as usize, ny as usize) {
+                    parallel_penalty = 50;
+                    break 'n;
+                }
+            }
+        }
+        base + parallel_penalty
     };
 
     let heuristic = |pos: (usize, usize)| -> u32 {
@@ -2883,6 +3202,13 @@ fn step_quests(history: &mut WorldHistory, rng: &mut impl Rng) {
         )
         .with_faction(*faction_id)
         .with_participant(EntityId::Figure(*hero_id));
+        // The quest's target takes part too: its own story (a beast's raids, a treasure's loss)
+        // is why the hero set out.
+        let event = match quest {
+            QuestType::SlayCreature(cid) => event.with_participant(EntityId::LegendaryCreature(cid)),
+            QuestType::RecoverArtifact(aid) => event.with_participant(EntityId::Artifact(aid)),
+            QuestType::ExploreRuins => event,
+        };
         history.chronicle.record(event);
 
         if let Some(fig) = history.figures.get_mut(hero_id) {
@@ -3433,6 +3759,8 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
                     format!("{} has been destroyed after losing their last settlement.", def_name),
                 )
                 .with_faction(defender);
+                // The siege that took their last town.
+                let event = match history.sieges.get(&siege_id).and_then(|s| s.begin_event) { Some(b) => event.caused_by(b), None => event };
                 history.chronicle.record(event);
             }
 
@@ -3818,6 +4146,11 @@ fn step_wealth_tick(history: &mut WorldHistory, rng: &mut impl Rng) {
 /// Get a naming style for a race by looking up its base type's naming archetype.
 /// If game_data has a matching archetype, builds a NamingStyle from the data;
 /// otherwise falls back to the hardcoded archetype.
+/// The naming style of a race (for other modules creating figures).
+pub(crate) fn naming_style_for(history: &WorldHistory, race_id: RaceId, game_data: &GameData) -> NamingStyle {
+    naming_style_for_race(history, race_id, game_data)
+}
+
 fn naming_style_for_race(history: &WorldHistory, race_id: RaceId, game_data: &GameData) -> NamingStyle {
     let race = history.races.get(&race_id);
     let tag = race.map(|r| r.base_type.tag()).unwrap_or("human");
@@ -4371,6 +4704,8 @@ pub(crate) fn dissolve_if_landless(history: &mut WorldHistory, faction: FactionI
         format!("{} has been destroyed after losing their last settlement.", name),
     )
     .with_faction(faction);
+    // Whatever last befell the people (their last town's fall, as a rule).
+    let event = match history.chronicle.last_of(EntityId::Faction(faction)) { Some(c) => event.caused_by(c), None => event };
     history.chronicle.record(event);
 }
 
@@ -4468,7 +4803,8 @@ fn step_colonization(history: &mut WorldHistory, world: &WorldData, game_data: &
         )
         .at_location(sx, sy)
         .with_faction(fid)
-        .with_participant(EntityId::Settlement(sid));
+        .with_participant(EntityId::Settlement(sid))
+        .with_participant(EntityId::Settlement(parent_id));
         history.tile_history.record_event(sx, sy, event_id);
         history.chronicle.record(event);
     }

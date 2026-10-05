@@ -113,6 +113,9 @@ impl HistoryEngine {
             );
         }
 
+        // Each figure's life lists the events they took part in.
+        crate::history::people::link_lives(history);
+
         // Define eras from major events
         self.define_eras(history);
 

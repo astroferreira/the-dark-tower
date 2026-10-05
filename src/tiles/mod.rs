@@ -3,9 +3,12 @@
 
 pub mod atlas;
 pub mod classify;
+pub mod fonts;
+pub mod heraldry;
 pub mod inspector;
 pub mod local_ink;
 pub mod overlays;
+pub mod plates;
 pub mod render;
 pub mod start;
 pub mod text;

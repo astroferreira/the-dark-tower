@@ -73,6 +73,51 @@ pub fn draw_text(buf: &mut [u32], w: usize, h: usize, x: i64, y: i64, text: &str
 /// Parchment halo behind the ink lettering.
 const LABEL_HALO: u32 = 0x00EE_E4CC;
 
+/// How a label is set: the map's hierarchy of lettering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LabelStyle {
+    /// Wide-spaced italic capitals.
+    Ocean,
+    /// Seas and gulfs: smaller spaced italic capitals.
+    Sea,
+    /// Continents and islands: spaced small capitals.
+    Land,
+    /// Mountain ranges: spaced small capitals in brown.
+    Range,
+    /// Forests, deserts, plains, tundra, ice fields, marshes: italic.
+    Region,
+    /// Rivers and lakes: italic, in the water's ink.
+    Water,
+    /// Peaks, landmarks.
+    Feature,
+    Capital,
+    City,
+    #[default]
+    Town,
+    Ruin,
+}
+
+impl LabelStyle {
+    /// Face, size in px, tracking in px and whether to set in capitals, at `tile_px` zoom.
+    fn set(self, tile_px: f32) -> (super::fonts::Face, f32, f32, bool) {
+        use super::fonts::Face::*;
+        let far = tile_px < 3.0;
+        match self {
+            LabelStyle::Ocean => (Italic, if far { 17.0 } else { 20.0 }, if far { 3.0 } else { 5.0 }, true),
+            LabelStyle::Sea => (Italic, 14.0, 2.5, true),
+            LabelStyle::Land => (SmallCaps, if far { 18.0 } else { 20.0 }, 3.0, false),
+            LabelStyle::Range => (SmallCaps, 14.0, 2.0, false),
+            LabelStyle::Region => (Italic, 14.0, 1.0, false),
+            LabelStyle::Water => (Italic, 13.0, 0.5, false),
+            LabelStyle::Feature => (Roman, 12.0, 0.0, false),
+            LabelStyle::Capital => (SmallCaps, 15.0, 0.8, false),
+            LabelStyle::City => (Roman, 14.0, 0.3, false),
+            LabelStyle::Town => (Roman, 12.5, 0.0, false),
+            LabelStyle::Ruin => (Italic, 12.0, 0.0, false),
+        }
+    }
+}
+
 /// A label to place on the map, in world-tile coordinates.
 #[derive(Clone, Debug)]
 pub struct Label {
@@ -84,24 +129,41 @@ pub struct Label {
     /// Minimum tile size (px) at which the label appears.
     pub min_tile_px: f32,
     pub color: u32,
+    pub style: LabelStyle,
 }
 
 /// Greedy, collision-free label placement: highest rank first, skipping any label that would
-/// overlap one already placed. `to_screen` maps world tile coordinates to screen pixels.
-pub fn place_labels(labels: &[Label], tile_px: f32, w: usize, h: usize, buf: &mut [u32], to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+/// overlap one already placed, run off the edge, cover an `avoid` rectangle (the minimap) or
+/// repeat a name already on screen. `to_screen` maps world tile coordinates to screen pixels.
+pub fn place_labels(labels: &[Label], tile_px: f32, w: usize, h: usize, buf: &mut [u32], avoid: &[(i64, i64, i64, i64)], to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+    place_labels_scaled(labels, tile_px, 1.0, w, h, buf, avoid, to_screen);
+}
+
+/// `place_labels` with the lettering `font_scale` times larger (posters).
+pub fn place_labels_scaled(labels: &[Label], tile_px: f32, font_scale: f32, w: usize, h: usize, buf: &mut [u32], avoid: &[(i64, i64, i64, i64)], to_screen: impl Fn(f32, f32) -> (f32, f32)) {
     let mut placed: Vec<(i64, i64, i64, i64)> = Vec::new();
+    let mut names: Vec<&str> = Vec::new();
     for l in labels {
         if tile_px < l.min_tile_px { continue; }
+        if names.contains(&l.text.as_str()) { continue; }
         let (sx, sy) = to_screen(l.x, l.y);
-        let scale = if l.rank >= 95 && tile_px < 3.0 { 2 } else { 1 };
-        let tw = text_width(&l.text, scale) as i64;
-        let th = (8 * scale) as i64;
+        let (face, px, tracking, caps) = l.style.set(tile_px / font_scale);
+        let (px, tracking) = (px * font_scale, tracking * font_scale);
+        let text = if caps { l.text.to_uppercase() } else { l.text.clone() };
+        let tw = super::fonts::width(&text, face, px, tracking).ceil() as i64;
+        let (asc, desc) = super::fonts::line_metrics(face, px);
+        let th = (asc + desc).ceil() as i64;
         let (x0, y0) = (sx as i64 - tw / 2, sy as i64 - th / 2);
-        if x0 + tw < 0 || y0 + th < 0 || x0 >= w as i64 || y0 >= h as i64 { continue; }
-        let pad = 4;
-        let hit = placed.iter().any(|&(a, b, c, d)| x0 - pad < c && x0 + tw + pad > a && y0 - pad < d && y0 + th + pad > b);
-        if hit { continue; }
-        draw_text(buf, w, h, x0, y0, &l.text, l.color, LABEL_HALO, scale);
+        // Whole or not at all: a label cut by the window edge reads as a mistake.
+        let edge = 3;
+        if x0 < edge || y0 < edge || x0 + tw > w as i64 - edge || y0 + th > h as i64 - edge { continue; }
+        let pad = (5.0 * font_scale) as i64;
+        let hits = |r: &(i64, i64, i64, i64)| x0 - pad < r.2 && x0 + tw + pad > r.0 && y0 - pad < r.3 && y0 + th + pad > r.1;
+        if placed.iter().any(hits) || avoid.iter().any(hits) { continue; }
+        // Names on the water get a pale sea halo, so they read on dark water without a parchment smear.
+        let halo = if matches!(l.style, LabelStyle::Ocean | LabelStyle::Sea) { 0x00C8_D8DC } else { LABEL_HALO };
+        super::fonts::draw(buf, w, h, x0 as f32, y0 as f32, &text, face, px, tracking, l.color, Some(halo));
         placed.push((x0, y0, x0 + tw, y0 + th));
+        names.push(&l.text);
     }
 }

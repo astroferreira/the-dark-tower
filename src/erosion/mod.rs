@@ -7,7 +7,15 @@
 
 pub mod geomorphometry;
 pub mod glacial;
+#[cfg(feature = "gpu")]
 pub mod gpu;
+/// Without the `gpu` feature the hydraulic pass runs on the CPU (rayon).
+#[cfg(not(feature = "gpu"))]
+pub mod gpu {
+    pub fn simulate_gpu_or_cpu(heightmap: &mut crate::tilemap::Tilemap<f32>, hardness: &crate::tilemap::Tilemap<f32>, params: &super::params::ErosionParams, seed: u64) -> super::ErosionStats {
+        super::hydraulic::simulate_parallel(heightmap, hardness, params, seed)
+    }
+}
 pub mod hydraulic;
 pub mod landscape;
 pub mod materials;

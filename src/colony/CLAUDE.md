@@ -28,4 +28,42 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   settler, the hut built, and an identical log on two runs.
 - Known gaps: exposure has no consequence yet; a site without trees never gets a hut (dev site
   70,6); after the hut there is nothing to do but keep food up; settlers have no pasts or names
-  from the history yet (card "Settlers with pasts").
+  from the history yet (card "Settlers with pasts") -- done, see below.
+- Settlers with pasts (`history/settlers.rs::roster`, via `viewer::found_colony` whenever there
+  is a history): three survivors of the nearest town that fell in the last 45 years (an adult on
+  the walls, a child, a youth; they follow a notable's real flight from it, `FigureMoved`),
+  two veterans of their people's latest battle (under its commander; home when the war ended),
+  and younger kin of living notables. Each has an age, 2-3 lines citing events, one feeling
+  toward a real people or person, and a name in their people's tongue. No history RNG is used.
+  Click a settler in the colony view to open the inspector on them (`inspector::settler_page`;
+  their lines open the events). `--sim-snapshot` writes `<prefix>_settlers.txt` and
+  `<prefix>_settler.png` and prints "Settlers: 7 with pasts, each citing at least 2 events; N
+  shared"; `tests/colony.rs` requires 7, 2+ and 1+.
+- The patron's verbs (`Patron`, no orders, only favour; 3 favour at most, one more each dawn,
+  each verb costs one): `mark_place` blesses ground (work there is sought out, x1.4, "on the
+  ground the patron blessed") or forbids it (`nearest` skips it, nobody wanders in; whys add
+  "keeping off the forbidden ground"); `favour_settler` (x1.15 on work, "(the patron's
+  favourite)", the others notice in the log); `send_dream` (Hut: build/fell +1.0, Plenty:
+  forage/fish +0.8, Rest: sleep +1.2, for a day; whys start "Dreamt of ..."). Each use is a log
+  line "(your doing)". Window: F bless and X forbid the ground under the mouse (radius 6),
+  G favour and D dream the settler under it; marks are drawn as dashed rings (gold, red
+  hatched); the title shows the favour left. `--sim-patron` tries all four on the dev colony
+  (`Colony::patron_trial`); `tests/colony.rs` requires each to change behaviour within a day.
+  The keys haven't been tried by hand yet.
+- Founding stones and names (`Colony::place_stone`, five at most, no favour cost): a hall
+  stone moves the hut site beside it while no log is laid (`find_hut_site` searches around it);
+  a grove stone keeps the axe from trees within `GROVE_RADIUS` (7); a shrine is a standing stone
+  half the settlers rest by. `name_colony` / `name_place` log "called X by its patron" and are
+  lettered on the colony map (IM Fell). Window keys H/J/K set a hall/grove/shrine stone at the
+  mouse (S is taken by panning). `--sim-founding PREFIX` runs the dev colony 100 days without
+  and with stones: the hut moves (98,96 -> 116,86), the grove keeps 43 trees instead of 24; the
+  pictures differ ~1.2% (the colony builds only the hut, so layouts can't differ much more until
+  it builds more). `tests/colony.rs` pins both.
+- Marks (`Colony::marks`, `ColonyMark`): moments leave permanent marks. When the hut is done the
+  builders raise a stone by the door ("Hearthwater's hall was raised on day 2 by ..."); a death
+  (`bury`, also called from starvation) leaves a grave at the camp's edge with an epitaph from
+  the settler's past ("Here lies Noostond. Aged 21, kin of Sloarumth. Died of a fever on day 31.
+  Remembered as one who misses Sloarumth."). Drawn in ink (mound and cross; an inked block);
+  a click opens `inspector::mark_page`. `--sim-marks PREFIX` lives 30 days, buries one settler
+  and renders the camp with the grave's page open; tested. Scorched ground and a ruined hut
+  after a raid wait for the first arc.

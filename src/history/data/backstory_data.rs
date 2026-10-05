@@ -144,24 +144,7 @@ impl BackstoryTemplates {
         }
     }
 
-    /// Pick a random enemy name for a race tag.
-    pub fn random_enemy(&self, tag: &str, rng: &mut impl Rng) -> String {
-        let enemies = self.enemy_names_for(tag);
-        if enemies.is_empty() {
-            "barbarian".to_string()
-        } else {
-            enemies[rng.gen_range(0..enemies.len())].clone()
-        }
-    }
 
-    /// Pick a random faction adjective.
-    pub fn random_faction_adjective(&self, rng: &mut impl Rng) -> String {
-        if self.faction_adjectives.is_empty() {
-            "distant".to_string()
-        } else {
-            self.faction_adjectives[rng.gen_range(0..self.faction_adjectives.len())].clone()
-        }
-    }
 
     /// Pick a random plague name.
     pub fn random_plague(&self, rng: &mut impl Rng) -> String {
@@ -172,14 +155,6 @@ impl BackstoryTemplates {
         }
     }
 
-    /// Pick a random beast name.
-    pub fn random_beast(&self, rng: &mut impl Rng) -> String {
-        if self.beast_names.is_empty() {
-            "beast".to_string()
-        } else {
-            self.beast_names[rng.gen_range(0..self.beast_names.len())].clone()
-        }
-    }
 
     /// Generate a coronation description (founding or succession).
     pub fn coronation_description(

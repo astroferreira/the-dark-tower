@@ -5,6 +5,7 @@
 
 pub mod mode;
 pub mod queries;
+#[cfg(feature = "legacy")]
 pub mod renderer;
 
 pub use mode::LegendsMode;

@@ -214,6 +214,23 @@ Embed the colony in the running history, at the right level of detail.
 - **The director, in situ:** paces the drama with diegetic levers only, with its threads
   (prophecies, feuds, vows) now able to land on settlers.
 
+**Decision: the play scale (2026-10-05).** The colony lives in a *theatre* about 250 km
+around it, at region resolution (`region/zoom.rs`, ~0.6 km cells at 512 wide), with the real
+towns, roads, lairs, ruins and the Shadow's frontier placed in it (`lore/settle.rs` already
+places sites inside their world tiles), and travel counted in days: 25 km a day on foot, paths
+1.3 times the straight line (roads and rivers faster, mountains slower, once routed). Arrivals
+are scheduled from real places by those days (a caravan six days out is news before it is a
+sight). Beyond the theatre the planet is backdrop and legend: it sends news, letters and rare
+expeditions, not neighbours.
+- Measured with `--province-snapshot` (the embark, a 250 km ring, its three nearest places and
+  the days to each): at 512x256 (78 km tiles) the seed-42 embark at 250,90 has a village 102 km
+  away, 6 days on foot; on the dev world (96x48, 417 km tiles) the nearest towns are 1,210 and
+  1,254 km away, 63 and 66 days. So the dev world cannot carry Update 5: its work is judged on
+  256x128 or 512x256 worlds, or on the dev world with a province pass that seeds the theatre.
+- Province pass (to build with Update 5): when a theatre holds fewer than three places, the
+  nearest people founds hamlets, waystations and a shrine inside it, recorded in the chronicle as
+  colonies of real towns, so every embark has neighbours within two weeks' walk.
+
 *Exit:* the causal graph contains chains that cross scales in both directions (a colony
 event causes a world event and vice versa), shown on a dev-world run; a migrant's grudge
 traces back to a world-history battle.

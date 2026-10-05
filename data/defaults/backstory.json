@@ -2130,7 +2130,7 @@
     },
     {
       "event_type": "BattleFought",
-      "title": "Battle of the {ADJ} Pass",
+      "title": "Battle of the {PLACE} Pass",
       "desc": "In the narrow passes, {RULER} led {FACTION}'s soldiers against a {ENEMY} army twice their size and prevailed."
     },
     {
@@ -2140,7 +2140,7 @@
     },
     {
       "event_type": "BattleFought",
-      "title": "The {ADJ} Slaughter",
+      "title": "The Slaughter at {PLACE}",
       "desc": "A brutal engagement near {PLACE} saw {FACTION} crush a {ENEMY} warband. {RULER} showed no mercy."
     },
     {
@@ -2450,8 +2450,8 @@
     },
     {
       "event_type": "QuestCompleted",
-      "title": "{NAME} clears the {ADJ} Lair",
-      "desc": "{RULER} led an expedition into the {ADJ} wilds, destroying a nest of {BEAST}s that had plagued {FACTION}."
+      "title": "{NAME} clears the {BEAST} nest",
+      "desc": "{RULER} led an expedition into the wilds beyond {PLACE}, destroying a nest of {BEAST}s that had plagued {FACTION}."
     },
     {
       "event_type": "QuestCompleted",
@@ -2495,8 +2495,8 @@
     },
     {
       "event_type": "Rebellion",
-      "title": "The {ADJ} Revolt",
-      "desc": "Discontented nobles in the {ADJ} provinces revolted against {RULER}. The rebellion lasted months before being quelled."
+      "title": "The {PLACE} Revolt",
+      "desc": "Discontented nobles of {PLACE} revolted against {RULER}. The rebellion lasted months before being quelled."
     },
     {
       "event_type": "Rebellion",
@@ -2530,7 +2530,7 @@
     },
     {
       "event_type": "Miracle",
-      "title": "The {ADJ} Miracle",
+      "title": "The Miracle of {PLACE}",
       "desc": "At {PLACE}, a miraculous healing was witnessed by hundreds. {RULER} declared the site sacred."
     },
     {
@@ -2775,7 +2775,7 @@
     },
     {
       "event_type": "Other",
-      "title": "The {ADJ} Festival",
+      "title": "The Festival of {NAME}",
       "desc": "{RULER} established a grand festival celebrating {FACTION}'s culture, drawing visitors from far and wide."
     },
     {

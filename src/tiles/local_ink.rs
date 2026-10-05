@@ -350,6 +350,22 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
         Feature::Bones => {
             if ((u - w).abs() < line || (u + w - 1.0).abs() < line) && (u - 0.5).abs() < 0.3 { c = mix(c, PAPER, 0.85); }
         }
+        Feature::Grave => {
+            // A low mound with a cross.
+            let r = ((u - 0.5) / 0.32).powi(2) + ((w - 0.6) / 0.2).powi(2);
+            if r < 1.0 { c = mix(c, [150.0, 128.0, 96.0], 0.5); }
+            if ((u - 0.5).abs() < line && w > 0.15 && w < 0.6) || ((w - 0.3).abs() < line && (u - 0.5).abs() < 0.14) { c = mix(c, INK, 0.85); }
+        }
+        Feature::Stone => {
+            // A tall stone, its shadow side hatched.
+            let r = ((u - 0.5) / 0.2).powi(2) + ((w - 0.5) / 0.42).powi(2);
+            if r < 1.0 { c = [168.0, 162.0, 150.0]; if u > 0.5 && hatch(3) { c = mix(c, INK, 0.5); } }
+            if (r - 1.0).abs() < 0.25 { c = mix(c, INK, 0.8); }
+        }
+        Feature::Spring => {
+            let r = ((u - 0.5).powi(2) + (w - 0.5).powi(2)).sqrt();
+            if (r - 0.18).abs() < line || (r - 0.32).abs() < line * 0.7 { c = mix(c, [60.0, 92.0, 120.0], 0.7); }
+        }
         Feature::None => {}
     }
     if floor.boulder {
@@ -477,6 +493,80 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
         let (x, y) = to_screen(colony.camp.0 as f32 - 0.8 + (k % 4) as f32 * 0.2, colony.camp.1 as f32 + 0.2 + (k / 4) as f32 * 0.2);
         disc(&mut put, x, y, (t * 0.1).max(1.0), [196.0, 64.0, 70.0], INK);
     }
+    // The patron's marks: a dashed ring, gold for blessed ground, red and hatched for forbidden.
+    for m in &colony.patron.marks {
+        let (cx, cy) = to_screen(m.at.0 as f32 + 0.5, m.at.1 as f32 + 0.5);
+        let r = (m.radius as f32 + 0.5) * t;
+        let col: Rgb = if m.forbidden { [160.0, 40.0, 30.0] } else { [200.0, 160.0, 60.0] };
+        let steps = (r * 6.3) as i64 + 8;
+        for k in 0..steps {
+            if k % 8 >= 5 { continue; }
+            let a = k as f32 / steps as f32 * std::f32::consts::TAU;
+            for o in [0.0, 1.0] { put((cx + (r - o) * a.cos()) as i64, (cy + (r - o) * a.sin()) as i64, col, 0.95); }
+        }
+        if m.forbidden {
+            let ri = r as i64;
+            for dy in -ri..=ri {
+                for dx in -ri..=ri {
+                    if ((dx + dy).rem_euclid(9)) == 0 && ((dx * dx + dy * dy) as f32) < r * r { put(cx as i64 + dx, cy as i64 + dy, col, 0.35); }
+                }
+            }
+        }
+    }
+    // Founding stones: a hall stone (a square block), a grove stone (a green dashed ring round
+    // the kept trees); the shrine is drawn as the map's standing stone.
+    for (kind, at) in &colony.stones {
+        let (cx, cy) = to_screen(at.0 as f32 + 0.5, at.1 as f32 + 0.5);
+        match kind {
+            crate::colony::StoneKind::Hall => {
+                let r = (t * 0.35).max(3.0) as i64;
+                for dy in -r..=r { for dx in -r..=r {
+                    let edge = dx.abs() == r || dy.abs() == r;
+                    put(cx as i64 + dx, cy as i64 + dy, if edge { INK } else { [176.0, 168.0, 150.0] }, 0.95);
+                } }
+            }
+            crate::colony::StoneKind::Grove => {
+                let r = (crate::colony::GROVE_RADIUS as f32 + 0.5) * t;
+                let steps = (r * 6.3) as i64 + 8;
+                for k in 0..steps {
+                    if k % 6 >= 4 { continue; }
+                    let a = k as f32 / steps as f32 * std::f32::consts::TAU;
+                    for o in [0.0, 1.0, 2.0] { put((cx + (r - o) * a.cos()) as i64, (cy + (r - o) * a.sin()) as i64, INK, 0.8); }
+                }
+                disc(&mut put, cx, cy, (t * 0.25).max(2.0), [176.0, 168.0, 150.0], INK);
+            }
+            crate::colony::StoneKind::Shrine => {
+                // A ring round the standing stone.
+                for k in 0..64 {
+                    let a = k as f32 / 64.0 * std::f32::consts::TAU;
+                    let r = (t * 1.2).max(6.0);
+                    for o in [0.0, 1.0] { put((cx + (r - o) * a.cos()) as i64, (cy + (r - o) * a.sin()) as i64, INK, 0.85); }
+                }
+            }
+        }
+    }
+    // The colony's marks: graves (a mound and a cross) and raised stones.
+    for m in &colony.marks {
+        let (cx, cy) = to_screen(m.at.0 as f32 + 0.5, m.at.1 as f32 + 0.5);
+        let r = (t * 0.7).max(5.0);
+        match m.kind {
+            crate::colony::MarkKind::Grave => {
+                let ri = r as i64;
+                for dy in -ri / 2..=ri / 2 { for dx in -ri..=ri {
+                    if (dx * dx) as f32 / (r * r) + (dy * dy * 4) as f32 / (r * r) <= 1.0 { put(cx as i64 + dx, cy as i64 + dy + ri / 3, [150.0, 128.0, 96.0], 0.9); }
+                } }
+                for k in -ri..=ri / 3 { put(cx as i64, cy as i64 + k, INK, 0.95); }
+                for k in -ri / 2..=ri / 2 { put(cx as i64 + k, cy as i64 - ri / 2, INK, 0.95); }
+            }
+            crate::colony::MarkKind::Stone => {
+                let (rw, rh) = ((r * 0.5) as i64, r as i64);
+                for dy in -rh..=rh { for dx in -rw..=rw {
+                    let edge = dx.abs() == rw || dy.abs() == rh;
+                    put(cx as i64 + dx, cy as i64 + dy, if edge { INK } else { [176.0, 168.0, 150.0] }, 0.95);
+                } }
+            }
+        }
+    }
     // Settlers.
     const COATS: [Rgb; 7] = [[52.0, 86.0, 120.0], [150.0, 60.0, 48.0], [70.0, 110.0, 70.0], [170.0, 130.0, 50.0], [110.0, 70.0, 120.0], [60.0, 120.0, 120.0], [130.0, 90.0, 60.0]];
     let mut labels = Vec::new();
@@ -501,5 +591,14 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
         if placed.iter().any(|&(px, py, pw, ph)| lx < px + pw + 4.0 && px < lx + lw + 4.0 && ly < py + ph && py < ly + 10.0) { continue; }
         placed.push((lx, ly, lw, 10.0));
         super::text::draw_text(buf, w, h, lx as i64, ly as i64, &label, 0x0038_2A20, 0x00EE_E4CC, 1);
+    }
+    // The patron's names: the settlement at its camp, named places where they lie.
+    let mut names: Vec<(f32, f32, String, f32)> = colony.place_names.iter().map(|(p, n)| (p.0 as f32 + 0.5, p.1 as f32 + 0.5, n.clone(), 15.0)).collect();
+    if let Some(n) = &colony.name { names.push((colony.camp.0 as f32 + 0.5, colony.camp.1 as f32 - 2.5, n.clone(), 22.0)); }
+    for (x, y, n, px) in names {
+        let (sx, sy) = to_screen(x, y);
+        let face = if px > 18.0 { super::fonts::Face::SmallCaps } else { super::fonts::Face::Italic };
+        let tw = super::fonts::width(&n, face, px, 1.0);
+        super::fonts::draw(buf, w, h, sx - tw / 2.0, sy - px, &n, face, px, 1.0, 0x0030_1E14, Some(0x00EE_E4CC));
     }
 }

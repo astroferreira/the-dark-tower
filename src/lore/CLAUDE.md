@@ -59,6 +59,31 @@ Derived world lore: resources, landmarks, focal points, the journal and the bard
   Search box and category chips filter the annals. Styled like the ink map (parchment, sepia,
   red year rubrics; dark theme).
 
+## Story sifting (`lore/sifting.rs`)
+- `sift(history)` finds the coincidences people retell, as queries over the chronicle's
+  participants and causes: FellWhereTheyWon (a figure named "the Victor of X" dies in battle at
+  X), Echo (3+ battles at one town over 40+ years), Reversal (a town taken, then won back by its
+  old people; burnings don't count), BeastsBane (a beast raids one town 3+ times and is slain
+  within 30 years of the last raid; better if the slayer lives there), LastStand (a people loses
+  its seat and holds out 5-40 years; once per people), BladeAstray (the Shadow's bane ends in a
+  hoard or a stranger's hands). Each is a `Tale` of 2-3 sentences, 3 linked events and a score
+  (events + span + rarity); kinds take turns in the list (`interleave`).
+- Shown: the journal's "Tales Worth Telling" part (top 30, events linked to their years), the
+  inspector's event pages ("A tale worth telling"), `--present` (top 12), and the summary's
+  `Tales:` line. Dev: 60 tales of 6 kinds; `tests/flavour.rs` requires 10+ of 3+ events and 4+
+  kinds. Lookups are indexed (battles by figure, slayings by beast): fast on 512x256.
+
+## A world in one sentence (`lore/claims.rs`)
+- `claims(history)` gathers the history's records (the longest reign, the bloodiest battle, the
+  town that changed hands most, the beast with the most dead, the longest war, the captain with
+  the most victories, the Shadow's tally, the greatest city, the town raided most), each scored
+  against the median record over dev seeds; `sentence(world, claims)` joins the three most
+  unusual: "In Neaslind, Newway was raided 34 times; Skathels the Warden of Newway won 33
+  battles; and Baelen Storm-Caller killed 1,239 in its raids and lives yet."
+- Shown under the journal's title, first in `--present` (named after the largest continent) and
+  as the summary's `Records:` line; the present-day test requires six dev seeds to give six
+  different sentences. Plates (when they exist) should carry it too.
+
 ## The bard: LLM-written lore (`lore/bard.rs`)
 - `--bard N` has a local model served by Ollama (`--bard-model`, default `gemma4:26b`;
   `--bard-url`, default `http://localhost:11434`) write N pieces from the history:

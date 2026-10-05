@@ -3,7 +3,7 @@
 use std::error::Error;
 use image::{ImageBuffer, Rgb};
 use planet_generator::world::generate_world;
-use planet_generator::explorer::export_base_map_image;
+use planet_generator::map_export::export_base_map_image;
 
 // Minimal 5x7 bitmap font for rendering alphanumeric labels
 const FONT_5X7: [(char, [u8; 7]); 40] = [

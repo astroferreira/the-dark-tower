@@ -97,6 +97,8 @@ pub struct Settler {
     /// Liking for each kind of work (forage, fish, fell, haul, build), 0.75-1.3: settlers
     /// differ, so seven of them don't all do the same thing at once.
     pub taste: [f32; 5],
+    /// Who they were before the colony (from the history; None for nameless wanderers).
+    pub past: Option<crate::history::settlers::Past>,
 }
 
 /// The hut the settlers build together.
@@ -108,8 +110,83 @@ pub struct Hut {
     pub done: bool,
 }
 
+/// What a dream asks of a settler, for a day.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dream {
+    /// Of the hut finished: building and felling pull harder.
+    Hut,
+    /// Of plenty: foraging and fishing pull harder.
+    Plenty,
+    /// Of stillness: they rest by day.
+    Rest,
+}
+
+impl Dream {
+    pub fn word(self) -> &'static str { match self { Dream::Hut => "the hut standing finished", Dream::Plenty => "baskets full of berries and fish", Dream::Rest => "a long quiet sleep" } }
+}
+
+/// A place the patron marked.
+#[derive(Clone, Copy, Debug)]
+pub struct PlaceMark { pub at: Pos, pub radius: u16, pub forbidden: bool }
+
+/// The patron's indirect hand: no orders, only favour. Favour (3 at most, one more each dawn)
+/// is spent on marking a place favoured or forbidden, favouring a settler, or sending a dream.
+#[derive(Clone, Debug)]
+pub struct Patron {
+    pub favour: u32,
+    pub marks: Vec<PlaceMark>,
+    pub favourite: Option<usize>,
+    /// (settler, dream, until tick).
+    pub dreams: Vec<(usize, Dream, u64)>,
+    last_refill_day: u64,
+}
+
+pub const FAVOUR_MAX: u32 = 3;
+
+/// A founding stone: the patron's hand in the colony's shape, placed without designations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoneKind {
+    /// The hall (the hut) is raised beside it.
+    Hall,
+    /// Keep this grove: its trees are never felled.
+    Grove,
+    /// A shrine: a standing stone the settlers rest by.
+    Shrine,
+}
+
+impl StoneKind {
+    pub fn word(self) -> &'static str { match self { StoneKind::Hall => "hall stone", StoneKind::Grove => "grove stone", StoneKind::Shrine => "shrine" } }
+}
+
+/// A permanent mark a moment leaves on the colony: a grave, a raised stone. Drawn on the map and
+/// opened by a click (the inspector shows its words and the day).
+#[derive(Clone, Debug)]
+pub struct ColonyMark {
+    pub at: Pos,
+    pub kind: MarkKind,
+    pub title: String,
+    /// The words on it.
+    pub text: String,
+    pub day: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MarkKind { Grave, Stone }
+
+/// How far a grove stone keeps the axe away.
+pub const GROVE_RADIUS: i32 = 7;
+
 pub struct Colony {
     pub map: LocalMap,
+    pub patron: Patron,
+    /// What its patron called it, and the places named.
+    pub name: Option<String>,
+    pub place_names: Vec<(Pos, String)>,
+    pub stones: Vec<(StoneKind, Pos)>,
+    /// What happened here, left on the ground.
+    pub marks: Vec<ColonyMark>,
+    /// Everyone who laid a log in the hut, in order.
+    builders: Vec<usize>,
     pub clock: Clock,
     pub settlers: Vec<Settler>,
     pub items: Vec<Item>,
@@ -173,6 +250,7 @@ impl Colony {
                 job: Job::Idle, work_left: 0, carrying: None, why: "Just arrived".into(),
                 alive: true, stuck: 0, starving: 0,
                 taste: [0; 5].map(|_| 0.75 + 0.55 * rng.gen::<f32>()),
+                past: None,
             }
         }).collect::<Vec<_>>();
         // They arrive with two days of food.
@@ -181,6 +259,8 @@ impl Colony {
             map, clock: Clock { tick: 6 * 60 }, settlers, items, camp, hut: None,
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
             log: Vec::new(), decisions: Vec::new(), rng, milestones: Default::default(), basket: Default::default(),
+            patron: Patron { favour: FAVOUR_MAX, marks: Vec::new(), favourite: None, dreams: Vec::new(), last_refill_day: 1 },
+            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(),
         };
         c.hut = c.find_hut_site().map(|at| Hut { at, logs_used: 0, done: false });
         let site = c.hut.as_ref().map(|h| format!(" and a hut site at {},{}", h.at.0, h.at.1)).unwrap_or_default();
@@ -189,6 +269,116 @@ impl Colony {
     }
 
     fn note(&mut self, line: String) { self.log.push(format!("{}  {}", self.clock.stamp(), line)); }
+
+    fn spend(&mut self) -> Result<(), String> {
+        if self.patron.favour == 0 { return Err("no favour left today".into()); }
+        self.patron.favour -= 1;
+        Ok(())
+    }
+
+    /// Mark the ground within `radius` of `at` favoured (work there pulls harder) or forbidden
+    /// (nobody works or wanders there).
+    pub fn mark_place(&mut self, at: Pos, radius: u16, forbidden: bool) -> Result<String, String> {
+        self.spend()?;
+        self.patron.marks.retain(|m| m.at != at);
+        self.patron.marks.push(PlaceMark { at, radius, forbidden });
+        let line = format!("The patron {} the ground about {},{}. (your doing)", if forbidden { "forbade" } else { "blessed" }, at.0, at.1);
+        self.note(line.clone());
+        Ok(line)
+    }
+
+    /// Favour one settler: they work with more heart, and the others notice.
+    pub fn favour_settler(&mut self, i: usize) -> Result<String, String> {
+        if !self.settlers.get(i).map_or(false, |s| s.alive) { return Err("no one there".into()); }
+        self.spend()?;
+        self.patron.favourite = Some(i);
+        let name = self.settlers[i].name.clone();
+        let line = format!("The patron favours {}; the others notice. (your doing)", name);
+        self.note(line.clone());
+        Ok(line)
+    }
+
+    /// Send a settler a dream: for a day it pulls them towards what they dreamt of.
+    pub fn send_dream(&mut self, i: usize, dream: Dream) -> Result<String, String> {
+        if !self.settlers.get(i).map_or(false, |s| s.alive) { return Err("no one there".into()); }
+        self.spend()?;
+        let until = self.clock.tick + TICKS_PER_DAY;
+        self.patron.dreams.retain(|d| d.0 != i);
+        self.patron.dreams.push((i, dream, until));
+        let name = self.settlers[i].name.clone();
+        let line = format!("{} dreamt of {}. (your doing)", name, dream.word());
+        self.note(line.clone());
+        // Ask again now: a dream changes the day.
+        self.decide(i, false);
+        Ok(line)
+    }
+
+    /// Place a founding stone (five at most). A hall stone moves the hut site beside it while no
+    /// log is laid; a grove stone keeps the axe from the trees around it; a shrine is a standing
+    /// stone the settlers rest by.
+    pub fn place_stone(&mut self, kind: StoneKind, at: Pos) -> Result<String, String> {
+        if self.stones.len() >= 5 { return Err("five founding stones are set already".into()); }
+        if !nav::passable(&self.map, at) { return Err("no footing for a stone there".into()); }
+        self.stones.retain(|s| !(s.0 == kind && kind == StoneKind::Hall));
+        self.stones.push((kind, at));
+        if kind == StoneKind::Shrine {
+            let k = at.1 as usize * self.map.width + at.0 as usize;
+            self.map.features[k] = crate::local::wildlife::Feature::Stone;
+        }
+        let mut line = format!("The patron set a {} at {},{}.", kind.word(), at.0, at.1);
+        if kind == StoneKind::Hall && self.hut.as_ref().map_or(true, |h| h.logs_used == 0) {
+            self.hut = self.find_hut_site().map(|a| Hut { at: a, logs_used: 0, done: false });
+            if let Some(h) = &self.hut { line.push_str(&format!(" The hall will stand at {},{}.", h.at.0, h.at.1)); }
+        }
+        self.note(format!("{} (your doing)", line));
+        Ok(line)
+    }
+
+    /// A settler dies of `cause`: the others bury them at the edge of the camp, under words from
+    /// their life.
+    pub fn bury(&mut self, i: usize, cause: &str) {
+        self.settlers[i].alive = false;
+        let s = &self.settlers[i];
+        let n = self.marks.iter().filter(|m| m.kind == MarkKind::Grave).count() as i32;
+        let at = self.spot_from_camp(-8 + 2 * n, 6);
+        let past = s.past.as_ref().map(|p| format!(" Aged {}, {}.", p.age, p.calling)).unwrap_or_default();
+        let feeling = s.past.as_ref().and_then(|p| p.feeling.as_ref()).map(|f| format!(" Remembered as one who {}.", f.0)).unwrap_or_default();
+        let text = format!("Here lies {}.{} Died {} on day {}.{}", s.name, past, cause, self.clock.day(), feeling);
+        let title = format!("The grave of {}", s.name);
+        // The ground is cleared for it.
+        let w = self.map.width;
+        for dy in -1i32..=1 { for dx in -1i32..=1 {
+            let (x, y) = ((at.0 as i32 + dx).max(0) as usize, (at.1 as i32 + dy).max(0) as usize);
+            if x < w && y < self.map.height {
+                let k = self.map.idx(x, y, self.map.surface_z[y * w + x].max(0) as usize);
+                self.map.cells[k].plant = Plant::None;
+            }
+        } }
+        self.marks.push(ColonyMark { at, kind: MarkKind::Grave, title, text, day: self.clock.day() });
+        let name = s.name.clone();
+        self.note(format!("They bury {} at {},{}.", name, at.0, at.1));
+    }
+
+    /// Name the colony.
+    pub fn name_colony(&mut self, name: &str) {
+        self.name = Some(name.to_string());
+        self.note(format!("The settlement is called {} by its patron. (your doing)", name));
+    }
+
+    /// Name a place: "called the Long Field by its patron".
+    pub fn name_place(&mut self, at: Pos, name: &str) {
+        self.place_names.push((at, name.to_string()));
+        self.note(format!("The ground about {},{} is called {} by its patron. (your doing)", at.0, at.1, name));
+    }
+
+    fn marked(&self, p: Pos, forbidden: bool) -> bool {
+        self.patron.marks.iter().any(|m| m.forbidden == forbidden
+            && (m.at.0 as i32 - p.0 as i32).abs().max((m.at.1 as i32 - p.1 as i32).abs()) <= m.radius as i32)
+    }
+
+    fn dream_of(&self, i: usize) -> Option<Dream> {
+        self.patron.dreams.iter().find(|d| d.0 == i && d.2 > self.clock.tick).map(|d| d.1)
+    }
     fn once(&mut self, key: &'static str, line: String) { if self.milestones.insert(key) { self.note(line); } }
 
     pub fn food_stored(&self) -> u32 { self.items.iter().filter(|i| i.kind == ItemKind::Food && i.stored).count() as u32 }
@@ -199,9 +389,11 @@ impl Colony {
     fn find_hut_site(&self) -> Option<Pos> {
         let n = self.map.width as i32;
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
+        // Beside the hall stone if the patron placed one, else near the camp.
+        let (sx, sy) = self.stones.iter().find(|s| s.0 == StoneKind::Hall).map(|s| (s.1 .0 as i32, s.1 .1 as i32)).unwrap_or((cx, cy));
         let mut best: Option<(i32, Pos)> = None;
-        for y in (cy - 14).max(2)..(cy + 14).min(n - HUT_H as i32 - 2) {
-            for x in (cx - 14).max(2)..(cx + 14).min(n - HUT_W as i32 - 2) {
+        for y in (sy - 14).max(2)..(sy + 14).min(n - HUT_H as i32 - 2) {
+            for x in (sx - 14).max(2)..(sx + 14).min(n - HUT_W as i32 - 2) {
                 // Not on the camp itself.
                 if (x..x + HUT_W as i32).contains(&cx) && (y..y + HUT_H as i32).contains(&cy) { continue; }
                 let z0 = self.map.surface_z[(y * n + x) as usize];
@@ -210,7 +402,9 @@ impl Colony {
                     self.map.surface_z[(yy * n + xx) as usize] == z0 && nav::passable(&self.map, (xx as u16, yy as u16))
                 }));
                 if !ok { continue; }
-                let d = (x - cx).abs() + (y - cy).abs();
+                // Not on a stone.
+                if self.stones.iter().any(|(_, at)| (x..x + HUT_W as i32).contains(&(at.0 as i32)) && (y..y + HUT_H as i32).contains(&(at.1 as i32))) { continue; }
+                let d = (x - sx).abs() + (y - sy).abs();
                 if best.map_or(true, |b| d < b.0) { best = Some((d, (x as u16, y as u16))); }
             }
         }
@@ -229,6 +423,12 @@ impl Colony {
     /// Advance the colony by one game minute.
     pub fn tick(&mut self) {
         self.clock.tick += 1;
+        // Favour returns with the dawn.
+        let day = self.clock.day();
+        if day > self.patron.last_refill_day && self.clock.hour() >= 6 {
+            self.patron.last_refill_day = day;
+            self.patron.favour = (self.patron.favour + 1).min(FAVOUR_MAX);
+        }
         let night = self.clock.is_night();
         for i in 0..self.settlers.len() {
             if !self.settlers[i].alive { continue; }
@@ -261,6 +461,7 @@ impl Colony {
         if starving_days >= 4 {
             self.settlers[i].alive = false;
             self.note(format!("{} died of hunger.", name));
+            self.bury(i, "of hunger");
         }
     }
 
@@ -313,10 +514,52 @@ impl Colony {
         if hut_pending && self.logs_stored() > builders && !night {
             options.push((0.85 * s.taste[4], Job::Build, format!("There are logs at the camp; raising the hut ({} of {} logs in)", self.hut.as_ref().map_or(0, |h| h.logs_used), HUT_LOGS)));
         }
-        let spots: Vec<Pos> = (0..8).map(|_| (self.camp.0.saturating_add_signed(self.rng.gen_range(-6..=6)), self.camp.1.saturating_add_signed(self.rng.gen_range(-6..=6)))).collect();
-        let wander_to = spots.into_iter().find(|&p| nav::passable(&self.map, p) && !self.in_hut(p)).unwrap_or(self.camp);
-        options.push((0.05, Job::Wander(wander_to), "Nothing needs doing; resting near the fire".into()));
+        // Idle hours are spent by the fire, or by the shrine if the patron set one.
+        let shrine = self.stones.iter().find(|s| s.0 == StoneKind::Shrine).map(|s| s.1);
+        let (rest_at, rest_why) = match shrine { Some(p) if i % 2 == 0 => (p, "resting by the shrine"), _ => (self.camp, "resting near the fire") };
+        let spots: Vec<Pos> = (0..8).map(|_| (rest_at.0.saturating_add_signed(self.rng.gen_range(-4..=4)), rest_at.1.saturating_add_signed(self.rng.gen_range(-4..=4)))).collect();
+        let wander_to = spots.into_iter().find(|&p| nav::passable(&self.map, p) && !self.in_hut(p) && p != rest_at).unwrap_or(self.camp);
+        options.push((0.05, Job::Wander(wander_to), format!("Nothing needs doing; {}", rest_why)));
 
+        // The patron's hand: favoured ground pulls, dreams pull, the favourite works with heart.
+        // Work in a favoured place: look there too, and prefer it.
+        if self.patron.marks.iter().any(|m| !m.forbidden) {
+            let fav = |c: &Colony, p: Pos| c.marked(p, false);
+            if food < food_goal {
+                if let Some(t) = self.nearest(s.pos, |c, p| c.is_ripe_shrub(p) && fav(c, p)) {
+                    options.push(((0.4 + 1.0) * s.taste[0] * 1.4, Job::Forage(t), format!("Picking berries at {},{}, on the ground the patron blessed", t.0, t.1)));
+                }
+            }
+            if hut_pending && logs_about + 2 * fellers < logs_needed {
+                if let Some(t) = self.nearest(s.pos, |c, p| c.is_felling_tree(p) && fav(c, p)) {
+                    options.push((0.75 * s.taste[2] * 1.4, Job::Fell(t), format!("Felling the tree at {},{}, on the ground the patron blessed", t.0, t.1)));
+                }
+            }
+        }
+        let forbidden_near = self.patron.marks.iter().any(|m| m.forbidden && (m.at.0 as i32 - s.pos.0 as i32).abs().max((m.at.1 as i32 - s.pos.1 as i32).abs()) <= WORK_RADIUS);
+        let dream = self.dream_of(i);
+        let favourite = self.patron.favourite == Some(i);
+        for o in options.iter_mut() {
+            let pull = match (dream, &o.1) {
+                (Some(Dream::Hut), Job::Build | Job::Fell(_)) => 1.0,
+                (Some(Dream::Plenty), Job::Forage(_) | Job::Fish(_)) => 0.8,
+                (Some(Dream::Rest), Job::Sleep) => 1.2,
+                _ => 0.0,
+            };
+            if pull > 0.0 {
+                o.0 += pull;
+                o.2 = format!("Dreamt of {}; {}", dream.unwrap().word(), lower_first(&o.2));
+            }
+            if favourite && !matches!(o.1, Job::Eat | Job::Sleep | Job::Wander(_)) {
+                o.0 *= 1.15;
+                o.2.push_str(" (the patron's favourite)");
+            }
+            if forbidden_near && matches!(o.1, Job::Forage(_) | Job::Fish(_) | Job::Fell(_) | Job::Wander(_)) {
+                o.2.push_str(", keeping off the forbidden ground");
+            }
+        }
+        // Wandering into forbidden ground is no rest.
+        options.retain(|o| !matches!(o.1, Job::Wander(p) if self.marked(p, true)));
         let Some((best_u, best, why)) = options.into_iter().max_by(|a, b| a.0.total_cmp(&b.0)) else { return };
         if !free {
             // Keep the current job unless something matters much more (an empty belly, sleep).
@@ -343,7 +586,7 @@ impl Colony {
                 for (x, y) in [(from.0 as i32 + d, from.1 as i32 - r), (from.0 as i32 + d, from.1 as i32 + r), (from.0 as i32 - r, from.1 as i32 + d), (from.0 as i32 + r, from.1 as i32 + d)] {
                     if x < 1 || y < 1 || x >= n - 1 || y >= n - 1 { continue; }
                     let p = (x as u16, y as u16);
-                    if self.claimed.contains(&p) || self.unreachable.contains(&p) { continue; }
+                    if self.claimed.contains(&p) || self.unreachable.contains(&p) || self.marked(p, true) { continue; }
                     if ok(self, p) && found.map_or(true, |f| (f.1, f.0) > (p.1, p.0)) { found = Some(p); }
                 }
             }
@@ -362,6 +605,7 @@ impl Colony {
     fn is_felling_tree(&self, p: Pos) -> bool {
         // Not trees inside the hut site.
         matches!(self.floor_plant(p), Plant::Tree(_)) && !self.hut_cells().contains(&p)
+            && !self.stones.iter().any(|(k, at)| *k == StoneKind::Grove && (at.0 as i32 - p.0 as i32).abs().max((at.1 as i32 - p.1 as i32).abs()) <= GROVE_RADIUS)
     }
     /// Dry ground next to water a settler can stand on.
     fn is_fishing_spot(&self, p: Pos) -> bool {
@@ -603,10 +847,20 @@ impl Colony {
         let Some(hut) = self.hut.as_mut() else { return };
         hut.logs_used += 1;
         let used = hut.logs_used;
+        if !self.builders.contains(&i) { self.builders.push(i); }
         if used == 1 { self.note(format!("{} sets the first log of the hut.", name)); }
         if used >= HUT_LOGS {
             self.raise_hut();
             self.note(format!("{} finishes the hut. Tonight they sleep under a roof.", name));
+            // The builders raise a stone by the door with their names on it.
+            if let Some(h) = &self.hut {
+                let at = (h.at.0 + HUT_W as u16 / 2 + 1, h.at.1 + HUT_H as u16);
+                let names: Vec<String> = self.builders.iter().map(|&b| self.settlers[b].name.clone()).collect();
+                let hall = self.name.as_ref().map(|n| format!("{}'s hall", n)).unwrap_or_else(|| "This hall".into());
+                let text = format!("{} was raised on day {} by {}.", hall, self.clock.day(), join_names(&names));
+                self.marks.push(ColonyMark { at, kind: MarkKind::Stone, title: "The builders' stone".into(), text, day: self.clock.day() });
+                self.note("The builders raise a stone by the door with their names on it.".into());
+            }
         }
     }
 
@@ -647,6 +901,84 @@ impl Colony {
     }
 
     /// Run `days` game days.
+    /// Try each of the patron's verbs on a fresh colony and check it changes what the settlers do
+    /// within a game day (`--sim-patron`). Returns one line per verb, "ok" or why not.
+    pub fn patron_trial(&mut self) -> Vec<String> {
+        let mut out = Vec::new();
+        self.run_days(1);
+        let inside = |m: &PlaceMark, p: Pos| (m.at.0 as i32 - p.0 as i32).abs().max((m.at.1 as i32 - p.1 as i32).abs()) <= m.radius as i32;
+        // Forbid the trees nearest the camp.
+        let tree = self.nearest(self.camp, |c, p| c.is_felling_tree(p));
+        let forbid = tree.map(|t| PlaceMark { at: t, radius: 8, forbidden: true });
+        if let Some(m) = forbid { let _ = self.mark_place(m.at, m.radius, true); }
+        // Bless a berry patch away from the camp.
+        let patch = (12..40).find_map(|r| {
+            let p = (self.camp.0.saturating_add(r), self.camp.1);
+            self.nearest(p, |c, q| c.is_ripe_shrub(q) && (q.0 as i32 - c.camp.0 as i32).abs() + (q.1 as i32 - c.camp.1 as i32).abs() >= 12)
+        });
+        let bless = patch.map(|t| PlaceMark { at: t, radius: 6, forbidden: false });
+        if let Some(m) = bless { let _ = self.mark_place(m.at, m.radius, false); }
+        let fav = 0usize;
+        let _ = self.favour_settler(fav);
+        let (mut felled_inside, mut kept_off, mut forage_inside, mut fav_seen) = (0, 0, 0, false);
+        let start = self.decisions.len();
+        for _ in 0..TICKS_PER_DAY {
+            self.tick();
+            for st in &self.settlers {
+                if let (Some(m), Job::Fell(t)) = (forbid, st.job) { if inside(&m, t) { felled_inside += 1; } }
+                if let (Some(m), Job::Forage(t)) = (bless, st.job) { if inside(&m, t) { forage_inside += 1; } }
+            }
+        }
+        for d in &self.decisions[start..] {
+            if d.contains("keeping off the forbidden ground") { kept_off += 1; }
+            if d.contains(&self.settlers[fav].name) && d.contains("(the patron's favourite)") { fav_seen = true; }
+        }
+        out.push(match forbid { Some(_) if felled_inside == 0 && kept_off > 0 => format!("forbid: ok ({} choices kept off it, no tree felled inside)", kept_off),
+            Some(_) => format!("forbid: FAILED ({} felling ticks inside, {} choices kept off)", felled_inside, kept_off), None => "forbid: no tree to forbid".into() });
+        out.push(match bless { Some(_) if forage_inside > 0 => format!("bless: ok ({} settler-minutes foraging on the blessed ground)", forage_inside),
+            Some(_) => "bless: FAILED (nobody foraged there)".into(), None => "bless: no berry patch".into() });
+        out.push(if fav_seen { "favourite: ok".into() } else { "favourite: FAILED".into() });
+        // A dream, after the dawn gives favour back.
+        let dreamer = 1usize;
+        let _ = self.send_dream(dreamer, Dream::Plenty);
+        let start = self.decisions.len();
+        let mut dreamt = false;
+        for _ in 0..TICKS_PER_DAY {
+            self.tick();
+            if matches!(self.settlers[dreamer].job, Job::Forage(_) | Job::Fish(_)) && self.settlers[dreamer].why.starts_with("Dreamt of") { dreamt = true; }
+        }
+        let _ = start;
+        out.push(if dreamt { "dream: ok".into() } else { "dream: FAILED".into() });
+        out
+    }
+
+    /// Where the hut stands, and how many trees are left within `r` of a point (for comparing
+    /// layouts).
+    pub fn trees_near(&self, at: Pos, r: i32) -> usize {
+        let mut n = 0;
+        for y in (at.1 as i32 - r).max(1)..(at.1 as i32 + r).min(self.map.height as i32 - 1) {
+            for x in (at.0 as i32 - r).max(1)..(at.0 as i32 + r).min(self.map.width as i32 - 1) {
+                if matches!(self.floor_plant((x as u16, y as u16)), Plant::Tree(_)) { n += 1; }
+            }
+        }
+        n
+    }
+
+    /// The camp and a free spot `dx`, `dy` from it (the nearest passable cell), for trials.
+    pub fn spot_from_camp(&self, dx: i32, dy: i32) -> Pos {
+        let (x, y) = (self.camp.0 as i32 + dx, self.camp.1 as i32 + dy);
+        for r in 0..10 {
+            for (ox, oy) in [(0, 0), (r, 0), (-r, 0), (0, r), (0, -r), (r, r), (-r, -r)] {
+                let p = ((x + ox).clamp(2, self.map.width as i32 - 3) as u16, (y + oy).clamp(2, self.map.height as i32 - 3) as u16);
+                if nav::passable(&self.map, p) { return p; }
+            }
+        }
+        self.camp
+    }
+
+    /// The nearest tree to the camp that would be felled.
+    pub fn nearest_tree_to_camp(&self) -> Option<Pos> { self.nearest(self.camp, |c, p| c.is_felling_tree(p)) }
+
     pub fn run_days(&mut self, days: u64) {
         let end = self.clock.tick + days * TICKS_PER_DAY;
         let mut warned_food = false;
@@ -675,6 +1007,19 @@ impl Colony {
             format!("{:<9} {:<16} hunger {:>3.0}% rest {:>3.0}% chill {:>3.0}%  {}", s.name, s.job.verb(), s.hunger * 100.0, (1.0 - s.fatigue) * 100.0, s.exposure * 100.0, s.why)
         } else { format!("{:<9} dead", s.name) }).collect()
     }
+}
+
+fn join_names(v: &[String]) -> String {
+    match v {
+        [] => "no one".into(),
+        [a] => a.clone(),
+        [rest @ .., last] => format!("{} and {}", rest.join(", "), last),
+    }
+}
+
+fn lower_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }
 
 fn capital(s: &str) -> String {

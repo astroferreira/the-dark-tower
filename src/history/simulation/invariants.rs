@@ -104,6 +104,36 @@ pub fn violations(h: &WorldHistory) -> Vec<String> {
     out
 }
 
+/// Length of each caused event's chain of causes (links followed back, up to 20): (median, mean).
+pub fn chain_depth(h: &WorldHistory) -> (usize, f32) {
+    let mut depths: Vec<usize> = h.chronicle.events.iter().filter(|e| !e.causes.is_empty()).map(|e| {
+        let (mut d, mut cur) = (0, e);
+        while let Some(&c) = cur.causes.first() {
+            let Some(ce) = h.chronicle.get(c) else { break };
+            d += 1;
+            if d >= 20 { break; }
+            cur = ce;
+        }
+        d
+    }).collect();
+    if depths.is_empty() { return (0, 0.0); }
+    depths.sort();
+    (depths[depths.len() / 2], depths.iter().sum::<usize>() as f32 / depths.len() as f32)
+}
+
+/// How many events of each kind record a cause: (kind, with a cause, total), most uncaused first.
+pub fn cause_report(h: &WorldHistory) -> Vec<(String, usize, usize)> {
+    let mut by: HashMap<String, (usize, usize)> = HashMap::default();
+    for e in &h.chronicle.events {
+        let k = by.entry(format!("{:?}", e.event_type)).or_default();
+        k.1 += 1;
+        if !e.causes.is_empty() { k.0 += 1; }
+    }
+    let mut v: Vec<(String, usize, usize)> = by.into_iter().map(|(k, (c, t))| (k, c, t)).collect();
+    v.sort_by(|a, b| (b.2 - b.1).cmp(&(a.2 - a.1)).then(a.0.cmp(&b.0)));
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,4 +183,41 @@ mod tests {
             assert!(v.is_empty(), "seed {seed}: {} contradictions:\n{}", v.len(), v.join("\n"));
         }
     }
+}
+
+/// One line on the wars: how long they ran, whether their battles had people in them, and how
+/// alike their names are.
+pub fn war_report(h: &WorldHistory) -> String {
+    let ended: Vec<u32> = h.wars.values().filter_map(|w| w.ended.map(|e| e.year.saturating_sub(w.started.year))).collect();
+    let mut d = ended.clone();
+    d.sort();
+    let q = |p: f32| d.get(((d.len() as f32 - 1.0) * p) as usize).copied().unwrap_or(0);
+    let battles: Vec<_> = h.chronicle.events.iter().filter(|e| e.event_type == EventType::BattleFought).collect();
+    let with_figure = battles.iter().filter(|e| e.primary_participants.iter().any(|p| matches!(p, EntityId::Figure(_)))).count();
+    let names: crate::history::det::HashSet<&str> = h.wars.values().map(|w| w.name.as_str()).collect();
+    let mut fell: Vec<(String, usize)> = Vec::new();
+    for e in h.chronicle.events.iter().filter(|e| e.event_type == EventType::FactionDestroyed) {
+        let why = e.causes.first().and_then(|c| h.chronicle.get(*c)).map(|c| format!("{:?}", c.event_type)).unwrap_or_else(|| e.description.split_whitespace().rev().take(3).collect::<Vec<_>>().join("_"));
+        match fell.iter_mut().find(|x| x.0 == why) { Some(x) => x.1 += 1, None => fell.push((why, 1)) }
+    }
+    fell.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    format!("Wars: {} ({} ended, lasting {}-{} years, median {}, 90% under {}, {} within a year); {} battles, {:.0}% name a figure; {} distinct names; peoples fallen: {}",
+        h.wars.len(), ended.len(), q(0.0), q(1.0), q(0.5), q(0.9), d.iter().filter(|x| **x == 0).count(), battles.len(),
+        100.0 * with_figure as f32 / battles.len().max(1) as f32, names.len(),
+        fell.iter().map(|(k, n)| format!("{} {}", n, k)).collect::<Vec<_>>().join(", "))
+}
+
+/// One line on the world's treasures and monuments: how many name a real maker or deed.
+pub fn objects_report(h: &WorldHistory) -> String {
+    let arts = h.artifacts.values().count();
+    let arts_ok = h.artifacts.values().filter(|a| {
+        !a.description.is_empty() && (a.creator.map_or(false, |c| h.figures.contains_key(&c)) || !a.inscriptions.is_empty())
+    }).count();
+    let mons = h.monuments.values().count();
+    let mons_ok = h.monuments.values().filter(|m| m.commemorates.map_or(false, |e| h.chronicle.get(e).is_some())).count();
+    let mut names: Vec<&str> = h.artifacts.values().map(|a| a.name.as_str()).collect();
+    names.sort();
+    let dupes = names.windows(2).filter(|w| w[0] == w[1]).count();
+    format!("Objects: {} of {} artifacts name a real maker or deed ({} repeated names); {} of {} monuments remember a real event",
+        arts_ok, arts, dupes, mons_ok, mons)
 }

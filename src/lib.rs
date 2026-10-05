@@ -15,6 +15,7 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
+#[cfg(feature = "legacy")]
 pub mod ascii;
 pub mod biome_feathering;
 pub mod biomes;
@@ -23,7 +24,11 @@ pub mod climate;
 pub mod coastline;
 pub mod colony;
 pub mod erosion;
+#[cfg(feature = "legacy")]
 pub mod explorer;
+#[cfg(feature = "legacy")]
+pub mod menu;
+pub mod grid_export;
 pub mod exr_export;
 pub mod heightmap;
 pub mod history;

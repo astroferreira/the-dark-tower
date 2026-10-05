@@ -22,3 +22,17 @@ the zoomed region around a point.
   = off; bump `FORMAT` when `simulate_chunk` changes), so a second run takes ~1.2 s instead of
   10-15 s.
 - Houses record their footprints (`LocalMap::roofs`, `houses`) for roofs in the ink surface view.
+
+## Sites worth settling (`local/site.rs`)
+- `furnish` (end of `generate_local`) adds what a first camp needs within 48 cells (~100 m) of
+  the centre and nature left out: a spring and a pool on a dry site (`Feature::Spring`), a
+  grove of the local trees when there are fewer than 20 (the hut needs logs), an outcrop of bare
+  rock and boulders when there is no stone, berry thickets when there are few shrubs, and a
+  landmark: graves (`Feature::Grave`, 3 + the named dead per battle) where the history fought on
+  this world tile (`RegionLore::battles`), else a standing stone (`Feature::Stone`) if nothing
+  else is there. Spots are the free cells (dry floor, unbuilt, no feature) with the most room,
+  chosen by hash: deterministic.
+- `report` lists what a site holds (water, wood, stone, berries, soil, game, graves, bones,
+  stone, buildings); `--local-snapshot` prints "Site (N kinds): ...", and walking mode shows it
+  in the title, recomputed when the embark box moves 24 cells (~30 ms; not tried by hand yet).
+  Seven dev sites hold 5-7 kinds each.
