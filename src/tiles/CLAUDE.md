@@ -24,6 +24,14 @@ The default and only maintained front end (minifb window).
   roads glow, foundings ring, battles/razings/disasters flare; great events get a banner.
 - Panel: year/season, timeline, almanac, souls sparkline, the Shadow, great realms. Chronicle
   below: key events (`style()` decides glyph, colour, map mark and whether it is key), `L` = all.
+- The opening of the game: treasures made, found and lost are not key events; once a decade one
+  line sums them ("In ten years 14 treasures were made, found or lost"; recoveries had been 13 of
+  the last 20 key events). Playback is paced by drama: a season with a great event (major kinds,
+  razings, the Shadow's conquests and its check) lingers 2.5x, a season with no key event
+  passes at 0.35x. When the age is written a "The world today" card (sent by the simulation as
+  `Msg::Present`: the world's sentence, peoples/wars/grudges, the Shadow's frontier and the
+  stronghold in its path, its weakness, beasts near towns, recent falls) ends it, then "ENTER
+  choose where to settle". The camera never runs past the poles (`clamp_cy`).
 - `--watch-snapshot PREFIX --headless` renders frames at 1/4, 1/2, the end and a close-up to
   PNG without a window (for checking the look). The window doesn't redraw while hidden, so
   screen capture is unreliable; use this.
@@ -182,3 +190,29 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   sentence), a scale bar (round steps, 4 segments), a compass rose in the most open sea and the
   vintage ruled border (`cartography/decorations.rs`). Works with `--load-world`.
 - Not yet: the atlas of ages (four small maps at years 201, 280, 360, 451).
+
+### Portraits (`tiles/portraits.rs`)
+- `of_settler` builds an ink head from parts: skin, ears, tusks and beards by race (orcs green
+  with tusks, elves pale with pointed ears, dwarves bearded), hair, beard, dress and head shape by
+  a hash of the name, headgear (hood, cap, circlet, helm), glowing eyes and pale wisps for the
+  undead (all-undead parties had looked alike: 10% apart), wrinkles from age 55; marks from the past: a scar from the battle a
+  veteran fought ("From the Battle of X", linked to its event) or the night of the raid they
+  survived (`viewer::wounded_in`), an eye patch for some of the scarred, grey hair from 50 or
+  from 35 for those who lost their town. `draw` renders it at any size with ink outlines.
+- Shown on the inspector's settler page (60 px by the title, with a "Scar:" line linking to the
+  event) and in the saga's cast (40 px). `--sim-snapshot` writes `<prefix>_faces.png` and
+  prints how far apart the two most alike faces are at 48 px (dev 21%, seed 23 22%; tested >= 15%).
+
+### Ground, scars and ranges (`render.rs`)
+- Wet edges: from 4 px a second, looser warp (0.55 tiles) picks a neighbouring ground kind; where
+  it differs (same land/water class) the two atlas textures blend ~40-60%, so biomes bleed into
+  each other instead of meeting at a line.
+- Scarred land has its own ink (`scar_ink`): ashlands (Ash ground) darker with a crack network
+  and red-black cinders; dead woods (tundra + dead trees) grey-brown with fallen trunks; bone
+  fields pale ochre with scattered bones.
+- Ranges (`mountain_ink`, from 6 px, replacing the Mountain/SnowPeak sprites): peaks on a
+  jittered half-tile grid wherever a mountain tile lies beneath, height 0.3-0.9 tiles by
+  elevation (`TileWorld::elev`), overlapping front to back, lit face pale, shadow face
+  hatched, inked slopes, snow caps only near the top of cold or high peaks; ground snow on
+  mountain tiles is cut to 30% so the white sits on the peaks. Seed 42 render times unchanged
+  (~16.5 ms at 16 and 32 px).

@@ -52,6 +52,8 @@ pub struct Page {
     pub lines: Vec<Line>,
     /// Arms drawn by the title (a realm's page).
     pub emblem: Option<super::heraldry::Arms>,
+    /// A face drawn by the title (a settler's page).
+    pub portrait: Option<super::portraits::Portrait>,
 }
 
 /// Events to list per page.
@@ -94,7 +96,7 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             let owner = h.tile_history.get(x, y).current_owner;
             let mut p = match owner {
                 Some(f) => page(world, h, Subject::Faction(f)),
-                None => Page { title: "Unclaimed land".into(), lines: Vec::new(), emblem: None },
+                None => Page { title: "Unclaimed land".into(), lines: Vec::new(), emblem: None, portrait: None },
             };
             p.lines.insert(0, Line::faded(format!("Tile {},{}: {:?}, {:.0} m", x, y, world.biomes.get(x, y), world.heightmap.get(x, y))));
             let here = recent(h, |e| e.location == Some((x, y)));
@@ -105,7 +107,7 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             p
         }
         Subject::Settlement(id) => {
-            let Some(s) = h.settlements.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None } };
+            let Some(s) = h.settlements.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
             let mut lines = Vec::new();
             match s.destroyed {
                 Some(d) => {
@@ -144,10 +146,10 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             let ev = recent(h, |e| e.primary_participants.contains(&EntityId::Settlement(id)) || e.location == Some(s.location));
             if ev.is_empty() { lines.push(Line::faded("Nothing recorded")); }
             lines.extend(ev.into_iter().map(event_line));
-            Page { title: s.name.clone(), lines, emblem: None }
+            Page { title: s.name.clone(), lines, emblem: None, portrait: None }
         }
         Subject::Faction(f) => {
-            let Some(fac) = h.factions.get(&f) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None } };
+            let Some(fac) = h.factions.get(&f) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
             let mut lines = Vec::new();
             let race = h.races.get(&fac.race_id).map(|r| r.name.clone()).unwrap_or_default();
             lines.push(Line::plain(format!("{} {:?}, founded {}", race, fac.government, fac.founded.year)));
@@ -175,10 +177,10 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             }
             lines.push(Line::section("Lately"));
             lines.extend(recent(h, |e| e.factions_involved.first() == Some(&f)).into_iter().map(event_line));
-            Page { title: fac.name.clone(), lines, emblem: Some(super::heraldry::arms_of(world, h, f)) }
+            Page { title: fac.name.clone(), lines, emblem: Some(super::heraldry::arms_of(world, h, f)), portrait: None }
         }
         Subject::Beast(c) => {
-            let Some(b) = h.legendary_creatures.get(&c) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None } };
+            let Some(b) = h.legendary_creatures.get(&c) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
             let mut lines = Vec::new();
             lines.push(Line::plain(match b.death_date {
                 Some(d) => format!("Slain in year {}", d.year),
@@ -187,10 +189,10 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             if let Some((x, y)) = b.lair_location { lines.push(Line::link(format!("Lair at {},{}", x, y), Subject::Tile(x, y))); }
             lines.push(Line::section("Deeds"));
             lines.extend(recent(h, |e| e.primary_participants.contains(&EntityId::LegendaryCreature(c))).into_iter().map(event_line));
-            Page { title: b.full_name(), lines, emblem: None }
+            Page { title: b.full_name(), lines, emblem: None, portrait: None }
         }
         Subject::Event(id) => {
-            let Some(e) = h.chronicle.get(id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None } };
+            let Some(e) = h.chronicle.get(id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
             let mut lines = vec![Line::faded(format!("Year {}, {:?}", e.date.year, e.date.season))];
             lines.push(Line::plain(e.description.clone()));
             for p in &e.primary_participants {
@@ -231,10 +233,10 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
                 lines.push(Line::section("It led to"));
                 lines.extend(led.into_iter().map(event_line));
             }
-            Page { title: e.title.clone(), lines, emblem: None }
+            Page { title: e.title.clone(), lines, emblem: None, portrait: None }
         }
         Subject::Artifact(id) => {
-            let Some(a) = h.artifacts.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None } };
+            let Some(a) = h.artifacts.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
             let mut lines = vec![Line::faded(format!("{:?} {:?}, made in year {}", a.quality, a.item_type, a.creation_date.year))];
             if !a.description.is_empty() { lines.push(Line::plain(a.description.clone())); }
             for i in &a.inscriptions { lines.push(Line::plain(format!("Inscribed: \"{}\"", i.text))); }
@@ -259,11 +261,11 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             ev.sort_by_key(|e| e.date);
             if ev.is_empty() { lines.push(Line::faded("Nothing recorded")); }
             lines.extend(ev.into_iter().take(RECENT * 2).map(event_line));
-            Page { title: a.name.clone(), lines, emblem: None }
+            Page { title: a.name.clone(), lines, emblem: None, portrait: None }
         }
-        Subject::Settler(_) | Subject::ColonyMark(_) => Page { title: "?".into(), lines: Vec::new(), emblem: None },
+        Subject::Settler(_) | Subject::ColonyMark(_) => Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None },
         Subject::Monument(id) => {
-            let Some(m) = h.monuments.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None } };
+            let Some(m) = h.monuments.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
             let mut lines = vec![Line::faded(format!("{:?}, raised in year {}", m.monument_type, m.built_date.year))];
             lines.push(Line::link(format!("Raised by {}", faction_name(h, m.faction)), Subject::Faction(m.faction)));
             if !m.intact { lines.push(Line::plain(format!("In ruins since year {}", m.destruction_date.map_or(0, |d| d.year)))); }
@@ -276,7 +278,7 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
                 lines.push(Line::section("Its raising"));
                 lines.push(event_line(e));
             }
-            Page { title: m.name.clone(), lines, emblem: None }
+            Page { title: m.name.clone(), lines, emblem: None, portrait: None }
         }
     }
 }
@@ -284,6 +286,12 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
 /// A settler's page: who they are, what they are doing and why, their past (each line opens its
 /// event) and how they feel.
 pub fn settler_page(h: Option<&WorldHistory>, s: &crate::colony::Settler) -> Page {
+    settler_page_with(h, s, None)
+}
+
+/// `settler_page` with the night they were wounded, if they were.
+pub fn settler_page_with(h: Option<&WorldHistory>, s: &crate::colony::Settler, wounded: Option<(String, u64)>) -> Page {
+    let face = super::portraits::of_settler(s, h, wounded);
     let mut lines = Vec::new();
     match &s.past {
         Some(p) => lines.push(Line::faded(format!("{}, {}", p.age, p.calling))),
@@ -315,17 +323,21 @@ pub fn settler_page(h: Option<&WorldHistory>, s: &crate::colony::Settler) -> Pag
             lines.push(Line::link(format!("Of {}", h.map(|h| faction_name(h, f)).unwrap_or_default()), Subject::Faction(f)));
         }
     }
-    Page { title: s.name.clone(), lines, emblem: None }
+    if let Some((text, ev)) = &face.scar {
+        let line = format!("Scar: {}{}", text, if face.eye_patch { "; it took an eye" } else { "" });
+        lines.insert(1, match ev { Some(e) => Line::link(line, Subject::Event(*e)), None => Line::plain(line) });
+    }
+    Page { title: s.name.clone(), lines, emblem: None, portrait: Some(face) }
 }
 
 /// A colony mark's page: what it is, the day, and the words on it.
 pub fn mark_page(m: &crate::colony::ColonyMark) -> Page {
-    let kind = match m.kind { crate::colony::MarkKind::Grave => "A grave", crate::colony::MarkKind::Stone => "A raised stone" };
+    let kind = match m.kind { crate::colony::MarkKind::Grave => "A grave", crate::colony::MarkKind::Stone => "A raised stone", crate::colony::MarkKind::Scorch => "Scorched ground" };
     Page { title: m.title.clone(), lines: vec![
         Line::faded(format!("{}, day {}, at {},{}", kind, m.day, m.at.0, m.at.1)),
         Line::section("The words on it"),
         Line::plain(m.text.clone()),
-    ], emblem: None }
+    ], emblem: None, portrait: None }
 }
 
 fn capitalize(s: &str) -> String {
@@ -353,6 +365,9 @@ pub(crate) fn draw(page: &Page, buf: &mut [u32], w: usize, h: usize, depth: usiz
     let max_chars = if let Some(a) = &page.emblem {
         super::heraldry::draw(buf, w, h, (r.x + r.w - 56) as i64, (r.y + 12) as i64, 48, a);
         max_chars.saturating_sub(7)
+    } else if let Some(p) = &page.portrait {
+        super::portraits::draw(buf, w, h, (r.x + r.w - 70) as i64, (r.y + 8) as i64, 60, p);
+        max_chars.saturating_sub(9)
     } else { max_chars };
     for (k, line) in ui::wrap(&ui::ascii(&page.title), max_chars).iter().enumerate() {
         draw_ink(buf, w, h, x0 as i64, y as i64, line, RUBRIC, 1, k == 0);

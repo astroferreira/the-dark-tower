@@ -16,6 +16,15 @@ static WORLD_ARGS: OnceLock<String> = OnceLock::new();
 
 pub fn set_world_args(args: String) { let _ = WORLD_ARGS.set(args); }
 
+/// The world part of the world code ("SEED.WxH.STYLE.PEOPLES.YEARS"); the site is added per
+/// embark ("@X,Y").
+static WORLD_CODE: OnceLock<String> = OnceLock::new();
+
+pub fn set_world_code(code: String) { let _ = WORLD_CODE.set(code); }
+
+/// The full world code for an embark at `site`.
+pub fn world_code(site: (usize, usize)) -> Option<String> { WORLD_CODE.get().map(|c| format!("{}@{},{}", c, site.0, site.1)) }
+
 /// What a plate says about itself.
 pub struct PlateInfo {
     pub world_name: String,

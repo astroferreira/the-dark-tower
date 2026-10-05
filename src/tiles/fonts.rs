@@ -1,21 +1,23 @@
-//! A map hand: IM Fell English (roman, italic, small capitals; SIL Open Font License, in
-//! `assets/fonts/`) rasterised with `fontdue`, for the map's labels. Glyphs are cached per face,
+//! A map hand: IM Fell English (roman, italic, small capitals) and, for the player's own notes,
+//! Indie Flower (all SIL Open Font License, in `assets/fonts/`) rasterised with `fontdue`, for the map's labels. Glyphs are cached per face,
 //! size and character, so placing a few hundred labels a frame costs little.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Face { Roman, Italic, SmallCaps }
+pub enum Face { Roman, Italic, SmallCaps, Hand }
 
-fn fonts() -> &'static [fontdue::Font; 3] {
-    static FONTS: OnceLock<[fontdue::Font; 3]> = OnceLock::new();
+fn fonts() -> &'static [fontdue::Font; 4] {
+    static FONTS: OnceLock<[fontdue::Font; 4]> = OnceLock::new();
     FONTS.get_or_init(|| {
         let load = |b: &[u8]| fontdue::Font::from_bytes(b, fontdue::FontSettings::default()).expect("embedded font");
         [
             load(include_bytes!("../../assets/fonts/IMFeENrm28P.ttf")),
             load(include_bytes!("../../assets/fonts/IMFeENit28P.ttf")),
             load(include_bytes!("../../assets/fonts/IMFeENsc28P.ttf")),
+            // The player's own hand (marginalia): Indie Flower, OFL.
+            load(include_bytes!("../../assets/fonts/IndieFlower-Regular.ttf")),
         ]
     })
 }

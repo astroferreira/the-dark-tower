@@ -7,6 +7,8 @@ pub mod gazetteer;
 pub mod journal;
 pub mod sifting;
 pub mod claims;
+pub mod rare;
+pub mod notes;
 pub mod landmarks;
 pub mod resources;
 pub mod settle;

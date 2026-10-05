@@ -9,6 +9,7 @@ pub mod inspector;
 pub mod local_ink;
 pub mod overlays;
 pub mod plates;
+pub mod portraits;
 pub mod render;
 pub mod start;
 pub mod text;

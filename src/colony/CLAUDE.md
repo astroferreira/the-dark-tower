@@ -67,3 +67,32 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   a click opens `inspector::mark_page`. `--sim-marks PREFIX` lives 30 days, buries one settler
   and renders the camp with the grave's page open; tested. Scorched ground and a ruined hut
   after a raid wait for the first arc.
+- One seed, many fates: a world code `SEED.WxH.STYLE.PEOPLES.YEARS@X,Y` (printed by
+  `--sim-snapshot`, shown in the colony's title; `--code CODE` opens that world embarked on that
+  site, the dev preset skipped) gives the same world, site and settlers anywhere. Every patron act
+  is recorded in `Colony::interventions` as "tick verb args" (bless/forbid x y r, favour i,
+  dream i Hut|Plenty|Rest, stone Hall|Grove|Shrine x y, name ...); leaving the colony writes
+  `interventions_<seed>.txt`, and `--interventions FILE` replays them (`run_days_scripted`;
+  lines timed before the first morning run at once). `--sim-snapshot` prints "Colony hash" (FNV
+  over the world chronicle and the colony log): the same code and interventions give the same
+  hash (tested), different interventions a different one.
+- The first arc (`arc.rs`, planned by `arc::plan` at founding whenever there is a history): the
+  threat is the nearest real one (a living beast laired within 4 tiles, else the Shadow if its
+  reach comes within 6 tiles, else a war band of the people who took the nearest fallen town,
+  else outlaws). Day 3 10:00 a rumour (caused by the threat's last deed in the chronicle); day 6
+  16:00 two refugees from the nearest real fallen town join (`add_settler`, with pasts); each
+  night after, one settler keeps watch at the camp's edge (a 2.5 option in `decide`, "for fear
+  of ..."); day 14 02:00 the raid: danger (beast 0.8, Shadow 0.7, war band 0.6, outlaws 0.4, +
+  0.6 x a seeded roll) against readiness (0.05 a night of watch, 0.25 for the hut, 0.03 a
+  settler) gives a death (`bury`), a rescue (a stone raised for the rescuer) or a rout, and
+  always scorched ground. Each step is an `ArcEvent` with a "because", a banner on the colony
+  map for half a day, and a log line; `tale()` writes it as a journal page (`<prefix>_tale.html`
+  from `--sim-snapshot`, with the chronicle events behind it). Dev seeds 76/11/23/58/3/5: two
+  routs, two rescues, two deaths. `tests/colony.rs` checks the three steps and their causes.
+  The colony summary now counts the real party ("8 of 9 alive").
+- The saga page (`viewer::saga_plate`, written by `--sim-snapshot` as `<prefix>_saga.png`,
+  1600x1000): "The Saga of <name>" with the days, the year and the world code; the colony's map;
+  the company (each settler's people's arms, name, age and calling, fate: lives / died on day N);
+  a timeline of ten moments chosen by weight (the arc, deaths, the hut and the camp, the patron's
+  acts, then firsts) in day order, each its first clause. Not yet: composed by itself when a
+  colony falls or passes a milestone, portraits.

@@ -89,3 +89,21 @@ fn dev_world_history_is_deterministic() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(same, "two --dev runs wrote different journals");
 }
+
+#[test]
+fn a_note_pinned_on_the_map_appears_in_the_journal() {
+    let dir = std::env::temp_dir().join(format!("notes_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        .current_dir(&dir)
+        .args(["--dev", "--headless", "--note", "65,23:My grandmother was born here", "--journal", "j.html"])
+        .output()
+        .expect("run planet_generator");
+    assert!(out.status.success(), "planet_generator failed: {}", String::from_utf8_lossy(&out.stderr));
+    let html = std::fs::read_to_string(dir.join("j.html")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    // In the margin of the annals, beside an entry of that place, and in the Marginalia part.
+    let at = html.find("class=\"entry margin\"").expect("no note in the annals' margin");
+    assert!(html[at..].contains("My grandmother was born here"));
+    assert!(html.contains("id=\"marginalia\""), "no Marginalia part");
+}

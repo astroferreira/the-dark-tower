@@ -52,6 +52,8 @@ pub struct TileWorld {
     /// in `road` and `river`.
     pub road_strokes: Strokes,
     pub river_strokes: Strokes,
+    /// Elevation per tile (m), for drawing ranges by height.
+    pub elev: Vec<f32>,
     /// Current season's snow cover 0..1, foliage tint (multiplier) and frozen-water flag.
     pub season_snow: Vec<f32>,
     pub season_tint: Vec<[f32; 3]>,
@@ -217,6 +219,7 @@ impl TileWorld {
             owner: vec![u64::MAX; n],
             settlement: vec![None; n],
             road_near: vec![false; n],
+            elev: (0..n).map(|i| *hm.get(i % w, i / w)).collect(),
             road_strokes: Strokes::empty(n),
             river_strokes: Strokes::empty(n),
             season_snow: vec![0.0; n],

@@ -28,6 +28,10 @@ Derived world lore: resources, landmarks, focal points, the journal and the bard
   named river, the deepest gorge (river tile with high ground on both banks), up to 3 crater
   lakes and 3 groves of giant trees (CraterLake / AncientGrove patches), the largest desert and
   forest. Each has a name, an epithet and a measurement.
+- Crater lakes and groves of giant trees occupy whole world tiles but are small things: their
+  size comes from their kind (a crater 2-12 km across, a grove 20-400 hectares, hashed per site)
+  and each has a name of its own ("Lake Galanor", "the Galiel Wood"; never repeated). Naming
+  them after their region gave three "crater lakes of Neaslind" of a million km2 each.
 - Shown: `--gazetteer` prints them; tile-viewer labels of landmark features rank above their
   kind and show from 2 px/tile (falls, gorges, crater lakes and groves get their own labels);
   hover adds "the longest river in the world (4,700 km)" on every tile of the feature; the
@@ -83,6 +87,26 @@ Derived world lore: resources, landmarks, focal points, the journal and the bard
 - Shown under the journal's title, first in `--present` (named after the largest continent) and
   as the summary's `Records:` line; the present-day test requires six dev seeds to give six
   different sentences. Plates (when they exist) should carry it too.
+
+## Rare outcomes (`lore/rare.rs`)
+- `find(world, history)` detects seven world-defining outcomes, each with a cause line: the
+  Undying King (crowned 50+ years before written history, reigns still), Never slain (a beast
+  from the dawn with 15+ raids, alive), a People in exile (fell 40+ years ago, 4+ notables in
+  exile), an Empire across the sea (5+ towns on each of two landmasses), the Unbroken seat (the
+  one founding capital never besieged, its people at 5+ wars), Risen again (fell, rose, now the
+  greatest realm), Unbroken peace (neighbouring peoples from the dawn who never fought).
+- `RATES` are measured per 100 dev worlds (mean of seeds 1-100 and 101-200 with
+  `scripts/rare_rates.sh N`): 10, 24, 31, 21, 5, 6, 25. Re-measure when history changes.
+  `--present` lists the ones a world has with "1 world in N"; the summary prints `Rare:`.
+
+## Marginalia (`lore/notes.rs`)
+- The player pins notes to places: `M` in the tile viewer at the tile under the mouse (type,
+  Enter pins, Esc drops; the other keys are quiet while typing), or `--note "X,Y:text"`
+  (repeatable). Notes are kept beside the world (`notes_<seed>.json`, or `<world file>.notes.json`
+  with `--load-world` / `--save-world`), drawn on the map with a pin in a hand (Indie Flower, OFL,
+  `fonts::Face::Hand`) and on plates. The journal sets each note in the margin beside the first
+  annals entry within a tile of its place, and lists them all in a Marginalia part. Tested
+  (`tests/present_day.rs`). The bard stays an option, not the default voice.
 
 ## The bard: LLM-written lore (`lore/bard.rs`)
 - `--bard N` has a local model served by Ollama (`--bard-model`, default `gemma4:26b`;

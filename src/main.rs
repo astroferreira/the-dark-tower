@@ -53,6 +53,15 @@ struct Args {
     #[arg(long)]
     sim_patron: bool,
 
+    /// A world code ("SEED.WxH.STYLE.PEOPLES.YEARS@X,Y", printed by --sim-snapshot and shown in
+    /// the colony's title): the same world, site and settlers on any machine
+    #[arg(long, value_name = "CODE")]
+    code: Option<String>,
+
+    /// Patron interventions to replay ("tick verb args" per line, as the colony records them)
+    #[arg(long, value_name = "FILE")]
+    interventions: Option<String>,
+
     /// Run the dev colony 100 days without and with founding stones and compare the layouts;
     /// writes <PREFIX>_plain.png and <PREFIX>_stones.png
     #[arg(long, value_name = "PREFIX")]
@@ -81,6 +90,11 @@ struct Args {
     /// Draw every living realm's arms (96 and 24 px) to FILE
     #[arg(long, value_name = "FILE")]
     arms_sheet: Option<String>,
+
+    /// Pin a note to the map ("X,Y:text"; repeatable). Notes are kept beside the world
+    /// (notes_<seed>.json, or <world file>.notes.json) and shown on the map and in the journal
+    #[arg(long, value_name = "X,Y:TEXT")]
+    note: Vec<String>,
 
     /// Render the ink map as a poster (6144 px wide by default; --poster-width) to FILE
     #[arg(long, value_name = "FILE")]
@@ -512,7 +526,19 @@ fn parse_args() -> Args {
     if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
-    if args.dev {
+    // A world code fills in the world and the site.
+    if let Some(code) = args.code.clone() {
+        match parse_world_code(&code) {
+            Some((seed, w, h, style, peoples, years, site)) => {
+                args.seed = Some(seed); args.width = w; args.height = h; args.world_style = style;
+                args.civilizations = peoples; args.history_years = years; args.no_history = years == 0;
+                args.tiles_center = Some(format!("{},{}", site.0, site.1));
+                args.dev_embark = true;
+            }
+            None => { eprintln!("--code: expected SEED.WxH.STYLE.PEOPLES.YEARS@X,Y, got {code}"); std::process::exit(1); }
+        }
+    }
+    if args.dev && args.code.is_none() {
         let defaulted = |id: &str| matches.value_source(id) != Some(ValueSource::CommandLine);
         let (w, h, seed, civs) = DEV_WORLD;
         if defaulted("width") { args.width = w; }
@@ -529,6 +555,21 @@ fn parse_args() -> Args {
 /// fixed rule (so the same world always gives the same site). Temperate (4-24 C), a river on or next to the tile
 /// (water, fish), woods (timber), high ground nearby (stone), and a living town one to three tiles
 /// away (neighbours to trade with or fear) but not on the tile itself. Ties go to the lowest index.
+/// "76.96x48.earthlike.8.250@45,12" -> (seed, width, height, style, peoples, years, site).
+fn parse_world_code(code: &str) -> Option<(u64, usize, usize, String, u32, u32, (usize, usize))> {
+    let (world, site) = code.split_once('@')?;
+    let p: Vec<&str> = world.split('.').collect();
+    if p.len() != 5 { return None; }
+    let (w, h) = p[1].split_once('x')?;
+    let (x, y) = site.split_once(',')?;
+    Some((p[0].parse().ok()?, w.parse().ok()?, h.parse().ok()?, p[2].to_string(), p[3].parse().ok()?, p[4].parse().ok()?, (x.parse().ok()?, y.parse().ok()?)))
+}
+
+/// The code for this world and an embark site.
+fn world_code(args: &Args, seed: u64, site: (usize, usize)) -> String {
+    format!("{}.{}x{}.{}.{}.{}@{},{}", seed, args.width, args.height, args.world_style, args.civilizations, if args.no_history { 0 } else { args.history_years }, site.0, site.1)
+}
+
 fn pick_dev_embark(world: &world::WorldData, history: Option<&history::world_state::WorldHistory>) -> (usize, usize) {
     let (w, h) = (world.width, world.height);
     let towns: Vec<(usize, usize)> = history.map(|h| h.settlements.values()
@@ -756,6 +797,23 @@ fn main() {
     } else {
         legacy_menu(&args)
     };
+    // The world code (the site is added per embark).
+    if args.load_world.is_none() {
+        tiles::plates::set_world_code(format!("{}.{}x{}.{}.{}.{}", master_seed, width, height, args.world_style, args.civilizations,
+            if args.no_history { 0 } else { args.history_years }));
+    }
+    // Where this world's notes are kept, and any pinned from the command line.
+    if let Some(p) = args.load_world.as_ref().or(args.save_world.as_ref()) { lore::notes::set_path(format!("{}.notes.json", p)); }
+    for spec in &args.note {
+        let parsed = spec.split_once(':').and_then(|(at, text)| at.split_once(',').and_then(|(x, y)| Some((x.trim().parse::<usize>().ok()?, y.trim().parse::<usize>().ok()?, text.trim().to_string()))));
+        match parsed {
+            Some((x, y, text)) => match lore::notes::add(master_seed, lore::notes::Note { x, y, text }) {
+                Ok(all) => println!("Pinned a note at {},{} ({} notes in {})", x, y, all.len(), lore::notes::path(master_seed)),
+                Err(e) => eprintln!("--note: {e}"),
+            },
+            None => eprintln!("--note expects \"X,Y:text\", got {spec}"),
+        }
+    }
     // What makes this world, for plates (P in the viewer) to carry so they can reopen it.
     tiles::plates::set_world_args(match &args.load_world {
         Some(path) => format!("--load-world {}", path),
@@ -1491,6 +1549,7 @@ fn main() {
         eprintln!("{}", history::simulation::invariants::objects_report(&hist));
         eprintln!("{}", lore::sifting::report(&lore::sifting::sift(&hist)));
         eprintln!("Records: {}", lore::claims::sentence("this world", &lore::claims::claims(&hist)));
+        eprintln!("{}", lore::rare::report(&lore::rare::find(&world_data, &hist)));
         let contradictions = history::simulation::invariants::violations(&hist);
         if contradictions.is_empty() {
             eprintln!("Chronicle: consistent");
@@ -1638,6 +1697,9 @@ fn main() {
                 let name = gaz.features.iter().filter(|f| f.kind == lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
                 println!("{}", lore::claims::sentence(&name, &lore::claims::claims(h)));
                 println!("{}\n{}", h.present().report(), history::people::report(h));
+                let rare = lore::rare::find(&world_data, h);
+                println!("Rare in this world:{}", if rare.is_empty() { " nothing" } else { "" });
+                for (r, line) in &rare { println!("  {} ({}): {}", r.label(), r.rate(), line); }
                 println!("Tales worth telling:");
                 for t in lore::sifting::sift(h).iter().take(12) { println!("  [{}] {}: {}", t.kind.label(), t.title, t.text); }
             }
@@ -1782,7 +1844,12 @@ fn main() {
             return;
         }
         if let (Some(prefix), Some(tile)) = (&args.sim_snapshot, center) {
-            match tiles::viewer::save_colony_snapshots(&world_data, history.as_ref(), &atlas, tile, prefix) {
+            println!("World code: {}", world_code(&args, world_data.seed(), tile));
+            let script: Vec<String> = args.interventions.as_ref()
+                .map(|f| std::fs::read_to_string(f).unwrap_or_else(|e| { eprintln!("--interventions {f}: {e}"); std::process::exit(1) }))
+                .map(|t| t.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty() && !l.starts_with('#')).collect())
+                .unwrap_or_default();
+            match tiles::viewer::save_colony_snapshots(&world_data, history.as_ref(), &atlas, tile, prefix, &script) {
                 Ok(files) => println!("Saved colony snapshots: {}", files.join(", ")),
                 Err(e) => eprintln!("Colony snapshot failed: {e}"),
             }

@@ -193,6 +193,8 @@ const KINDS: [(&str, &str); 11] = [
 struct Entry {
     kind: &'static str,
     html: String,
+    /// Where it happened (for the player's notes in the margin).
+    at: Option<(usize, usize)>,
 }
 
 /// Per-year tallies of routine events, written as one line each.
@@ -309,6 +311,9 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
 
     let mut body = String::new();
     let mut toc = String::new();
+    // The player's own notes (marginalia), placed beside entries as the annals are written.
+    let notes = crate::lore::notes::load(world.seed());
+    let mut noted = vec![false; notes.len()];
     let final_year = history.current_date.year;
 
     // Opening: the world itself.
@@ -393,7 +398,8 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         if folded.contains(&e.id) { continue; }
         let y = e.date.year;
         let kind = kind_of(&e.event_type);
-        let mut push = |html: String| yearly.entry(y).or_default().push(Entry { kind, html });
+        let at = e.location;
+        let mut push = |html: String| yearly.entry(y).or_default().push(Entry { kind, html, at });
         use EventType::*;
         match e.event_type {
             MonsterRaid => {
@@ -552,6 +558,15 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
             if let Some(list) = yearly.get(&y) {
                 for en in list {
                     let _ = write!(items, "<li class=\"entry k-{}\" data-k=\"{}\">{}</li>", en.kind, en.kind, sentence(en.html.clone()));
+                    // The player's notes, in the margin beside the first entry of their place.
+                    if let Some((x, ex)) = en.at.map(|a| (a.0, a.1)) {
+                        for (k, n) in notes.iter().enumerate() {
+                            if !noted[k] && crate::lore::notes::near(n, x, ex, world.width, 1) {
+                                noted[k] = true;
+                                let _ = write!(items, "<li class=\"entry margin\" id=\"note{}\">{}</li>", k, esc(&n.text));
+                            }
+                        }
+                    }
                 }
             }
             if let Some(t) = tallies.get(&y) {
@@ -587,6 +602,19 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
             }
         }
         body.push_str("</section>");
+    }
+
+    // --- Marginalia -------------------------------------------------------------------------
+    if !notes.is_empty() {
+        let _ = write!(toc, "<li><a href=\"#marginalia\">Marginalia<span>{}</span></a></li>", notes.len());
+        let _ = write!(body, "<section class=\"part\" id=\"marginalia\"><p class=\"eyebrow\">In another hand</p><h2>Marginalia</h2><p class=\"part-intro\">Notes the reader pinned to the map.</p><ul class=\"deeds\">");
+        for (k, n) in notes.iter().enumerate() {
+            let place = gaz.describe(n.x, n.y);
+            let at = if noted[k] { format!(" <a href=\"#note{}\">(in the annals)</a>", k) } else { String::new() };
+            let _ = write!(body, "<li><span class=\"hand\">{}</span> <span class=\"meta\">{}{}</span></li>", esc(&n.text),
+                esc(&if place.is_empty() { format!("at {},{}", n.x, n.y) } else { format!("{} ({},{})", place, n.x, n.y) }), at);
+        }
+        body.push_str("</ul></section>");
     }
 
     // --- Tales worth telling ----------------------------------------------------------------
@@ -820,7 +848,7 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
     let chips: String = KINDS.iter().map(|(k, label)| format!("<button type=\"button\" class=\"chip k-{k}\" data-k=\"{k}\" aria-pressed=\"true\">{label}</button>")).collect();
     let title = format!("Annals of {}", world_name);
     format!(
-        "<title>{title}</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Alegreya:ital,wght@0,400;0,600;1,400&family=Alegreya+Sans+SC:wght@500&display=swap\">\n<style>{css}</style>\n<div class=\"book\"><nav class=\"toc\" aria-label=\"Contents\"><details open id=\"toc-box\"><summary>Contents</summary><ol>{toc}</ol></details><div class=\"tools\"><label for=\"q\" class=\"label\">Search the annals</label><input id=\"q\" type=\"search\" placeholder=\"a name, a place, a year\" autocomplete=\"off\"><p class=\"label\">Show</p><div class=\"chips\">{chips}</div><p id=\"count\" class=\"meta\" aria-live=\"polite\"></p></div></nav><main>{body}<footer><p>Written from the chronicle of seed {seed}: {events} events in {years} years.</p></footer></main></div>\n<script>{js}</script>\n",
+        "<title>{title}</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Alegreya:ital,wght@0,400;0,600;1,400&family=Alegreya+Sans+SC:wght@500&family=Indie+Flower&display=swap\">\n<style>{css}</style>\n<div class=\"book\"><nav class=\"toc\" aria-label=\"Contents\"><details open id=\"toc-box\"><summary>Contents</summary><ol>{toc}</ol></details><div class=\"tools\"><label for=\"q\" class=\"label\">Search the annals</label><input id=\"q\" type=\"search\" placeholder=\"a name, a place, a year\" autocomplete=\"off\"><p class=\"label\">Show</p><div class=\"chips\">{chips}</div><p id=\"count\" class=\"meta\" aria-live=\"polite\"></p></div></nav><main>{body}<footer><p>Written from the chronicle of seed {seed}: {events} events in {years} years.</p></footer></main></div>\n<script>{js}</script>\n",
         title = esc(&title), css = CSS, toc = toc, chips = chips, body = body, seed = world.seed(), events = events.len(), years = final_year, js = JS,
     )
 }
@@ -918,6 +946,9 @@ a:hover { text-decoration-color: currentColor; }
 .label { font-family: var(--label); font-size: 0.8rem; letter-spacing: 0.07em; color: var(--ink-soft); margin: 0; }
 p .label { margin-right: 0.4rem; }
 main { min-width: 0; padding-block: 2.5rem 4rem; max-width: 46rem; }
+.entry.margin, .hand { font-family: 'Indie Flower', 'Segoe Print', 'Bradley Hand', cursive; color: #2c4a7a; font-size: 1.1rem; }
+.entry.margin { list-style: none; margin-left: 1.5rem; transform: rotate(-1deg); }
+.entry.margin::before { content: '\270E  '; }
 .claim { font-style: italic; font-size: 1.15rem; max-width: 40rem; margin: 0.4rem auto 1rem; color: var(--ink-soft); }
 .eyebrow { font-family: var(--label); letter-spacing: 0.1em; color: var(--rubric); font-size: 0.85rem; margin: 0 0 0.3rem; }
 h1, h2, h3 { font-family: var(--display); font-weight: 400; text-wrap: balance; line-height: 1.15; }
