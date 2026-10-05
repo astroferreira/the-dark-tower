@@ -13,7 +13,7 @@ use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 use crate::history::world_state::WorldHistory;
 use crate::lore::{build_gazetteer, FeatureKind, Gazetteer, Landmark};
 use crate::region::zoom::{generate_zoom, ZoomParams, ZoomRegion};
-use super::text::{place_labels, Label};
+use super::text::{place_labels, Label, LabelStyle};
 use crate::world::WorldData;
 
 use super::atlas::Atlas;
@@ -73,9 +73,15 @@ fn draw_region_labels(l: &crate::lore::RegionLore, cam: &ZoomCamera, buf: &mut [
             _ => (400, 0.9, 0x004A_3624),
         };
         let text = if site.destroyed_year.is_some() { format!("ruins of {}", site.name) } else { site.name.clone() };
-        Label { x: site.x as f32, y: site.y as f32 + 9.0, text, rank, min_tile_px: min_px, color }
+        let style = match (site.destroyed_year.is_some(), site.kind) {
+            (true, _) => LabelStyle::Ruin,
+            (_, SettlementType::Capital) => LabelStyle::Capital,
+            (_, SettlementType::City | SettlementType::Port) => LabelStyle::City,
+            _ => LabelStyle::Town,
+        };
+        Label { x: site.x as f32, y: site.y as f32 + 9.0, text, rank, min_tile_px: min_px, color, style }
     }).collect();
-    place_labels(&labels, cam.px_per_cell, w, h, buf, |x, y| {
+    place_labels(&labels, cam.px_per_cell, w, h, buf, &[], |x, y| {
         (w as f32 / 2.0 + (x - cam.cx) * cam.px_per_cell, h as f32 / 2.0 + (y - cam.cy) * cam.px_per_cell)
     });
 }
@@ -99,10 +105,19 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
         let landmark = landmarks.iter().any(|l| l.feature == Some(f.id));
         let rank = f.kind.rank() * 10 + ((f.size as f32).log2() as u32).min(9) + if landmark { 400 } else { 0 };
         let min_tile_px = if landmark { min_tile_px.min(2.0) } else { min_tile_px };
-        labels.push(Label { x: f.anchor.0 as f32 + 0.5, y: f.anchor.1 as f32 + 0.5, text, rank, min_tile_px, color });
+        let style = match f.kind {
+            FeatureKind::Ocean => LabelStyle::Ocean,
+            FeatureKind::Sea | FeatureKind::Gulf => LabelStyle::Sea,
+            FeatureKind::Continent | FeatureKind::Island => LabelStyle::Land,
+            FeatureKind::MountainRange => LabelStyle::Range,
+            FeatureKind::River | FeatureKind::Lake => LabelStyle::Water,
+            FeatureKind::Peak => LabelStyle::Feature,
+            _ => LabelStyle::Region,
+        };
+        labels.push(Label { x: f.anchor.0 as f32 + 0.5, y: f.anchor.1 as f32 + 0.5, text, rank, min_tile_px, color, style });
     }
     for l in landmarks.iter().filter(|l| l.feature.is_none()) {
-        labels.push(Label { x: l.x as f32 + 0.5, y: l.y as f32 + 0.5, text: l.name.clone(), rank: 600, min_tile_px: 6.0, color: 0x0030_1E14 });
+        labels.push(Label { x: l.x as f32 + 0.5, y: l.y as f32 + 0.5, text: l.name.clone(), rank: 600, min_tile_px: 6.0, color: 0x0030_1E14, style: LabelStyle::Feature });
     }
     if let Some(h) = history {
         for s in h.settlements.values() {
@@ -118,7 +133,12 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
             };
             let text = if s.is_destroyed() { format!("ruins of {}", s.name) } else { s.name.clone() };
             let color = if s.is_destroyed() { 0x0078_6A58 } else { 0x0030_1E14 };
-            labels.push(Label { x: s.location.0 as f32 + 0.5, y: s.location.1 as f32 + 1.4, text, rank: base + (s.population / 2000).min(99), min_tile_px: min_px, color });
+            let style = if s.is_destroyed() { LabelStyle::Ruin } else { match s.settlement_type {
+                SettlementType::Capital => LabelStyle::Capital,
+                SettlementType::City | SettlementType::Port => LabelStyle::City,
+                _ => LabelStyle::Town,
+            } };
+            labels.push(Label { x: s.location.0 as f32 + 0.5, y: s.location.1 as f32 + 1.4, text, rank: base + (s.population / 2000).min(99), min_tile_px: min_px, color, style });
         }
     }
     let _ = world;
@@ -128,8 +148,21 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
 
 /// Place labels for the current world camera (wrapping around the date line).
 fn draw_labels(labels: &[Label], cam: &Camera, world_w: usize, buf: &mut [u32], w: usize, h: usize) {
+    draw_labels_avoiding(labels, cam, world_w, buf, w, h, &[]);
+}
+
+/// The screen rectangle the minimap takes (as `render_minimap` places it), for labels to avoid.
+fn minimap_box(world_w: usize, world_h: usize, w: usize, h: usize) -> (i64, i64, i64, i64) {
+    let mw = (w / 4).clamp(64, 360);
+    let mh = (mw * world_h / world_w).max(1);
+    if mw + 12 > w || mh + 12 > h { return (0, 0, 0, 0); }
+    let (ox, oy) = ((w - mw - 10) as i64, 10i64);
+    (ox - 4, oy - 4, ox + mw as i64 + 4, oy + mh as i64 + 4)
+}
+
+fn draw_labels_avoiding(labels: &[Label], cam: &Camera, world_w: usize, buf: &mut [u32], w: usize, h: usize, avoid: &[(i64, i64, i64, i64)]) {
     let ww = world_w as f32;
-    place_labels(labels, cam.tile_px, w, h, buf, |x, y| {
+    place_labels(labels, cam.tile_px, w, h, buf, avoid, |x, y| {
         let mut dx = x - cam.cx;
         if dx > ww / 2.0 { dx -= ww; }
         if dx < -ww / 2.0 { dx += ww; }
@@ -226,6 +259,11 @@ fn save_rgb_png(path: &str, w: usize, h: usize, pixel: impl Fn(usize, usize) -> 
 
 /// Open the viewer window and run until it is closed (Q / Esc / window close).
 /// `embark`: open straight into the playable area at `start` (the `--dev-embark` loop).
+static START_ZOOM: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+
+/// The zoom (pixels per tile) the viewer opens at (`--tiles-zoom`, set from a plate's view).
+pub fn set_start_zoom(px: f32) { let _ = START_ZOOM.set(px.clamp(1.0, 64.0)); }
+
 pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas: Atlas, start: Option<(usize, usize)>, embark: bool) -> Result<(), Box<dyn Error>> {
     println!("Building tile map...");
     let mut tw = TileWorld::build(world, &atlas);
@@ -253,7 +291,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
 
     std::thread::scope(|scope| -> Result<(), Box<dyn Error>> {
         let (sx, sy) = start.unwrap_or((tw.width / 2, tw.height / 2));
-        let mut cam = Camera { cx: sx as f32 + 0.5, cy: sy as f32 + 0.5, tile_px: 16.0 };
+        let mut cam = Camera { cx: sx as f32 + 0.5, cy: sy as f32 + 0.5, tile_px: START_ZOOM.get().copied().unwrap_or(16.0) };
 
         // Walking state: the current region, the player in global cells, the zoom level, and a
         // region being generated in the background.
@@ -279,7 +317,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             let cz = map.surface_z[(map.height / 2) * map.width + map.width / 2];
             let (mcx, mcy) = (map.width as f32 / 2.0, map.height as f32 / 2.0);
             let colony_seed = seed ^ ((tile.0 as u64) << 20) ^ tile.1 as u64;
-            let colony = crate::colony::Colony::found(map, &settler_names(colony_seed, 7), colony_seed);
+            let colony = found_colony(map, history, tile, colony_seed, 7);
             local = Some((colony, LocalCamera { cx: mcx, cy: mcy, tile_px: 16.0, z: cz, surface_view: true }));
             zoom = Some(z);
             zoom_active = true;
@@ -296,6 +334,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut drag: Option<((f32, f32), (f32, f32))> = None;
         // The inspector: a stack of pages (click on the map opens one, links push more).
         let mut inspect: Vec<super::inspector::Subject> = Vec::new();
+        // The site report for the embark box: (where it was computed, the line).
+        let mut site_line: (Option<(i64, i64)>, String) = (None, String::new());
         let mut inspect_hits: Vec<super::inspector::Hit> = Vec::new();
         let mut press_at: Option<(f32, f32)> = None;
         let mut was_down = false;
@@ -345,11 +385,59 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     for _ in 0..n { colony.tick(); }
                     if n > 0 { dirty = true; }
                 }
-                let map = &colony.map;
-                if pressed(Key::Escape) || pressed(Key::Q) {
+                // The inspector: click a settler to read who they are; Esc closes it first.
+                let panel = super::inspector::panel_rect(w, h);
+                let over_panel = !inspect.is_empty() && panel.contains(mouse.0, mouse.1);
+                if pressed(Key::Escape) && !inspect.is_empty() {
+                    inspect.clear();
+                    dirty = true;
+                } else if pressed(Key::Escape) || pressed(Key::Q) {
                     local_active = false;
+                    inspect.clear();
                     dirty = true;
                 }
+                if (pressed(Key::Backspace) || right_clicked) && !inspect.is_empty() {
+                    inspect.pop();
+                    dirty = true;
+                }
+                if clicked {
+                    if over_panel {
+                        if let Some(hit) = inspect_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1)) {
+                            inspect.push(hit.to);
+                            dirty = true;
+                        }
+                    } else {
+                        let (hx, hy) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
+                        if let Some(i) = colony.settlers.iter().position(|st| (st.pos.0 as f32 + 0.5 - hx).abs() < 0.9 && (st.pos.1 as f32 + 0.5 - hy).abs() < 0.9) {
+                            inspect = vec![super::inspector::Subject::Settler(i)];
+                            dirty = true;
+                        } else if let Some(i) = colony.marks.iter().position(|m| (m.at.0 as f32 + 0.5 - hx).abs() < 0.9 && (m.at.1 as f32 + 0.5 - hy).abs() < 0.9) {
+                            inspect = vec![super::inspector::Subject::ColonyMark(i)];
+                            dirty = true;
+                        }
+                    }
+                }
+                // The patron's verbs at the mouse: F bless the ground, X forbid it, G favour the
+                // settler under it, D send them a dream (of the hut while it stands unfinished,
+                // of plenty when food is short, else of rest).
+                {
+                    let (mx, my) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
+                    let at = (mx.max(0.0) as u16, my.max(0.0) as u16);
+                    let who = colony.settlers.iter().position(|st| st.alive && (st.pos.0 as f32 + 0.5 - mx).abs() < 0.9 && (st.pos.1 as f32 + 0.5 - my).abs() < 0.9);
+                    let said = if pressed(Key::H) { Some(colony.place_stone(crate::colony::StoneKind::Hall, at)) }
+                        else if pressed(Key::J) { Some(colony.place_stone(crate::colony::StoneKind::Grove, at)) }
+                        else if pressed(Key::K) { Some(colony.place_stone(crate::colony::StoneKind::Shrine, at)) }
+                        else if pressed(Key::F) { Some(colony.mark_place(at, 6, false)) }
+                        else if pressed(Key::X) { Some(colony.mark_place(at, 6, true)) }
+                        else if pressed(Key::G) { who.map(|i| colony.favour_settler(i)) }
+                        else if pressed(Key::D) {
+                            let dream = if colony.hut.as_ref().map_or(false, |hh| !hh.done) { crate::colony::Dream::Hut }
+                                else if colony.food_stored() < 3 * colony.alive() as u32 { crate::colony::Dream::Plenty } else { crate::colony::Dream::Rest };
+                            who.map(|i| colony.send_dream(i, dream))
+                        } else { None };
+                    if let Some(r) = said { status = match r { Ok(l) => l, Err(e) => e }; dirty = true; }
+                }
+                let map = &colony.map;
                 if step != 0.0 {
                     let before = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
                     lcam.tile_px = (lcam.tile_px * 1.25f32.powf(step)).clamp(3.0, 48.0);
@@ -426,8 +514,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     .map(|s| format!("{}: {} - {} | ", s.name, s.job.verb(), s.why)).unwrap_or_default();
                 let clock = format!("{} {}", colony.clock.stamp(), if speed == 0 { "(paused)".to_string() } else { format!("{}x", speed) });
                 let title = format!(
-                    "{} | {}{} | {} | Space pause, 1/2/3 speed, </> level, V surface, P screenshot, Esc back | {}",
-                    clock, who, view, info, status
+                    "{} | favour {} | {}{} | {} | Space pause, 1/2/3 speed, F bless, X forbid, G favour, D dream, H/J/K hall/grove/shrine stone, </> level, V surface, Esc back | {}",
+                    clock, colony.patron.favour, who, view, info, status
                 );
                 if title != last_title { window.set_title(&title); last_title = title; }
             } else if zoom_active {
@@ -496,7 +584,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let lcam = LocalCamera { cx: map.width as f32 / 2.0, cy: map.height as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: true };
                     status = format!("embarked in {:.2}s", t0.elapsed().as_secs_f32());
                     let colony_seed = seed ^ (player.0 as u64) << 20 ^ player.1 as u64;
-                    let colony = crate::colony::Colony::found(map, &settler_names(colony_seed, 7), colony_seed);
+                    let here = ((player.0 / s as f64) as usize % world.width, ((player.1 / s as f64) as usize).min(world.height - 1));
+                    let colony = found_colony(map, history, here, colony_seed, 7);
                     local = Some((colony, lcam));
                     local_active = true;
                     dirty = true;
@@ -530,9 +619,15 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }).min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).map(|(_, t)| t)
                 });
                 let place = near.unwrap_or_else(|| gaz.describe(player_tile.0, player_tile.1));
+                // What an embark here would hold, recomputed when the box moves on (~30 ms).
+                let key = ((player.0 / 24.0) as i64, (player.1 / 24.0) as i64);
+                if site_line.0 != Some(key) {
+                    let m = generate_local(world, &z.region, z.lore.as_ref(), player.0 - z.origin.0 as f64, player.1 - z.origin.1 as f64);
+                    site_line = (Some(key), crate::local::site::report(&m).join(", "));
+                }
                 let title = format!(
-                    "{} | {} | {:.1}°C | arrows/WASD walk, Shift run, wheel zoom, Enter embark, X save, Esc map{} | {}",
-                    place, ground, r.temperature_c[k], loading, status
+                    "{} | {} | {:.1}°C | site: {} | arrows/WASD walk, Shift run, Enter embark, Esc map{} | {}",
+                    place, ground, r.temperature_c[k], site_line.1, loading, status
                 );
                 let _ = km;
                 if title != last_title { window.set_title(&title); last_title = title; }
@@ -598,11 +693,17 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 cam.cy = cam.cy.clamp(0.0, tw.height as f32);
                 if pressed(Key::N) { show_minimap = !show_minimap; dirty = true; }
                 if pressed(Key::P) {
-                    let path = format!("view_{seed}.png");
-                    status = save_rgb_png(&path, w, h, |x, y| {
-                        let p = buf[y * w + x];
-                        [(p >> 16) as u8, (p >> 8) as u8, p as u8]
-                    });
+                    // A plate: the map without the interface, framed, captioned and numbered.
+                    let mut plate = vec![0u32; w * h];
+                    render_world(&tw, &atlas, &cam, &mut plate, w, h);
+                    if show_labels { draw_labels(&labels, &cam, tw.width, &mut plate, w, h); }
+                    let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
+                    super::plates::decorate(&mut plate, w, h, &info);
+                    let path = super::plates::next_path(seed);
+                    status = match super::plates::save(&path, &plate, w, h, (cam.cx, cam.cy, cam.tile_px), &info) {
+                        Ok(()) => format!("saved {path}"),
+                        Err(e) => format!("plate failed: {e}"),
+                    };
                 }
 
                 let (hx, hy) = screen_to_world(&cam, mouse.0, mouse.1, w, h);
@@ -683,6 +784,15 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let (colony, lcam) = local.as_ref().unwrap();
                     render_local(&colony.map, &atlas, lcam, &mut buf, w, h);
                     if lcam.surface_view { super::local_ink::draw_colony(colony, lcam, &mut buf, w, h); }
+                    inspect_hits.clear();
+                    if let Some(&subject) = inspect.last() {
+                        let page = match subject {
+                            super::inspector::Subject::Settler(i) => colony.settlers.get(i).map(|st| super::inspector::settler_page(history, st)),
+                            super::inspector::Subject::ColonyMark(i) => colony.marks.get(i).map(super::inspector::mark_page),
+                            other => history.map(|hist| super::inspector::page(world, hist, other)),
+                        };
+                        if let Some(page) = page { inspect_hits = super::inspector::draw(&page, &mut buf, w, h, inspect.len()); }
+                    }
                 } else if zoom_active {
                     let z = zoom.as_ref().unwrap();
                     let cam_z = ZoomCamera {
@@ -699,7 +809,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 } else {
                     render_world(&tw, &atlas, &cam, &mut buf, w, h);
                     if show_labels {
-                        draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
+                        let avoid = if show_minimap { vec![minimap_box(tw.width, tw.height, w, h)] } else { Vec::new() };
+                        draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &avoid);
                     }
                     overlays::draw_legend(&mut buf, w, h, overlay);
                     minimap_rect = if show_minimap {
@@ -762,6 +873,330 @@ pub fn save_inspect_snapshots(world: &WorldData, history: &WorldHistory, atlas: 
     Ok(written)
 }
 
+/// What a plate of the world map says: the world's name (its largest continent), the year and
+/// season, its one sentence, and the realms with most land in view.
+fn plate_info(world: &WorldData, history: Option<&WorldHistory>, gaz: &crate::lore::Gazetteer, tw: &TileWorld, cam: &Camera, w: usize, h: usize, season: crate::seasons::Season) -> super::plates::PlateInfo {
+    let world_name = gaz.features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent)
+        .max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
+    let caption = match history {
+        Some(h) => crate::lore::claims::sentence(&world_name, &crate::lore::claims::claims(h)),
+        None => format!("{}, a world without written history.", world_name),
+    };
+    let mut realms: Vec<(String, super::heraldry::Arms)> = Vec::new();
+    if let Some(hist) = history {
+        let mut count: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+        for sy in (0..h).step_by(8) {
+            for sx in (0..w).step_by(8) {
+                let (x, y) = screen_to_world(cam, sx as f32, sy as f32, w, h);
+                if y < 0.0 || y >= tw.height as f32 { continue; }
+                let i = y as usize * tw.width + (x.floor() as i64).rem_euclid(tw.width as i64) as usize;
+                let o = tw.owner[i];
+                if o != u64::MAX && !tw.ground[i].is_water() { *count.entry(o).or_default() += 1; }
+            }
+        }
+        let mut v: Vec<(u64, usize)> = count.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        for (o, _) in v.into_iter().take(5) {
+            if let Some(f) = hist.factions.values().find(|f| f.id.0 as u64 == o) {
+                realms.push((f.name.clone(), super::heraldry::arms_of(world, hist, f.id)));
+            }
+        }
+    }
+    super::plates::PlateInfo {
+        world_name, year: history.map(|h| h.current_date.year), season: format!("{:?}", season),
+        seed: world.seed(), caption, realms,
+    }
+}
+
+/// The ink map as a poster (`--poster FILE`): the whole world at `width` px with its lettering
+/// scaled up, realm borders, the Shadow's dominion, ruins, the great battles with their years, a
+/// compass rose in open sea, a scale bar, a ruled border and a cartouche with the world's name,
+/// the year and its one sentence.
+pub fn save_poster(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, path: &str, width: usize) -> Result<(usize, usize), Box<dyn Error>> {
+    use super::fonts::{self, Face};
+    let t0 = std::time::Instant::now();
+    let mut tw = TileWorld::build(world, atlas);
+    tw.set_season(world, crate::seasons::Season::Summer);
+    if let Some(h) = history { tw.apply_history(world, h, atlas); }
+    let gaz = build_gazetteer(world, history, world.seed());
+    let landmarks = crate::lore::find_landmarks(world, &gaz);
+    let labels = build_labels(world, history, &gaz, &landmarks);
+    let tile_px = (width / world.width).max(2) as f32;
+    let (w, h) = ((tile_px as usize) * world.width, (tile_px as usize) * world.height);
+    let cam = Camera { cx: world.width as f32 / 2.0, cy: world.height as f32 / 2.0, tile_px };
+    let mut buf = vec![0u32; w * h];
+    render_world(&tw, atlas, &cam, &mut buf, w, h);
+    let font_scale = w as f32 / 2200.0;
+    let to_screen = |x: f32, y: f32| (w as f32 / 2.0 + (x - cam.cx) * tile_px, h as f32 / 2.0 + (y - cam.cy) * tile_px);
+
+    // The great battles: crossed swords and the year, the bloodiest forty.
+    let mut reserved: Vec<(i64, i64, i64, i64)> = Vec::new();
+    if let Some(hist) = history {
+        let fell = |d: &str| -> u32 {
+            let Some(i) = d.find(" fell, ") else { return 0 };
+            let a = d[..i].rsplit('(').next().and_then(|x| x.split_whitespace().next()).and_then(|n| n.parse::<u32>().ok()).unwrap_or(0);
+            a + d[i + 7..].split_whitespace().next().and_then(|n| n.parse::<u32>().ok()).unwrap_or(0)
+        };
+        let mut battles: Vec<(u32, &crate::history::events::types::Event)> = hist.chronicle.events.iter()
+            .filter(|e| e.event_type == crate::history::events::types::EventType::BattleFought && e.location.is_some())
+            .map(|e| (fell(&e.description), e)).collect();
+        battles.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.id.cmp(&b.1.id)));
+        let mut seen: Vec<(usize, usize)> = Vec::new();
+        for (_, e) in battles {
+            let at = e.location.unwrap();
+            if seen.iter().any(|s| s.0.abs_diff(at.0) + s.1.abs_diff(at.1) < 4) { continue; }
+            seen.push(at);
+            if seen.len() > 40 { break; }
+            let (sx, sy) = to_screen(at.0 as f32 + 0.5, at.1 as f32 + 0.5);
+            let r = tile_px * 0.45;
+            for k in -2..=2 {
+                let o = k as f32 * 0.5;
+                for t in 0..(r * 3.0) as i32 {
+                    let f = t as f32 / (r * 3.0) * 2.0 - 1.0;
+                    for (x, y) in [(sx + f * r + o, sy + f * r), (sx - f * r + o, sy + f * r)] {
+                        super::ui::blend_px(&mut buf, w, h, x as i64, y as i64, 0x008A_2A1A, 0.9);
+                    }
+                }
+            }
+            let year = format!("{}", e.date.year);
+            let px = 11.0 * font_scale;
+            let yw = fonts::width(&year, Face::Italic, px, 0.0);
+            fonts::draw(&mut buf, w, h, sx - yw / 2.0, sy + r + 2.0, &year, Face::Italic, px, 0.0, 0x008A_2A1A, Some(0x00EE_E4CC));
+            reserved.push(((sx - r) as i64, (sy - r) as i64, (sx + r.max(yw / 2.0)) as i64, (sy + r + px * 1.3) as i64));
+        }
+    }
+
+    // The cartouche, top left: name, year, the world's sentence.
+    let world_name = gaz.features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
+    let title = format!("The Annals of {}", world_name);
+    let when = match history { Some(h) => format!("as it stood in the year {}", h.current_date.year), None => "before history".to_string() };
+    let sentence = history.map(|h| crate::lore::claims::sentence(&world_name, &crate::lore::claims::claims(h))).unwrap_or_default();
+    let (tpx, spx) = (44.0 * font_scale, 15.0 * font_scale);
+    let cw = (fonts::width(&title, Face::SmallCaps, tpx, 2.0 * font_scale) + 80.0 * font_scale).max(w as f32 * 0.28) as usize;
+    let words_per = ((cw as f32 - 60.0 * font_scale) / fonts::width("abcdefghij", Face::Italic, spx, 0.0) * 10.0) as usize;
+    let lines = super::ui::wrap(&sentence, words_per.max(20));
+    let ch = (tpx * 1.6 + spx * 2.4 + spx * 1.35 * lines.len() as f32 + 40.0 * font_scale) as usize;
+    let card = super::ui::Rect { x: (60.0 * font_scale) as usize, y: (60.0 * font_scale) as usize, w: cw, h: ch };
+    super::ui::card(&mut buf, w, card);
+    let mut y = card.y as f32 + 20.0 * font_scale;
+    fonts::draw(&mut buf, w, h, card.x as f32 + 30.0 * font_scale, y, &title, Face::SmallCaps, tpx, 2.0 * font_scale, 0x009A_2A1E, None);
+    y += tpx * 1.3;
+    fonts::draw(&mut buf, w, h, card.x as f32 + 32.0 * font_scale, y, &when, Face::Italic, spx * 1.2, 0.0, 0x0038_2A20, None);
+    y += spx * 2.2;
+    for l in &lines {
+        fonts::draw(&mut buf, w, h, card.x as f32 + 32.0 * font_scale, y, l, Face::Italic, spx, 0.0, 0x0038_2A20, None);
+        y += spx * 1.35;
+    }
+    reserved.push((card.x as i64, card.y as i64, (card.x + card.w) as i64, (card.y + card.h) as i64));
+
+    // The scale bar, bottom left: 0 - 1000 - 2000 km in alternating ink.
+    let km_tile = 40_075.0 / world.width as f32;
+    // A round step whose segment is wide enough for its number.
+    let step_km = [50.0f32, 100.0, 250.0, 500.0, 1000.0, 2000.0].into_iter()
+        .find(|k| k / km_tile * tile_px >= 50.0 * font_scale).unwrap_or(2000.0);
+    let seg = step_km / km_tile * tile_px;
+    let (bx, by) = ((80.0 * font_scale) as usize, h - (110.0 * font_scale) as usize);
+    let bh = (8.0 * font_scale) as usize;
+    for k in 0..4 {
+        let r = super::ui::Rect { x: bx + (k as f32 * seg) as usize, y: by, w: seg as usize, h: bh };
+        super::ui::fill(&mut buf, w, r, if k % 2 == 0 { 0x0038_2A20 } else { 0x00EE_E4CC });
+        super::ui::outline(&mut buf, w, r, 0x0038_2A20);
+        let label = format!("{}", (k as f32 * step_km) as u32);
+        fonts::draw(&mut buf, w, h, r.x as f32 - 4.0, (by + bh) as f32 + 4.0, &label, Face::Roman, 12.0 * font_scale, 0.0, 0x0038_2A20, Some(0x00EE_E4CC));
+    }
+    let last = format!("{} km", (4.0 * step_km) as u32);
+    fonts::draw(&mut buf, w, h, bx as f32 + 4.0 * seg - 4.0, (by + bh) as f32 + 4.0, &last, Face::Roman, 12.0 * font_scale, 0.0, 0x0038_2A20, Some(0x00EE_E4CC));
+    reserved.push((bx as i64 - 10, by as i64 - 10, (bx as f32 + 4.0 * seg + 120.0 * font_scale) as i64, (by + bh) as i64 + (40.0 * font_scale) as i64));
+
+    super::text::place_labels_scaled(&labels, tile_px, font_scale, w, h, &mut buf, &reserved, to_screen);
+
+    // Compass rose in the open sea, and the ruled border.
+    let mut img = image::RgbImage::from_fn(w as u32, h as u32, |x, y| { let p = buf[y as usize * w + x as usize]; image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8]) });
+    if let Some(&(ox, oy)) = crate::cartography::decorations::find_ocean_centers(&world.heightmap, 1).first() {
+        let (sx, sy) = to_screen(ox as f32 + 0.5, oy as f32 + 0.5);
+        crate::cartography::decorations::render_compass_rose(&mut img, (sx as usize, sy as usize), h as f32 / 14.0);
+    }
+    crate::cartography::decorations::render_vintage_border(&mut img, (24.0 * font_scale) as usize);
+    img.save(path)?;
+    println!("Poster: {}x{} written to {} in {:.1}s", w, h, path, t0.elapsed().as_secs_f32());
+    Ok((w, h))
+}
+
+/// Walking pace for travel times on the province map: a loaded party on foot, in km a day.
+const KM_PER_DAY: f64 = 25.0;
+/// Paths wind: straight-line distance times this is the distance walked.
+const WINDING: f64 = 1.3;
+
+/// The colony's theatre (the play-scale decision in ROADMAP, Update 5): the region around the
+/// embark at `tile` with its three nearest living places, a line to each and the days to walk
+/// it. Writes `<prefix>_province.png` and prints the places.
+pub fn save_province_snapshot(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), prefix: &str) -> Result<String, Box<dyn Error>> {
+    let zs = load_region(world, history, tile, world.seed());
+    let s = cells_per_tile() as f64;
+    let (ex, ey) = (tile.0 as f64 * s + s / 2.0 - zs.origin.0 as f64, tile.1 as f64 * s + s / 2.0 - zs.origin.1 as f64);
+    let km = zs.region.cell_m as f64 / 1000.0;
+    let lore = zs.lore.as_ref().ok_or("--province-snapshot needs a history")?;
+    let mut near: Vec<(f64, &crate::lore::settle::Site)> = lore.sites.iter()
+        .filter(|st| st.destroyed_year.is_none())
+        .map(|st| (((st.x - ex).powi(2) + (st.y - ey).powi(2)).sqrt() * km, st))
+        .collect();
+    near.sort_by(|a, b| a.0.total_cmp(&b.0));
+    near.truncate(3);
+    // Frame the embark and the three places, with a margin.
+    let (mut x0, mut y0, mut x1, mut y1) = (ex, ey, ex, ey);
+    for (_, st) in &near { x0 = x0.min(st.x); y0 = y0.min(st.y); x1 = x1.max(st.x); y1 = y1.max(st.y); }
+    let span = ((x1 - x0).max(y1 - y0) * 1.3).max(250.0 / km);
+    let (w, h) = (1100usize, 800usize);
+    let cam = ZoomCamera { cx: ((x0 + x1) / 2.0) as f32, cy: ((y0 + y1) / 2.0) as f32, px_per_cell: (h as f64 / span) as f32 };
+    let mut buf = vec![0u32; w * h];
+    render_zoom(&zs.rgb, zs.region.width, zs.region.height, &cam, &mut buf, w, h);
+    draw_region_labels(lore, &cam, &mut buf, w, h);
+    let to_screen = |x: f64, y: f64| ((w as f32 / 2.0 + (x as f32 - cam.cx) * cam.px_per_cell), (h as f32 / 2.0 + (y as f32 - cam.cy) * cam.px_per_cell));
+    let (sx, sy) = to_screen(ex, ey);
+    // The 250 km theatre as a ring.
+    let r = (250.0 / km) as f32 * cam.px_per_cell;
+    for k in 0..720 {
+        let a = k as f32 / 720.0 * std::f32::consts::TAU;
+        if k % 6 < 3 { blend(&mut buf, w, h, sx + r * a.cos(), sy + r * a.sin(), 0x0030_1E14, 0.8); }
+    }
+    let mut lines = Vec::new();
+    for (d, st) in &near {
+        let (tx, ty) = to_screen(st.x, st.y);
+        let n = ((tx - sx).hypot(ty - sy) / 3.0) as i32;
+        for k in 0..n {
+            if k % 5 < 3 {
+                let f = k as f32 / n as f32;
+                let (px, py) = (sx + (tx - sx) * f, sy + (ty - sy) * f);
+                for (ox, oy) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] { blend(&mut buf, w, h, px + ox, py + oy, 0x008A_2A1A, 0.95); }
+            }
+        }
+        let days = (d * WINDING / KM_PER_DAY).ceil();
+        let label = format!("{} days", days);
+        let (mx, my) = ((sx + tx) / 2.0, (sy + ty) / 2.0);
+        let tw = super::text::text_width(&label, 1) as i64;
+        for yy in -2..12i64 { for xx in -3..tw + 3 { blend(&mut buf, w, h, mx + xx as f32 - tw as f32 / 2.0, my + yy as f32, 0x00EF_E3C8, 0.85); } }
+        super::text::draw_ink(&mut buf, w, h, mx as i64 - tw / 2, my as i64, &label, 0x008A_2A1A, 1, true);
+        lines.push(format!("{} ({:?}, {} souls): {:.0} km, {} days on foot", st.name, st.kind, st.population, d, days));
+    }
+    draw_box(&mut buf, w, h, sx, sy, 8.0, 0x00F0_D23C);
+    let title = format!("The theatre of the embark at {},{}: 250 km ring, nearest places", tile.0, tile.1);
+    super::text::draw_ink(&mut buf, w, h, 12, 10, &title, 0x0030_1E14, 1, true);
+    let path = format!("{prefix}_province.png");
+    save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+    println!("Province of the embark at {},{} ({:.1} km per region cell, {:.0} km per world tile):", tile.0, tile.1, km, km * s);
+    for l in &lines { println!("  {l}"); }
+    Ok(path)
+}
+
+fn blend(buf: &mut [u32], w: usize, h: usize, x: f32, y: f32, c: u32, a: f32) {
+    if x < 0.0 || y < 0.0 || x as usize >= w || y as usize >= h { return; }
+    let i = y as usize * w + x as usize;
+    let mix = |sh: u32| -> u32 { let (p, q) = ((buf[i] >> sh & 255) as f32, (c >> sh & 255) as f32); ((p + (q - p) * a) as u32) << sh };
+    buf[i] = mix(16) | mix(8) | mix(0);
+}
+
+/// Try the patron's verbs on the colony at `tile` (`--sim-patron`) and print the results.
+pub fn patron_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize)) {
+    let zs = load_region(world, history, tile, world.seed());
+    let s = cells_per_tile() as f64;
+    let (ex, ey) = (tile.0 as f64 * s + s / 2.0 - zs.origin.0 as f64, tile.1 as f64 * s + s / 2.0 - zs.origin.1 as f64);
+    let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey);
+    let seed = world.seed() ^ ((tile.0 as u64) << 20) ^ tile.1 as u64;
+    let mut colony = found_colony(map, history, tile, seed, 7);
+    for line in colony.patron_trial() { println!("Patron {line}"); }
+    for line in colony.log.iter().filter(|l| l.contains("your doing")) { println!("  {line}"); }
+}
+
+/// Run the dev colony twice for 100 days, without founding stones and with them (a hall stone
+/// away from the camp, a grove stone on the nearest trees, a shrine), and compare the layouts
+/// (`--sim-founding`): where the hall stands, the kept grove, and how much of the picture differs.
+pub fn founding_trial(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize), prefix: &str) -> Result<(), Box<dyn Error>> {
+    use super::local_ink::draw_colony;
+    let zs = load_region(world, history, tile, world.seed());
+    let s = cells_per_tile() as f64;
+    let (ex, ey) = (tile.0 as f64 * s + s / 2.0 - zs.origin.0 as f64, tile.1 as f64 * s + s / 2.0 - zs.origin.1 as f64);
+    let seed = world.seed() ^ ((tile.0 as u64) << 20) ^ tile.1 as u64;
+    let mut frames = Vec::new();
+    let mut huts = Vec::new();
+    for with_stones in [false, true] {
+        let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey);
+        let mut colony = found_colony(map, history, tile, seed, 7);
+        let grove_at = colony.nearest_tree_to_camp();
+        if with_stones {
+            colony.name_colony("Hearthwater");
+            let hall = colony.spot_from_camp(18, -10);
+            let _ = colony.place_stone(crate::colony::StoneKind::Hall, hall);
+            if let Some(g) = grove_at { let _ = colony.place_stone(crate::colony::StoneKind::Grove, g); colony.name_place(g, "the Old Grove"); }
+            let shrine = colony.spot_from_camp(-12, 8);
+            let _ = colony.place_stone(crate::colony::StoneKind::Shrine, shrine);
+        }
+        colony.run_days(100);
+        let grove_trees = grove_at.map(|g| colony.trees_near(g, crate::colony::GROVE_RADIUS)).unwrap_or(0);
+        let hut = colony.hut.as_ref().map(|h| (h.at, h.done));
+        println!("Founding {}: hut {:?}, {} trees left around {:?}, {} alive",
+            if with_stones { "with stones" } else { "without stones" }, hut, grove_trees, grove_at, colony.alive());
+        huts.push(hut);
+        let (w, h) = (1024usize, 1024usize);
+        let cam = LocalCamera { cx: colony.camp.0 as f32 + 4.0, cy: colony.camp.1 as f32, tile_px: 8.0, z: 0, surface_view: true };
+        let mut buf = vec![0u32; w * h];
+        render_local(&colony.map, atlas, &cam, &mut buf, w, h);
+        draw_colony(&colony, &cam, &mut buf, w, h);
+        let path = format!("{prefix}_{}.png", if with_stones { "stones" } else { "plain" });
+        save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+        frames.push(buf);
+        for l in colony.log.iter().filter(|l| l.contains("your doing")) { println!("  {l}"); }
+    }
+    let differ = frames[0].iter().zip(&frames[1]).filter(|(a, b)| a != b).count();
+    println!("Founding: layouts differ in {:.1}% of the camp picture; hut {} -> {}", 100.0 * differ as f32 / frames[0].len() as f32,
+        huts[0].map(|h| format!("{},{}", h.0 .0, h.0 .1)).unwrap_or_default(), huts[1].map(|h| format!("{},{}", h.0 .0, h.0 .1)).unwrap_or_default());
+    Ok(())
+}
+
+/// The colony's marks (`--sim-marks PREFIX`): live 30 days on the dev embark (the builders raise
+/// their stone when the hut is done), then bury one settler as a death would, and render the
+/// camp with the grave's page open.
+pub fn marks_trial(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize), prefix: &str) -> Result<(), Box<dyn Error>> {
+    use super::local_ink::draw_colony;
+    let zs = load_region(world, history, tile, world.seed());
+    let s = cells_per_tile() as f64;
+    let (ex, ey) = (tile.0 as f64 * s + s / 2.0 - zs.origin.0 as f64, tile.1 as f64 * s + s / 2.0 - zs.origin.1 as f64);
+    let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey);
+    let seed = world.seed() ^ ((tile.0 as u64) << 20) ^ tile.1 as u64;
+    let mut colony = found_colony(map, history, tile, seed, 7);
+    colony.name_colony("Hearthwater");
+    colony.run_days(30);
+    colony.bury(6, "of a fever");
+    for m in &colony.marks { println!("Mark: {} at {},{}: {}", m.title, m.at.0, m.at.1, m.text); }
+    let (w, h) = (1280usize, 800usize);
+    let cam = LocalCamera { cx: colony.camp.0 as f32 + 2.0, cy: colony.camp.1 as f32 + 2.0, tile_px: 16.0, z: 0, surface_view: true };
+    let mut buf = vec![0u32; w * h];
+    render_local(&colony.map, atlas, &cam, &mut buf, w, h);
+    draw_colony(&colony, &cam, &mut buf, w, h);
+    if let Some(g) = colony.marks.iter().find(|m| m.kind == crate::colony::MarkKind::Grave) {
+        super::inspector::draw(&super::inspector::mark_page(g), &mut buf, w, h, 1);
+    }
+    let path = format!("{prefix}_marks.png");
+    save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+    println!("Saved {path}");
+    Ok(())
+}
+
+/// Found the colony on an embark at world `tile`: with a history, the settlers come out of it
+/// (`history::settlers::roster`: survivors, veterans, kin); without one they are nameless
+/// wanderers with stock names.
+fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, tile: (usize, usize), seed: u64, n: usize) -> crate::colony::Colony {
+    match history {
+        Some(h) => {
+            let roster = crate::history::settlers::roster(h, tile, n, seed);
+            let names: Vec<String> = roster.iter().map(|r| r.0.clone()).collect();
+            let mut colony = crate::colony::Colony::found(map, &names, seed);
+            for (st, (_, past)) in colony.settlers.iter_mut().zip(roster) { st.past = Some(past); }
+            colony
+        }
+        None => crate::colony::Colony::found(map, &settler_names(seed, n), seed),
+    }
+}
+
 /// The seven names of the dev colony's settlers, drawn from the human naming style.
 pub fn settler_names(seed: u64, n: usize) -> Vec<String> {
     use rand::SeedableRng;
@@ -782,7 +1217,7 @@ pub fn colony_bench(world: &WorldData, history: Option<&WorldHistory>, tile: (us
     let s = cells_per_tile() as f64;
     let (ex, ey) = (tile.0 as f64 * s + s / 2.0 - zs.origin.0 as f64, tile.1 as f64 * s + s / 2.0 - zs.origin.1 as f64);
     let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey);
-    let mut colony = crate::colony::Colony::found(map, &settler_names(world.seed(), n), world.seed());
+    let mut colony = found_colony(map, history, tile, world.seed(), n);
     let t0 = std::time::Instant::now();
     colony.run_days(2);
     let secs = t0.elapsed().as_secs_f64();
@@ -804,7 +1239,23 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
     };
     let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey);
     let seed = world.seed() ^ ((tile.0 as u64) << 20) ^ tile.1 as u64;
-    let mut colony = crate::colony::Colony::found(map, &settler_names(seed, 7), seed);
+    let mut colony = found_colony(map, history, tile, seed, 7);
+    // Who they are: each settler's past, and the events they share.
+    let mut lines = Vec::new();
+    let mut seen: std::collections::HashMap<crate::history::EventId, usize> = std::collections::HashMap::new();
+    let mut fewest = usize::MAX;
+    for st in &colony.settlers {
+        let Some(p) = &st.past else { fewest = 0; continue };
+        let evs: Vec<crate::history::EventId> = p.lines.iter().filter_map(|l| l.1).collect();
+        fewest = fewest.min(evs.len());
+        for e in &evs { *seen.entry(*e).or_default() += 1; }
+        lines.push(format!("{}, {}, {}{}", st.name, p.age, p.calling, p.feeling.as_ref().map(|f| format!("; {}", f.0)).unwrap_or_default()));
+        for (l, _) in &p.lines { lines.push(format!("    {}", l)); }
+    }
+    let shared = seen.values().filter(|n| **n >= 2).count();
+    std::fs::write(format!("{prefix}_settlers.txt"), lines.join("\n") + "\n")?;
+    println!("Settlers: {} with pasts, each citing at least {} events; {} events shared by two or more",
+        colony.settlers.iter().filter(|s| s.past.is_some()).count(), if fewest == usize::MAX { 0 } else { fewest }, shared);
     let mut written = Vec::new();
     let mut day_done = 0u64;
     for day in [1u64, 10, 30] {
@@ -828,6 +1279,20 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
             save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
             written.push(path);
         }
+    }
+    // The first settler's inspector page, as a click shows it.
+    {
+        let (w, h) = (1280usize, 800usize);
+        let mut buf = vec![0u32; w * h];
+        let st = &colony.settlers[0];
+        let cam = LocalCamera { cx: st.pos.0 as f32 + 0.5, cy: st.pos.1 as f32 + 0.5, tile_px: 16.0, z: 0, surface_view: true };
+        render_local(&colony.map, atlas, &cam, &mut buf, w, h);
+        draw_colony(&colony, &cam, &mut buf, w, h);
+        let page = super::inspector::settler_page(history, st);
+        super::inspector::draw(&page, &mut buf, w, h, 1);
+        let path = format!("{prefix}_settler.png");
+        save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+        written.push(path);
     }
     let path = format!("{prefix}_log.txt");
     std::fs::write(&path, colony.log.join("\n") + "\n")?;
@@ -865,6 +1330,17 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
     ];
     let mut written = Vec::new();
     let mut buf = vec![0u32; w * h];
+    {
+        // A plate of the 16 px view, as P makes it.
+        let cam = Camera { cx: cx as f32 + 0.5, cy: cy as f32 + 0.5, tile_px: 16.0 };
+        render_world(&tw, atlas, &cam, &mut buf, w, h);
+        draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
+        let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
+        super::plates::decorate(&mut buf, w, h, &info);
+        let path = format!("{prefix}_plate.png");
+        super::plates::save(&path, &buf, w, h, (cam.cx, cam.cy, cam.tile_px), &info)?;
+        written.push(path);
+    }
     for (name, cam) in shots {
         // Best of three renders: the frame time the window would see.
         let mut best = f32::MAX;
@@ -874,7 +1350,9 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
             best = best.min(t0.elapsed().as_secs_f32() * 1000.0);
         }
         println!("render {name}: {best:.1} ms");
-        draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
+        let t0 = std::time::Instant::now();
+        draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &[minimap_box(tw.width, tw.height, w, h)]);
+        println!("labels {name}: {:.1} ms", t0.elapsed().as_secs_f32() * 1000.0);
         render_minimap(&tw, &cam, Some((cx as f32, cy as f32, ZoomParams::default().tiles as f32 / 2.0)), &mut buf, w, h);
         overlays::draw_legend(&mut buf, w, h, overlay);
         let path = format!("{prefix}_{name}.png");
@@ -945,6 +1423,8 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
     let t0 = std::time::Instant::now();
     let map = crate::local::generate_local(world, region, zs.lore.as_ref(), ex, ey);
     println!("Playable area: {}x{} tiles x {} z-levels, biome {:?}, generated in {:.2}s", map.width, map.height, map.depth, map.biome, t0.elapsed().as_secs_f32());
+    let site = crate::local::site::report(&map);
+    println!("Site ({} kinds): {}", site.len(), site.join(", "));
     let n = map.width;
     let cz = map.surface_z[(n / 2) * n + n / 2];
     let (w, h) = (n * 6, n * 6);

@@ -102,6 +102,9 @@ pub struct WorldHistory {
     /// The dark power spreading over the world (saved separately in world files).
     #[serde(skip)]
     pub shadow: Option<crate::history::shadow::Shadow>,
+    /// Homes and town roles of figures (saved as the world file's `people` field, version 6).
+    #[serde(skip)]
+    pub people: Option<crate::history::people::People>,
 
     // ID generators (not serialized - rebuilt from max IDs on load)
     #[serde(skip)]
@@ -139,6 +142,7 @@ impl WorldHistory {
             library: None,
             tales: None,
             shadow: None,
+            people: None,
             id_generators: IdGenerators::new(),
         }
     }

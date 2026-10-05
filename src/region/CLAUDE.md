@@ -16,3 +16,7 @@
   1024x1024 region; neighbouring regions reuse cached chunks.
 - Render uses the climate colour LUT only (world biome colours and raw world climate are
   tile-blocky when upsampled; climate is smoothed over ~1 tile first).
+- `--province-snapshot PREFIX` (dev embark, or `--tiles-center X,Y`) renders the colony's
+  theatre: the zoomed region around the embark, a 250 km ring, lines to its three nearest
+  living places with the days to walk each (25 km/day x 1.3 winding), and prints them. See the
+  play-scale decision in ROADMAP (Update 5).

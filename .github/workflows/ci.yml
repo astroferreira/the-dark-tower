@@ -1,0 +1,35 @@
+# Build and test on every push and pull request. The integration tests run the real binary on
+# the dev world: the history must be deterministic (two runs write the same journal), the
+# present day must keep its open threads (wars, grudges, beasts, the Shadow's frontier and
+# weakness), the chronicle must not contradict itself or name things the world doesn't hold,
+# and the first colony must live 30 days. A push that breaks any of that fails here.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries for the window crate (minifb links X11 even when unused)
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libxi-dev libwayland-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+      - name: Tests (unit, present day, determinism, flavour, colony)
+        run: cargo test --release
+      - name: Dev world twice, same chronicle
+        run: |
+          ./target/release/planet_generator --dev --headless --chronicle-dump a.tsv
+          ./target/release/planet_generator --dev --headless --chronicle-dump b.tsv
+          cmp a.tsv b.tsv
+      - name: Present day and consistency
+        run: |
+          ./target/release/planet_generator --dev --headless --present 2>&1 | tee present.txt
+          grep -q "^Chronicle: consistent" present.txt
+          grep -q "known weakness of the Shadow" present.txt

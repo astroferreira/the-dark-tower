@@ -9,8 +9,10 @@ use crate::history::*;
 use crate::history::events::types::EventType;
 use crate::history::world_state::WorldHistory;
 
-/// How dark the Shadow's corruption must be over a free town for it to stand on the frontier.
-pub const FRONTIER_CORRUPTION: f32 = 0.2;
+/// How dark the Shadow's corruption must be over a free town for it to stand on the frontier:
+/// inside its visible reach (the grey wash on the map). Towns past its strike line (0.2) are
+/// struck within a few years, so few stand there at any one moment.
+pub const FRONTIER_CORRUPTION: f32 = crate::history::shadow::REACH;
 /// How far back (years) a fallen town, a quarrel or a dispute still counts as current.
 pub const RECENT_YEARS: u32 = 25;
 /// Opinion at or below which two peoples who are not at war bear a grudge.
@@ -55,6 +57,12 @@ pub struct PresentDay {
     pub heirless: Vec<String>,
     /// Towns taken or burned in the last `RECENT_YEARS`: their survivors are the displaced.
     pub fallen: Vec<FallenTown>,
+    /// The Shadow's story in acts: (year, act, what happened).
+    pub shadow_acts: Vec<(u32, &'static str, String)>,
+    /// What can wound the Shadow and where it lies (banes still lost).
+    pub weaknesses: Vec<String>,
+    /// The strongest free town on the Shadow's frontier: the one in its path.
+    pub stronghold: Option<String>,
 }
 
 impl PresentDay {
@@ -126,6 +134,59 @@ impl PresentDay {
                 }
             }
             p.frontier.sort_by(|a, b| b.darkness.total_cmp(&a.darkness).then(a.town.cmp(&b.town)));
+            // The stronghold in its path: the frontier town best able to hold (souls and walls).
+            let strength = |t: &crate::history::civilizations::settlement::Settlement| t.defense_strength();
+            p.stronghold = towns.iter()
+                .filter(|t| Some(t.faction) != shadow_people && sh.at(t.location.0, t.location.1) >= FRONTIER_CORRUPTION)
+                .max_by_key(|t| (strength(t), std::cmp::Reverse(t.id)))
+                .map(|t| {
+                    use crate::history::civilizations::settlement::WallLevel;
+                    let walls = match t.walls { WallLevel::None => "no walls", WallLevel::Palisade => "a palisade", WallLevel::StoneWall => "stone walls",
+                        WallLevel::Fortified => "fortifications", WallLevel::Citadel => "a citadel" };
+                    format!("{} of {} ({} souls, {}), darkness {:.2}", t.name, fname(t.faction), t.population, walls, sh.at(t.location.0, t.location.1))
+                });
+        }
+        // Its story in acts, read off the chronicle.
+        let mut rose = false;
+        for e in &h.chronicle.events {
+            let act = match e.event_type {
+                EventType::ShadowRose if !rose => { rose = true; "I. The Rising" }
+
+                EventType::ShadowAlliance => "III. The Check",
+                EventType::ShadowRose if p.shadow_acts.iter().any(|a| a.1.starts_with("III")) && !p.shadow_acts.iter().any(|a| a.1.starts_with("IV")) => "IV. The Return",
+                _ => continue,
+            };
+            p.shadow_acts.push((e.date.year, act, e.title.clone()));
+        }
+        // Act II, the first great fall: the greatest town it took before the check (a capital
+        // first, else the most populous now; else its first conquest).
+        let check_year = p.shadow_acts.iter().find(|a| a.1.starts_with("III")).map_or(u32::MAX, |a| a.0);
+        let weight = |e: &&crate::history::events::types::Event| e.primary_participants.iter().find_map(|x| match x {
+            EntityId::Settlement(s) => h.settlements.get(s).map(|t| (t.settlement_type == crate::history::civilizations::settlement::SettlementType::Capital, t.population)),
+            _ => None,
+        }).unwrap_or((false, 0));
+        let great = h.chronicle.events.iter()
+            .filter(|e| e.event_type == EventType::ShadowConquest && e.date.year < check_year)
+            .max_by(|a, b| weight(a).cmp(&weight(b)).then(b.id.cmp(&a.id)));
+        if let Some(e) = great {
+            p.shadow_acts.push((e.date.year, "II. The First Great Fall", e.title.clone()));
+            p.shadow_acts.sort_by(|a, b| a.1.cmp(b.1));
+        }
+        for e in h.chronicle.events.iter().filter(|e| e.event_type == EventType::ShadowBane) {
+            let Some(art) = e.primary_participants.iter().find_map(|x| match x { EntityId::Artifact(a) => h.artifacts.get(a), _ => None }) else { continue };
+            if art.destroyed { continue; }
+            // Where it is now: in a beast's hoard, in someone's hands, or lost where it fell.
+            let place = match &art.current_owner {
+                Some(EntityId::LegendaryCreature(c)) => h.legendary_creatures.get(c).map(|b| format!("in the hoard of {}{}", b.full_name(),
+                    b.lair_location.map(|l| format!(" (lair at {},{})", l.0, l.1)).unwrap_or_default())),
+                Some(EntityId::Figure(f)) => h.figures.get(f).map(|x| format!("carried by {}", x.full_name())),
+                Some(EntityId::Faction(f)) => Some(format!("kept by {}", fname(*f))),
+                _ => None,
+            }.or_else(|| e.primary_participants.iter().find_map(|x| match x {
+                EntityId::Settlement(s) => h.settlements.get(s).map(|t| if t.is_destroyed() { format!("lost in the ruins of {}", t.name) } else { format!("lost at {} (held by {})", t.name, fname(t.faction)) }),
+                _ => None,
+            })).unwrap_or_else(|| "lost".into());
+            p.weaknesses.push(format!("{}, {} (since {}): {}", art.name, place, e.date.year, art.description));
         }
 
         // Disputes over resources that are still being quarrelled over.
@@ -172,9 +233,9 @@ impl PresentDay {
     /// One line of counts for the end-of-history report.
     pub fn counts(&self) -> String {
         format!(
-            "Present day (year {}): {} peoples, {} wars, {} sieges, {} grudges, {} living beasts ({} near a town), {} towns on the Shadow's frontier, {} disputes, {} towns fallen in the last {} years",
+            "Present day (year {}): {} peoples, {} wars, {} sieges, {} grudges, {} living beasts ({} near a town), {} towns on the Shadow's frontier, {} known weakness of the Shadow, {} disputes, {} towns fallen in the last {} years",
             self.year, self.peoples, self.wars.len(), self.sieges.len(), self.grudges.len(), self.beasts.len(),
-            self.beasts.iter().filter(|b| b.town.is_some()).count(), self.frontier.len(), self.disputes.len(),
+            self.beasts.iter().filter(|b| b.town.is_some()).count(), self.frontier.len(), self.weaknesses.len(), self.disputes.len(),
             self.fallen.len(), RECENT_YEARS,
         )
     }
@@ -198,8 +259,13 @@ impl PresentDay {
             let near = b.town.as_ref().map(|(t, d)| format!("{} tiles from {}", d, t)).unwrap_or_else(|| "far from any town".into());
             let _ = writeln!(s, "  {} at {:?}, {}; {} raids", b.name, b.lair, near, b.raids);
         }
+        let _ = writeln!(s, "The Shadow's story:");
+        for (y, act, what) in &self.shadow_acts { let _ = writeln!(s, "  {} (year {}): {}", act, y, what); }
         let _ = writeln!(s, "The Shadow's frontier:");
         for t in &self.frontier { let _ = writeln!(s, "  {} ({}), darkness {:.2}", t.town, t.people, t.darkness); }
+        let _ = writeln!(s, "In its path: {}", self.stronghold.as_deref().unwrap_or("no free town"));
+        let _ = writeln!(s, "What can wound it:");
+        for w in &self.weaknesses { let _ = writeln!(s, "  {}", w); }
         let _ = writeln!(s, "Disputes over resources (last {} years):", RECENT_YEARS);
         for d in &self.disputes { let _ = writeln!(s, "  {} between {} and {} ({} times)", d.resource, d.a, d.b, d.times); }
         let _ = writeln!(s, "Rulers without a living heir: {}", if self.heirless.is_empty() { "none".into() } else { self.heirless.join(", ") });

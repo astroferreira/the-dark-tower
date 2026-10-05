@@ -729,9 +729,9 @@ pub fn generate_test_world() -> WorldData {
 
 const WORLD_FILE_MAGIC: &[u8; 8] = b"PGWORLD1";
 /// Bump when the serialized layout changes; older files are rejected with a clear message.
-/// Version 2 appended the ecology, 3 the bard's library, 4 the director's tales, 5 the Shadow
+/// Version 2 appended the ecology, 3 the bard's library, 4 the director's tales, 5 the Shadow, 6 people (homes and roles)
 /// (older files still load).
-const WORLD_FILE_VERSION: u32 = 5;
+const WORLD_FILE_VERSION: u32 = 6;
 
 #[derive(serde::Deserialize)]
 struct WorldFileV1 {
@@ -767,6 +767,17 @@ struct WorldFileV4 {
     tales: Option<crate::history::director::Tales>,
 }
 
+#[derive(serde::Deserialize)]
+struct WorldFileV5 {
+    version: u32,
+    world: WorldData,
+    history: Option<crate::history::world_state::WorldHistory>,
+    ecology: Option<crate::history::ecology::Ecology>,
+    library: Option<crate::lore::bard::Library>,
+    tales: Option<crate::history::director::Tales>,
+    shadow: Option<crate::history::shadow::Shadow>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct WorldFile {
     version: u32,
@@ -776,6 +787,7 @@ struct WorldFile {
     library: Option<crate::lore::bard::Library>,
     tales: Option<crate::history::director::Tales>,
     shadow: Option<crate::history::shadow::Shadow>,
+    people: Option<crate::history::people::People>,
 }
 
 /// Save a world (and its history, if any) to a single file.
@@ -795,12 +807,14 @@ pub fn save_world(
         library: Option<&'a crate::lore::bard::Library>,
         tales: Option<&'a crate::history::director::Tales>,
         shadow: Option<&'a crate::history::shadow::Shadow>,
+        people: Option<&'a crate::history::people::People>,
     }
     let shadow = history.and_then(|h| h.shadow.as_ref());
+    let people = history.and_then(|h| h.people.as_ref());
     let ecology = history.and_then(|h| h.ecology.as_ref());
     let library = history.and_then(|h| h.library.as_ref());
     let tales = history.and_then(|h| h.tales.as_ref());
-    let bytes = bincode::serialize(&WorldFileRef { version: WORLD_FILE_VERSION, world, history, ecology, library, tales, shadow })
+    let bytes = bincode::serialize(&WorldFileRef { version: WORLD_FILE_VERSION, world, history, ecology, library, tales, shadow, people })
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("serialize failed: {e}")))?;
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
     f.write_all(WORLD_FILE_MAGIC)?;
@@ -853,6 +867,18 @@ pub fn load_world(
             }
             (file.world, history)
         }
+        5 => {
+            let file: WorldFileV5 = bincode::deserialize(&bytes[8..]).map_err(corrupt)?;
+            let _ = file.version;
+            let mut history = file.history;
+            if let Some(h) = history.as_mut() {
+                h.ecology = file.ecology;
+                h.library = file.library;
+                h.tales = file.tales;
+                h.shadow = file.shadow;
+            }
+            (file.world, history)
+        }
         WORLD_FILE_VERSION => {
             let file: WorldFile = bincode::deserialize(&bytes[8..]).map_err(corrupt)?;
             let mut history = file.history;
@@ -861,6 +887,7 @@ pub fn load_world(
                 h.library = file.library;
                 h.tales = file.tales;
                 h.shadow = file.shadow;
+                h.people = file.people;
             }
             (file.world, history)
         }

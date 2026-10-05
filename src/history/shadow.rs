@@ -86,6 +86,10 @@ pub struct Shadow {
     /// Towns that threw it back, and the season they did: it turns elsewhere for a while.
     held: Vec<(SettlementId, u32)>,
     seed: u64,
+    /// Whether the free peoples' check (the Last Alliance) has come. Not saved: a loaded history
+    /// is finished, and the chronicle records it (`ShadowAlliance`).
+    #[serde(skip)]
+    checked: bool,
 }
 
 impl Shadow {
@@ -270,6 +274,7 @@ pub fn seed(history: &mut WorldHistory, world: &WorldData) -> bool {
         repelled: 0,
         held: Vec::new(),
         seed: world.seed() ^ 0x5AD0_0000_0000_0000,
+        checked: false,
     };
     rise(&mut shadow, history, fid, cap, false);
     history.shadow = Some(shadow);
@@ -312,7 +317,15 @@ pub fn step(history: &mut WorldHistory) {
         if history.current_date.season == crate::seasons::Season::Spring {
             liberate(&mut shadow, history);
         }
-        if shadow.seasons >= shadow.next_strike {
+        let mut checked_now = false;
+        if !shadow.checked && history.current_date.season == crate::seasons::Season::Spring {
+            let start = history.config.prehistory_depth + 1;
+            let years = history.config.simulation_years as f32;
+            let at = start + (years * (CHECK_AT + CHECK_SPREAD * roll(shadow.seed, 0, 0xC4EC))) as u32;
+            if history.current_date.year >= at { check(&mut shadow, history); checked_now = true; }
+        }
+        // The season of the check it does not strike: its seat has just fallen.
+        if !checked_now && shadow.seasons >= shadow.next_strike {
             strike(&mut shadow, history);
             let interval = (24.0 / shadow.strength).clamp(12.0, 24.0) as u32;
             shadow.next_strike = shadow.seasons + interval;
@@ -391,6 +404,102 @@ fn claim(shadow: &Shadow, history: &mut WorldHistory) {
             }
         }
     }
+}
+
+/// When the free peoples' check comes, as a share of the simulated years (plus up to the spread):
+/// late enough that the Shadow has risen and taken its first great town, early enough that it
+/// returns (`RETURN_AFTER`) and has a frontier again by the present day.
+const CHECK_AT: f32 = 0.55;
+const CHECK_SPREAD: f32 = 0.1;
+const BANE_FORMS: [&str; 5] = ["Spear", "Blade", "Bow", "Hammer", "Lance"];
+
+/// The free peoples' check, the third act of the Shadow's story: the peoples nearest its seat
+/// unite under the ruler of the greatest of them and storm the seat. The champion strikes down
+/// the Dark Lord and falls in the same hour; the champion's weapon is lost in the fall of the
+/// seat (the Shadow's bane: what wounded it once can wound it again, a quest the present day
+/// inherits); the seat goes to the champion's people, so the Shadow is broken, to return about
+/// twenty years later in a new seat. Nothing happens if the seat or a champion is missing.
+fn check(shadow: &mut Shadow, history: &mut WorldHistory) {
+    use crate::history::entities::traits::DeathCause;
+    use crate::history::objects::artifacts::{Artifact, ArtifactQuality, ArtifactType};
+    shadow.checked = true;
+    let date = history.current_date;
+    let fid = shadow.faction;
+    let seat = shadow.seat_settlement;
+    let Some((seat_name, seat_loc)) = history.settlements.get(&seat)
+        .filter(|s| !s.is_destroyed() && s.faction == fid).map(|s| (s.name.clone(), s.location)) else { return };
+    let living = |f: Option<crate::history::FigureId>| f.filter(|id| history.figures.get(id).map_or(false, |x| x.is_alive()));
+    let Some(lord) = living(history.factions.get(&fid).and_then(|f| f.current_leader)) else { return };
+    let mut free: Vec<(i64, FactionId)> = history.factions.values()
+        .filter(|f| f.is_active() && f.id != fid)
+        .filter_map(|f| f.capital.and_then(|c| history.settlements.get(&c)).map(|t| {
+            let dx = wrap_dx(t.location.0, seat_loc.0, shadow.width);
+            let dy = t.location.1 as i64 - seat_loc.1 as i64;
+            (dx * dx + dy * dy, f.id)
+        }))
+        .collect();
+    free.sort();
+    free.truncate(4);
+    let Some(leader) = free.iter().map(|x| x.1).max_by_key(|f| (history.factions[f].total_population, std::cmp::Reverse(*f))) else { return };
+    let Some(champion) = living(history.factions[&leader].current_leader) else { return };
+
+    let name_of = |f: crate::history::FigureId| history.figures.get(&f).map(|x| x.full_name()).unwrap_or_default();
+    let (champ_full, champ_name) = (name_of(champion), history.figures[&champion].name.clone());
+    let lord_full = format!("{}, {}", history.figures[&lord].name, shadow.archetype.lord_title());
+    let leader_name = history.factions[&leader].name.clone();
+    let mut members: Vec<String> = free.iter().map(|x| history.factions[&x.1].name.clone()).collect();
+    let last = members.pop().unwrap_or_default();
+    let hosts = if members.is_empty() { last } else { format!("{} and {}", members.join(", "), last) };
+    let form = BANE_FORMS[(roll(shadow.seed, shadow.seasons, 0xBA4E) * BANE_FORMS.len() as f32) as usize % BANE_FORMS.len()];
+    let bane_name = format!("the {} of {}", form, champ_name);
+
+    // The deaths, the seat taken.
+    for f in [lord, champion] {
+        if let Some(x) = history.figures.get_mut(&f) { x.kill(date, DeathCause::Battle); }
+    }
+    if let Some(x) = history.figures.get_mut(&champion) { x.kills.push(EntityId::Figure(lord)); }
+    if let Some(f) = history.factions.get_mut(&fid) { f.remove_settlement(seat); }
+    if let Some(f) = history.factions.get_mut(&leader) { f.add_settlement(seat); }
+    if let Some(s) = history.settlements.get_mut(&seat) { s.faction = leader; }
+    history.tile_history.set_owner(seat_loc.0, seat_loc.1, leader, date);
+    shadow.fallen.retain(|t| *t != seat);
+
+    let alliance = history.id_generators.next_event();
+    let mut event = Event::new(alliance, EventType::ShadowAlliance, date,
+        format!("The Last Alliance storms {}", seat_name),
+        format!("{} gathered under {} of {} and marched on {}. At the gates of {}, {} struck down {} and fell in the same hour, and {} was taken.",
+            hosts, champ_full, leader_name, shadow.name, seat_name, champ_name, lord_full, seat_name))
+        .at_location(seat_loc.0, seat_loc.1)
+        .with_faction(leader)
+        .with_participant(EntityId::Figure(champion))
+        .with_participant(EntityId::Figure(lord))
+        .with_participant(EntityId::Settlement(seat))
+        .caused_by(shadow.last_deed);
+    for x in &free { if x.1 != leader { event = event.with_faction(x.1); } }
+    event = event.with_faction(fid);
+    history.tile_history.record_event(seat_loc.0, seat_loc.1, alliance);
+    history.chronicle.record(event);
+
+    let id = history.id_generators.next_artifact();
+    let mut art = Artifact::new(id, capitalize(&bane_name), ArtifactType::Weapon, ArtifactQuality::Legendary, date, Some(champion));
+    art.description = format!("The {} {} carried against {}. With it {} struck down {} at the gates of {} in the year {}; it was lost in the fall of the seat, and it is said that what wounded the Shadow once can wound it again.",
+        form.to_lowercase(), champ_full, shadow.name, champ_name, lord_full, seat_name, date.year);
+    art.creation_event = Some(alliance);
+    art.creation_location = Some(seat_loc);
+    art.current_location = Some(seat_loc);
+    art.current_owner = None;
+    art.lost = true;
+    art.historical_importance = 1000;
+    let bane_text = art.description.clone();
+    history.artifacts.insert(id, art);
+    let bane = history.id_generators.next_event();
+    let event = Event::new(bane, EventType::ShadowBane, date, format!("{} is lost at {}", capitalize(&bane_name), seat_name), bane_text)
+        .at_location(seat_loc.0, seat_loc.1)
+        .with_participant(EntityId::Artifact(id))
+        .with_participant(EntityId::Settlement(seat))
+        .caused_by(alliance);
+    history.chronicle.record(event);
+    shadow.last_deed = bane;
 }
 
 /// Yearly chance that a town the Shadow took rises and is freed.
@@ -502,7 +611,12 @@ fn strike(shadow: &mut Shadow, history: &mut WorldHistory) {
         })
         .collect();
     targets.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap().then(a.1.cmp(&b.1)));
-    let Some(&(_, target)) = targets.first() else { return };
+    // Nothing within reach: it gathers strength, and its darkness carries further (otherwise it
+    // could stall a hair short of every free town, with no frontier left at all).
+    let Some(&(_, target)) = targets.first() else {
+        shadow.strength = (shadow.strength + 0.05).min(MAX_STRENGTH);
+        return;
+    };
 
     let (name, loc, pop, defender, capital) = {
         let s = &history.settlements[&target];

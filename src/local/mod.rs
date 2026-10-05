@@ -18,6 +18,7 @@
 
 pub mod structures;
 pub mod wildlife;
+pub mod site;
 
 use noise::{NoiseFn, Perlin};
 
@@ -614,6 +615,9 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         );
         wildlife::apply(&mut map, world, lore, origin);
     }
+    // What a first camp needs within reach: water, wood, stone, berries, something to look at.
+    let battles = lore.and_then(|l| l.battles.get(&map.world_tile).cloned()).unwrap_or_default();
+    site::furnish(&mut map, &battles);
 
     // Ramps: a floor next to ground exactly one level higher leads up (DF style).
     for j in 0..n {

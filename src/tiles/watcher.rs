@@ -68,6 +68,7 @@ struct LogItem {
 struct Realm {
     id: u64,
     name: String,
+    arms: super::heraldry::Arms,
     population: u64,
     towns: usize,
 }
@@ -223,6 +224,9 @@ fn style(kind: &EventType) -> (char, u32, Option<MarkKind>, bool) {
         ShadowRepelled => ('=', GOLD, Some(MarkKind::Battle), true),
         ShadowBroken => ('*', GOLD, Some(MarkKind::Wonder), true),
         ShadowLiberated => ('*', GOLD, Some(MarkKind::Battle), true),
+        FigureMoved => ('>', INK_FADED, None, false),
+        ShadowAlliance => ('*', GOLD, Some(MarkKind::Battle), true),
+        ShadowBane => ('$', GOLD, None, true),
     }
 }
 
@@ -366,6 +370,7 @@ fn record(
             let r = realms.entry(s.faction.0).or_insert_with(|| Realm {
                 id: s.faction.0,
                 name: names.get(&s.faction.0).cloned().unwrap_or_default(),
+                arms: super::heraldry::arms_of(world, history, s.faction),
                 population: 0,
                 towns: 0,
             });
@@ -866,7 +871,7 @@ impl<'a> View<'a> {
                 let labels = settlement_labels(step, &self.tw);
                 let ww = world.width as f32;
                 let (mw, mh) = (lay.map.w, lay.map.h);
-                place_labels(&labels, cam.tile_px, mw, mh, &mut self.map_buf, |x, y| {
+                place_labels(&labels, cam.tile_px, mw, mh, &mut self.map_buf, &[], |x, y| {
                     let mut dx = x - cam.cx;
                     if dx > ww / 2.0 { dx -= ww; }
                     if dx < -ww / 2.0 { dx += ww; }
@@ -984,6 +989,15 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
             let path = format!("watch_{}_{}.png", world.seed(), view.current().map(|s| s.year).unwrap_or(0));
             view.status = save_png(&path, &view.buf, w, h);
         }
+        // G: the history recorded so far as a timelapse GIF.
+        if pressed(Key::G) {
+            let path = format!("timelapse_{}.gif", world.seed());
+            window.set_title("Writing the timelapse...");
+            view.status = match export_timelapse(&mut view, ctl, &path, LAPSE_SIZE.0, LAPSE_SIZE.1) {
+                Ok((frames, bytes)) => format!("saved {} ({} frames, {:.1} MB)", path, frames, bytes as f64 / 1e6),
+                Err(e) => format!("timelapse failed: {e}"),
+            };
+        }
         // The timeline: click or drag to jump to any recorded season.
         let bar = view.timeline;
         let on_bar = Rect { x: bar.x, y: bar.y.saturating_sub(4), w: bar.w, h: bar.h + 8 }.contains(mouse.0, mouse.1);
@@ -1039,6 +1053,121 @@ fn save_png(path: &str, buf: &[u32], w: usize, h: usize) -> String {
         Err(e) => format!("save failed: {e}"),
     }
 }
+
+/// One frame a year (the same season every frame, so snow doesn't flicker) at 10 a second:
+/// 250 years in 25 s.
+const LAPSE_SEASONS_PER_SEC: f32 = 40.0;
+const LAPSE_FPS: f32 = 10.0;
+/// A pixel that moved less than this (per channel) since the last frame is left as it was: the
+/// Shadow's wash and the territories shift by a shade every season, and repainting them all made
+/// a 250-year timelapse ~29 MB.
+const LAPSE_TOLERANCE: i32 = 14;
+
+impl<'a> View<'a> {
+    /// Age every mark and the banner by `dt`, as if that much time had passed (offline rendering
+    /// draws frames faster than real time, and marks fade by the clock).
+    fn age(&mut self, dt: Duration) {
+        for m in &mut self.marks { m.born = m.born.checked_sub(dt).unwrap_or(m.born); }
+        if let Some(b) = &mut self.banner_msg { b.1 = b.1.checked_sub(dt).unwrap_or(b.1); }
+    }
+}
+
+/// Write the recording as an animated GIF: the whole history from the first season, the map
+/// fitted, at `w` x `h`, ~25 s long, the last frame held 4 s. Returns the frames and bytes
+/// written. The view is put back where it was.
+fn export_timelapse(view: &mut View, ctl: &Control, path: &str, w: usize, h: usize) -> Result<(usize, u64), String> {
+    let (shown, size, fitted, cam) = (view.shown, view.size, view.fitted, view.cam);
+    // Drawn as if playing (the panel would say "paused").
+    let paused = ctl.paused.swap(false, Ordering::Relaxed);
+    view.resize(w, h);
+    view.fit();
+    let total = view.steps.len();
+    if total == 0 { return Err("nothing recorded yet".into()); }
+    let stride = ((LAPSE_SEASONS_PER_SEC / LAPSE_FPS).round() as usize).max(1);
+    let frame_cs = (100.0 / LAPSE_FPS).round() as u16;
+    let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    let mut enc = gif::Encoder::new(std::io::BufWriter::new(file), w as u16, h as u16, &[]).map_err(|e| e.to_string())?;
+    enc.set_repeat(gif::Repeat::Infinite).map_err(|e| e.to_string())?;
+    view.jump(0);
+    let mut prev: Vec<u32> = Vec::new();
+    let mut frames = 0;
+    loop {
+        view.last_render = Instant::now() - Duration::from_secs(1);
+        view.map_dirty = true;
+        view.draw((-1.0, -1.0), false, ctl);
+        let last = view.shown.map_or(true, |k| k + 1 >= total);
+        // Only what changed since the last frame, unchanged pixels transparent: most of a frame
+        // (parchment, the panel's frame, settled land) stays the same, and full frames came to
+        // ~250 KB each.
+        let cur = &view.buf;
+        // `prev` is what the GIF shows so far; a pixel is repainted only if it moved past the
+        // tolerance from that.
+        let near = |a: u32, b: u32| ((a >> 16 & 255) as i32 - (b >> 16 & 255) as i32).abs() <= LAPSE_TOLERANCE
+            && ((a >> 8 & 255) as i32 - (b >> 8 & 255) as i32).abs() <= LAPSE_TOLERANCE
+            && ((a & 255) as i32 - (b & 255) as i32).abs() <= LAPSE_TOLERANCE;
+        let fresh = prev.len() != cur.len();
+        let changed: Vec<bool> = if fresh { vec![true; cur.len()] } else { (0..cur.len()).map(|i| !near(cur[i], prev[i])).collect() };
+        let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0usize, 0usize);
+        for y in 0..h { for x in 0..w { if changed[y * w + x] { x0 = x0.min(x); x1 = x1.max(x); y0 = y0.min(y); y1 = y1.max(y); } } }
+        if x1 < x0 { (x0, y0, x1, y1) = (0, 0, 0, 0); }
+        let (fw, fh) = (x1 - x0 + 1, y1 - y0 + 1);
+        let mut rgba = Vec::with_capacity(fw * fh * 4);
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let p = cur[y * w + x];
+                rgba.extend_from_slice(&[(p >> 16) as u8, (p >> 8) as u8, p as u8, if changed[y * w + x] { 255 } else { 0 }]);
+            }
+        }
+        let mut frame = gif::Frame::from_rgba_speed(fw as u16, fh as u16, &mut rgba, 10);
+        frame.left = x0 as u16;
+        frame.top = y0 as u16;
+        frame.delay = if last { 400 } else { frame_cs };
+        frame.dispose = gif::DisposalMethod::Keep;
+        enc.write_frame(&frame).map_err(|e| e.to_string())?;
+        if fresh { prev = cur.clone(); } else { for i in 0..cur.len() { if changed[i] { prev[i] = cur[i]; } } }
+        frames += 1;
+        if last { break; }
+        for _ in 0..stride { view.step_forward(); }
+        // Marks and banners fade as they would in the window at this pace.
+        view.age(Duration::from_secs_f32(stride as f32 * 0.35));
+    }
+    drop(enc);
+    let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    if size.0 >= 200 { view.resize(size.0, size.1); }
+    view.cam = cam;
+    view.fitted = fitted;
+    view.map_dirty = true;
+    if let Some(k) = shown { view.jump(k); }
+    ctl.paused.store(paused, Ordering::Relaxed);
+    Ok((frames, bytes))
+}
+
+/// Simulate `config`'s history without a window and write the whole of it as a timelapse GIF
+/// (`--watch-timelapse FILE`).
+pub fn watch_timelapse(world: &WorldData, game_data: &GameData, config: HistoryConfig, engine: HistoryEngine, atlas: &Atlas, path: &str) -> WorldHistory {
+    let mut base = TileWorld::build(world, atlas);
+    base.set_season(world, Season::Summer);
+    let ctl = Control { paused: AtomicBool::new(true), pace: AtomicUsize::new(PACES.len() - 1), detached: AtomicBool::new(false) };
+    let (tx, rx) = mpsc::channel();
+    std::thread::scope(|scope| {
+        let sim = {
+            let ctl = &ctl;
+            scope.spawn(move || simulate(world, game_data, config, engine, ctl, tx))
+        };
+        let mut view = View::new(world, atlas, base);
+        view.resize(LAPSE_SIZE.0, LAPSE_SIZE.1);
+        for msg in rx.iter() { view.receive(msg); }
+        let t0 = Instant::now();
+        match export_timelapse(&mut view, &ctl, path, LAPSE_SIZE.0, LAPSE_SIZE.1) {
+            Ok((frames, bytes)) => println!("Timelapse: {} frames, {:.1} MB, written to {} in {:.1}s", frames, bytes as f64 / 1e6, path, t0.elapsed().as_secs_f32()),
+            Err(e) => eprintln!("Timelapse failed: {e}"),
+        }
+        sim.join().expect("history simulation panicked")
+    })
+}
+
+/// The timelapse frame: wide enough for the panel and a readable map.
+const LAPSE_SIZE: (usize, usize) = (960, 600);
 
 /// Simulate `config`'s history without a window and save watcher frames as
 /// `<prefix>_y<year>.png` at a quarter, half and the end, plus a close-up of the last event
@@ -1156,7 +1285,7 @@ fn settlement_labels(f: &Step, tw: &TileWorld) -> Vec<Label> {
             SettlementType::Town | SettlementType::Fort => (700, 10.0),
             _ => (400, 16.0),
         };
-        Some(Label { x: x as f32 + 0.5, y: y as f32 + 1.6, text: ascii(name), rank: rank + (*pop / 2000).min(99), min_tile_px: min_px, color: INK })
+        Some(Label { x: x as f32 + 0.5, y: y as f32 + 1.6, text: name.clone(), rank: rank + (*pop / 2000).min(99), min_tile_px: min_px, color: INK, style: super::text::LabelStyle::Town })
     }).collect();
     labels.sort_by_key(|l| std::cmp::Reverse(l.rank));
     labels
@@ -1317,9 +1446,7 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
     let footer_top = (p.y + p.h) as i64 - 80;
     for r in &f.realms {
         if y + 22 > footer_top { break; }
-        let sw = Rect { x, y: y as usize, w: 10, h: 10 };
-        fill(buf, w, sw, faction_color(r.id));
-        outline(buf, w, sw, INK);
+        super::heraldry::draw(buf, w, h, x as i64, y - 2, 15, &r.arms);
         let pop = format!("{}  {}", r.towns, short_num(r.population));
         let name_chars = (iw - 18 - text_width(&pop, 1) - 8) / 7;
         let dark = s.shadow.as_ref().map_or(false, |sh| sh.faction == r.id && !sh.broken);
@@ -1335,7 +1462,7 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
     hline(buf, w, x, x + iw, fy as usize - 4, INK_FADED);
     for line in [
         "SPACE pause   [ ] pace   < > one season",
-        "drag the timeline to any year   L log",
+        "drag the timeline to any year   L log   G gif",
         "wheel zoom   drag/WASD pan   H fit map",
         if done { "ENTER walk the world" } else { "click an entry: go there   ESC hurry" },
     ] {

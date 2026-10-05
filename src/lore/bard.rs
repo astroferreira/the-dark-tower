@@ -539,7 +539,26 @@ a first line 'Title: <a short title>', a blank line, then the piece itself.";
 pub struct Bard {
     pub url: String,
     pub model: String,
-    client: reqwest::blocking::Client,
+}
+
+/// HTTP to the model server, only with the `llm` feature (reqwest is optional).
+#[cfg(feature = "llm")]
+mod http {
+    fn client() -> reqwest::blocking::Client {
+        reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(900)).build().expect("http client")
+    }
+    pub fn get_json(url: &str) -> Result<serde_json::Value, String> {
+        client().get(url).send().map_err(|e| e.to_string())?.json().map_err(|e| e.to_string())
+    }
+    pub fn post_json(url: &str, body: &serde_json::Value) -> Result<serde_json::Value, String> {
+        client().post(url).json(body).send().map_err(|e| e.to_string())?.json().map_err(|e| e.to_string())
+    }
+}
+#[cfg(not(feature = "llm"))]
+mod http {
+    const OFF: &str = "built without the `llm` feature: rebuild with `cargo build --release --features llm` for the bard and the director";
+    pub fn get_json(_: &str) -> Result<serde_json::Value, String> { Err(OFF.into()) }
+    pub fn post_json(_: &str, _: &serde_json::Value) -> Result<serde_json::Value, String> { Err(OFF.into()) }
 }
 
 impl Bard {
@@ -547,15 +566,13 @@ impl Bard {
         Self {
             url: url.trim_end_matches('/').to_string(),
             model: model.to_string(),
-            client: reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(900)).build().expect("http client"),
         }
     }
 
     /// Check the server answers and has the model.
     pub fn check(&self) -> Result<(), String> {
-        let tags: serde_json::Value = self.client.get(format!("{}/api/tags", self.url)).send()
-            .map_err(|e| format!("cannot reach Ollama at {} ({e}); start it with `ollama serve`", self.url))?
-            .json().map_err(|e| e.to_string())?;
+        let tags = http::get_json(&format!("{}/api/tags", self.url))
+            .map_err(|e| format!("cannot reach Ollama at {} ({e}); start it with `ollama serve`", self.url))?;
         let has = tags["models"].as_array().map_or(false, |m| m.iter().any(|m| m["name"].as_str() == Some(&self.model)));
         if has { Ok(()) } else { Err(format!("model {} is not installed; run `ollama pull {}` or pass --bard-model", self.model, self.model)) }
     }
@@ -580,9 +597,7 @@ impl Bard {
                 { "role": "user", "content": user },
             ],
         });
-        let resp: serde_json::Value = self.client.post(format!("{}/api/chat", self.url)).json(&body).send()
-            .map_err(|e| e.to_string())?
-            .json().map_err(|e| e.to_string())?;
+        let resp = http::post_json(&format!("{}/api/chat", self.url), &body)?;
         resp["message"]["content"].as_str().map(|s| s.to_string()).ok_or_else(|| format!("unexpected reply: {resp}"))
     }
 
@@ -597,9 +612,7 @@ impl Bard {
                 { "role": "user", "content": Self::prompt(c) },
             ],
         });
-        let resp: serde_json::Value = self.client.post(format!("{}/api/chat", self.url)).json(&body).send()
-            .map_err(|e| e.to_string())?
-            .json().map_err(|e| e.to_string())?;
+        let resp = http::post_json(&format!("{}/api/chat", self.url), &body)?;
         let raw = resp["message"]["content"].as_str().ok_or_else(|| format!("unexpected reply: {resp}"))?;
         let (title, mut text) = parse_reply(raw);
         text = strip_signature(&text, &c.author_name);

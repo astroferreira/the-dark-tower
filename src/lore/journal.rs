@@ -14,6 +14,7 @@ use std::fmt::Write as _;
 
 use crate::history::civilizations::military::War;
 use crate::history::events::types::{Event, EventType};
+use crate::history::entities::traits::DeathCause;
 use crate::history::world_state::WorldHistory;
 use crate::history::{EntityId, EventId, FactionId, FigureId, LegendaryCreatureId};
 use crate::lore::{FeatureKind, Gazetteer};
@@ -320,6 +321,10 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
     let razed = events.iter().filter(|e| e.event_type == EventType::SettlementDestroyed).count();
 
     let _ = write!(body, "<header class=\"title\" id=\"top\"><p class=\"eyebrow\">Being a true account of {} years</p><h1>The Annals of {}</h1>", final_year, esc(&world_name));
+    let records = crate::lore::claims::claims(history);
+    if !records.is_empty() {
+        let _ = write!(body, "<p class=\"claim\">{}</p>", esc(&crate::lore::claims::sentence(&world_name, &records)));
+    }
     let mut opening = format!(
         "These annals tell of the peoples of the world from the year {} to the year {}: how {} were founded and {} endure, how {} wars were fought and {} were razed, and what became of the land and its beasts.",
         ages.first().map(|a| a.1).unwrap_or(1), final_year,
@@ -584,6 +589,23 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         body.push_str("</section>");
     }
 
+    // --- Tales worth telling ----------------------------------------------------------------
+    // The coincidences a reader would retell (lore::sifting), kinds taking turns.
+    let sifted = crate::lore::sifting::sift(history);
+    if !sifted.is_empty() {
+        let shown: Vec<_> = sifted.iter().take(30).collect();
+        let _ = write!(toc, "<li><a href=\"#tales\">Tales Worth Telling<span>{}</span></a></li>", shown.len());
+        let _ = write!(body, "<section class=\"part\" id=\"tales\"><p class=\"eyebrow\">Retold by the fire</p><h2>Tales Worth Telling</h2><p class=\"part-intro\">Ironies, echoes, reversals and last stands: {} turns of fate found in these annals, and the entries they rest on.</p><div class=\"cards\">", sifted.len());
+        for t in shown {
+            let evs: Vec<String> = t.events.iter().filter_map(|id| by_id.get(id).copied())
+                .map(|e| format!("<li><a class=\"yr\" href=\"#y{}\">{}</a> {}</li>", e.date.year, e.date.year, links.text(e, &e.title)))
+                .collect();
+            let _ = write!(body, "<article class=\"card\"><h3>{}</h3><p class=\"meta\">{}</p><p>{}</p><ul class=\"deeds\">{}</ul></article>",
+                esc(&t.title), t.kind.label(), esc(&t.text), evs.join(""));
+        }
+        body.push_str("</div></section>");
+    }
+
     // --- The peoples ------------------------------------------------------------------------
     let _ = write!(toc, "<li class=\"toc-part\">The Record</li><li><a href=\"#peoples\">The Peoples<span>{}</span></a></li>", factions.len());
     let _ = write!(body, "<section class=\"part\" id=\"peoples\"><p class=\"eyebrow\">Part the Second</p><h2>The Peoples</h2><p class=\"part-intro\">Every people that rose in these years, in the order of their founding.</p>");
@@ -644,6 +666,37 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         let fallen = w.casualties.aggressor_losses + w.casualties.defender_losses + w.casualties.civilian_losses;
         let _ = write!(body, "<tr><td><b>{}</b></td><td class=\"yrs\">{}–{}</td><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td><td>{}</td></tr>",
             esc(&tidy(&w.name)), w.started.year, w.ended.map(|d| d.year.to_string()).unwrap_or_default(), sides, w.battles.len(), w.sieges.len(), fallen, outcome);
+        // What the war is remembered for: the battle where a commander fell (else its first),
+        // and the captain who won it most often.
+        let battles: Vec<&Event> = w.battles.iter().filter_map(|id| by_id.get(id).copied()).collect();
+        let fell_in = |e: &Event| e.primary_participants.iter().skip(1).find_map(|p| match p {
+            EntityId::Figure(f) => history.figures.get(f).filter(|x| x.death_date == Some(e.date) && x.cause_of_death == Some(DeathCause::Battle)).map(|x| x.id),
+            _ => None,
+        });
+        let key = battles.iter().find(|e| fell_in(e).is_some()).or(battles.first());
+        let mut wins: Vec<(FigureId, usize)> = Vec::new();
+        for e in &battles {
+            // The victor's commander is named first in the account ("X of Y beat ...").
+            if let Some(EntityId::Figure(f)) = e.primary_participants.first() {
+                if history.figures.get(f).map_or(false, |x| e.description.starts_with(&x.full_name())) {
+                    match wins.iter_mut().find(|x| x.0 == *f) { Some(x) => x.1 += 1, None => wins.push((*f, 1)) }
+                }
+            }
+        }
+        wins.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let mut note = Vec::new();
+        if let Some(e) = key {
+            match fell_in(e).and_then(|f| history.figures.get(&f)) {
+                Some(f) => note.push(format!("{}, where {} fell", links.text(e, &e.title), esc(&f.full_name()))),
+                None => note.push(links.text(e, &e.title)),
+            }
+        }
+        if let Some((f, n)) = wins.first().filter(|x| x.1 >= 2 && x.1 * 2 > battles.len()) {
+            if let Some(x) = history.figures.get(f) { note.push(format!("its great captain {} ({} of {} battles won)", esc(&x.full_name()), n, battles.len())); }
+        }
+        if !note.is_empty() {
+            let _ = write!(body, "<tr class=\"remembered\"><td colspan=\"7\">Remembered for {}.</td></tr>", note.join("; "));
+        }
     }
     body.push_str("</tbody></table></div></section>");
 
@@ -662,7 +715,7 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
             .filter(|e| !matches!(e.event_type, EventType::HeroBorn | EventType::QuestBegun))
             .collect();
         deeds.sort_by_key(|e| e.date.total_seasons());
-        let deeds: Vec<String> = deeds.iter().take(6).map(|e| format!("<li><span class=\"yr\">{}</span> {}</li>", e.date.year, links.text(e, &e.title))).collect();
+        let deeds: Vec<String> = deeds.iter().take(8).map(|e| format!("<li><span class=\"yr\">{}</span> {}</li>", e.date.year, links.text(e, &e.title))).collect();
         let name = match &f.epithet { Some(ep) if !ep.is_empty() => format!("{} {}", f.name, ep), _ => f.name.clone() };
         let _ = write!(body, "<article class=\"card\" id=\"p{}\"><h3>{}</h3><p class=\"meta\">{} · {} · {}</p>", f.id.0, esc(&name), esc(&race), people, span);
         if !f.titles.is_empty() { let _ = write!(body, "<p><span class=\"label\">Titles</span> {}</p>", esc(&f.titles.join(", "))); }
@@ -865,6 +918,7 @@ a:hover { text-decoration-color: currentColor; }
 .label { font-family: var(--label); font-size: 0.8rem; letter-spacing: 0.07em; color: var(--ink-soft); margin: 0; }
 p .label { margin-right: 0.4rem; }
 main { min-width: 0; padding-block: 2.5rem 4rem; max-width: 46rem; }
+.claim { font-style: italic; font-size: 1.15rem; max-width: 40rem; margin: 0.4rem auto 1rem; color: var(--ink-soft); }
 .eyebrow { font-family: var(--label); letter-spacing: 0.1em; color: var(--rubric); font-size: 0.85rem; margin: 0 0 0.3rem; }
 h1, h2, h3 { font-family: var(--display); font-weight: 400; text-wrap: balance; line-height: 1.15; }
 h1 { font-size: clamp(2.4rem, 6vw, 3.6rem); margin: 0 0 1rem; }
@@ -908,6 +962,7 @@ td { border-bottom: 1px dotted var(--rule); padding: 0.5rem; vertical-align: top
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .yrs { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .vs { color: var(--ink-soft); font-style: italic; }
+tr.remembered td { font-style: italic; color: var(--ink-soft); padding-top: 0; border-top: none; }
 .fauna { display: grid; gap: 0.3rem; margin: 1rem 0 2rem; max-width: 32rem; }
 .fauna-row { display: grid; grid-template-columns: 7rem minmax(0, 1fr) 3.5rem; gap: 0.75rem; align-items: center; }
 .fauna-name { font-family: var(--display); }

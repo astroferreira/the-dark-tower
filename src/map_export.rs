@@ -887,3 +887,200 @@ pub fn export_all_maps(
 
     Ok(())
 }
+
+// Moved out of the legacy explorer (explorer.rs), which only builds with the `legacy` feature.
+
+/// Export only rivers and lakes on a black background (no ocean)
+/// - Rivers (from flow_accumulation OR river_network on land): Cyan
+/// - Lakes (water_depth > 0 AND height >= 0): Blue
+/// - Everything else (including ocean): Black
+pub fn export_freshwater_network_image(
+    world: &WorldData,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let width = world.heightmap.width;
+    let height = world.heightmap.height;
+    const RIVER_THRESHOLD: f32 = 50.0;
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let h = *world.heightmap.get(x, y);
+            let water_depth = *world.water_depth.get(x, y);
+
+            // Only process land tiles (h >= 0)
+            if h < 0.0 {
+                img.put_pixel(x as u32, y as u32, Rgb([0, 0, 0]));
+                continue;
+            }
+
+            // Get flow accumulation (primary river detection)
+            let flow_acc = world.flow_accumulation.as_ref()
+                .map(|fa| *fa.get(x, y))
+                .unwrap_or(0.0);
+
+            // Check precomputed river tile cache (ground truth from river network)
+            let is_in_river_cache = world.river_tile_cache.as_ref()
+                .map(|cache| *cache.get(x, y));
+
+            let is_river = match is_in_river_cache {
+                Some(cached) => cached,
+                None => flow_acc > RIVER_THRESHOLD,
+            };
+
+            let (r, g, b) = if is_river {
+                // River on land - bright cyan, intensity based on flow
+                let intensity = (flow_acc.log2().max(0.0) * 20.0).min(255.0) as u8;
+                (0, intensity.saturating_add(120), 255)
+            } else if water_depth > 0.5 {
+                // Alpine lake (above sea level) - bright blue
+                let depth_factor = (water_depth / 30.0).min(1.0);
+                let blue = (180.0 + depth_factor * 75.0) as u8;
+                let green = (100.0 + depth_factor * 50.0) as u8;
+                (40, green, blue)
+            } else {
+                // Dry land - black
+                (0, 0, 0)
+            };
+
+            img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
+        }
+    }
+
+    img.save(filename)?;
+    println!("Exported freshwater network to {}", filename);
+    Ok(())
+}
+
+/// Export a clean base map: biome colors + rivers with hillshading for 3D effect
+/// Uses elevation as source of truth: h < 0 = ocean, h >= 0 = land/lake/river
+/// Light source is positioned at top-left corner
+pub fn export_base_map_image(
+    world: &WorldData,
+    filename: &str,
+) -> Result<(), Box<dyn Error>> {
+    let width = world.heightmap.width;
+    let height = world.heightmap.height;
+    const RIVER_THRESHOLD: f32 = 50.0;
+
+    // Light direction from top-left at low angle (normalized)
+    // x: -1 (from left), y: -1 (from top), z: lower = more dramatic shadows
+    let light_dir = (-0.7_f32, -0.7_f32, 0.25_f32);
+    let light_len = (light_dir.0 * light_dir.0 + light_dir.1 * light_dir.1 + light_dir.2 * light_dir.2).sqrt();
+    let light_dir = (light_dir.0 / light_len, light_dir.1 / light_len, light_dir.2 / light_len);
+
+    // Precompute hillshade values (only for land, h >= 0)
+    let mut hillshade: Vec<f32> = vec![1.0; width * height];
+
+    for y in 1..height - 1 {
+        for x in 1..width - 1 {
+            let h = *world.heightmap.get(x, y);
+
+            // Skip underwater terrain - no shading
+            if h < 0.0 {
+                continue;
+            }
+
+            // Get heights of neighbors for gradient calculation
+            let h_left = *world.heightmap.get(x.wrapping_sub(1), y);
+            let h_right = *world.heightmap.get(x + 1, y);
+            let h_up = *world.heightmap.get(x, y.wrapping_sub(1));
+            let h_down = *world.heightmap.get(x, y + 1);
+
+            // Calculate gradient (slope)
+            let dzdx = (h_right - h_left) / 2.0;
+            let dzdy = (h_down - h_up) / 2.0;
+
+            // Scale factor for height exaggeration (bigger = more dramatic shadows)
+            let z_factor = 0.035;
+            let dzdx = dzdx * z_factor;
+            let dzdy = dzdy * z_factor;
+
+            // Surface normal: (-dzdx, -dzdy, 1) normalized
+            let nx = -dzdx;
+            let ny = -dzdy;
+            let nz = 1.0_f32;
+            let n_len = (nx * nx + ny * ny + nz * nz).sqrt();
+            let nx = nx / n_len;
+            let ny = ny / n_len;
+            let nz = nz / n_len;
+
+            // Dot product with light direction
+            let shade = nx * light_dir.0 + ny * light_dir.1 + nz * light_dir.2;
+
+            // Map to brightness range with stronger contrast
+            // shade ranges roughly from -1 to 1
+            let brightness = 0.8 + shade * 0.6;
+            hillshade[y * width + x] = brightness.clamp(0.3, 1.5);
+        }
+    }
+
+    let mut img = ImageBuffer::new(width as u32, height as u32);
+
+    for y in 0..height {
+        for x in 0..width {
+            let biome = *world.biomes.get(x, y);
+            let h = *world.heightmap.get(x, y);
+            let water_depth = *world.water_depth.get(x, y);
+
+            // Check for river (only on land)
+            let is_in_river_cache = world.river_tile_cache.as_ref()
+                .map(|cache| *cache.get(x, y));
+            let is_river = h >= 0.0 && match is_in_river_cache {
+                Some(cached) => cached,
+                None => {
+                    let flow_acc = world.flow_accumulation.as_ref()
+                        .map(|fa| *fa.get(x, y))
+                        .unwrap_or(0.0);
+                    flow_acc > RIVER_THRESHOLD
+                }
+            };
+
+            // Get hillshade factor (no shading for water)
+            let is_water = h < 0.0 || is_river || water_depth > 0.5;
+            let shade = if is_water { 1.0 } else { hillshade[y * width + x] };
+
+            // Elevation is the source of truth for water type:
+            // h < 0 = ocean (below sea level)
+            // h >= 0 = land, lake, or river (above sea level)
+            let (r, g, b) = if h < 0.0 {
+                // OCEAN - below sea level
+                let depth_factor = ((-h) / 500.0).min(1.0);
+                let blue = (120.0 + depth_factor * 80.0) as u8;
+                (20, (40.0 + depth_factor * 40.0) as u8, blue)
+            } else {
+                // ABOVE SEA LEVEL - can only be land, lake, or river (never ocean)
+                if is_river {
+                    // River on land
+                    (60, 140, 220)
+                } else if water_depth > 0.5 {
+                    // Lake (alpine lake, crater lake, etc.)
+                    (70, 130, 200)
+                } else {
+                    // Land - use biome color, but override if biome is incorrectly ocean
+                    let (br, bg, bb) = biome.color();
+                    // If biome color looks like ocean (dark blue), use a land fallback
+                    if br < 80 && bg < 120 && bb > 100 {
+                        // This is a water biome color on land - use grassland green
+                        (120, 160, 80)
+                    } else {
+                        (br, bg, bb)
+                    }
+                }
+            };
+
+            // Apply hillshading
+            let r = ((r as f32) * shade).clamp(0.0, 255.0) as u8;
+            let g = ((g as f32) * shade).clamp(0.0, 255.0) as u8;
+            let b = ((b as f32) * shade).clamp(0.0, 255.0) as u8;
+
+            img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
+        }
+    }
+
+    img.save(filename)?;
+    println!("Exported base map to {}", filename);
+    Ok(())
+}
+

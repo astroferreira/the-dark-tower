@@ -22,6 +22,12 @@ pub enum Feature {
     /// A predator's den.
     Den,
     Bones,
+    /// A grave (`local/site.rs`: battle dead where history fought here).
+    Grave,
+    /// A standing stone: something to look at on an empty site.
+    Stone,
+    /// A spring feeding a small pool.
+    Spring,
 }
 
 impl Feature {
@@ -33,6 +39,9 @@ impl Feature {
             Feature::Nest => "nest",
             Feature::Den => "den",
             Feature::Bones => "bones",
+            Feature::Grave => "grave",
+            Feature::Stone => "standing stone",
+            Feature::Spring => "spring",
         }
     }
 }

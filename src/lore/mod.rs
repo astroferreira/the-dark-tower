@@ -5,6 +5,8 @@ pub mod bard;
 pub mod focal;
 pub mod gazetteer;
 pub mod journal;
+pub mod sifting;
+pub mod claims;
 pub mod landmarks;
 pub mod resources;
 pub mod settle;

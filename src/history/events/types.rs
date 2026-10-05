@@ -106,6 +106,12 @@ pub enum EventType {
     ShadowBroken,
     /// A town the Shadow held is freed by the free peoples (appended: older saves still decode).
     ShadowLiberated,
+    /// A figure moved home: fled a fallen town, went into exile (appended: older saves decode).
+    FigureMoved,
+    /// The free peoples unite and storm the Shadow's seat (its check; appended).
+    ShadowAlliance,
+    /// What can wound the Shadow, and where it was lost (appended).
+    ShadowBane,
 }
 
 impl EventType {
@@ -117,7 +123,8 @@ impl EventType {
             EventType::CreatureSlain | EventType::VolcanoErupted |
             EventType::Plague | EventType::MagicalCatastrophe |
             EventType::ReligionFounded | EventType::HolyWarDeclared |
-            EventType::ShadowRose | EventType::ShadowConquest | EventType::ShadowBroken
+            EventType::ShadowRose | EventType::ShadowConquest | EventType::ShadowBroken |
+            EventType::ShadowAlliance
         )
     }
 }

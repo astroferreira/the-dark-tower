@@ -449,6 +449,7 @@ fn create_factions(
     let prehistory_depth = history.config.prehistory_depth;
     let prehistory_generations = history.config.prehistory_generations;
 
+    let mut reign_jobs = Vec::new();
     for &(sx, sy) in sites.iter() {
         let biome = *world.biomes.get(sx, sy);
         let (race_id, race_type) = pick_race_for_biome(biome, races, rng);
@@ -553,6 +554,7 @@ fn create_factions(
             succession_law,
             prehistory_generations,
             (sx, sy),
+            &mut reign_jobs,
             rng,
         );
 
@@ -606,6 +608,10 @@ fn create_factions(
         history.settlements.insert(settlement_id, settlement);
         history.factions.insert(faction_id, faction);
     }
+
+    for (ruler, faction, date, location) in reign_jobs {
+        generate_reign_event(history, ruler, faction, date, location, game_data, rng);
+    }
 }
 
 /// Generate a chain of ancestor rulers for a faction's prehistory.
@@ -626,6 +632,7 @@ fn create_prehistory_lineage(
     succession_law: SuccessionLaw,
     max_generations: u32,
     location: (usize, usize),
+    reign_jobs: &mut Vec<(FigureId, FactionId, Date, (usize, usize))>,
     rng: &mut impl Rng,
 ) -> (FigureId, FigureId, Dynasty) {
     let faction_age = start_date.year.saturating_sub(founding_date.year);
@@ -777,10 +784,8 @@ fn create_prehistory_lineage(
                 for _ in 0..num_events {
                     let event_year = rng.gen_range(reign_start.year + 1..reign_end_year);
                     let event_date = Date::new(event_year, random_season(rng));
-                    generate_reign_event(
-                        history, &figure, faction_id, faction_name, event_date,
-                        location, style, race_type, game_data, rng,
-                    );
+                    // Written once every people exists, so the event can name its neighbours.
+                    reign_jobs.push((figure_id, faction_id, event_date, location));
                 }
             }
         }
@@ -837,60 +842,85 @@ fn create_prehistory_lineage(
     (f_id, current_leader_id, dynasty)
 }
 
-/// Generate a backstory event during a ruler's reign.
+/// The short name a realm goes by: "Galost" for "The Kingdom of Galost", "Bonegore" for "The
+/// Bonegore Horde".
+pub fn people_word(realm: &str) -> String {
+    if let Some(i) = realm.rfind(" of ") { return realm[i + 4..].to_string(); }
+    let bare = realm.strip_prefix("The ").unwrap_or(realm);
+    match bare.rsplit_once(' ') { Some((head, _)) => head.to_string(), None => bare.to_string() }
+}
+
+/// Generate a backstory event during a ruler's reign. Every name in it is real: the place is the
+/// people's own seat or a neighbour's, the enemy a people founded by then (one of the three
+/// nearest), the beast a species that lives in the world. Templates that would need a name
+/// nothing in the world has (a coined artifact or rebel) are never used.
 fn generate_reign_event(
     history: &mut WorldHistory,
-    ruler: &Figure,
+    ruler_id: FigureId,
     faction_id: FactionId,
-    faction_name: &str,
     date: Date,
     location: (usize, usize),
-    style: &NamingStyle,
-    race_type: &RaceType,
     game_data: &GameData,
     rng: &mut impl Rng,
 ) {
+    let Some(ruler) = history.figures.get(&ruler_id).cloned() else { return };
+    let Some(faction_name) = history.factions.get(&faction_id).map(|f| f.name.clone()) else { return };
+    let seat = |f: FactionId| history.factions.get(&f).and_then(|x| x.capital).and_then(|c| history.settlements.get(&c)).map(|t| (t.id, t.name.clone(), t.location));
+    let own = seat(faction_id);
+    let w = history.tile_history.width as i64;
+    let mut others: Vec<(i64, FactionId)> = history.factions.values()
+        .filter(|f| f.id != faction_id && f.founded <= date)
+        .filter_map(|f| seat(f.id).map(|(_, _, l)| {
+            let mut dx = (l.0 as i64 - location.0 as i64).abs();
+            dx = dx.min(w - dx);
+            let dy = l.1 as i64 - location.1 as i64;
+            (dx * dx + dy * dy, f.id)
+        }))
+        .collect();
+    others.sort();
+    others.truncate(3);
+    let enemy = if others.is_empty() { None } else { Some(others[rng.gen_range(0..others.len())].1) };
+    let mut species: Vec<String> = history.legendary_creatures.values()
+        .filter_map(|c| history.creature_species.get(&c.species_id)).map(|s| s.name.to_lowercase()).collect();
+    species.sort();
+    species.dedup();
+
     let ruler_name = ruler.full_name();
     let event_id = history.id_generators.next_event();
-    let tag = race_type.tag();
     let bs = &game_data.backstory;
 
-    // Pick a random reign event template from the data
-    let templates = &bs.reign_event_templates;
-    let template = &templates[rng.gen_range(0..templates.len())];
+    let usable: Vec<_> = bs.reign_event_templates.iter().filter(|t| {
+        let text = format!("{} {}", t.title, t.desc);
+        !text.contains("{ARTIFACT}") && !text.contains("{REBEL}")
+            && (enemy.is_some() || !(text.contains("{ENEMY}") || text.contains("{ADJ}")))
+            && (!species.is_empty() || !text.contains("{BEAST}"))
+            && (own.is_some() || !text.contains("{PLACE}"))
+    }).collect();
+    if usable.is_empty() { return; }
+    let template = usable[rng.gen_range(0..usable.len())];
+    let text = format!("{} {}", template.title, template.desc);
 
-    // Resolve template placeholders
-    let place = NameGenerator::place_name(style, rng);
-    let enemy = bs.random_enemy(tag, rng);
+    // The place: the people's own seat, or (in dealings with a neighbour) sometimes theirs.
+    let foe = enemy.filter(|_| text.contains("{ENEMY}") || text.contains("{ADJ}"));
+    let place = match foe.and_then(seat) {
+        Some(theirs) if rng.gen_bool(0.4) => Some(theirs),
+        _ => own.clone(),
+    };
+    let place_name = place.as_ref().map(|p| p.1.clone()).unwrap_or_default();
+    let enemy_word = foe.and_then(|f| history.factions.get(&f)).map(|f| people_word(&f.name)).unwrap_or_default();
     let plague = bs.random_plague(rng);
-    let beast = bs.random_beast(rng);
-    let adj = bs.random_faction_adjective(rng);
-    let rebel = NameGenerator::personal_name(style, rng);
-    let artifact = NameGenerator::artifact_name(style, rng);
-
-    let title = template.title
-        .replace("{PLACE}", &place)
+    let beast = if species.is_empty() { String::new() } else { species[rng.gen_range(0..species.len())].clone() };
+    let fill = |s: &str| s
+        .replace("{PLACE}", &place_name)
         .replace("{RULER}", &ruler_name)
         .replace("{NAME}", &ruler.name)
-        .replace("{FACTION}", faction_name)
-        .replace("{ENEMY}", &enemy)
+        .replace("{FACTION}", &faction_name)
+        .replace("{ENEMY}", &enemy_word)
         .replace("{PLAGUE}", &plague)
         .replace("{BEAST}", &beast)
-        .replace("{ADJ}", &adj)
-        .replace("{REBEL}", &rebel)
-        .replace("{ARTIFACT}", &artifact);
-
-    let description = template.desc
-        .replace("{PLACE}", &place)
-        .replace("{RULER}", &ruler_name)
-        .replace("{NAME}", &ruler.name)
-        .replace("{FACTION}", faction_name)
-        .replace("{ENEMY}", &enemy)
-        .replace("{PLAGUE}", &plague)
-        .replace("{BEAST}", &beast)
-        .replace("{ADJ}", &adj)
-        .replace("{REBEL}", &rebel)
-        .replace("{ARTIFACT}", &artifact);
+        .replace("{ADJ}", &enemy_word);
+    let title = fill(&template.title);
+    let description = fill(&template.desc);
 
     // Map event type string from template to actual EventType
     let event_type = match template.event_type.as_str() {
@@ -917,10 +947,12 @@ fn generate_reign_event(
         _ => EventType::Other,
     };
 
-    let event = Event::new(event_id, event_type, date, title, description)
+    let mut event = Event::new(event_id, event_type, date, title, description)
         .at_location(location.0, location.1)
         .with_faction(faction_id)
         .with_participant(EntityId::Figure(ruler.id));
+    if let Some(f) = foe { event = event.with_faction(f); }
+    if let Some((id, _, _)) = place { event = event.with_participant(EntityId::Settlement(id)); }
     history.chronicle.record(event);
 }
 
@@ -1405,53 +1437,6 @@ fn random_death_cause(rng: &mut impl Rng) -> DeathCause {
         85..=89 => DeathCause::Duel,
         _ => DeathCause::Unknown,
     }
-}
-
-/// Random enemy descriptor for backstory events.
-fn random_enemy_name(race_type: &RaceType, rng: &mut impl Rng) -> &'static str {
-    let enemies: &[&str] = match race_type {
-        RaceType::Dwarf => &["goblin", "orc", "troll", "dark elf", "drake"],
-        RaceType::Elf => &["orc", "troll", "undead", "dark fey", "spider-kin"],
-        RaceType::Orc => &["human", "elf", "dwarf", "rival orc", "ogre"],
-        RaceType::Goblin => &["dwarf", "human", "rival goblin", "kobold", "gnoll"],
-        RaceType::Fey => &["undead", "iron-wielder", "shadow creature", "blighted beast", "mortal"],
-        RaceType::Undead => &["paladin", "cleric", "living", "radiant fey", "exorcist"],
-        _ => &["barbarian", "bandit", "marauder", "pirate", "raider", "nomad", "warlord"],
-    };
-    enemies[rng.gen_range(0..enemies.len())]
-}
-
-/// Random adjective for a neighboring faction in backstory events.
-fn random_faction_adjective(rng: &mut impl Rng) -> &'static str {
-    let adjectives = [
-        "northern", "southern", "eastern", "western", "highland", "lowland",
-        "river", "mountain", "forest", "coastal", "desert", "marsh",
-        "iron", "golden", "silver", "storm", "shadow", "frost",
-    ];
-    adjectives[rng.gen_range(0..adjectives.len())]
-}
-
-/// Random plague/disease name for backstory events.
-fn random_plague_name(rng: &mut impl Rng) -> &'static str {
-    let plagues = [
-        "Crimson Fever", "Grey Pox", "Bone Rot", "Wasting Sickness",
-        "Blood Cough", "Shaking Death", "Pale Plague", "Shadow Blight",
-        "Iron Sickness", "Weeping Pox", "Rat Fever", "Spore Lung",
-        "Corpse Chill", "Night Sweats", "Scale Rot", "Moon Madness",
-    ];
-    plagues[rng.gen_range(0..plagues.len())]
-}
-
-/// Random beast/monster name for backstory events.
-fn random_beast_name(rng: &mut impl Rng) -> &'static str {
-    let beasts = [
-        "wyrm", "troll", "giant spider", "dire wolf", "basilisk",
-        "chimera", "wyvern", "manticore", "hydra", "drake",
-        "griffon", "cockatrice", "behemoth", "kraken",
-        "thunderbird", "shadow stalker", "bone golem", "cave bear",
-        "frost giant", "fire elemental", "swamp thing", "barrow wight",
-    ];
-    beasts[rng.gen_range(0..beasts.len())]
 }
 
 #[cfg(test)]

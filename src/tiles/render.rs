@@ -871,7 +871,8 @@ pub fn render_local(map: &LocalMap, atlas: &Atlas, cam: &LocalCamera, buf: &mut 
                         Feature::Burrow => Some(TileKind::Burrow),
                         Feature::Nest => Some(TileKind::Nest),
                         Feature::Den => Some(TileKind::Den),
-                        Feature::Bones => Some(TileKind::Bones),
+                        Feature::Bones | Feature::Grave => Some(TileKind::Bones),
+                        Feature::Stone | Feature::Spring => None,
                     };
                     if let Some(k) = mark {
                         let q = tile_px(atlas, k, var, u, v, src_px);

@@ -128,3 +128,57 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   borders meander, the deep-ocean edge is a contour of a smooth depth field, snow/season tint
   blend between tiles, rivers get ink banks, and atlas tiles larger than the screen cell are
   2x2 supersampled. Labels are ink on a parchment halo.
+
+### Timelapse (`tiles/watcher.rs::export_timelapse`)
+- `--watch-timelapse FILE` (headless: simulates the history as `--watch` does) or `G` in the
+  watcher window (writes `timelapse_<seed>.gif` from what is recorded so far) renders the
+  recording as an animated GIF: one frame a year (the same season every frame, so snow doesn't
+  flicker) at 10 fps, the map fitted, 960x600, the last frame held 4 s, drawn as if playing.
+- Frames are deltas (`gif` crate): only the box of pixels that moved more than
+  `LAPSE_TOLERANCE` (14 per channel) from what the GIF shows is written, the rest transparent.
+  Full frames were 85 MB for the dev world; deltas of every exact change 29 MB (the Shadow wash
+  and territories shift by a shade each season); with the tolerance and one frame a year: dev
+  5.4 MB, seed 42 6.6 MB, ~5 s to write.
+
+### Plates (`tiles/plates.rs`)
+- `P` in the world view saves a plate, not a raw frame: the map without the interface (labels
+  kept), a parchment margin with a ruled border, a cartouche ("The Lands of <largest continent>",
+  season and year, seed), the world's one sentence as a caption (`lore::claims`), and a legend of
+  the five realms with most land in view; numbered `plates/plate_<seed>_NNN.png`.
+- The PNG text chunks carry `world-args` (the command line that makes the world, recorded in
+  `main` via `plates::set_world_args`), `view` (x, y, px per tile), `seed` and `caption`.
+  `--plate FILE` re-runs the game with those arguments plus `--tiles-center` and `--tiles-zoom`;
+  with `--headless --tiles-snapshot P` it re-renders the plate (`P_plate.png`), byte-identical
+  on the dev world. `--tiles-snapshot` always writes `<prefix>_plate.png` (16 px at the centre).
+- Not yet: typed captions, automatic plates at great events (an album).
+
+### Heraldry (`tiles/heraldry.rs`)
+- `arms_of(world, history, faction)`: shield shape by race (heater, square for dwarves and
+  giants, kite for elves and fey, round targe for orcs/goblins/beastfolk/halflings, banner for
+  the undead and elementals); field, division (plain, per pale/fess/bend, chevron, quarterly) and
+  tinctures from a hash of the realm (a metal charge on a colour); the charge from the seat's
+  ground (waves on a coast, a wavy bar by a river, a mount over 1000 m, a tree in forest, a sun
+  in desert or savanna, else a star). The Shadow's realm: a red eye on sable. `draw` renders it
+  per pixel with ink outlines at any size.
+- Shown on the watcher's realm list, the inspector's realm page (48 px by the title) and the
+  plate legend. `--arms-sheet FILE` draws every living realm at 96 and 24 px.
+
+### Lettering (`tiles/fonts.rs`, `text.rs::place_labels`)
+- Map labels are set in IM Fell English (roman, italic, small caps; OFL, `assets/fonts/`, with
+  `OFL.txt`) rasterised by `fontdue` with a glyph cache and a soft parchment halo. The 8x8 bitmap
+  font remains for panels and UI.
+- `LabelStyle` sets the hierarchy: oceans in wide-spaced italic capitals, seas and gulfs smaller,
+  continents and islands in spaced small caps, ranges in small caps, regions in italic, rivers and
+  lakes in blue italic, capitals in small caps, cities and towns in roman, ruins in italic.
+- Placement: highest rank first; a label must fit wholly on screen (never clipped), overlap no
+  placed label or `avoid` rectangle (the minimap: `minimap_box`), and a name is shown once.
+  ~0.5 ms a frame. Not yet: ranges along their axis, rivers along their course.
+
+### Poster (`viewer::save_poster`)
+- `--poster FILE [--poster-width 6144]` renders the whole ink map at ~12 px/tile (seed 42:
+  6144x3072, ~0.6 s, 24 MB PNG) with the lettering scaled (`place_labels_scaled`), realm
+  borders, the Shadow's dominion and ruins as in the viewer, the forty bloodiest battles as red
+  crossed swords with their year, a cartouche ("The Annals of <world>", the year, the world's
+  sentence), a scale bar (round steps, 4 segments), a compass rose in the most open sea and the
+  vintage ruled border (`cartography/decorations.rs`). Works with `--load-world`.
+- Not yet: the atlas of ages (four small maps at years 201, 280, 360, 451).

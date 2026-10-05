@@ -8,40 +8,11 @@ use clap::Parser;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
-mod ascii;
-mod biome_feathering;
-mod biomes;
-mod cartography;
-mod climate;
-mod coastline;
-mod colony;
-mod erosion;
-mod explorer;
-mod exr_export;
-mod grid_export;
-mod heightmap;
-mod history;
-mod islands;
-mod local;
-mod lore;
-mod map_export;
-mod menu;
-mod microclimate;
-mod plates;
-mod region;
-mod scale;
-mod seasons;
-mod seeds;
-mod soils;
-mod terrain;
-mod tilemap;
-mod tiles;
-mod underground_water;
-mod water_bodies;
-mod weather_zones;
-mod world;
-mod world_export;
 
+use planet_generator::{biome_feathering, biomes, cartography, climate, coastline, colony, erosion, exr_export, grid_export, heightmap, history, islands, local, lore, map_export, microclimate, plates, region, scale, seasons, seeds, soils, terrain, tilemap, tiles, underground_water, water_bodies, weather_zones, world, world_export};
+#[cfg(feature = "legacy")]
+use planet_generator::{explorer, menu};
+#[cfg(feature = "legacy")]
 use menu::{MenuResult, WorldConfig};
 use seeds::WorldSeeds;
 use tilemap::Tilemap;
@@ -77,10 +48,64 @@ struct Args {
     #[arg(long)]
     sim_snapshot: Option<String>,
 
+    /// Try the patron's verbs (favour/forbid a place, favour a settler, a dream) on the dev
+    /// colony and print whether each changed behaviour within a game day
+    #[arg(long)]
+    sim_patron: bool,
+
+    /// Run the dev colony 100 days without and with founding stones and compare the layouts;
+    /// writes <PREFIX>_plain.png and <PREFIX>_stones.png
+    #[arg(long, value_name = "PREFIX")]
+    sim_founding: Option<String>,
+
+    /// Show the colony's marks: 30 days on the dev embark, then one settler buried; writes
+    /// <PREFIX>_marks.png with the grave's page open
+    #[arg(long, value_name = "PREFIX")]
+    sim_marks: Option<String>,
+
+    /// Render the colony's theatre (implies --dev-embark --headless unless --tiles-center is
+    /// given): the region around the embark, its three nearest places and the days to walk
+    /// to each, to <PREFIX>_province.png
+    #[arg(long, value_name = "PREFIX")]
+    province_snapshot: Option<String>,
+
+    /// Open the world and view a plate was taken of (plates are saved by P in the viewer, in
+    /// plates/; their PNG text carries the world's arguments and the view)
+    #[arg(long, value_name = "FILE")]
+    plate: Option<String>,
+
+    /// Start the tile viewer at this many pixels per tile (default 16)
+    #[arg(long, value_name = "PX")]
+    tiles_zoom: Option<f32>,
+
+    /// Draw every living realm's arms (96 and 24 px) to FILE
+    #[arg(long, value_name = "FILE")]
+    arms_sheet: Option<String>,
+
+    /// Render the ink map as a poster (6144 px wide by default; --poster-width) to FILE
+    #[arg(long, value_name = "FILE")]
+    poster: Option<String>,
+
+    #[arg(long, default_value_t = 6144)]
+    poster_width: usize,
+
     /// Time the colony with N settlers on the dev embark: game days per second, and the speed
     /// it could run at (1x = one game hour per real second)
     #[arg(long)]
     sim_bench: Option<usize>,
+
+    /// Print, per kind of event, how many record a cause
+    #[arg(long)]
+    causes: bool,
+
+    /// Write every chronicle event ("E<tab>year<tab>title<tab>text") and every name the world
+    /// holds ("N<tab>name") to FILE, for checking that the annals only name real things
+    #[arg(long, value_name = "FILE")]
+    chronicle_dump: Option<std::path::PathBuf>,
+
+    /// Time each phase of the history simulation and print the totals, slowest first
+    #[arg(long)]
+    history_profile: bool,
 
     /// Headless check of the inspector: open the panel for world tile "X,Y" and save it to
     /// inspect_0.png (with --inspect-follow, follow those clickable lines and save each page)
@@ -140,6 +165,11 @@ struct Args {
     /// Simulate the history headlessly and save watcher frames to <PREFIX>_y<year>.png
     #[arg(long)]
     watch_snapshot: Option<String>,
+
+    /// Simulate the history as --watch does, without a window, and write the whole of it as an
+    /// animated GIF timelapse (~25 s; then the run continues as usual)
+    #[arg(long, value_name = "FILE")]
+    watch_timelapse: Option<String>,
 
     /// Print where the world's ore, farmland, timber and fish are
     #[arg(long)]
@@ -478,7 +508,9 @@ fn parse_args() -> Args {
     use clap::parser::ValueSource;
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
-    if args.sim_snapshot.is_some() || args.sim_bench.is_some() { args.dev_embark = true; args.headless = true; }
+    if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
+    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() { args.dev_embark = true; args.headless = true; }
+    if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     if args.dev {
         let defaulted = |id: &str| matches.value_source(id) != Some(ValueSource::CommandLine);
@@ -560,6 +592,24 @@ const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 
 fn main() {
     let mut args = parse_args();
+    if let Some(px) = args.tiles_zoom { tiles::viewer::set_start_zoom(px); }
+    // A plate reopens its world: run again with the arguments it carries, centred on its view.
+    if let Some(path) = &args.plate {
+        match tiles::plates::read(path) {
+            Ok((world_args, x, y, _px)) => {
+                let exe = std::env::current_exe().expect("own path");
+                let mut cmd = std::process::Command::new(exe);
+                cmd.args(world_args.split_whitespace()).arg("--tiles-center").arg(format!("{},{}", x as usize, y as usize))
+                    .arg("--tiles-zoom").arg(format!("{}", _px));
+                if args.headless { cmd.arg("--headless"); }
+                if let Some(prefix) = &args.tiles_snapshot { cmd.arg("--tiles-snapshot").arg(prefix); }
+                println!("Opening the world of {}: {} --tiles-center {},{}", path, world_args, x as usize, y as usize);
+                let status = cmd.status().expect("run planet_generator");
+                std::process::exit(status.code().unwrap_or(1));
+            }
+            Err(e) => { eprintln!("--plate {}: {}", path, e); std::process::exit(1); }
+        }
+    }
     // The start screen: run with no arguments (or with --start) to tailor the world first.
     if args.start || std::env::args().len() == 1 {
         let initial = tiles::start::StartConfig {
@@ -704,6 +754,22 @@ fn main() {
             climate::ClimateConfig::default(),
         )
     } else {
+        legacy_menu(&args)
+    };
+    // What makes this world, for plates (P in the viewer) to carry so they can reopen it.
+    tiles::plates::set_world_args(match &args.load_world {
+        Some(path) => format!("--load-world {}", path),
+        None => {
+            let mut a = format!("--seed {} --width {} --height {} --world-style {} --tectonic-myr {} --fantasy {} --civilizations {}",
+                master_seed, width, height, args.world_style, args.tectonic_myr, args.fantasy, args.civilizations);
+            if let Some(p) = args.plates { a.push_str(&format!(" --plates {}", p)); }
+            if args.no_history { a.push_str(" --no-history"); } else if args.history_years > 0 { a.push_str(&format!(" --history-years {}", args.history_years)); }
+            if args.no_shadow { a.push_str(" --no-shadow"); }
+            a
+        }
+    });
+    #[cfg(feature = "legacy")]
+    fn legacy_menu(args: &Args) -> (usize, usize, u64, Option<usize>, plates::WorldStyle, erosion::ErosionPreset, climate::ClimateConfig) {
         // LEGACY interactive terminal menu (--legacy-explorer without --seed)
         let initial_config = WorldConfig {
             width: args.width,
@@ -732,15 +798,18 @@ fn main() {
                     climate_config,
                 )
             }
-            Ok(MenuResult::Quit) => {
-                return;
-            }
+            Ok(MenuResult::Quit) => std::process::exit(0),
             Err(e) => {
                 eprintln!("Menu error: {}", e);
                 std::process::exit(1);
             }
         }
-    };
+    }
+    #[cfg(not(feature = "legacy"))]
+    fn legacy_menu(_: &Args) -> (usize, usize, u64, Option<usize>, plates::WorldStyle, erosion::ErosionPreset, climate::ClimateConfig) {
+        eprintln!("The legacy terminal menu is not built in: rebuild with `--features legacy`, or pass --seed.");
+        std::process::exit(1);
+    }
 
     let mut world_data = 'build: {
         if let Some(w) = loaded_world {
@@ -899,7 +968,7 @@ fn main() {
     );
 
     // Generate Bezier river network with true flow accumulation and lake connectivity
-    let river_network = crate::erosion::trace_bezier_rivers_with_flow(
+    let river_network = erosion::trace_bezier_rivers_with_flow(
         &heightmap,
         &flow_acc,
         &flow_dir,
@@ -988,7 +1057,7 @@ fn main() {
     // Export freshwater network if requested
     if args.export_rivers {
         let filename = format!("freshwater_{}.png", master_seed);
-        if let Err(e) = explorer::export_freshwater_network_image(&world_data, &filename) {
+        if let Err(e) = map_export::export_freshwater_network_image(&world_data, &filename) {
             eprintln!("Failed to export freshwater network: {}", e);
         }
     }
@@ -996,7 +1065,7 @@ fn main() {
     // Export base map if requested
     if args.export_base_map {
         let filename = format!("world_base_{}.png", master_seed);
-        if let Err(e) = explorer::export_base_map_image(&world_data, &filename) {
+        if let Err(e) = map_export::export_base_map_image(&world_data, &filename) {
             eprintln!("Failed to export base map: {}", e);
         }
     }
@@ -1315,7 +1384,7 @@ fn main() {
     // in the legacy terminal explorer.
     let wants_tiles = (!args.legacy_explorer && !args.headless) || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
     // A saved world's history is reused unless --history-years (or --watch) asks for a fresh simulation.
-    if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() { loaded_history = None; }
+    if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() { loaded_history = None; }
     let mut history = if loaded_history.is_some() {
         loaded_history.take()
     } else if let Some(ref load_path) = args.load_history {
@@ -1331,7 +1400,7 @@ fn main() {
                 None
             }
         }
-    } else if args.history_years > 0 || args.watch_snapshot.is_some() || (wants_tiles && !args.no_history) {
+    } else if args.history_years > 0 || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || (wants_tiles && !args.no_history) {
         let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
         // The tile viewer shows history on the land, so it simulates some by default.
         let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
@@ -1367,6 +1436,9 @@ fn main() {
             let (h, files) = tiles::watcher::watch_snapshots(&world_data, &game_data, config, engine, &atlas, prefix);
             println!("Saved watcher snapshots: {}", files.join(", "));
             h
+        } else if let Some(path) = &args.watch_timelapse {
+            let atlas = load_atlas(args.tileset.as_deref());
+            tiles::watcher::watch_timelapse(&world_data, &game_data, config, engine, &atlas, path)
         } else if args.watch && !args.headless {
             let atlas = load_atlas(args.tileset.as_deref());
             tiles::watcher::watch_history(&world_data, &game_data, config, engine, &atlas)
@@ -1375,7 +1447,50 @@ fn main() {
         };
         let summary = hist.summary();
         eprintln!("{}", summary);
+        if args.history_profile {
+            let phases = history::simulation::step::profile::take();
+            let total: f64 = phases.iter().map(|p| p.1).sum();
+            eprintln!("History phases ({:.1} s in all):", total);
+            for (name, secs, calls) in phases.iter().take(14) {
+                eprintln!("  {:<22} {:>7.2} s {:>5.1}%  {:>6.2} ms/call", name, secs, secs / total * 100.0, secs / *calls as f64 * 1000.0);
+            }
+        }
+        if let Some(path) = &args.chronicle_dump {
+            let mut out = String::new();
+            let mut name = |n: &str| { out.push_str("N\t"); out.push_str(n); out.push('\n'); };
+            for f in hist.factions.values() { name(&f.name); name(&history::simulation::setup::people_word(&f.name)); }
+            for s in hist.settlements.values() { name(&s.name); }
+            for f in hist.figures.values() { name(&f.full_name()); if let Some(e) = &f.epithet { name(e); } for t in &f.titles { name(t); } }
+            for d in hist.dynasties.values() { name(&d.name); }
+            for r in hist.races.values() { name(&r.name); }
+            for c in hist.cultures.values() { name(&c.name); }
+            for c in hist.creature_species.values() { name(&c.name); }
+            for c in hist.legendary_creatures.values() { name(&c.full_name()); }
+            for d in hist.deities.values() { name(&d.name); }
+            for r in hist.religions.values() { name(&r.name); }
+            for c in hist.cults.values() { name(&c.name); }
+            for a in hist.artifacts.values() { name(&a.name); }
+            for m in hist.monuments.values() { name(&m.name); }
+            for w in hist.wars.values() { name(&w.name); }
+            for m in hist.monuments.values() { out.push_str(&format!("M\t{}\t{},{}\n", m.name, m.location.0, m.location.1)); }
+            for e in &hist.chronicle.events {
+                out.push_str(&format!("E\t{}\t{}\t{}\n", e.date.year, e.title.replace(['\t', '\n'], " "), e.description.replace(['\t', '\n'], " ")));
+            }
+            if let Err(e) = std::fs::write(path, out) { eprintln!("--chronicle-dump: {e}"); }
+        }
+        if args.causes {
+            let rep = history::simulation::invariants::cause_report(&hist);
+            let (c, t) = rep.iter().fold((0, 0), |a, r| (a.0 + r.1, a.1 + r.2));
+            let (median, mean) = history::simulation::invariants::chain_depth(&hist);
+            eprintln!("Causes: {} of {} events ({:.0}%) record a cause; chains run {} links back (median, mean {:.1}). Without one, most first:", c, t, 100.0 * c as f64 / t.max(1) as f64, median, mean);
+            for (k, c, t) in rep.iter().take(25) { eprintln!("  {:<24} {:>6} of {:>6} uncaused", k, t - c, t); }
+        }
         eprintln!("{}", hist.present().counts());
+        eprintln!("{}", history::people::report(&hist));
+        eprintln!("{}", history::simulation::invariants::war_report(&hist));
+        eprintln!("{}", history::simulation::invariants::objects_report(&hist));
+        eprintln!("{}", lore::sifting::report(&lore::sifting::sift(&hist)));
+        eprintln!("Records: {}", lore::claims::sentence("this world", &lore::claims::claims(&hist)));
         let contradictions = history::simulation::invariants::violations(&hist);
         if contradictions.is_empty() {
             eprintln!("Chronicle: consistent");
@@ -1506,9 +1621,26 @@ fn main() {
         }
     }
 
+    if let Some(path) = &args.poster {
+        let atlas = load_atlas(args.tileset.as_deref());
+        if let Err(e) = tiles::viewer::save_poster(&world_data, history.as_ref(), &atlas, path, args.poster_width) { eprintln!("--poster: {e}"); }
+    }
+    if let (Some(path), Some(h)) = (&args.arms_sheet, history.as_ref()) {
+        match tiles::heraldry::save_sheet(&world_data, h, path) {
+            Ok(n) => println!("Arms of {} realms written to {}", n, path),
+            Err(e) => eprintln!("--arms-sheet: {e}"),
+        }
+    }
     if args.present {
         match history.as_ref() {
-            Some(h) => println!("{}", h.present().report()),
+            Some(h) => {
+                let gaz = lore::build_gazetteer(&world_data, Some(h), master_seed);
+                let name = gaz.features.iter().filter(|f| f.kind == lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
+                println!("{}", lore::claims::sentence(&name, &lore::claims::claims(h)));
+                println!("{}\n{}", h.present().report(), history::people::report(h));
+                println!("Tales worth telling:");
+                for t in lore::sifting::sift(h).iter().take(12) { println!("  [{}] {}: {}", t.kind.label(), t.title, t.text); }
+            }
             None => eprintln!("--present needs a history"),
         }
     }
@@ -1605,7 +1737,7 @@ fn main() {
     }
 
     // Skip the viewer in headless mode (snapshots still render: they never open a window).
-    if args.headless && args.tiles_snapshot.is_none() && args.local_snapshot.is_none() && !args.dev_embark {
+    if args.headless && args.tiles_snapshot.is_none() && args.local_snapshot.is_none() && args.province_snapshot.is_none() && !args.dev_embark {
         return;
     }
 
@@ -1626,8 +1758,27 @@ fn main() {
             println!("Dev embark at tile {},{}", site.0, site.1);
             Some(site)
         } else { center };
+        if let (Some(prefix), Some(tile)) = (&args.sim_marks, center) {
+            if let Err(e) = tiles::viewer::marks_trial(&world_data, history.as_ref(), &atlas, tile, prefix) { eprintln!("--sim-marks: {e}"); }
+            return;
+        }
+        if let (Some(prefix), Some(tile)) = (&args.sim_founding, center) {
+            if let Err(e) = tiles::viewer::founding_trial(&world_data, history.as_ref(), &atlas, tile, prefix) { eprintln!("--sim-founding: {e}"); }
+            return;
+        }
+        if let (true, Some(tile)) = (args.sim_patron, center) {
+            tiles::viewer::patron_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
         if let (Some(n), Some(tile)) = (args.sim_bench, center) {
             tiles::viewer::colony_bench(&world_data, history.as_ref(), tile, n);
+            return;
+        }
+        if let (Some(prefix), Some(tile)) = (&args.province_snapshot, center) {
+            match tiles::viewer::save_province_snapshot(&world_data, history.as_ref(), tile, prefix) {
+                Ok(file) => println!("Saved the province map: {file}"),
+                Err(e) => eprintln!("Province snapshot failed: {e}"),
+            }
             return;
         }
         if let (Some(prefix), Some(tile)) = (&args.sim_snapshot, center) {
@@ -1673,8 +1824,11 @@ fn main() {
         return;
     }
 
-    // LEGACY: the frozen terminal explorer (--legacy-explorer).
+    // LEGACY: the frozen terminal explorer (--legacy-explorer), built only with `--features legacy`.
+    #[cfg(feature = "legacy")]
     if let Err(e) = explorer::run_explorer(world_data, history) {
         eprintln!("Explorer error: {}", e);
     }
+    #[cfg(not(feature = "legacy"))]
+    eprintln!("The legacy terminal explorer is not built in: rebuild with `--features legacy`.");
 }

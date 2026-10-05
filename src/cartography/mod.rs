@@ -6,7 +6,17 @@
 
 pub mod cpu;
 pub mod decorations;
+#[cfg(feature = "gpu")]
 pub mod gpu;
+/// Without the `gpu` feature cartography renders on the CPU.
+#[cfg(not(feature = "gpu"))]
+pub mod gpu {
+    pub struct GpuCartographyContext;
+    impl GpuCartographyContext {
+        pub fn new() -> Option<Self> { None }
+        pub fn render(&self, _: &crate::world::WorldData, _: &super::CartographyParams) -> Option<image::ImageBuffer<image::Rgb<u8>, Vec<u8>>> { None }
+    }
+}
 pub mod params;
 
 use std::error::Error;
