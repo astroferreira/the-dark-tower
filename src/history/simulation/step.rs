@@ -67,6 +67,10 @@ pub fn simulate_step(
 
     // 6. Creature activity
     step_creatures(history, rng);
+    if date.season == crate::seasons::Season::Spring {
+        step_broods(history, rng);
+        step_revivals(history, game_data, rng);
+    }
 
     // 7. Figure lifecycle (births, deaths, succession)
     step_figures(history, game_data, rng);
@@ -100,8 +104,94 @@ pub fn simulate_step(
         crate::history::ecology::step_year(history, world);
     }
 
-    // 15. Advance date
+    // 15. Keep the state consistent: no war or siege outlives a people, every living people has a
+    //     living ruler, and diplomatic stances match the wars actually being fought.
+    step_integrity(history, game_data, rng);
+
+    // 16. Advance date
     history.current_date = date.next();
+}
+
+/// End-of-step consistency pass. Every system kills figures, dissolves peoples and ends wars in
+/// its own way; this is the one place that reconciles what follows from those:
+/// - a war or siege with a dissolved people on either side ends;
+/// - an active people whose ruler is dead (assassinated, executed, slain on a quest...) gets a
+///   successor (only natural deaths used to trigger one);
+/// - each pair's `War` stance matches the active wars between them, so a pair can't open a
+///   second war while one runs, and allies called into an ended war are released.
+fn step_integrity(history: &mut WorldHistory, game_data: &GameData, rng: &mut impl Rng) {
+    let date = history.current_date;
+    let active = |h: &WorldHistory, f: FactionId| h.factions.get(&f).map_or(false, |x| x.is_active());
+
+    // Wars with a vanished side.
+    let doomed: Vec<WarId> = history.wars.values()
+        .filter(|w| w.is_active())
+        .filter(|w| !w.aggressors.iter().any(|&f| active(history, f)) || !w.defenders.iter().any(|&f| active(history, f)))
+        .map(|w| w.id)
+        .collect();
+    for wid in doomed {
+        if let Some(w) = history.wars.get_mut(&wid) {
+            let agg_alive = w.aggressors.iter().copied().find(|&f| history.factions.get(&f).map_or(false, |x| x.is_active()));
+            let def_alive = w.defenders.iter().copied().find(|&f| history.factions.get(&f).map_or(false, |x| x.is_active()));
+            w.end(date, agg_alive.or(def_alive));
+        }
+    }
+    // Drop dissolved peoples from wars still running between other parties.
+    let gone: Vec<FactionId> = history.factions.values().filter(|f| !f.is_active()).map(|f| f.id).collect();
+    for w in history.wars.values_mut().filter(|w| w.is_active()) {
+        w.aggressors.retain(|f| !gone.contains(f));
+        w.defenders.retain(|f| !gone.contains(f));
+    }
+
+    // Sieges with a vanished side (sieges otherwise outlive their war on purpose).
+    let stale: Vec<crate::history::SiegeId> = history.sieges.values()
+        .filter(|s| s.is_active())
+        .filter(|s| !active(history, s.attacker) || !active(history, s.defender))
+        .map(|s| s.id)
+        .collect();
+    for sid in stale {
+        if let Some(s) = history.sieges.get_mut(&sid) { s.end(date, false); }
+    }
+
+    // Rulerless peoples.
+    let rulerless: Vec<(FactionId, FigureId)> = history.factions.values()
+        .filter(|f| f.is_active())
+        .filter_map(|f| {
+            let lid = f.current_leader?;
+            let alive = history.figures.get(&lid).map_or(false, |fig| fig.is_alive());
+            (!alive).then_some((f.id, lid))
+        })
+        .collect();
+    for (fid, dead) in rulerless {
+        succeed(history, dead, fid, game_data, rng);
+    }
+
+    // Stances follow the wars.
+    let mut warring: crate::history::det::HashMap<(FactionId, FactionId), WarId> = Default::default();
+    for w in history.wars.values().filter(|w| w.is_active()) {
+        for &a in &w.aggressors {
+            for &d in &w.defenders {
+                warring.insert((a, d), w.id);
+                warring.insert((d, a), w.id);
+            }
+        }
+    }
+    let new_year = date.season == crate::seasons::Season::Spring;
+    for f in history.factions.values_mut() {
+        let me = f.id;
+        for (&other, rel) in f.relations.iter_mut() {
+            match warring.get(&(me, other)) {
+                Some(&wid) if !rel.stance.is_at_war() => rel.declare_war(wid),
+                None if rel.stance.is_at_war() => rel.make_peace(),
+                // Grudges fade at peace, a point a year, unless new quarrels feed them.
+                None if new_year => {
+                    let baseline = ((rel.cultural_similarity - 0.5) * 50.0) as i32;
+                    rel.adjust_opinion((baseline - rel.opinion).signum());
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 fn step_population_growth(history: &mut WorldHistory) {
@@ -262,8 +352,63 @@ fn step_opinion_friction(history: &mut WorldHistory, rng: &mut impl Rng) {
     }
 }
 
+/// Years after a war ends during which the same two peoples won't fight again.
+const TRUCE_YEARS: u32 = 12;
+/// Wars fought in this many recent years make a people weary of war.
+const WEARINESS_YEARS: u32 = 20;
+
+/// What peoples remember of their recent wars, read off `history.wars` once per step (nothing new
+/// is stored, so saves don't change): a truce between a pair after their war ends, and weariness
+/// that halves a people's appetite for war with each war it fought in the last 20 years. Without
+/// it, a people at peace declared war again at once, and wars ran back to back until most peoples
+/// were gone.
+struct WarMemory {
+    year: u32,
+    last_ended: crate::history::det::HashMap<(FactionId, FactionId), u32>,
+    recent: crate::history::det::HashMap<FactionId, u32>,
+}
+
+impl WarMemory {
+    fn of(history: &WorldHistory) -> Self {
+        let year = history.current_date.year;
+        let mut last_ended: crate::history::det::HashMap<(FactionId, FactionId), u32> = Default::default();
+        let mut recent: crate::history::det::HashMap<FactionId, u32> = Default::default();
+        for w in history.wars.values() {
+            let ended = w.ended.map(|d| d.year).unwrap_or(year);
+            for &a in &w.aggressors {
+                for &d in &w.defenders {
+                    let key = if a < d { (a, d) } else { (d, a) };
+                    let e = last_ended.entry(key).or_insert(0);
+                    *e = (*e).max(ended);
+                }
+            }
+            if ended + WEARINESS_YEARS >= year {
+                for &f in w.aggressors.iter().chain(&w.defenders) { *recent.entry(f).or_default() += 1; }
+            }
+        }
+        WarMemory { year, last_ended, recent }
+    }
+
+    /// Whether the two are still bound by the truce that followed their last war.
+    fn truce(&self, a: FactionId, b: FactionId) -> bool {
+        let key = if a < b { (a, b) } else { (b, a) };
+        self.last_ended.get(&key).map_or(false, |&y| y + TRUCE_YEARS > self.year)
+    }
+
+    /// Appetite for war of a people: 1.0 rested, halved per recent war.
+    fn appetite(&self, f: FactionId) -> f32 {
+        0.5f32.powi(self.recent.get(&f).copied().unwrap_or(0).min(8) as i32)
+    }
+
+    /// Multiplier on the chance that `a` declares war on `b`.
+    fn pace(&self, a: FactionId, b: FactionId) -> f32 {
+        if self.truce(a, b) { 0.0 } else { self.appetite(a) }
+    }
+}
+
 fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
     let date = history.current_date;
+    let memory = WarMemory::of(history);
     let faction_ids: Vec<FactionId> = history.factions.keys()
         .copied()
         .filter(|id| history.factions.get(id).map_or(false, |f| f.is_active()))
@@ -332,7 +477,7 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
         let opinion_mult = 1.0 + ((-opinion as f32 - 30.0).max(0.0) / 50.0);
 
         let effective_war_chance = war_chance * personality_mult * religion_war_mult
-            * same_religion_mult * opinion_mult;
+            * same_religion_mult * opinion_mult * memory.pace(fid_a, fid_b);
 
         if rng.gen::<f32>() >= effective_war_chance {
             continue;
@@ -421,7 +566,8 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
 
             // Hostile-relation path uses higher base chance (these factions already hate each other)
             let hostile_war_chance = 0.018 * history.config.war_frequency;
-            let effective = hostile_war_chance * personality_mult * religion_war_mult * opinion_mult;
+            let effective = hostile_war_chance * personality_mult * religion_war_mult * opinion_mult
+                * memory.pace(fid_a, fid_b);
             if rng.gen::<f32>() >= effective { continue; }
 
             let war_id = history.id_generators.next_war();
@@ -489,7 +635,7 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
         let warmonger_chance = (war_incl - 0.5) * 0.004 * history.config.war_frequency;
         // Religion modifier
         let rel_mult = faction_religion_war_modifier(history, fid_a);
-        if rng.gen::<f32>() >= warmonger_chance * rel_mult { continue; }
+        if rng.gen::<f32>() >= warmonger_chance * rel_mult * memory.appetite(fid_a) { continue; }
 
         // Pick a random neighbor to attack (even without deep hatred)
         let neighbor_idx = rng.gen_range(0..faction_ids.len());
@@ -497,6 +643,7 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
         if fid_a == fid_b { continue; }
         if !factions_are_neighbors(history, fid_a, fid_b, 45) { continue; }
         if history.factions.get(&fid_a).map_or(false, |f| f.is_at_war_with(fid_b)) { continue; }
+        if memory.truce(fid_a, fid_b) { continue; }
         let b_active_wars = history.factions.get(&fid_b)
             .map_or(0, |f| f.active_war_count());
         if b_active_wars >= max_wars_per_faction { continue; }
@@ -562,7 +709,7 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
 
         // 0.002 per step — doctrine-driven, not personality-driven
         let crusade_chance = 0.002 * history.config.war_frequency;
-        if rng.gen::<f32>() >= crusade_chance { continue; }
+        if rng.gen::<f32>() >= crusade_chance * memory.appetite(fid_a) { continue; }
 
         // Find a different-religion neighbor to crusade against
         let neighbor_idx = rng.gen_range(0..faction_ids.len());
@@ -571,6 +718,7 @@ fn step_diplomacy(history: &mut WorldHistory, rng: &mut impl Rng) {
         if factions_share_religion(history, fid_a, fid_b) { continue; }
         if !factions_are_neighbors(history, fid_a, fid_b, 50) { continue; }
         if history.factions.get(&fid_a).map_or(false, |f| f.is_at_war_with(fid_b)) { continue; }
+        if memory.truce(fid_a, fid_b) { continue; }
         let b_active_wars = history.factions.get(&fid_b)
             .map_or(0, |f| f.active_war_count());
         if b_active_wars >= max_wars_per_faction { continue; }
@@ -714,8 +862,9 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
                 Some(w) => w,
                 None => continue,
             };
+            // Exhaustion builds each year: most wars end in 3-10 years, some drag on past 15.
             let duration = date.year.saturating_sub(war.started.year);
-            duration > 3 && rng.gen::<f32>() < 0.1 * duration as f32
+            duration >= 1 && rng.gen::<f32>() < 0.012 + 0.006 * duration as f32
         };
 
         if should_end {
@@ -814,6 +963,11 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
                             .with_faction(victor_id)
                             .with_faction(loser)
                             .with_participant(EntityId::Settlement(sid_to_siege));
+                            // The siege is the war's doing.
+                            let event = match history.wars.get(&war_id).and_then(|w| w.declaration_event) {
+                                Some(decl) => event.caused_by(decl),
+                                None => event,
+                            };
                             if let Some(war) = history.wars.get_mut(&war_id) {
                                 war.sieges.push(event_id);
                             }
@@ -829,7 +983,8 @@ fn step_wars(history: &mut WorldHistory, rng: &mut impl Rng) {
             // Dissolve loser if they lost all settlements
             let loser_settlement_count = history.factions.get(&loser)
                 .map(|f| f.settlements.len()).unwrap_or(0);
-            if loser_settlement_count == 0 {
+            let loser_active = history.factions.get(&loser).map_or(false, |f| f.is_active());
+            if loser_settlement_count == 0 && loser_active {
                 if let Some(loser_f) = history.factions.get_mut(&loser) {
                     loser_f.dissolve(date);
                 }
@@ -953,8 +1108,177 @@ fn step_creatures(history: &mut WorldHistory, rng: &mut impl Rng) {
     }
 }
 
+/// A fallen people may rise again this many years after its fall at the earliest...
+const REVIVAL_AFTER: u32 = 15;
+/// ...and no later than this (by then its memory is gone).
+const REVIVAL_WITHIN: u32 = 150;
+/// Yearly chance that a fallen people's old seat rises against a foreign ruler.
+const REVIVAL_CHANCE: f32 = 0.03;
+
+/// Conquered peoples don't simply vanish. While a fallen people's founding seat still stands under
+/// a ruler of another race, the town may rise and declare for it again: the people is restored
+/// there (caused by its fall), a new ruler is crowned and a war of independence opens against the
+/// holder. Without it every war of conquest was final, and over 250 years the map thinned to a
+/// couple of peoples with nobody left to fight or trade with at the present day.
+fn step_revivals(history: &mut WorldHistory, game_data: &GameData, rng: &mut impl Rng) {
+    let date = history.current_date;
+    let mut fallen: Vec<FactionId> = history.factions.values()
+        .filter(|f| f.dissolved.map_or(false, |d| d.year + REVIVAL_AFTER <= date.year && d.year + REVIVAL_WITHIN >= date.year))
+        .map(|f| f.id)
+        .collect();
+    fallen.sort();
+    for fid in fallen {
+        // The founding seat, if it stands under a living foreign people.
+        let Some(seat_loc) = history.chronicle.events.iter()
+            .find(|e| e.event_type == EventType::FactionFounded && e.factions_involved.first() == Some(&fid))
+            .and_then(|e| e.location)
+        else { continue };
+        let Some(seat) = history.settlements.values()
+            .filter(|t| !t.is_destroyed() && t.location == seat_loc)
+            .map(|t| t.id).min()
+        else { continue };
+        let holder = history.settlements.get(&seat).map(|t| t.faction).unwrap_or(fid);
+        let (race, holder_race) = (history.factions.get(&fid).map(|f| f.race_id), history.factions.get(&holder).map(|f| f.race_id));
+        if holder == fid || race == holder_race { continue; }
+        if !history.factions.get(&holder).map_or(false, |f| f.is_active()) { continue; }
+        // A people's last town doesn't rebel away from it.
+        if history.factions.get(&holder).map_or(true, |f| f.settlements.len() < 2) { continue; }
+        if rng.gen::<f32>() >= REVIVAL_CHANCE { continue; }
+
+        let fall = history.chronicle.events.iter().rev()
+            .find(|e| e.event_type == EventType::FactionDestroyed && e.factions_involved.first() == Some(&fid))
+            .map(|e| (e.id, e.date.year));
+        let (name, holder_name) = (
+            history.factions.get(&fid).map(|f| f.name.clone()).unwrap_or_default(),
+            history.factions.get(&holder).map(|f| f.name.clone()).unwrap_or_default(),
+        );
+        let (seat_name, pop) = history.settlements.get(&seat).map(|t| (t.name.clone(), t.population)).unwrap_or_default();
+
+        // The town changes hands; the people lives again.
+        if let Some(h) = history.factions.get_mut(&holder) { h.remove_settlement(seat); }
+        if let Some(f) = history.factions.get_mut(&fid) {
+            f.dissolved = None;
+            f.add_settlement(seat);
+            f.capital = Some(seat);
+            f.total_population = pop;
+        }
+        if let Some(t) = history.settlements.get_mut(&seat) { t.faction = fid; }
+        history.tile_history.set_owner(seat_loc.0, seat_loc.1, fid, date);
+
+        let event_id = history.id_generators.next_event();
+        let mut event = Event::new(
+            event_id,
+            EventType::FactionFounded,
+            date,
+            format!("{} rises again", name),
+            format!("{} threw off the rule of {} and declared for {} again{}.", seat_name, holder_name, name,
+                fall.map(|(_, y)| format!(", {} years after its fall", date.year.saturating_sub(y))).unwrap_or_default()),
+        )
+        .at_location(seat_loc.0, seat_loc.1)
+        .with_faction(fid)
+        .with_faction(holder)
+        .with_participant(EntityId::Settlement(seat));
+        if let Some((cause, _)) = fall { event = event.caused_by(cause); }
+        history.tile_history.record_event(seat_loc.0, seat_loc.1, event_id);
+        history.chronicle.record(event);
+
+        // A ruler for the restored people: the old one if they outlived the fall (elves do).
+        if let Some(old) = history.factions.get(&fid).and_then(|f| f.current_leader) {
+            if !history.figures.get(&old).map_or(false, |l| l.is_alive()) {
+                succeed(history, old, fid, game_data, rng);
+            }
+        }
+
+        // The holder fights to take it back.
+        let war_id = history.id_generators.next_war();
+        let war_event = history.id_generators.next_event();
+        let war_name = format!("War of {}'s Independence", seat_name);
+        let mut war = War::new(war_id, war_name.clone(), holder, fid, date, WarCause::Independence);
+        war.declaration_event = Some(war_event);
+        history.wars.insert(war_id, war);
+        for (a, b) in [(holder, fid), (fid, holder)] {
+            if let Some(f) = history.factions.get_mut(&a) {
+                f.wars.push(war_id);
+                f.get_relation_mut(b, 0.0).declare_war(war_id);
+            }
+        }
+        let event = Event::new(
+            war_event,
+            EventType::WarDeclared,
+            date,
+            war_name,
+            format!("{} marched to take back {}.", holder_name, seat_name),
+        )
+        .with_faction(holder)
+        .with_faction(fid)
+        .caused_by(event_id);
+        history.chronicle.record(event);
+    }
+}
+
+/// Below this share of the beasts the world began with, slain beasts' broods start to rise.
+const BROOD_FLOOR: f32 = 0.2;
+/// Yearly chance that a brood rises while the world is below the floor.
+const BROOD_CHANCE: f32 = 0.6;
+/// Years a new brood grows before heroes go after it.
+const BROOD_HIDING_YEARS: u32 = 20;
+
+/// Heroes slay legendary beasts and nothing used to replace them, so by the present day the
+/// world's beasts were gone (the dev world ended with none). When fewer than a fifth remain, the
+/// brood of a slain beast may rise in its old lair: a new beast of the same kind, chronicled as
+/// caused by the slaying, so it has a past ("the brood of Golrok the Profane, slain in 394").
+fn step_broods(history: &mut WorldHistory, rng: &mut impl Rng) {
+    let date = history.current_date;
+    let living = history.legendary_creatures.values().filter(|c| c.is_alive()).count();
+    let floor = ((history.config.initial_legendary_creatures as f32 * BROOD_FLOOR).ceil() as usize).max(3);
+    if living >= floor || rng.gen::<f32>() >= BROOD_CHANCE { return; }
+
+    // The most recent slaying whose beast has no brood yet.
+    let has_brood: Vec<EventId> = history.chronicle.events.iter()
+        .filter(|e| e.event_type == EventType::CreatureAppeared)
+        .flat_map(|e| e.causes.iter().copied())
+        .collect();
+    let Some((slain_event, parent)) = history.chronicle.events.iter().rev()
+        .filter(|e| e.event_type == EventType::CreatureSlain && !has_brood.contains(&e.id))
+        .find_map(|e| e.primary_participants.iter().find_map(|p| match p {
+            EntityId::LegendaryCreature(c) => Some((e.id, *c)),
+            _ => None,
+        }))
+    else { return };
+    let Some((species, lair, parent_name, slain_year)) = history.legendary_creatures.get(&parent)
+        .and_then(|c| c.lair_location.map(|l| (c.species_id, l, c.full_name(), c.death_date.map(|d| d.year).unwrap_or(date.year))))
+    else { return };
+
+    let id = history.id_generators.next_legendary_creature();
+    let (name, epithet) = crate::history::creatures::legendary::generate_legendary_name(rng);
+    let mut beast = crate::history::creatures::legendary::LegendaryCreature::new(id, species, name, epithet, Some(date));
+    beast.generate_unique_abilities(rng);
+    beast.generate_size_multiplier(rng);
+    beast.lair_location = Some(lair);
+    beast.territory.push(lair);
+    let full = beast.full_name();
+    history.legendary_creatures.insert(id, beast);
+
+    let event_id = history.id_generators.next_event();
+    let event = Event::new(
+        event_id,
+        EventType::CreatureAppeared,
+        date,
+        format!("{} rises", full),
+        format!("In the old lair of {}, slain in {}, its brood has grown: {} hunts again.", parent_name, slain_year, full),
+    )
+    .at_location(lair.0, lair.1)
+    .with_participant(EntityId::LegendaryCreature(id))
+    .with_participant(EntityId::LegendaryCreature(parent))
+    .caused_by(slain_event);
+    history.tile_history.record_event(lair.0, lair.1, event_id);
+    history.chronicle.record(event);
+}
+
 /// Install a successor after a faction's leader has died (succession law, dynasties, crises).
 pub(crate) fn succeed(history: &mut WorldHistory, dead_leader_id: FigureId, faction_id: FactionId, game_data: &GameData, rng: &mut impl Rng) {
+    // A people that has ended crowns no one.
+    if !history.factions.get(&faction_id).map_or(false, |f| f.is_active()) { return; }
     let date = history.current_date;
     let dead_name = history.figures.get(&dead_leader_id)
         .map(|f| f.full_name())
@@ -1709,9 +2033,9 @@ fn step_natural_events(history: &mut WorldHistory, rng: &mut impl Rng) {
             event_id,
             event_type.clone(),
             date,
-            format!("{:?} strikes {}", event_type, settlement_name),
-            format!("A {:?} devastated {}, killing {} people.",
-                event_type, settlement_name, losses),
+            format!("{} strikes {}", disaster_noun(&event_type), settlement_name),
+            format!("{} devastated {}, killing {} people.",
+                capitalize_first(&disaster_phrase(&event_type)), settlement_name, losses),
         )
         .at_location(loc.0, loc.1)
         .with_faction(faction_id)
@@ -2304,6 +2628,10 @@ fn step_alliance_obligations(history: &mut WorldHistory, rng: &mut impl Rng) {
             for ally_fid in allies {
                 // 30% chance per season to honor defensive pact
                 if rng.gen::<f32>() >= 0.30 { continue; }
+                // Already fighting the aggressor in another war: no second war with them.
+                let already = history.factions.get(&ally_fid)
+                    .map_or(false, |f| aggressors.iter().any(|&a| f.is_at_war_with(a)));
+                if already { continue; }
 
                 // Add ally to defenders
                 if let Some(war) = history.wars.get_mut(war_id) {
@@ -2504,8 +2832,10 @@ fn step_quests(history: &mut WorldHistory, rng: &mut impl Rng) {
             .map(|f| f.name.clone()).unwrap_or_default();
 
         // Determine quest type based on world state
+        // A young brood grows in hiding: heroes hear of a beast only once it is grown.
         let living_creatures: Vec<LegendaryCreatureId> = history.legendary_creatures.values()
             .filter(|c| c.is_alive())
+            .filter(|c| c.birth_date.map_or(true, |b| b.year + BROOD_HIDING_YEARS <= date.year))
             .map(|c| c.id)
             .collect();
         let lost_artifacts: Vec<ArtifactId> = history.artifacts.values()
@@ -2956,7 +3286,9 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
         let war_open = history.wars.get(&war_id).map_or(false, |w| w.is_active());
         let victor_is_attacker = history.wars.get(&war_id).map_or(false, |w| w.victor == Some(attacker));
         let war_active = war_open || victor_is_attacker;
-        if !war_active {
+        let sides_alive = [attacker, defender].iter()
+            .all(|f| history.factions.get(f).map_or(false, |x| x.is_active()));
+        if !war_active || !sides_alive {
             if let Some(siege) = history.sieges.get_mut(&siege_id) {
                 siege.end(date, false);
             }
@@ -3005,6 +3337,10 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
         let def_name = history.factions.get(&defender)
             .map(|f| f.name.clone()).unwrap_or_default();
 
+        // Its ending (taken, razed or lifted) is caused by the siege's beginning.
+        let siege_began = history.sieges.get(&siege_id).and_then(|s| s.begin_event);
+        let because = |e: Event| match siege_began { Some(b) => e.caused_by(b), None => e };
+
         // Some conquerors raze what they take; capitals are kept as prizes.
         let is_capital = history.settlements.get(&target)
             .map_or(false, |s| s.settlement_type == SettlementType::Capital);
@@ -3021,12 +3357,13 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
                 EventType::SettlementDestroyed,
                 date,
                 format!("{} razed by {}", target_name, att_name),
-                format!("{} stormed {} after a siege of {} seasons and burned it to the ground.",
-                    att_name, target_name, duration),
+                format!("{} stormed {} after a siege of {} and burned it to the ground.",
+                    att_name, target_name, seasons_text(duration)),
             )
             .with_faction(attacker)
             .with_faction(defender)
             .with_participant(EntityId::Settlement(target));
+            event = because(event);
             if let Some((x, y)) = loc {
                 event = event.at_location(x, y);
                 history.tile_history.record_event(x, y, event_id);
@@ -3082,7 +3419,8 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
             // Dissolve defender if they lost all settlements
             let def_settlements = history.factions.get(&defender)
                 .map(|f| f.settlements.len()).unwrap_or(0);
-            if def_settlements == 0 {
+            let def_active = history.factions.get(&defender).map_or(false, |f| f.is_active());
+            if def_settlements == 0 && def_active {
                 if let Some(def_f) = history.factions.get_mut(&defender) {
                     def_f.dissolve(date);
                 }
@@ -3104,13 +3442,13 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
                 EventType::SiegeEnded,
                 date,
                 format!("{} falls to {}", target_name, att_name),
-                format!("{} captured {} after a siege of {} seasons.",
-                    att_name, target_name, duration),
+                format!("{} captured {} after a siege of {}.",
+                    att_name, target_name, seasons_text(duration)),
             )
             .with_faction(attacker)
             .with_faction(defender)
             .with_participant(EntityId::Settlement(target));
-            history.chronicle.record(event);
+            history.chronicle.record(because(event));
         } else if razed {
             dissolve_if_landless(history, defender, &def_name, date);
         } else {
@@ -3121,13 +3459,13 @@ fn step_sieges(history: &mut WorldHistory, rng: &mut impl Rng) {
                 EventType::SiegeEnded,
                 date,
                 format!("Siege of {} lifted", target_name),
-                format!("{} withdrew from the siege of {} after {} seasons.",
-                    att_name, target_name, duration),
+                format!("{} withdrew from the siege of {} after {}.",
+                    att_name, target_name, seasons_text(duration)),
             )
             .with_faction(attacker)
             .with_faction(defender)
             .with_participant(EntityId::Settlement(target));
-            history.chronicle.record(event);
+            history.chronicle.record(because(event));
         }
     }
 }
@@ -3965,6 +4303,43 @@ const ABANDON_BELOW: u32 = 12;
 const ABANDON_CHANCE: f32 = 0.05;
 /// Minimum distance (tiles) between living settlements.
 const SETTLEMENT_SPACING: i64 = 4;
+
+/// A disaster's name for titles ("Earthquake strikes Bonegore").
+fn disaster_noun(t: &EventType) -> &'static str {
+    match t {
+        EventType::VolcanoErupted => "Eruption",
+        EventType::Earthquake => "Earthquake",
+        EventType::Flood => "Flood",
+        EventType::Drought => "Drought",
+        EventType::Plague => "Plague",
+        EventType::MagicalCatastrophe => "Catastrophe",
+        _ => "Disaster",
+    }
+}
+
+/// A disaster as the subject of a sentence ("an earthquake devastated Bonegore").
+fn disaster_phrase(t: &EventType) -> String {
+    match t {
+        EventType::VolcanoErupted => "the eruption of a volcano".into(),
+        EventType::MagicalCatastrophe => "a magical catastrophe".into(),
+        EventType::Earthquake => "an earthquake".into(),
+        other => format!("a {}", disaster_noun(other).to_lowercase()),
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
+/// "1 season", "4 seasons"; a siege that fell at once took "less than a season".
+fn seasons_text(n: u32) -> String {
+    match n {
+        0 => "less than a season".to_string(),
+        1 => "1 season".to_string(),
+        n => format!("{} seasons", n),
+    }
+}
 
 /// Mark a settlement destroyed and clear it from the map. Returns its location.
 pub(crate) fn destroy_settlement(history: &mut WorldHistory, id: SettlementId, date: Date) -> Option<(usize, usize)> {

@@ -28,7 +28,7 @@ pub const BLIGHT: f32 = 0.6;
 const TARGET_REACH: f32 = 0.2;
 /// Unowned land under this much corruption is claimed as dominion.
 const CLAIM_REACH: f32 = 0.55;
-const MAX_STRENGTH: f32 = 3.0;
+const MAX_STRENGTH: f32 = 2.0;
 /// Seasons the Shadow leaves a town alone after it held (it turns elsewhere).
 const HELD_RESPITE: u32 = 40;
 /// Seasons after its breaking before the Shadow returns in a new seat.
@@ -91,6 +91,26 @@ pub struct Shadow {
 impl Shadow {
     pub fn at(&self, x: usize, y: usize) -> f32 {
         self.corruption[y * self.width + x]
+    }
+
+    /// Share of the land in the Shadow's reach (corruption at or above `REACH`).
+    pub fn land_share(&self) -> f32 {
+        let land = self.conduct.iter().filter(|&&c| c > 0.0).count().max(1);
+        let dark = self.corruption.iter().zip(&self.conduct).filter(|(&k, &c)| c > 0.0 && k >= REACH).count();
+        dark as f32 / land as f32
+    }
+
+    /// Share of the land the Shadow's people own (its dominion and towns).
+    pub fn held_share(&self, history: &WorldHistory) -> f32 {
+        let (mut land, mut held) = (0usize, 0usize);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if self.conduct[y * self.width + x] <= 0.0 { continue; }
+                land += 1;
+                if history.tile_history.get(x, y).current_owner == Some(self.faction) { held += 1; }
+            }
+        }
+        held as f32 / land.max(1) as f32
     }
 
     pub fn is_broken(&self) -> bool {
@@ -289,9 +309,12 @@ pub fn step(history: &mut WorldHistory) {
     if alive {
         shadow.strength = (shadow.strength + 0.0015).min(MAX_STRENGTH);
         claim(&shadow, history);
+        if history.current_date.season == crate::seasons::Season::Spring {
+            liberate(&mut shadow, history);
+        }
         if shadow.seasons >= shadow.next_strike {
             strike(&mut shadow, history);
-            let interval = (24.0 / shadow.strength).clamp(6.0, 24.0) as u32;
+            let interval = (24.0 / shadow.strength).clamp(12.0, 24.0) as u32;
             shadow.next_strike = shadow.seasons + interval;
         }
     }
@@ -312,7 +335,9 @@ fn spread(shadow: &mut Shadow, history: &WorldHistory, alive: bool) {
                 let t = history.tile_history.get(x, y);
                 let i = y * w + x;
                 match t.current_owner {
-                    Some(o) if o == fid => source[i] = 0.5,
+                    // Dominion feeds the darkness weakly: its reach follows the towns it holds
+                    // (at 0.5 the land fed itself and crept over half the map).
+                    Some(o) if o == fid => source[i] = 0.35,
                     Some(_) => resist[i] = 0.92,
                     None => {}
                 }
@@ -368,6 +393,102 @@ fn claim(shadow: &Shadow, history: &mut WorldHistory) {
     }
 }
 
+/// Yearly chance that a town the Shadow took rises and is freed.
+const LIBERATION_CHANCE: f32 = 0.05;
+/// A free people within this many tiles (at 512 wide; scaled with the map) can free a town
+/// whose old people is gone.
+const LIBERATOR_RANGE: f32 = 40.0;
+
+/// Towns don't stay taken forever: each year a town the Shadow conquered may rise and be freed,
+/// by its old people if they still stand, else by the nearest free people. Without it the
+/// Shadow's holdings only grew, and by the present day it darkened half the land or more.
+fn liberate(shadow: &mut Shadow, history: &mut WorldHistory) {
+    let date = history.current_date;
+    let fid = shadow.faction;
+    let mut held: Vec<SettlementId> = shadow.fallen.iter().copied()
+        .filter(|t| *t != shadow.seat_settlement)
+        .filter(|t| history.settlements.get(t).map_or(false, |s| !s.is_destroyed() && s.faction == fid))
+        .collect();
+    held.sort();
+    held.dedup();
+    let range = LIBERATOR_RANGE * shadow.width as f32 / 512.0;
+    for town in held {
+        if roll(shadow.seed, shadow.seasons, town.0 as u64 ^ 0x11B) >= LIBERATION_CHANCE { continue; }
+        let Some((name, loc)) = history.settlements.get(&town).map(|s| (s.name.clone(), s.location)) else { continue };
+        // Its old people, from the conquest that took it.
+        let conquest = history.chronicle.events.iter().rev()
+            .find(|e| e.event_type == EventType::ShadowConquest && e.primary_participants.contains(&EntityId::Settlement(town)));
+        let old_people = conquest.and_then(|e| e.factions_involved.iter().copied().find(|&f| f != fid))
+            .filter(|f| history.factions.get(f).map_or(false, |x| x.is_active()));
+        let cause = conquest.map(|e| e.id);
+        let liberator = old_people.or_else(|| {
+            history.settlements.values()
+                .filter(|s| !s.is_destroyed() && s.faction != fid)
+                .filter(|s| history.factions.get(&s.faction).map_or(false, |f| f.is_active()))
+                .map(|s| {
+                    let dx = wrap_dx(s.location.0, loc.0, shadow.width) as f32;
+                    let dy = s.location.1 as f32 - loc.1 as f32;
+                    ((dx * dx + dy * dy).sqrt(), s.faction)
+                })
+                .filter(|(d, _)| *d <= range)
+                .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)))
+                .map(|(_, f)| f)
+        });
+        let Some(liberator) = liberator else { continue };
+
+        if let Some(f) = history.factions.get_mut(&fid) { f.remove_settlement(town); }
+        if let Some(f) = history.factions.get_mut(&liberator) { f.add_settlement(town); }
+        if let Some(s) = history.settlements.get_mut(&town) { s.faction = liberator; }
+        history.tile_history.set_owner(loc.0, loc.1, liberator, date);
+        shadow.fallen.retain(|t| *t != town);
+        shadow.strength = (shadow.strength - 0.05).max(0.6);
+
+        let lib_name = history.factions.get(&liberator).map(|f| f.name.clone()).unwrap_or_default();
+        let returned = Some(liberator) == old_people;
+        let event_id = history.id_generators.next_event();
+        let mut event = Event::new(
+            event_id,
+            EventType::ShadowLiberated,
+            date,
+            format!("{} freed from {}", name, shadow.name),
+            if returned {
+                format!("The people of {} rose against {} and threw open the gates to {}; the town is theirs again.", name, shadow.name, lib_name)
+            } else {
+                format!("{} drove the hosts of {} out of {}, and the town is free under its banner.", lib_name, shadow.name, name)
+            },
+        )
+        .at_location(loc.0, loc.1)
+        .with_faction(liberator)
+        .with_faction(fid)
+        .with_participant(EntityId::Settlement(town));
+        if let Some(c) = cause { event = event.caused_by(c); }
+        history.tile_history.record_event(loc.0, loc.1, event_id);
+        history.chronicle.record(event);
+    }
+}
+
+/// Strikes the free peoples remember when they decide how hard to resist.
+const MEMORY_STRIKES: usize = 12;
+
+/// How hard the free peoples resist, from the Shadow's recent strikes: a run of falls makes them
+/// rally (+0.25 per fall), a run of victories makes them complacent (-0.5 per town held). It
+/// balances at about two falls per town held whatever the map size: on a 512x256 world with
+/// hundreds of villages in reach the Shadow used to win every strike (112 falls, none held) and on
+/// the dev world it lost nine in ten, because a global count of falls was the only check on it.
+fn rally(history: &WorldHistory) -> f32 {
+    let (mut falls, mut holds) = (0, 0);
+    for e in history.chronicle.events.iter().rev() {
+        match e.event_type {
+            EventType::ShadowConquest => falls += 1,
+            EventType::ShadowRepelled => holds += 1,
+            EventType::ShadowRose => break,
+            _ => continue,
+        }
+        if falls + holds >= MEMORY_STRIKES { break; }
+    }
+    (0.25 * falls as f32 - 0.5 * holds as f32).clamp(-0.8, 1.5)
+}
+
 /// Strike the town deepest in the shadow: it falls (captured, or burned) or holds.
 fn strike(shadow: &mut Shadow, history: &mut WorldHistory) {
     let date = history.current_date;
@@ -390,15 +511,14 @@ fn strike(shadow: &mut Shadow, history: &mut WorldHistory) {
     };
     let def_name = history.factions.get(&defender).map(|f| f.name.clone()).unwrap_or_default();
     let attack = shadow.strength * (0.7 + 0.6 * roll(shadow.seed, shadow.seasons, target.0));
-    // The free peoples rally as town after town falls.
-    let rally = (0.07 * shadow.fallen.len() as f32).min(1.0);
+    let rally = rally(history);
     let defense = 0.7 + (pop as f32 / 2500.0).min(2.0) + if capital { 0.6 } else { 0.0 } + rally;
     let event_id = history.id_generators.next_event();
     let event = if attack > defense {
         let burn = !capital && roll(shadow.seed, shadow.seasons, target.0 ^ 0xB0) < 0.5;
         if let Some(f) = history.factions.get_mut(&defender) { f.remove_settlement(target); }
         shadow.fallen.push(target);
-        shadow.strength = (shadow.strength + 0.08).min(MAX_STRENGTH);
+        shadow.strength = (shadow.strength + 0.04).min(MAX_STRENGTH);
         if burn {
             crate::history::simulation::step::destroy_settlement(history, target, date);
             Event::new(
@@ -436,7 +556,7 @@ fn strike(shadow: &mut Shadow, history: &mut WorldHistory) {
         shadow.repelled += 1;
         shadow.held.retain(|&(id, _)| id != target);
         shadow.held.push((target, shadow.seasons));
-        shadow.strength = (shadow.strength - 0.25).max(0.6);
+        shadow.strength = (shadow.strength - 0.1).max(0.6);
         Event::new(
             event_id,
             EventType::ShadowRepelled,

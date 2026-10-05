@@ -14,6 +14,7 @@ mod biomes;
 mod cartography;
 mod climate;
 mod coastline;
+mod colony;
 mod erosion;
 mod explorer;
 mod exr_export;
@@ -62,6 +63,33 @@ struct Args {
     /// river system, a lake, mountain ranges, forests, deserts, islands and two continents
     #[arg(long)]
     dev: bool,
+
+    /// The dev world, embarked: opens the tile viewer straight into a playable area at a fixed
+    /// site (a river, woods, high ground and a town within reach). With --headless, writes the
+    /// embark snapshots to dev_embark_*.png instead. Regions are cached on disk, so the second
+    /// run takes about a second
+    #[arg(long)]
+    dev_embark: bool,
+
+    /// Run the first colony headlessly on the dev embark (implies --dev-embark --headless):
+    /// seven settlers live 30 days unattended; writes <PREFIX>_day{1,10,30}.png, close-ups of
+    /// the camp and <PREFIX>_log.txt
+    #[arg(long)]
+    sim_snapshot: Option<String>,
+
+    /// Time the colony with N settlers on the dev embark: game days per second, and the speed
+    /// it could run at (1x = one game hour per real second)
+    #[arg(long)]
+    sim_bench: Option<usize>,
+
+    /// Headless check of the inspector: open the panel for world tile "X,Y" and save it to
+    /// inspect_0.png (with --inspect-follow, follow those clickable lines and save each page)
+    #[arg(long)]
+    inspect: Option<String>,
+
+    /// Clickable line numbers to follow from the --inspect page, e.g. "0,0" (0 = first link)
+    #[arg(long, default_value = "")]
+    inspect_follow: String,
 
     /// Master seed (derives all other seeds if not overridden)
     #[arg(short, long)]
@@ -117,6 +145,10 @@ struct Args {
     #[arg(long)]
     resource_stats: bool,
 
+    /// Print the present day the game starts in: wars, sieges, grudges, beasts, the Shadow's
+    /// frontier, disputes, heirless rulers and recently fallen towns
+    #[arg(long)]
+    present: bool,
     /// Print the named geography (rivers, ranges, seas, regions...) after history
     #[arg(long)]
     gazetteer: bool,
@@ -446,6 +478,8 @@ fn parse_args() -> Args {
     use clap::parser::ValueSource;
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    if args.sim_snapshot.is_some() || args.sim_bench.is_some() { args.dev_embark = true; args.headless = true; }
+    if args.dev_embark { args.dev = true; }
     if args.dev {
         let defaulted = |id: &str| matches.value_source(id) != Some(ValueSource::CommandLine);
         let (w, h, seed, civs) = DEV_WORLD;
@@ -457,6 +491,46 @@ fn parse_args() -> Args {
         if args.history_years == 0 { args.history_years = DEFAULT_VIEWER_HISTORY_YEARS; }
     }
     args
+}
+
+/// The world tile the dev embark starts on: the best-scoring land tile for a first colony, by a
+/// fixed rule (so the same world always gives the same site). Temperate (4-24 C), a river on or next to the tile
+/// (water, fish), woods (timber), high ground nearby (stone), and a living town one to three tiles
+/// away (neighbours to trade with or fear) but not on the tile itself. Ties go to the lowest index.
+fn pick_dev_embark(world: &world::WorldData, history: Option<&history::world_state::WorldHistory>) -> (usize, usize) {
+    let (w, h) = (world.width, world.height);
+    let towns: Vec<(usize, usize)> = history.map(|h| h.settlements.values()
+        .filter(|s| !s.is_destroyed()).map(|s| s.location).collect()).unwrap_or_default();
+    let mut best = ((w / 2, h / 2), f32::MIN);
+    for y in 1..h - 1 {
+        for x in 0..w {
+            if *world.heightmap.get(x, y) <= 0.0 || world.water_body_map.get(x, y).is_lake() { continue; }
+            // A temperate first home: no ice, tundra or scorched desert.
+            let t = *world.temperature.get(x, y);
+            if !(4.0..=24.0).contains(&t) { continue; }
+            let (mut river, mut woods, mut lo, mut hi) = (false, 0, f32::MAX, f32::MIN);
+            for dy in -1i64..=1 {
+                for dx in -1i64..=1 {
+                    let (nx, ny) = ((x as i64 + dx).rem_euclid(w as i64) as usize, (y as i64 + dy) as usize);
+                    if world.water_body_map.get(nx, ny).is_river() { river = true; }
+                    if format!("{:?}", world.biomes.get(nx, ny)).contains("Forest") { woods += 1; }
+                    let e = *world.heightmap.get(nx, ny);
+                    lo = lo.min(e);
+                    hi = hi.max(e);
+                }
+            }
+            let near = towns.iter().map(|&(tx, ty)| {
+                let dx = x.abs_diff(tx).min(w - x.abs_diff(tx));
+                dx.max(y.abs_diff(ty))
+            }).min().unwrap_or(usize::MAX);
+            let score = if river { 3.0 } else { 0.0 }
+                + (woods as f32 / 3.0).min(2.0)
+                + if hi - lo > 300.0 { 1.0 } else { 0.0 }
+                + match near { 1..=3 => 2.0, 0 => -5.0, _ => 0.0 };
+            if score > best.1 { best = ((x, y), score); }
+        }
+    }
+    best.0
 }
 
 /// The tile atlas: an edited tileset PNG when given (falling back on errors), else the built-in one.
@@ -1301,6 +1375,14 @@ fn main() {
         };
         let summary = hist.summary();
         eprintln!("{}", summary);
+        eprintln!("{}", hist.present().counts());
+        let contradictions = history::simulation::invariants::violations(&hist);
+        if contradictions.is_empty() {
+            eprintln!("Chronicle: consistent");
+        } else {
+            eprintln!("Chronicle: {} contradictions, e.g.", contradictions.len());
+            for c in contradictions.iter().take(8) { eprintln!("  {c}"); }
+        }
         Some(hist)
     } else {
         None
@@ -1409,6 +1491,28 @@ fn main() {
         println!("  soils: {}", line.join(", "));
     }
 
+    if let Some(spec) = &args.inspect {
+        let tile = spec.split_once(',').and_then(|(a, b)| Some((a.trim().parse().ok()?, b.trim().parse().ok()?)));
+        match (tile, history.as_ref()) {
+            (Some(t), Some(h)) => {
+                let follow: Vec<usize> = args.inspect_follow.split(',').filter_map(|v| v.trim().parse().ok()).collect();
+                let atlas = load_atlas(args.tileset.as_deref());
+                match tiles::viewer::save_inspect_snapshots(&world_data, h, &atlas, t, &follow, "inspect") {
+                    Ok(files) => println!("Saved inspector pages: {}", files.join(", ")),
+                    Err(e) => eprintln!("Inspector snapshot failed: {e}"),
+                }
+            }
+            _ => eprintln!("--inspect expects \"X,Y\" and a world with history"),
+        }
+    }
+
+    if args.present {
+        match history.as_ref() {
+            Some(h) => println!("{}", h.present().report()),
+            None => eprintln!("--present needs a history"),
+        }
+    }
+
     if args.gazetteer {
         let t0 = std::time::Instant::now();
         let gaz = lore::build_gazetteer(&world_data, history.as_ref(), master_seed);
@@ -1500,8 +1604,8 @@ fn main() {
         }
     }
 
-    // Skip explorer in headless mode
-    if args.headless {
+    // Skip the viewer in headless mode (snapshots still render: they never open a window).
+    if args.headless && args.tiles_snapshot.is_none() && args.local_snapshot.is_none() && !args.dev_embark {
         return;
     }
 
@@ -1517,7 +1621,25 @@ fn main() {
                 }
             }
         });
-        if let Some(prefix) = &args.local_snapshot {
+        let center = if args.dev_embark && center.is_none() {
+            let site = pick_dev_embark(&world_data, history.as_ref());
+            println!("Dev embark at tile {},{}", site.0, site.1);
+            Some(site)
+        } else { center };
+        if let (Some(n), Some(tile)) = (args.sim_bench, center) {
+            tiles::viewer::colony_bench(&world_data, history.as_ref(), tile, n);
+            return;
+        }
+        if let (Some(prefix), Some(tile)) = (&args.sim_snapshot, center) {
+            match tiles::viewer::save_colony_snapshots(&world_data, history.as_ref(), &atlas, tile, prefix) {
+                Ok(files) => println!("Saved colony snapshots: {}", files.join(", ")),
+                Err(e) => eprintln!("Colony snapshot failed: {e}"),
+            }
+            return;
+        }
+        let local_snapshot = args.local_snapshot.clone()
+            .or_else(|| (args.dev_embark && args.headless).then(|| "dev_embark".to_string()));
+        if let Some(prefix) = &local_snapshot {
             match tiles::viewer::save_local_snapshots(&world_data, history.as_ref(), &atlas, center, prefix) {
                 Ok(files) => println!("Saved playable-area snapshots: {}", files.join(", ")),
                 Err(e) => eprintln!("Playable-area snapshot failed: {e}"),
@@ -1545,7 +1667,7 @@ fn main() {
             }
             return;
         }
-        if let Err(e) = tiles::run_tile_viewer(&world_data, history.as_ref(), atlas, center) {
+        if let Err(e) = tiles::run_tile_viewer(&world_data, history.as_ref(), atlas, center, args.dev_embark) {
             eprintln!("Tile viewer error: {}", e);
         }
         return;

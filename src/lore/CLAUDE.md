@@ -1,0 +1,78 @@
+# Lore (`src/lore/`)
+
+Derived world lore: resources, landmarks, focal points, the journal and the bard.
+
+## Resources and history (`lore/resources.rs`, `history/simulation`)
+- `world.resources()` (lazy, never serialized) derives the world's wealth from its geology:
+  copper/gold/silver/gems in high-stress arcs and orogens and around volcanoes, tin and silver in
+  granite uplands, iron in hard rock belts, coal in wet sedimentary lowlands, salt in dry basins;
+  plus farmland (water, warmth, flat ground, floodplains, volcanic soil), timber and fish.
+  `--resource-stats` prints the mix (metals average stress +0.4, coal/salt ~0).
+- History uses it: settlement sites score fertility and nearby ore; `apply_local_economy` sets
+  each settlement's local resources, production, carrying capacity and growth; trade partners
+  and goods are chosen by what each side has and the other lacks; faction income includes
+  extraction; resource envy between neighbours adds friction, produces "dispute over iron"
+  incidents and Resource wars. `--civilizations N` (default 60) sets the founding powers.
+- Settlements are founded (colonization from crowded towns), conquered, razed or abandoned, so
+  ruins exist. Sieges launched when a war ends now carry on after it (they used to be lifted
+  instantly). Disasters take a fraction of a settlement, not a flat number.
+- Visible: the tile viewer's `R` toggles ore markers (size = richness); hover names deposits,
+  farmland and fishing grounds; embarks contain ore veins (`Material::Ore`, recoloured flecks) in
+  host rock near deposits.
+- `ResourceType` gained Coal/Tin/Fish at the *end* of the enum (bincode-compatible with old saves).
+
+## Landmarks (`lore/landmarks.rs`)
+- `find_landmarks(world, gazetteer)` picks the world's extremes: the highest peak ("the roof of
+  the world") and each continent's summit, the longest river (measured along its main stem in
+  km at the real tile size), the largest and the deepest lake, the greatest waterfall on a
+  named river, the deepest gorge (river tile with high ground on both banks), up to 3 crater
+  lakes and 3 groves of giant trees (CraterLake / AncientGrove patches), the largest desert and
+  forest. Each has a name, an epithet and a measurement.
+- Shown: `--gazetteer` prints them; tile-viewer labels of landmark features rank above their
+  kind and show from 2 px/tile (falls, gorges, crater lakes and groves get their own labels);
+  hover adds "the longest river in the world (4,700 km)" on every tile of the feature; the
+  journal's opening names the longest river, largest lake, greatest falls and deepest gorge.
+- Water bodies: the body holding every river tile has the reserved id `WaterBodyId::RIVER`
+  (65535). It used to take the next free id, so `is_lake()` held on river tiles: the viewer
+  drew river confluences as lake squares, the gazetteer named all rivers one huge "lake", and
+  history/resources treated rivers as lakes.
+
+## Director pass: focal points (`lore/focal.rs`)
+- After the world is assembled (in `main`, before history and saving), every named region
+  (forest, jungle, desert, plains, tundra; 60+ tiles at 512x256) without a focal point (a named
+  peak or lake inside it, a volcano, or a focal biome such as a grove, oasis, crater lake, karst,
+  hot springs, ruins) gets one at its most interior tile: an ancient grove (giant trees, drawn
+  with the big broadleaf sprite) in forests and jungles, an oasis (a few palm tiles) in deserts,
+  a crater lake (drawn as lake water) on plains and tundra. Planted points keep 14 tiles (at
+  512 wide, at least 5) from each other and from existing focal points. They are biome patches
+  saved with the world; landmarks list up to 6 crater lakes and groves. Seed 42 gets 4, the dev
+  world 10. Placed features are designed, not caused (unlike scars and salt flats).
+
+## History journal (`lore/journal.rs`)
+- `--journal PATH` (or `J` in the tile viewer, which writes `journal_<seed>.html` and opens it)
+  writes the history as a self-contained HTML book: "The Annals of <largest continent>" with an
+  opening on the geography, one book per age (merged timeline eras) with year-by-year entries,
+  then the peoples, the 30 greatest wars, ~220 lives of note, ~160 beasts of legend and the
+  land (fauna vs. start, scarred places). Routine events (raids, treaties, quarrels, trade,
+  new villages, crafted artifacts, conversions) are folded into yearly or per-age tallies; a
+  people's founding is told once. Names with entries are linked via event participants.
+  Search box and category chips filter the annals. Styled like the ink map (parchment, sepia,
+  red year rubrics; dark theme).
+
+## The bard: LLM-written lore (`lore/bard.rs`)
+- `--bard N` has a local model served by Ollama (`--bard-model`, default `gemma4:26b`;
+  `--bard-url`, default `http://localhost:11434`) write N pieces from the history:
+  founding songs, poems by notable figures (love / grief / a slaying / war / homeland, chosen
+  from their own life), folk legends of beasts, laments for razed towns, artifact
+  inscriptions and lore, soldiers' ballads of bone fields. `commissions()` builds the queue
+  (most significant first, kinds interleaved, skipping what's already written); each prompt
+  carries the writer's voice (by race), temperament and the real geography (biome, climate,
+  named rivers/peaks/forests nearby). `--bard-prompts N` prints prompts without the model.
+- Writings live in `history.library` (`Library`), saved as the world file's last field
+  (`WORLD_FILE_VERSION` 3; v1/v2 still load). With `--save-world` the world is saved after
+  every piece, so long runs can be interrupted and resumed (rerun adds the next N).
+- The journal shows them in place (songs at foundings, laments at razings, poems in lives,
+  legends with beasts, ballads with scars), plus a Treasures part and a Songs and Sayings index.
+- Speed on this machine: ~10 s per piece with `gemma4:26b` (MoE, ~4B active, 44 tok/s) vs
+  66-105 s with the dense `qwen3.8:27b` (3.5 tok/s); Gemma also keeps to the prompt rules
+  better. `--bard-rewrite` rewrites already-written pieces with the current model.

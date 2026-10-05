@@ -225,7 +225,8 @@ fn save_rgb_png(path: &str, w: usize, h: usize, pixel: impl Fn(usize, usize) -> 
 }
 
 /// Open the viewer window and run until it is closed (Q / Esc / window close).
-pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas: Atlas, start: Option<(usize, usize)>) -> Result<(), Box<dyn Error>> {
+/// `embark`: open straight into the playable area at `start` (the `--dev-embark` loop).
+pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas: Atlas, start: Option<(usize, usize)>, embark: bool) -> Result<(), Box<dyn Error>> {
     println!("Building tile map...");
     let mut tw = TileWorld::build(world, &atlas);
     if let Some(h) = history { tw.apply_history(world, h, &atlas); }
@@ -262,8 +263,29 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut px_per_cell = 4.0f32;
         let mut pending: Option<std::thread::ScopedJoinHandle<'_, ZoomState>> = None;
         // Playable area (embark) state.
-        let mut local: Option<(LocalMap, LocalCamera)> = None;
+        // The playable area and the colony living on it (the colony owns the map).
+        let mut local: Option<(crate::colony::Colony, LocalCamera)> = None;
         let mut local_active = false;
+        // Game clock: 0 = paused, else game hours per real second (1x, 3x, 10x).
+        let mut speed: u32 = 1;
+        let mut last_frame = std::time::Instant::now();
+        let mut tick_debt = 0.0f64;
+
+        if let (true, Some(tile)) = (embark, start) {
+            let t0 = std::time::Instant::now();
+            let z = load_region(world, history, tile, seed);
+            player = (tile.0 as f64 * s as f64 + s as f64 / 2.0, tile.1 as f64 * s as f64 + s as f64 / 2.0);
+            let map = generate_local(world, &z.region, z.lore.as_ref(), player.0 - z.origin.0 as f64, player.1 - z.origin.1 as f64);
+            let cz = map.surface_z[(map.height / 2) * map.width + map.width / 2];
+            let (mcx, mcy) = (map.width as f32 / 2.0, map.height as f32 / 2.0);
+            let colony_seed = seed ^ ((tile.0 as u64) << 20) ^ tile.1 as u64;
+            let colony = crate::colony::Colony::found(map, &settler_names(colony_seed, 7), colony_seed);
+            local = Some((colony, LocalCamera { cx: mcx, cy: mcy, tile_px: 16.0, z: cz, surface_view: true }));
+            zoom = Some(z);
+            zoom_active = true;
+            local_active = true;
+            println!("Embarked at tile {},{} in {:.2}s", tile.0, tile.1, t0.elapsed().as_secs_f32());
+        }
 
         let mut show_minimap = true;
         // Data overlay (O cycles): height, temperature, moisture, drainage, plates, stress, biomes.
@@ -272,8 +294,14 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut size = (0usize, 0usize);
         let mut dirty = true;
         let mut drag: Option<((f32, f32), (f32, f32))> = None;
+        // The inspector: a stack of pages (click on the map opens one, links push more).
+        let mut inspect: Vec<super::inspector::Subject> = Vec::new();
+        let mut inspect_hits: Vec<super::inspector::Hit> = Vec::new();
+        let mut press_at: Option<(f32, f32)> = None;
+        let mut was_down = false;
+        let mut was_right = false;
         let mut minimap_rect = (0usize, 0usize, 0usize, 0usize);
-        let mut status = String::from("wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | J: journal | P: screenshot | Q: quit");
+        let mut status = String::from("click: inspect | wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | J: journal | P: screenshot | Q: quit");
         let mut last_title = String::new();
 
         while window.is_open() {
@@ -286,6 +314,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             let mouse = window.get_mouse_pos(MouseMode::Clamp).unwrap_or((w as f32 / 2.0, h as f32 / 2.0));
             let wheel = window.get_scroll_wheel().map(|s| s.1).unwrap_or(0.0);
             let down = window.get_mouse_down(MouseButton::Left);
+            let right = window.get_mouse_down(MouseButton::Right);
+            // A click is a press and release without moving (a drag pans instead).
+            if down && !was_down { press_at = Some(mouse); }
+            let clicked = !down && was_down && press_at.map_or(false, |p| (p.0 - mouse.0).abs() < 4.0 && (p.1 - mouse.1).abs() < 4.0);
+            let right_clicked = !right && was_right;
+            was_down = down;
+            was_right = right;
             let pressed = |k: Key| window.is_key_pressed(k, KeyRepeat::No);
             let held = |k: Key| window.is_key_down(k);
             let pan_x = (held(Key::Right) || held(Key::D)) as i32 - (held(Key::Left) || held(Key::A)) as i32;
@@ -294,8 +329,23 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             let zoom_key = if pressed(Key::Equal) || pressed(Key::NumPadPlus) { 1.0 } else if pressed(Key::Minus) || pressed(Key::NumPadMinus) { -1.0 } else { 0.0 };
             let step = if wheel != 0.0 { wheel.signum() } else { 0.0 } + zoom_key;
 
+            let frame_dt = last_frame.elapsed().as_secs_f64().min(0.25);
+            last_frame = std::time::Instant::now();
             if local_active {
-                let (map, lcam) = local.as_mut().unwrap();
+                let (colony, lcam) = local.as_mut().unwrap();
+                // The clock: Space pauses, 1/2/3 = 1x/3x/10x (1x = a game hour a real second).
+                if pressed(Key::Space) { speed = if speed == 0 { 1 } else { 0 }; dirty = true; }
+                if pressed(Key::Key1) { speed = 1; }
+                if pressed(Key::Key2) { speed = 3; }
+                if pressed(Key::Key3) { speed = 10; }
+                if speed > 0 {
+                    tick_debt += frame_dt * 60.0 * speed as f64;
+                    let n = tick_debt.floor() as u64;
+                    tick_debt -= n as f64;
+                    for _ in 0..n { colony.tick(); }
+                    if n > 0 { dirty = true; }
+                }
+                let map = &colony.map;
                 if pressed(Key::Escape) || pressed(Key::Q) {
                     local_active = false;
                     dirty = true;
@@ -370,9 +420,14 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     String::new()
                 };
                 let view = if lcam.surface_view { "surface view".to_string() } else { format!("z {} ({:.0} m)", lcam.z, map.z_elevation(lcam.z)) };
+                // A settler under the mouse says what they are doing and why.
+                let who = colony.settlers.iter().filter(|s| s.alive)
+                    .find(|s| (s.pos.0 as f32 + 0.5 - hx).abs() < 0.8 && (s.pos.1 as f32 + 0.5 - hy).abs() < 0.8)
+                    .map(|s| format!("{}: {} - {} | ", s.name, s.job.verb(), s.why)).unwrap_or_default();
+                let clock = format!("{} {}", colony.clock.stamp(), if speed == 0 { "(paused)".to_string() } else { format!("{}x", speed) });
                 let title = format!(
-                    "Playable area {}x{} ({:?}) | {} | {} | </> level, V surface, wheel zoom, P screenshot, Esc back | {}",
-                    map.width, map.height, map.biome, view, info, status
+                    "{} | {}{} | {} | Space pause, 1/2/3 speed, </> level, V surface, P screenshot, Esc back | {}",
+                    clock, who, view, info, status
                 );
                 if title != last_title { window.set_title(&title); last_title = title; }
             } else if zoom_active {
@@ -438,9 +493,11 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let t0 = std::time::Instant::now();
                     let map = generate_local(world, &z.region, z.lore.as_ref(), player.0 - z.origin.0 as f64, player.1 - z.origin.1 as f64);
                     let cz = map.surface_z[(map.height / 2) * map.width + map.width / 2];
-                    let lcam = LocalCamera { cx: map.width as f32 / 2.0, cy: map.height as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: false };
+                    let lcam = LocalCamera { cx: map.width as f32 / 2.0, cy: map.height as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: true };
                     status = format!("embarked in {:.2}s", t0.elapsed().as_secs_f32());
-                    local = Some((map, lcam));
+                    let colony_seed = seed ^ (player.0 as u64) << 20 ^ player.1 as u64;
+                    let colony = crate::colony::Colony::found(map, &settler_names(colony_seed, 7), colony_seed);
+                    local = Some((colony, lcam));
                     local_active = true;
                     dirty = true;
                     continue;
@@ -480,8 +537,30 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 let _ = km;
                 if title != last_title { window.set_title(&title); last_title = title; }
             } else {
-                if pressed(Key::Escape) || pressed(Key::Q) {
+                let panel = super::inspector::panel_rect(w, h);
+                let over_panel = !inspect.is_empty() && panel.contains(mouse.0, mouse.1);
+                if pressed(Key::Escape) && !inspect.is_empty() {
+                    inspect.clear();
+                    dirty = true;
+                } else if pressed(Key::Escape) || pressed(Key::Q) {
                     break;
+                }
+                if (pressed(Key::Backspace) || right_clicked) && !inspect.is_empty() {
+                    inspect.pop();
+                    dirty = true;
+                }
+                if clicked && history.is_some() {
+                    if over_panel {
+                        if let Some(hit) = inspect_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1)) {
+                            inspect.push(hit.to);
+                            dirty = true;
+                        }
+                    } else {
+                        let (hx, hy) = screen_to_world(&cam, mouse.0, mouse.1, w, h);
+                        let t = (hx.rem_euclid(tw.width as f32) as usize, (hy.max(0.0) as usize).min(tw.height - 1));
+                        inspect = vec![super::inspector::Subject::Tile(t.0, t.1)];
+                        dirty = true;
+                    }
                 }
                 if step != 0.0 {
                     let before = screen_to_world(&cam, mouse.0, mouse.1, w, h);
@@ -500,7 +579,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     && mouse.0 >= mx0 as f32 && mouse.0 < (mx0 + mw) as f32
                     && mouse.1 >= my0 as f32 && mouse.1 < (my0 + mh) as f32;
                 match (down, drag) {
-                    (true, _) if on_minimap => {
+                    // Pressing on the panel doesn't pan the map.
+                    (true, None) if over_panel => {}
+                    (true, _) if on_minimap && !over_panel => {
                         cam.cx = (mouse.0 - mx0 as f32) / mw as f32 * tw.width as f32;
                         cam.cy = (mouse.1 - my0 as f32) / mh as f32 * tw.height as f32;
                         dirty = true;
@@ -599,8 +680,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
 
             if dirty {
                 if local_active {
-                    let (map, lcam) = local.as_ref().unwrap();
-                    render_local(map, &atlas, lcam, &mut buf, w, h);
+                    let (colony, lcam) = local.as_ref().unwrap();
+                    render_local(&colony.map, &atlas, lcam, &mut buf, w, h);
+                    if lcam.surface_view { super::local_ink::draw_colony(colony, lcam, &mut buf, w, h); }
                 } else if zoom_active {
                     let z = zoom.as_ref().unwrap();
                     let cam_z = ZoomCamera {
@@ -626,6 +708,11 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     } else {
                         (0, 0, 0, 0)
                     };
+                    inspect_hits.clear();
+                    if let (Some(&subject), Some(hist)) = (inspect.last(), history) {
+                        let page = super::inspector::page(world, hist, subject);
+                        inspect_hits = super::inspector::draw(&page, &mut buf, w, h, inspect.len());
+                    }
                 }
                 window.update_with_buffer(&buf, w, h)?;
                 dirty = false;
@@ -638,6 +725,119 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         if let Some(p) = pending.take() { let _ = p.join(); }
         Ok(())
     })
+}
+
+/// Headless check of the inspector as the window shows it: the map at 16 px/tile around `tile`
+/// with the panel open on it, then one frame per followed link (`follow`: clickable line
+/// numbers, 0 = the first). Writes `<prefix>_0.png`, `<prefix>_1.png`, ...
+pub fn save_inspect_snapshots(world: &WorldData, history: &WorldHistory, atlas: &Atlas, tile: (usize, usize), follow: &[usize], prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    use super::inspector::{draw, page, Subject};
+    let mut tw = TileWorld::build(world, atlas);
+    tw.apply_history(world, history, atlas);
+    let gaz = build_gazetteer(world, Some(history), world.seed());
+    let landmarks = crate::lore::find_landmarks(world, &gaz);
+    let labels = build_labels(world, Some(history), &gaz, &landmarks);
+    let (w, h) = (1280usize, 800usize);
+    // Centre the tile in the part of the window the panel leaves free.
+    let panel = super::inspector::panel_rect(w, h);
+    let cam = Camera { cx: tile.0 as f32 + 0.5 + (panel.w as f32 / 2.0) / 16.0, cy: tile.1 as f32 + 0.5, tile_px: 16.0 };
+    let mut map = vec![0u32; w * h];
+    render_world(&tw, atlas, &cam, &mut map, w, h);
+    draw_labels(&labels, &cam, tw.width, &mut map, w, h);
+    let (mx, my) = ((w - panel.w) as f32 / 2.0, h as f32 / 2.0);
+    draw_marker(&mut map, w, h, mx, my, 7.0);
+    let mut subject = Subject::Tile(tile.0, tile.1);
+    let mut written = Vec::new();
+    for step in 0..=follow.len() {
+        let mut buf = map.clone();
+        let p = page(world, history, subject);
+        let hits = draw(&p, &mut buf, w, h, step + 1);
+        let path = format!("{prefix}_{step}.png");
+        save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("Inspector page {}: {} ({} links)", step, p.title, hits.len());
+        written.push(path);
+        let Some(hit) = follow.get(step).and_then(|&k| hits.get(k)) else { break };
+        subject = hit.to;
+    }
+    Ok(written)
+}
+
+/// The seven names of the dev colony's settlers, drawn from the human naming style.
+pub fn settler_names(seed: u64, n: usize) -> Vec<String> {
+    use rand::SeedableRng;
+    let style = crate::history::naming::styles::NamingStyle::from_archetype(crate::history::NamingStyleId(0), crate::history::naming::styles::NamingArchetype::Compound);
+    let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(seed ^ 0x5E77_1E25);
+    let mut names: Vec<String> = Vec::new();
+    while names.len() < n {
+        let name = crate::history::naming::generator::NameGenerator::personal_name(&style, &mut rng);
+        if !names.contains(&name) { names.push(name); }
+    }
+    names
+}
+
+/// Found a colony of `n` settlers on the embark at `tile` and time it: two game days, reported
+/// as ticks per second and the fastest game speed it sustains (1x = an hour a second).
+pub fn colony_bench(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), n: usize) {
+    let zs = load_region(world, history, tile, world.seed());
+    let s = cells_per_tile() as f64;
+    let (ex, ey) = (tile.0 as f64 * s + s / 2.0 - zs.origin.0 as f64, tile.1 as f64 * s + s / 2.0 - zs.origin.1 as f64);
+    let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey);
+    let mut colony = crate::colony::Colony::found(map, &settler_names(world.seed(), n), world.seed());
+    let t0 = std::time::Instant::now();
+    colony.run_days(2);
+    let secs = t0.elapsed().as_secs_f64();
+    let ticks = 2.0 * crate::colony::TICKS_PER_DAY as f64;
+    println!("Colony bench: {} settlers, 2 game days in {:.2}s = {:.0} ticks/s; 1x = 60 ticks/s, so up to {:.0}x; {} alive",
+        n, secs, ticks / secs, ticks / secs / 60.0, colony.alive());
+}
+
+/// Headless run of the first colony: found it on the embark at `tile`, let it live 30 days
+/// unattended, and write frames on days 1, 10 and 30 (`<prefix>_dayN.png`, the whole area at
+/// 6 px and a close-up of the camp at 16 px) and its log (`<prefix>_log.txt`).
+pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize), prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    use super::local_ink::draw_colony;
+    let zs = load_region(world, history, tile, world.seed());
+    let s = cells_per_tile() as f64;
+    let (ex, ey) = {
+        let (tx, ty) = (tile.0 as f64 * s + s / 2.0 - zs.origin.0 as f64, tile.1 as f64 * s + s / 2.0 - zs.origin.1 as f64);
+        (tx, ty)
+    };
+    let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey);
+    let seed = world.seed() ^ ((tile.0 as u64) << 20) ^ tile.1 as u64;
+    let mut colony = crate::colony::Colony::found(map, &settler_names(seed, 7), seed);
+    let mut written = Vec::new();
+    let mut day_done = 0u64;
+    for day in [1u64, 10, 30] {
+        let t0 = std::time::Instant::now();
+        colony.run_days(day - day_done);
+        day_done = day;
+        println!("Colony day {}: {} alive, {} food, {} logs stored, hut {}, simulated in {:.2}s",
+            colony.clock.day() - 1, colony.alive(), colony.food_stored(), colony.logs_stored(),
+            colony.hut.as_ref().map(|h| if h.done { "built".to_string() } else { format!("{}/{} logs", h.logs_used, crate::colony::HUT_LOGS) }).unwrap_or_else(|| "no site".into()),
+            t0.elapsed().as_secs_f32());
+        for line in colony.roll_call() { println!("  {line}"); }
+        let n = colony.map.width;
+        for (name, cam, (w, h)) in [
+            (format!("day{day}"), LocalCamera { cx: n as f32 / 2.0, cy: n as f32 / 2.0, tile_px: 6.0, z: 0, surface_view: true }, (n * 6, n * 6)),
+            (format!("day{day}_camp"), LocalCamera { cx: colony.camp.0 as f32 + 4.0, cy: colony.camp.1 as f32 + 2.0, tile_px: 16.0, z: 0, surface_view: true }, (1024, 640)),
+        ] {
+            let mut buf = vec![0u32; w * h];
+            render_local(&colony.map, atlas, &cam, &mut buf, w, h);
+            draw_colony(&colony, &cam, &mut buf, w, h);
+            let path = format!("{prefix}_{name}.png");
+            save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+            written.push(path);
+        }
+    }
+    let path = format!("{prefix}_log.txt");
+    std::fs::write(&path, colony.log.join("\n") + "\n")?;
+    written.push(path);
+    let path = format!("{prefix}_decisions.txt");
+    std::fs::write(&path, colony.decisions.join("\n") + "\n")?;
+    written.push(path);
+    let stuck: u32 = colony.settlers.iter().map(|s| s.stuck).sum();
+    println!("Colony after 30 days: {} of 7 alive, {} times a settler found no way to a target, {} log lines", colony.alive(), stuck, colony.log.len());
+    Ok(written)
 }
 
 /// Render viewer frames headlessly (no window): the whole map, then 3.5, 16 and 32 px/tile
@@ -768,10 +968,20 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
     save(&format!("z{}", cz - 4), &buf)?;
     render_local(&map, atlas, &cam(cz - 12, false), &mut buf, w, h);
     save(&format!("z{}", cz - 12), &buf)?;
-    // A close-up at the viewer's real scale (16 px per tile).
+    // A close-up at the viewer's real scale (16 px per tile), at the centre or at the cell
+    // given by PLANET_LOCAL_CLOSE="x,y" (for checking a particular spot).
     let (cw, ch) = (1024usize, 640usize);
     let mut close = vec![0u32; cw * ch];
-    render_local(&map, atlas, &LocalCamera { cx: n as f32 / 2.0, cy: n as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: true }, &mut close, cw, ch);
+    let (ccx, ccy) = std::env::var("PLANET_LOCAL_CLOSE").ok()
+        .and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.trim().parse::<f32>().ok()?, b.trim().parse::<f32>().ok()?))))
+        .unwrap_or((n as f32 / 2.0, n as f32 / 2.0));
+    let t0 = std::time::Instant::now();
+    render_local(&map, atlas, &LocalCamera { cx: ccx, cy: ccy, tile_px: 16.0, z: cz, surface_view: true }, &mut close, cw, ch);
+    println!("render close-up (1024x640 at 16 px): {:.1} ms", t0.elapsed().as_secs_f64() * 1000.0);
+    let mut big = vec![0u32; 1280 * 800];
+    let t0 = std::time::Instant::now();
+    render_local(&map, atlas, &LocalCamera { cx: ccx, cy: ccy, tile_px: 6.0, z: cz, surface_view: true }, &mut big, 1280, 800);
+    println!("render 1280x800 at 6 px: {:.1} ms", t0.elapsed().as_secs_f64() * 1000.0);
     let path = format!("{prefix}_close16.png");
     image::RgbImage::from_fn(cw as u32, ch as u32, |x, y| {
         let p = close[y as usize * cw + x as usize];

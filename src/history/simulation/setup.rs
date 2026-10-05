@@ -468,6 +468,8 @@ fn create_factions(
         } else {
             0
         };
+        // The calendar starts at year 1: leave the founder room to be born an adult before it.
+        let founding_age = founding_age.min(start_date.year.saturating_sub(40));
         let founding_date = Date::new(
             start_date.year.saturating_sub(founding_age),
             random_season(rng),
@@ -476,7 +478,7 @@ fn create_factions(
         // Create faction
         let faction_id = history.id_generators.next_faction();
         let race_label = format!("{:?}", race_type);
-        let faction_name = NameGenerator::faction_name(&style, rng, &race_label);
+        let faction_name = NameGenerator::realm_name(&style, rng, &format!("{:?}", gov_type), &race_label);
         let succession_law = SuccessionLaw::for_government(gov_type, rng);
         let mut faction = Faction::new(
             faction_id, faction_name.clone(), race_id,
@@ -628,7 +630,8 @@ fn create_prehistory_lineage(
 ) -> (FigureId, FigureId, Dynasty) {
     let faction_age = start_date.year.saturating_sub(founding_date.year);
     let (lifespan_min, lifespan_max) = race_type.lifespan();
-    let maturity = race_type.maturity_age();
+    // Rulers are adults whatever the race's biology (elementals and the undead mature at 0).
+    let maturity = race_type.maturity_age().max(18);
 
     // For immortal races or zero-age factions, just create a single founder/leader
     let effective_lifespan = if lifespan_max == 0 { 500 } else { lifespan_max };
@@ -659,6 +662,8 @@ fn create_prehistory_lineage(
 
     let mut prev_figure_id: Option<FigureId> = None;
     let mut prev_name: Option<String> = None;
+    // When the previous ruler died: the heir is crowned then, never before.
+    let mut prev_death: Option<Date> = None;
     let mut founder_id: Option<FigureId> = None;
     let mut dynasty_members: Vec<FigureId> = Vec::new();
 
@@ -695,27 +700,23 @@ fn create_prehistory_lineage(
                 gen_start_year.saturating_sub(maturity + rng.gen_range(0..5))
             };
 
-            let reign_start_year = if gen == 0 {
-                founding_date.year
-            } else {
-                gen_start_year
+            let reign_start = match prev_death {
+                Some(d) => d,
+                None => Date::new(founding_date.year.max(1), random_season(rng)),
             };
 
             if is_last {
                 // Current ruler: alive
-                (
-                    Date::new(birth_year.max(1), random_season(rng)),
-                    None,
-                    Date::new(reign_start_year.max(1), random_season(rng)),
-                )
+                (Date::new(birth_year.max(1), random_season(rng)), None, reign_start)
             } else {
-                // Past ruler: dead
-                let death_year = reign_start_year + gen_span + rng.gen_range(0..5);
-                let death_year = death_year.min(start_date.year - 1).max(reign_start_year + 1);
+                // Past ruler: dead, at the end of their generation's span (give or take)
+                let next_start = founding_date.year + (gen + 1) * gen_span;
+                let death_year = (next_start + rng.gen_range(0..5)).saturating_sub(2)
+                    .min(start_date.year - 1).max(reign_start.year + 1);
                 (
                     Date::new(birth_year.max(1), random_season(rng)),
                     Some(Date::new(death_year, random_season(rng))),
-                    Date::new(reign_start_year.max(1), random_season(rng)),
+                    reign_start,
                 )
             }
         };
@@ -811,6 +812,7 @@ fn create_prehistory_lineage(
         if gen == 0 {
             founder_id = Some(figure_id);
         }
+        prev_death = death_date;
         dynasty_members.push(figure_id);
         prev_name = Some(name);
         history.figures.insert(figure_id, figure);

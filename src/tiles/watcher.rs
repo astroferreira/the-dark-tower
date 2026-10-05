@@ -222,6 +222,7 @@ fn style(kind: &EventType) -> (char, u32, Option<MarkKind>, bool) {
         ShadowConquest => ('X', RUBRIC, Some(MarkKind::Razed), true),
         ShadowRepelled => ('=', GOLD, Some(MarkKind::Battle), true),
         ShadowBroken => ('*', GOLD, Some(MarkKind::Wonder), true),
+        ShadowLiberated => ('*', GOLD, Some(MarkKind::Battle), true),
     }
 }
 
