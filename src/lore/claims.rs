@@ -47,12 +47,18 @@ pub fn claims(h: &WorldHistory) -> Vec<Claim> {
             if let EntityId::Figure(f) = p { crowned.entry(*f).or_insert((e.date.year, e.factions_involved.first().copied())); }
         }
     }
+    // A reign ends with the ruler's death or their people's fall, whichever came first.
+    let fell_in = |fac: Option<FactionId>| fac.and_then(|f| h.factions.get(&f)).and_then(|x| x.dissolved).map(|d| d.year);
     let reign = crowned.iter()
-        .filter_map(|(f, (from, fac))| h.figures.get(f).map(|x| (x.death_date.map_or(now, |d| d.year).saturating_sub(*from), x, *fac)))
+        .filter_map(|(f, (from, fac))| h.figures.get(f).map(|x| {
+            let end = x.death_date.map_or(now, |d| d.year).min(fell_in(*fac).unwrap_or(now));
+            (end.saturating_sub(*from), x, *fac)
+        }))
         .max_by_key(|(years, x, _)| (*years, std::cmp::Reverse(x.id)));
     if let Some((years, x, fac)) = reign.filter(|r| r.0 > 0) {
+        let still = x.is_alive() && fell_in(fac).is_none();
         out.push(Claim { text: format!("{} ruled {} for {} years{}", x.full_name(), fac.map(fname).unwrap_or_default(), years,
-            if x.is_alive() { ", and rules still" } else { "" }), rarity: years as f32 / 150.0 });
+            if still { ", and rules still" } else { "" }), rarity: years as f32 / 150.0 });
     }
 
     // The bloodiest battle ("(412 of 2,000 fell, 80 of 1,500)").

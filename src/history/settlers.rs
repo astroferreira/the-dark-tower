@@ -70,7 +70,8 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
     let fall = h.chronicle.events.iter()
         .filter(|e| e.date.year + 45 >= now && matches!(e.event_type, EventType::SiegeEnded | EventType::ShadowConquest | EventType::SettlementDestroyed))
         .filter_map(|e| town_of(e).and_then(|s| h.settlements.get(&s)).map(|t| (dist(t.location, tile, w), e, t)))
-        .min_by_key(|(d, e, _)| (*d, e.id));
+        // The nearest town's latest fall (the first arc's refugees tell the same one).
+        .min_by_key(|(d, e, _)| (*d, std::cmp::Reverse(e.id)));
     if let Some((_, e, t)) = fall {
         let taker = e.factions_involved.first().copied().filter(|f| Some(*f) != e.factions_involved.get(1).copied());
         let old_people = e.factions_involved.get(1).copied().or(Some(t.faction));
@@ -107,13 +108,16 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
     // Veterans of their people's last war: the latest battle it fought, under its commander.
     let people = home_people.or_else(|| out.first().and_then(|p| p.people));
     if let Some(p) = people {
-        let battle = h.chronicle.events.iter().rev()
-            .find(|e| e.event_type == EventType::BattleFought && e.factions_involved.contains(&p));
-        if let Some(b) = battle {
+        // The two veterans fought in their people's two latest battles (one each).
+        let battles: Vec<&Event> = h.chronicle.events.iter().rev()
+            .filter(|e| e.event_type == EventType::BattleFought && e.factions_involved.contains(&p)).take(2).collect();
+        for (bi, b) in battles.iter().enumerate() {
+            let b = *b;
             let war = h.wars.values().find(|w| w.battles.contains(&b.id));
             let commander = b.primary_participants.iter().find_map(|x| if let EntityId::Figure(f) = x { h.figures.get(f).filter(|fig| fig.faction == Some(p)) } else { None });
             let enemy = b.factions_involved.iter().copied().find(|f| *f != p);
-            for k in 0..2u64 {
+            let ks: Vec<u64> = if battles.len() == 1 { vec![0, 1] } else { vec![bi as u64] };
+            for k in ks {
                 let age = (now - b.date.year) + 19 + (hash(seed, 20 + k) % 20) as u32;
                 let mut lines = vec![(format!("Fought at {} in {}{}.", phrase(h, b), b.date.year,
                     commander.map(|c| format!(" under {}", c.full_name())).unwrap_or_default()), Some(b.id))];
@@ -139,6 +143,8 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
     // Younger kin of a living notable of their people, until the roster is full.
     let mut notables: Vec<(FigureId, SettlementId)> = h.people.as_ref().map(|pp| pp.home.iter()
         .filter(|(f, _)| h.figures.get(f).map_or(false, |x| x.is_alive() && x.faction == people))
+        // Kin of someone the chronicle knows (a newly raised heir has done nothing yet).
+        .filter(|(f, _)| h.chronicle.last_of(EntityId::Figure(**f)).is_some())
         .map(|(f, s)| (*f, *s)).collect()).unwrap_or_default();
     notables.sort_by_key(|(f, s)| (h.settlements.get(s).map_or(usize::MAX, |t| dist(t.location, tile, w)), *f));
     let mut k = 0u64;
@@ -147,15 +153,20 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
         let fig = &h.figures[&f];
         let role = h.people.as_ref().and_then(|pp| pp.role.get(&f)).map(|r| r.word()).unwrap_or("notable");
         let mut lines = Vec::new();
-        if let Some(ev) = h.chronicle.last_of(EntityId::Figure(f)).and_then(|x| h.chronicle.get(x)) {
-            lines.push((format!("Younger kin of {}, {} of {}; last saw them at {} ({}).", fig.full_name(), role, tname(s), phrase(h, ev), ev.date.year), Some(ev.id)));
-        } else {
-            lines.push((format!("Younger kin of {}, {} of {}.", fig.full_name(), role, tname(s)), None));
+        // Old enough to have seen what they remember (at least 6 then), and no older than 70.
+        let seen = h.chronicle.last_of(EntityId::Figure(f)).and_then(|x| h.chronicle.get(x));
+        let left = h.chronicle.last_of(EntityId::Settlement(s)).and_then(|x| h.chronicle.get(x));
+        let oldest = [seen, left].iter().flatten().map(|e| e.date.year).min().unwrap_or(now);
+        let age = (16 + (hash(seed, 30 + k) % 16) as u32).max(now.saturating_sub(oldest) + 6);
+        let lived = |e: &Event| e.date.year + age >= now + 6;
+        match seen.filter(|e| lived(e) && age <= 70) {
+            Some(ev) => lines.push((format!("Younger kin of {}, {} of {}; last saw them at {} ({}).", fig.full_name(), role, tname(s), phrase(h, ev), ev.date.year), Some(ev.id))),
+            None => lines.push((format!("Younger kin of {}, {} of {}.", fig.full_name(), role, tname(s)), None)),
         }
-        if let Some(ev) = h.chronicle.last_of(EntityId::Settlement(s)).and_then(|x| h.chronicle.get(x)) {
+        if let Some(ev) = left.filter(|e| lived(e) && age <= 70) {
             lines.push((format!("Left {} after {} ({}).", tname(s), phrase(h, ev), ev.date.year), Some(ev.id)));
         }
-        let age = 16 + (hash(seed, 30 + k) % 16) as u32;
+        let age = age.min(70);
         out.push(Past { age, people, calling: format!("kin of {}", fig.name), lines, feeling: Some((format!("misses {}", fig.full_name()), EntityId::Figure(f))) });
         k += 1;
         if k > 64 { break; }

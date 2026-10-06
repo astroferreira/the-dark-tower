@@ -225,6 +225,9 @@ pub struct Ecology {
     /// Biome per tile where a scar overrides the world's (derived from `scars`).
     #[serde(skip)]
     overrides: HashMap<usize, ExtendedBiome>,
+    /// Years each tile has lain in the Shadow's blight (not saved: a loaded history is finished).
+    #[serde(skip)]
+    blighted_years: Vec<u16>,
 }
 
 /// What left a scar on the land (one scar per source).
@@ -235,6 +238,8 @@ pub enum ScarSource {
     Carcass(u64),
     FallenTower(u64),
     Overgrown(u64),
+    /// Land the Shadow held in blight for a generation (appended: older saves still decode).
+    Blight(usize, usize),
 }
 
 /// A patch of land turned into an anomalous biome by something that happened there.
@@ -297,6 +302,7 @@ impl Ecology {
             lair_events: HashMap::default(),
             pressure: vec![0.0; n],
             overrides: HashMap::default(),
+            blighted_years: Vec::new(),
         };
         // Start every species at 80% of its undisturbed carrying capacity.
         let prey_k = eco.capacities(world);
@@ -832,6 +838,8 @@ fn update_scars(history: &mut WorldHistory, world: &WorldData, eco: &mut Ecology
         ));
     }
 
+    blight_scars(history, world, eco, &mut new_scars);
+
     if new_scars.is_empty() {
         if !eco.scars.is_empty() { eco.rebuild_overrides(world); }
         return;
@@ -848,6 +856,80 @@ fn update_scars(history: &mut WorldHistory, world: &WorldData, eco: &mut Ecology
     }
     eco.scanned_events = history.chronicle.events.len();
     eco.rebuild_overrides(world);
+}
+
+/// Years of blight after which the Shadow's land dies for good.
+const BLIGHT_YEARS: u16 = 30;
+
+/// Land the Shadow has held in blight (`shadow::BLIGHT`) for `BLIGHT_YEARS` dies: forest becomes
+/// dead woods, the rest ashlands. A few patches a year at most, each caused by the Shadow's
+/// latest deed; they stay after the Shadow is broken.
+fn blight_scars(
+    history: &WorldHistory,
+    world: &WorldData,
+    eco: &mut Ecology,
+    new_scars: &mut Vec<(Scar, String, String, Option<EventId>, Vec<EntityId>)>,
+) {
+    let Some(shadow) = history.shadow.as_ref() else { return };
+    let (w, h) = (eco.width, eco.height);
+    if shadow.width != w || shadow.height != h { return; }
+    if eco.blighted_years.len() != w * h { eco.blighted_years = vec![0; w * h]; }
+    let mut ripe: Vec<usize> = Vec::new();
+    for i in 0..w * h {
+        if shadow.corruption[i] >= crate::history::shadow::BLIGHT && *world.heightmap.get(i % w, i / w) > 0.0 {
+            eco.blighted_years[i] = eco.blighted_years[i].saturating_add(1);
+            if eco.blighted_years[i] >= BLIGHT_YEARS && !eco.overrides.contains_key(&i) { ripe.push(i); }
+        } else {
+            eco.blighted_years[i] = 0;
+        }
+    }
+    const RADIUS: f32 = 2.2;
+    let mut made = 0;
+    for i in ripe {
+        if made >= 3 { break; }
+        let (x, y) = (i % w, i / w);
+        let near = |sx: usize, sy: usize| {
+            let (dx, dy) = (sx as f32 - x as f32, sy as f32 - y as f32);
+            dx * dx + dy * dy < (RADIUS * 1.6) * (RADIUS * 1.6)
+        };
+        if eco.scars.iter().chain(new_scars.iter().map(|s| &s.0)).any(|s| matches!(s.source, ScarSource::Blight(..)) && near(s.x, s.y)) {
+            continue;
+        }
+        let wooded = eco.forest_potential[i] >= 0.5;
+        let biome = if wooded { ExtendedBiome::DeadForest } else { ExtendedBiome::Ashlands };
+        let place = nearest_place_name(history, x, y);
+        let (title, desc) = if wooded {
+            (
+                format!("The woods die near {}", place),
+                format!("After {} years under {}, the woods near {} stand grey and leafless; nothing grows back.", BLIGHT_YEARS, shadow.name, place),
+            )
+        } else {
+            (
+                format!("The land near {} turns to ash", place),
+                format!("After {} years under {}, the land near {} is ash and cinders, and no grass returns.", BLIGHT_YEARS, shadow.name, place),
+            )
+        };
+        new_scars.push((
+            Scar { source: ScarSource::Blight(x, y), x, y, radius: RADIUS, biome, event: EventId(0) },
+            title,
+            desc,
+            Some(shadow.last_deed),
+            vec![EntityId::Faction(shadow.faction)],
+        ));
+        made += 1;
+    }
+}
+
+fn nearest_place_name(history: &WorldHistory, x: usize, y: usize) -> String {
+    history
+        .settlements
+        .values()
+        .min_by_key(|s| {
+            let (dx, dy) = (s.location.0 as i64 - x as i64, s.location.1 as i64 - y as i64);
+            (dx * dx + dy * dy, s.id.0)
+        })
+        .map(|s| s.name.clone())
+        .unwrap_or_else(|| "the Shadow's seat".into())
 }
 
 fn capitalize(s: &str) -> String {

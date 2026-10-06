@@ -2,6 +2,7 @@
 //! into tiles, pure software rendering, and a minifb window around it.
 
 pub mod atlas;
+mod colony_hud;
 pub mod classify;
 pub mod fonts;
 pub mod heraldry;

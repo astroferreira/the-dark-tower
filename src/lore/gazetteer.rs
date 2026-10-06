@@ -355,7 +355,7 @@ pub fn build_gazetteer(world: &WorldData, history: Option<&WorldHistory>, seed: 
         region: Tilemap::new_with(w, h, NONE),
         landmass: Tilemap::new_with(w, h, NONE),
     };
-    let mut add = |g: &mut Gazetteer, namer: &mut Namer, kind: FeatureKind, tiles: &[(usize, usize)], landmass_key: u64, height_m: f32, path: Vec<(usize, usize)>| -> u32 {
+    let add = |g: &mut Gazetteer, namer: &mut Namer, kind: FeatureKind, tiles: &[(usize, usize)], landmass_key: u64, height_m: f32, path: Vec<(usize, usize)>| -> u32 {
         let a = if path.is_empty() { anchor(tiles, w) } else { path[path.len() / 2] };
         let (name, named_by) = namer.name(kind, tiles, landmass_key, key_of(kind, a));
         let id = g.features.len() as u32;

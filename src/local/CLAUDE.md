@@ -36,3 +36,25 @@ the zoomed region around a point.
   stone, buildings); `--local-snapshot` prints "Site (N kinds): ...", and walking mode shows it
   in the title, recomputed when the embark box moves 24 cells (~30 ms; not tried by hand yet).
   Seven dev sites hold 5-7 kinds each.
+- Graves with names (`LocalMap::graves`): `RegionLore::battles` holds each tile's battles and
+  battle deaths (HeroDied, e.g. a captain on the walls) with the named dead who fell in battle
+  ("Ukh, captain of Skullfang"). `furnish` lays the named first, then three nameless per battle
+  ("A soldier whose name is lost"), 16 at most, each with its words ("Fell at the Battle of the
+  Brolmdustoor Pass in 223."). A colony founded there adopts them as marks
+  (`Colony::adopt_graves`): drawn as graves, named on hover, opened by a click. Dev
+  Brolmdustoor Pass (47,14): 16 graves, 10 named.
+- What grows follows the world's biome (`world_vegetation`): each column looks up the world
+  biome of its tile (through a ~24-cell jitter so tile borders blend) and takes its tree and
+  shrub density and species from it; the caused landscapes are drawn as what they are (dead
+  forest: dead trees; ashlands, salt flats, crystal wastes: bare; bone fields: grass and bones;
+  ancient grove: dense; swamp, marsh, bog, Mediterranean scrub, foothills, monsoon forest each
+  their own); water tiles leave the shore to the local climate. Before, plants came from the
+  local climate alone, so an Ashlands embark was a temperate forest and a boreal forest at
+  -9 C bare tundra. `--embark-survey` prints one embark per world biome with its plant shares.
+- `LocalMap::furnished` / `found` record what `furnish` added (a spring, a grove, an outcrop, a
+  berry thicket) and what was there before; the site report says so.
+- Level slices are drawn in ink (`local_ink::render_level_ink`): the surface first; ground at
+  this level as drawn; open air above the ground ghosts the land below; rock and soil below are
+  hatched parchment in their colour with ore flecked in its metal and inked edges against open
+  space; water blue. `PLANET_TILE_LEVELS=1` brings back the old atlas tiles.
+

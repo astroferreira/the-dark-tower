@@ -18,11 +18,11 @@ use crate::history::entities::traits::{DeathCause, Personality};
 
 /// What a figure is to their town.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Role { Ruler, Captain, Priest, Smith, Exile }
+pub enum Role { Ruler, Captain, Priest, Smith, Exile, Heir }
 
 impl Role {
     pub fn word(self) -> &'static str {
-        match self { Role::Ruler => "ruler", Role::Captain => "captain", Role::Priest => "priest", Role::Smith => "smith", Role::Exile => "exile" }
+        match self { Role::Ruler => "ruler", Role::Captain => "captain", Role::Priest => "priest", Role::Smith => "smith", Role::Exile => "exile", Role::Heir => "heir" }
     }
 }
 
@@ -115,6 +115,80 @@ pub fn step(h: &mut WorldHistory, game_data: &crate::history::data::GameData, rn
             people.role.insert(f, Role::Ruler);
         } else if !people.home.contains_key(&f) && people.role.get(&f) != Some(&Role::Exile) {
             people.home.insert(f, seat);
+        }
+    }
+
+    // Heirs, once a year: a ruler under a dynastic law with no living child gets one, raised at
+    // the seat; the heir is the one crowned when the ruler dies (`step::succeed`).
+    if date.season == crate::seasons::Season::Spring {
+        let mut realms: Vec<FactionId> = h.factions.values().filter(|f| f.is_active() && f.succession_law.requires_dynasty()).map(|f| f.id).collect();
+        realms.sort();
+        for fid in realms {
+            let (Some(ruler), Some(seat), race) = (h.factions[&fid].current_leader, h.factions[&fid].capital, h.factions[&fid].race_id) else { continue };
+            let Some(r) = h.figures.get(&ruler).filter(|r| r.is_alive()) else { continue };
+            if r.children.iter().any(|c| h.figures.get(c).map_or(false, |c| c.is_alive())) {
+                for c in r.children.clone() {
+                    if h.figures.get(&c).map_or(false, |c| c.is_alive()) && !people.role.contains_key(&c) {
+                        people.role.insert(c, Role::Heir);
+                        people.home.insert(c, seat);
+                    }
+                }
+                continue;
+            }
+            if r.age_at(&date) < 30 { continue; }
+            let id = h.id_generators.next_figure();
+            let style = crate::history::simulation::step::naming_style_for(h, race, game_data);
+            let name = crate::history::naming::generator::NameGenerator::personal_name(&style, rng);
+            let born = crate::history::time::Date::new(date.year.saturating_sub(rng.gen_range(14..30)), crate::seasons::Season::Spring);
+            let mut fig = Figure::new(id, name, race, born, Personality::random(rng));
+            fig.faction = Some(fid);
+            fig.parents.0 = Some(ruler);
+            fig.dynasty = h.figures[&ruler].dynasty;
+            h.figures.insert(id, fig);
+            if let Some(r) = h.figures.get_mut(&ruler) { r.add_child(id); }
+            if let Some(f) = h.factions.get_mut(&fid) { f.notable_figures.push(id); }
+            people.home.insert(id, seat);
+            people.role.insert(id, Role::Heir);
+        }
+
+        // Marriages: now and then an heir weds a notable of a friendly neighbour, and moves to
+        // their town; the two peoples warm to each other.
+        let mut heirs: Vec<FigureId> = people.role.iter().filter(|(_, r)| **r == Role::Heir).map(|(f, _)| *f)
+            .filter(|f| h.figures.get(f).map_or(false, |x| x.is_alive() && x.spouse.is_none() && x.age_at(&date) >= 16)).collect();
+        heirs.sort();
+        for heir in heirs {
+            if rng.gen::<f32>() >= 0.08 { continue; }
+            let Some(fa) = h.figures[&heir].faction else { continue };
+            // A friendly people's unwed notable.
+            let mut partners: Vec<(FigureId, SettlementId)> = people.home.iter()
+                .filter(|(f, _)| h.figures.get(f).map_or(false, |x| x.is_alive() && x.spouse.is_none() && x.age_at(&date) >= 16 && x.faction.map_or(false, |fb| fb != fa)))
+                .filter(|(f, _)| { let fb = h.figures[f].faction.unwrap(); h.factions.get(&fa).and_then(|x| x.relations.get(&fb)).map_or(false, |rel| rel.opinion >= 25) })
+                .map(|(f, s)| (*f, *s)).collect();
+            partners.sort();
+            if partners.is_empty() { continue; }
+            let (partner, their_town) = partners[rng.gen_range(0..partners.len())];
+            let fb = h.figures[&partner].faction.unwrap();
+            if let Some(x) = h.figures.get_mut(&heir) { x.spouse = Some(partner); }
+            if let Some(x) = h.figures.get_mut(&partner) { x.spouse = Some(heir); }
+            for (a, b) in [(fa, fb), (fb, fa)] {
+                if let Some(f) = h.factions.get_mut(&a) { f.get_relation_mut(b, 0.0).adjust_opinion(10); }
+            }
+            // The partner moves to the heir's seat.
+            let seat = people.home.get(&heir).copied();
+            let (hn, pn) = (h.figures[&heir].full_name(), h.figures[&partner].full_name());
+            let (na, nb) = (h.factions.get(&fa).map(|f| f.name.clone()).unwrap_or_default(), h.factions.get(&fb).map(|f| f.name.clone()).unwrap_or_default());
+            let wed = h.id_generators.next_event();
+            let mut e = Event::new(wed, EventType::Marriage, date, format!("{} weds {}", hn, pn),
+                format!("{}, heir of {}, wed {} of {}; the two peoples are bound by it.", hn, na, pn, nb))
+                .with_faction(fa).with_faction(fb).with_participant(EntityId::Figure(heir)).with_participant(EntityId::Figure(partner));
+            if let Some(t) = seat.and_then(|s| h.settlements.get(&s)) { e = e.at_location(t.location.0, t.location.1); }
+            h.chronicle.record(e);
+            if let Some(to) = seat {
+                people.home.insert(partner, to);
+                let from = town_name(h, their_town);
+                record(h, EventType::FigureMoved, format!("{} leaves {} to wed", pn, from),
+                    format!("{} left {} for {}, to live beside {}.", pn, from, town_name(h, to), hn), partner, Some(fb), Some(to), Some(wed));
+            }
         }
     }
 

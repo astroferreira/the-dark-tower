@@ -112,6 +112,8 @@ pub enum EventType {
     ShadowAlliance,
     /// What can wound the Shadow, and where it was lost (appended).
     ShadowBane,
+    /// Two notables of friendly peoples wed; one moves to the other's town (appended).
+    Marriage,
 }
 
 impl EventType {

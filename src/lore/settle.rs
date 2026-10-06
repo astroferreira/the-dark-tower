@@ -263,15 +263,21 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
     // Battles on the region's tiles, with those who fell in them (for graves on the field).
     let mut battles: crate::history::det::HashMap<(usize, usize), Vec<(String, u32, Vec<String>)>> = Default::default();
     let tiles_y = rh as i64 / s + 1;
-    for e in history.chronicle.events.iter().filter(|e| e.event_type == crate::history::events::types::EventType::BattleFought) {
+    for e in history.chronicle.events.iter().filter(|e| matches!(e.event_type, crate::history::events::types::EventType::BattleFought | crate::history::events::types::EventType::HeroDied)) {
         let Some((x, y)) = e.location else { continue };
         let dx = (x as i64 - region.world_x0).rem_euclid(ww);
         let dy = y as i64 - region.world_y0;
         if dx > tiles_x + 1 || dy < -1 || dy > tiles_y + 1 { continue; }
+        // The named dead, each with what they were ("captain of Ripu").
         let dead: Vec<String> = e.primary_participants.iter().filter_map(|p| match p {
-            crate::history::EntityId::Figure(f) => history.figures.get(f).filter(|x| x.death_date == Some(e.date)).map(|x| x.full_name()),
+            crate::history::EntityId::Figure(f) => history.figures.get(f)
+                .filter(|x| x.death_date == Some(e.date) && x.cause_of_death == Some(crate::history::entities::traits::DeathCause::Battle)).map(|x| {
+                let what = x.titles.first().map(|t| { let mut c = t.chars(); c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default() }).or_else(|| x.faction.and_then(|fa| history.factions.get(&fa)).map(|fa| format!("of {}", fa.name)));
+                match what { Some(w) if w.starts_with("of ") => format!("{} {}", x.full_name(), w), Some(w) => format!("{}, {}", x.full_name(), w), None => x.full_name() }
+            }),
             _ => None,
         }).collect();
+        if e.event_type == crate::history::events::types::EventType::HeroDied && dead.is_empty() { continue; }
         battles.entry((x, y)).or_default().push((e.title.clone(), e.date.year, dead));
     }
     RegionLore { sites, roads, cover, wildlife, battles }

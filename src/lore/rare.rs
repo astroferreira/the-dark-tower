@@ -67,7 +67,7 @@ impl Rare {
 }
 
 /// Measured rates per hundred dev worlds, in `Rare::ALL` order.
-const RATES: [u32; 7] = [10, 24, 31, 21, 5, 6, 25];
+const RATES: [u32; 7] = [11, 22, 31, 20, 4, 4, 21];
 
 /// The rare outcomes this history has, each with a line saying who and why.
 pub fn find(world: &WorldData, h: &WorldHistory) -> Vec<(Rare, String)> {

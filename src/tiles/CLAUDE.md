@@ -41,7 +41,9 @@ The default and only maintained front end (minifb window).
   Rows: world size (Dev 96x48 / Small / Standard / Large), seed (type digits, R rerolls),
   shape of the lands (`WorldStyle`), tectonic plates, age of the crust (`--tectonic-myr`),
   fantasy, written history (years, 0 = none), founding peoples, the Shadow, watch it unfold;
-  a help panel explains the selected row and a rough time estimate shows by Begin.
+  a help panel explains the selected row and a rough time estimate shows by Begin (fitted to
+  M4 Pro timings, world and 250 years together: Small 3.4 s, Standard 11-14 s, Large 66 s).
+  "Watch it unfold" is on by default: the history being written is the game's opening.
 - `main` copies the choices into `Args` (width, height, seed, world_style, plates,
   tectonic_myr, fantasy, history_years / no_history, civilizations, no_shadow, watch) and
   generation continues as with flags. The window closes during world generation (progress is
@@ -98,8 +100,12 @@ come from the seasonal climate; `--season` picks the season for `--tiles-snapsho
 to zoomed regions or embarks.
 
 ## Graphical tile viewer (`src/tiles/`)
-`cargo run --release -- --seed 42` opens a window (minifb) that draws the world with
-pixel-art tiles (the default front end; `--tiles` is accepted but no longer needed).
+`cargo run --release -- --seed 42` opens a window (minifb) titled "The Dark Tower" that draws
+the world with pixel-art tiles (the default front end; `--tiles` is accepted but no longer
+needed). Without `--tiles-center` it opens at 16 px on the stronghold in the Shadow's path
+(`PresentDay::stronghold`), or fitted to the window when there is no history; a parchment chip
+at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
+(`colony_hud::draw_hint`). Not yet tried in a real window.
 - Mouse wheel / `+` `-` zoom (1-64 px per tile, around the cursor); drag or arrows/WASD pan;
   click the minimap to jump; `N` minimap; `P` screenshot; `Q`/`Esc` quit. Hover info is shown
   in the window title.
@@ -216,3 +222,41 @@ pixel-art tiles (the default front end; `--tiles` is accepted but no longer need
   hatched, inked slopes, snow caps only near the top of cold or high peaks; ground snow on
   mountain tiles is cut to 30% so the white sits on the peaks. Seed 42 render times unchanged
   (~16.5 ms at 16 and 32 px).
+
+### The camp at a glance (`local_ink::draw_colony`)
+- Settlers are inked head-and-shoulders figures (~14x18 px at 16 px a cell, scaled 0.55-1.4) in
+  their portrait's skin, hair and dress (`settler_looks`: a dress that would make two living
+  settlers alike shifts to a spare colour), drawn between cells as they walk, greyed when ill,
+  with a pictogram for the job: axe, pick, hammer, basket, rod, a spear for the night's watch, a
+  z for sleep, the item carried. Those asleep under a roof are lettered on it ("6 within").
+  Names in IM Fell italic with a halo step aside (above, below, right, left) or are left out.
+  Stumps are a small faint ring.
+- Night (`Colony::darkness`: 0.55 from 21 to 5, ramps at dusk 19-21 and dawn 5-7) washes the
+  frame toward sea-ink blue, with a warm glow round the fire (7 cells) and the watcher (3).
+  `--sim-snapshot` writes `<prefix>_noon.png` / `<prefix>_midnight.png` (the day after the run)
+  and prints "Figures: N of N ... look different" and "Night: the midnight frame is 33% darker";
+  tested. `draw_colony` takes the history (for the portraits' races).
+
+### One hand for the words (IM Fell on the reading surfaces)
+- The inspector panel (`inspector::draw`), the watcher's chronicle (`draw_log`) and its closing
+  card (the world today and the three sites to settle, drawn last so nothing shows through, over
+  the whole window when it needs the room) are lettered in IM Fell: small-caps titles and
+  headings, 15 px roman body, red italic year rubrics, great events in small caps, faded text in
+  a darker brown (0x5A4634, ~5:1 on parchment). `fonts::wrap` wraps to a pixel width.
+- The viewer's camera is clamped at the poles (`viewer::clamp_cy`, as the watcher's) and the
+  world beyond the map is parchment (`render::OFF_MAP`), so 16 px frames and plates have no
+  black band.
+- Still in the 8x8 bitmap font: the watcher's side panel (almanac, the Shadow, realms, keys) and
+  the start screen. The minimap's frame is unchanged.
+
+### Fewer freezes (card 'One window from Begin to the camp', partly)
+- Z on an unvisited tile surveys the region on a worker (`surveying` in the viewer loop): the
+  map stays live under a chip "Surveying the land around X,Y... N s", and the walker steps in
+  when it is ready. Before, the window froze 11-15 s with the frame dimmed.
+- Walking: the site line ("what an embark here would hold") is read only once the walker has
+  stopped for 0.35 s ("the site is read when you stop"); generating it near a town costs up to
+  a second and stalled walking past one.
+- Not done: keeping the start window open during world generation (generation runs on the main
+  thread in `main`), bucketing river segments and houses, writing the timelapse on a worker.
+  Not tried in a real window.
+
