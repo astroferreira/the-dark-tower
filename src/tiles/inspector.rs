@@ -356,54 +356,63 @@ pub(crate) struct Hit { pub rect: Rect, pub to: Subject }
 
 /// Draw a page; returns the clickable lines.
 pub(crate) fn draw(page: &Page, buf: &mut [u32], w: usize, h: usize, depth: usize) -> Vec<Hit> {
+    use super::fonts::{self, Face};
+    // Lettered in the map's hand (IM Fell): small-caps title, roman body, rubric sections.
+    const BODY: f32 = 15.0;
+    const LINE: usize = 19;
+    // Faded ink dark enough to read on parchment (about 5:1).
+    const SOFT: u32 = 0x005A_4634;
     let r = panel_rect(w, h);
     if r.w < 120 || r.h < 80 { return Vec::new(); }
     ui::card(buf, w, r);
-    let (x0, mut y) = (r.x + 14, r.y + 14);
-    let max_chars = (r.w - 28) / 7;
-    // A realm's arms by its title; the title wraps short of them.
-    let max_chars = if let Some(a) = &page.emblem {
+    let (x0, mut y) = (r.x + 16, r.y + 14);
+    let full = (r.w - 32) as f32;
+    // A realm's arms or a settler's face by the title; the title wraps short of them.
+    let title_w = if let Some(a) = &page.emblem {
         super::heraldry::draw(buf, w, h, (r.x + r.w - 56) as i64, (r.y + 12) as i64, 48, a);
-        max_chars.saturating_sub(7)
+        full - 56.0
     } else if let Some(p) = &page.portrait {
         super::portraits::draw(buf, w, h, (r.x + r.w - 70) as i64, (r.y + 8) as i64, 60, p);
-        max_chars.saturating_sub(9)
-    } else { max_chars };
-    for (k, line) in ui::wrap(&ui::ascii(&page.title), max_chars).iter().enumerate() {
-        draw_ink(buf, w, h, x0 as i64, y as i64, line, RUBRIC, 1, k == 0);
-        y += 12;
+        full - 70.0
+    } else { full };
+    for line in fonts::wrap(&page.title, Face::SmallCaps, 20.0, title_w) {
+        fonts::draw(buf, w, h, x0 as f32, y as f32, &line, Face::SmallCaps, 20.0, 0.5, RUBRIC, None);
+        y += 24;
     }
-    y += 4;
-    ui::hline(buf, w, x0, r.x + r.w - 14, y, INK_FADED);
+    if page.portrait.is_some() { y = y.max(r.y + 74); }
+    y += 2;
+    ui::hline(buf, w, x0, r.x + r.w - 16, y, INK_FADED);
     y += 8;
     let mut hits = Vec::new();
-    let bottom = r.y + r.h - 26;
+    let bottom = r.y + r.h - 28;
     for line in &page.lines {
-        if line.gap { y += 6; }
-        let wrapped = ui::wrap(&ui::ascii(&line.text), max_chars);
+        if line.gap { y += 8; }
+        let (face, color) = if line.gap && line.color == RUBRIC { (Face::SmallCaps, RUBRIC) }
+            else if line.color == INK_FADED { (Face::Italic, SOFT) } else { (Face::Roman, line.color) };
+        let wrapped = fonts::wrap(&line.text, face, BODY, full - 14.0);
         let top = y;
         for (k, part) in wrapped.iter().enumerate() {
-            if y + 10 > bottom { break; }
-            let indent = if k > 0 { 14 } else { 0 };
+            if y + LINE > bottom { break; }
+            let indent = if k > 0 { 14.0 } else { 0.0 };
             // "why?" in red at the end of a line that has a cause.
             let (body, why) = match part.strip_suffix("why?") {
                 Some(b) if k + 1 == wrapped.len() => (b, true),
                 _ => (part.as_str(), false),
             };
-            draw_ink(buf, w, h, (x0 + indent) as i64, y as i64, body, line.color, 1, line.gap);
+            fonts::draw(buf, w, h, x0 as f32 + indent, y as f32, body, face, BODY, 0.0, color, None);
             if why {
-                let wx = x0 + indent + text_width(body, 1);
-                draw_ink(buf, w, h, wx as i64, y as i64, "why?", RUBRIC, 1, false);
+                let wx = x0 as f32 + indent + fonts::width(body, face, BODY, 0.0);
+                fonts::draw(buf, w, h, wx, y as f32, "why?", Face::Italic, BODY, 0.0, RUBRIC, None);
             }
-            y += 11;
+            y += LINE;
         }
         if let Some(to) = line.link {
-            if y > top { hits.push(Hit { rect: Rect { x: x0, y: top, w: r.w - 28, h: y - top }, to }); }
+            if y > top { hits.push(Hit { rect: Rect { x: x0, y: top, w: r.w - 32, h: y - top }, to }); }
         }
-        if y + 10 > bottom { break; }
+        if y + LINE > bottom { break; }
     }
-    let foot = if depth > 1 { "click a line | Backspace: back | Esc: close" } else { "click a line to follow it | Esc: close" };
-    draw_ink(buf, w, h, x0 as i64, (r.y + r.h - 20) as i64, &ui::truncate(foot, max_chars), INK_FADED, 1, false);
+    let foot = if depth > 1 { "click a line  \u{b7}  Backspace: back  \u{b7}  Esc: close" } else { "click a line to follow it  \u{b7}  Esc: close" };
+    fonts::draw(buf, w, h, x0 as f32, (r.y + r.h - 24) as f32, foot, Face::Italic, 13.0, 0.0, SOFT, None);
     hits
 }
 

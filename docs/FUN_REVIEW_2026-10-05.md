@@ -1,11 +1,11 @@
 # Dark Tower: is it fun yet?
 
 Design review, 2026-10-05. External consultant's report: what will make the game more fun to
-play, ranked, with evidence. No game code was changed. The 26 cards that follow from it are on
+play, ranked, with evidence. No game code was changed. The 35 cards that follow from it are on
 the Dark Tower Board, titled as listed in section 6 (card ids start with `fun-`). The owner
 answered the three open questions the same day; the answers are in section 7 and applied
-throughout. Section 8 was added the same day, at the owner's request for smarter settlers and
-more elaborate building.
+throughout. Sections 8 and 9 were added the same day at the owner's request: smarter settlers
+and more elaborate building, then monsters, depth and reasons to dig.
 
 **What was played.** A snapshot of the release binary built from the working tree at 11:32 on
 2026-10-05 (HEAD `f0ecbc9` on `next-cards`, plus the uncommitted colony-projects work). Another
@@ -471,7 +471,7 @@ plates, the poster, map frames (11-22 ms), the colony tick up to 50 settlers.
 - More terrain, climate or biome realism.
 - New sharing artifacts and polish on the existing ones (saga, portraits, poster variants).
 - Bard and director features.
-- Z-levels, underground, ore, architecture styles.
+- Architecture styles. The underground and its monsters wait for Phase 4 (section 9).
 - New features that are reachable only by a command-line flag. If the player needs it, it
   gets a key or a button.
 - Judging Update 5 work on the dev world: its tiles are 417 km across and its nearest town is
@@ -507,6 +507,7 @@ colony, by their own choices, and wants a second one.*
 |---|---|---|---|
 | A clock you can watch, as in Dwarf Fortress | viewer | P0 | L |
 | Settlers save themselves before they build | colony | P0 | M |
+| Creatures on the map: the raid arrives on legs | colony | P0 | M |
 | Settlers who plan ahead: the camp's worries, said aloud | colony | P1 | M |
 | Read the camp at a glance: figures, jobs, night | graphics | P1 | M |
 | The refugees are a choice, and the beats keep no timetable | colony | P1 | S |
@@ -532,8 +533,27 @@ colony, by their own choices, and wants a second one.*
 
 Also in this phase, already on the board: the province pass (neighbours within two weeks'
 walk), the bane as a quest in play, Update 4's relationships, and the rewind-and-fork screen.
-Raiders that walk onto the map and a fight that is played rather than rolled belong here too,
-once the clock can show them.
+Raiders that walk onto the map moved up to Phase 2 ("Creatures on the map").
+
+### Phase 4: "Under the hill"
+
+*Goal: a colony digs for a reason it can state, finds something history left there, and
+something finds it.*
+
+| Card | Column | Priority | Effort |
+|---|---|---|---|
+| Mountains at human scale: a rock face to dig into, and a living to be had | embark | P0 | M |
+| Settlers go under: the pick, the stair, and walking in three dimensions | colony | P0 | L |
+| Reasons to dig: warm, safe, cool, rich | colony | P0 | M |
+| Seeing below: the cutaway and the section, in ink | graphics | P0 | M |
+| Something down there: caves, lairs, old works and sealed doors | embark | P1 | L |
+| The unknown is blank, and someone has to go in | colony | P1 | M |
+| A small bestiary with causes: who they are, why here, what they want | history | P1 | M |
+| Dig too deep: every level is richer and nearer to what sleeps | colony | P1 | M |
+
+Phase 4 needs only two cards from the village work: "Settlers who plan ahead" and "Buildings
+with a job". If monsters and depth matter more to the owner than village layout, it can go
+before the rest of Phase 3.
 
 ---
 
@@ -643,6 +663,81 @@ none helps until the seven above are in.
 
 ---
 
+## 9. Addendum: monsters, depth and reasons to dig
+
+Added 2026-10-05 after the owner asked for monsters, depth, and reasons to dig down, build
+underground, explore and dig into mountains. This is the heart of the game the owner named as
+the model (section 7, decision 1), and the world already holds the fiction for it. It is also
+about a second game's worth of systems, so order matters more here than anywhere else in this
+report. Nine cards follow.
+
+**What exists today.**
+- **Settlers cannot leave the surface.** Pathfinding has one node per column, at its floor
+  (`src/colony/nav.rs`). There is no digging job; Quarry only breaks boulders and bare rock on
+  top.
+- **Below every embark is solid rock.** Thirty levels, 60 m, of soil, strata and thin ore
+  seams (`src/local/mod.rs`), and nothing else: no cave, no void, no water. The biomes named
+  Cave Entrance, Sinkhole, Cenote and Hollow Earth have nothing under them. The world's
+  aquifers (1,809 tiles on the dev world) are not used by embarks.
+- **Mountains are flat at the scale the game is played.** An embark on Mount Mistvale, "the
+  roof of the world" at 10,227 m (seed 42, 256x128, tile 104,104), has about 4 levels of
+  relief, 8 m, across its 384 m. The dev mountain (48,18) has one step. Both draw as a blank
+  white sheet, and both starve a colony. There is no rock face to dig into.
+- **No creature has ever stood on a playable area.** The raid is a hash and a sentence. Yet
+  the history holds 132 legendary beasts on the dev world (9 alive), each with a species, a
+  size, powers, a lair tile, kills and a hoard; the ecology tracks wolves, bears and lions on
+  every tile; and embarks are full of dens and trails with no animal behind them. The
+  Shadow's bane lies "in the hoard of Ithiel the Eternal (lair at 27,38)", and there is no
+  hoard anywhere to walk into.
+- **The underground cannot be read.** A level slice is one flat rock colour with grey blobs
+  for ore, in the old atlas tiles. The cross-section exists only as a file written by
+  `--local-snapshot`.
+
+**Advice.**
+
+1. **The settlers must want to dig.** With no orders, digging happens only if the camp weighs
+   it and chooses it. Four reasons, each a number: warm (no exposure under rock), safe (cannot
+   burn, one door to hold), cool (a cellar keeps food three times as long), rich (ore becomes
+   tools and arms, richer with depth). And costs: slow, hungry, nothing grows below.
+2. **Depth is a dial.** Each level is richer and nearer to something. Every breach is foretold
+   a day ahead (damp walls, a hollow ring, claw marks). The miners want the next seam; the
+   patron's forbidding hand is the brake. That is a real decision, made without an order.
+3. **What is down there is what history left there.** A beast's lair with the hoard it owns by
+   name, the tomb of a named dead, the mine of a town that fell, a door sealed in a known year.
+   No random dungeon: this world's edge is that everything has a cause.
+4. **Few monsters, each readable.** One want, one fear, one sign. Wolves fear fire. The dead
+   on a bone field want a name and a burial. What comes up from below uses the stairs the
+   colony dug.
+5. **If it cannot be seen it does not exist.** The cutaway view and the side section come
+   with the first pick, not after. The section of a mountain hold is the picture people will
+   post.
+6. **A mountain first.** "Dig into the mountain" needs relief at human scale, and a way to
+   eat there.
+
+**The cards, in order.**
+
+| Card | Phase | What it adds |
+|---|---|---|
+| Creatures on the map: the raid arrives on legs | 2 | A creature entity; the attacker walks in from its lair's side and the fight is played; wolves from the dens |
+| Mountains at human scale | 4 | Rock faces, ledges and scree on mountain tiles; ibex, snowmelt; the site states its trade |
+| Settlers go under | 4 | Three-dimensional paths, a Dig job, rock hardness by kind; stone and ore come out |
+| Reasons to dig: warm, safe, cool, rich | 4 | The four numbers and their costs, weighed in the camp's worries |
+| Seeing below | 4 | The view follows the settler's level; the underground in ink; a side section |
+| Something down there | 4 | Caves, lairs with hoards, tombs, old mines, sealed doors, each with a cause |
+| The unknown is blank, and someone has to go in | 4 | The map shows what settlers know; an Explore job for the bold; some do not come back |
+| A small bestiary with causes | 4 | Six to eight kinds from the world's own data, at most two on a site |
+| Dig too deep | 4 | Depth as risk: foretold breaches, things that come up the stairs, doors that hold |
+
+**Not yet.** Fluids and pressure, cave-ins and supports, magma, mechanisms and minecarts,
+generated creature anatomy on the embark, more than eight kinds of monster. Each is where
+Dwarf Fortress spent years, and none is needed for the feeling.
+
+**The cost, plainly.** Two of the nine cards are large, and three-dimensional paths touch
+every job the settlers have. Nothing here should start before Phase 2's clock: a dig that
+finishes in a blink and a monster that crosses the map in 0.2 s would waste the work.
+
+---
+
 ## Appendix: to reproduce the main numbers
 
 All deterministic:
@@ -655,4 +750,6 @@ $B --dev --headless --present              # the loaded present the colony ignor
 $B --sim-snapshot coast --tiles-center 12,34   # a rich site that starves in silence
 for s in 76 58 23 5 3; do $B --dev --seed $s --sim-snapshot s$s; done   # one script, five worlds
 $B --sim-bench 200                         # 2,958 ticks a second
+# section 9: the roof of the world is flat at embark scale (see pk_section.png, pk_surface.png)
+$B -W 256 -H 128 --seed 42 --no-history --headless --local-snapshot pk --tiles-center 104,104
 ```

@@ -28,6 +28,8 @@ pub enum Feature {
     Stone,
     /// A spring feeding a small pool.
     Spring,
+    /// What a felled tree leaves.
+    Stump,
 }
 
 impl Feature {
@@ -42,6 +44,7 @@ impl Feature {
             Feature::Grave => "grave",
             Feature::Stone => "standing stone",
             Feature::Spring => "spring",
+            Feature::Stump => "stump",
         }
     }
 }

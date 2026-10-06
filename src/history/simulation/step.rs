@@ -1530,21 +1530,30 @@ pub(crate) fn succeed(history: &mut WorldHistory, dead_leader_id: FigureId, fact
     let crisis_chance = if succession_law.crisis_prone() { 0.35 } else { 0.08 };
     let is_crisis = rng.gen::<f32>() < crisis_chance;
 
-    // Generate new leader
+    // Under a dynastic law the dead ruler's eldest living child takes the throne (the heir
+    // `people.rs` raised); only with none is a new ruler found.
     let naming_style = naming_style_for_race(history, race_id, game_data);
-    let new_leader_id = history.id_generators.next_figure();
-    let new_leader_name = NameGenerator::personal_name(&naming_style, rng);
-    let personality = Personality::random(rng);
-    let mut new_leader = Figure::new(
-        new_leader_id, new_leader_name.clone(),
-        race_id,
-        Date::new(date.year.saturating_sub(rng.gen_range(20..50)), crate::seasons::Season::Spring),
-        personality,
-    );
-    new_leader.faction = Some(faction_id);
+    let heir = if succession_law.requires_dynasty() {
+        history.figures.get(&dead_leader_id).map(|d| d.children.clone()).unwrap_or_default().into_iter()
+            .filter_map(|c| history.figures.get(&c).filter(|c| c.is_alive() && c.faction == Some(faction_id) && c.age_at(&date) >= 14))
+            .min_by_key(|c| (c.birth_date.year, c.id)).map(|c| (c.id, c.name.clone()))
+    } else { None };
+    let inherited = heir.is_some();
+    let (new_leader_id, new_leader_name, mut new_leader) = match heir {
+        Some((id, name)) => (id, name, history.figures.remove(&id).unwrap()),
+        None => {
+            let id = history.id_generators.next_figure();
+            let name = NameGenerator::personal_name(&naming_style, rng);
+            let personality = Personality::random(rng);
+            let mut f = Figure::new(id, name.clone(), race_id,
+                Date::new(date.year.saturating_sub(rng.gen_range(20..50)), crate::seasons::Season::Spring), personality);
+            f.faction = Some(faction_id);
+            (id, name, f)
+        }
+    };
 
-    // Wire dynasty link based on succession law
-    if succession_law.requires_dynasty() {
+    // Wire dynasty link based on succession law (a born heir is already the ruler's child)
+    if succession_law.requires_dynasty() && !inherited {
         new_leader.parents.0 = Some(dead_leader_id);
         if let Some(dead_leader) = history.figures.get_mut(&dead_leader_id) {
             dead_leader.add_child(new_leader_id);
@@ -2725,7 +2734,7 @@ fn static_road_costs(world: &WorldData) -> std::sync::Arc<Vec<u32>> {
         
         // Add varying noise to make roads wavy instead of straight
         // Using sin/cos based on coordinates creates consistent "organic" curves
-        let noise_val = ((x as f32 * 0.15).sin() + (y as f32 * 0.25).cos());
+        let noise_val = (x as f32 * 0.15).sin() + (y as f32 * 0.25).cos();
         let noise_cost = (noise_val.abs() * 4.0) as u32;
         
         // Height penalty for hills (not mountains)
@@ -3253,7 +3262,7 @@ fn step_quests(history: &mut WorldHistory, rng: &mut impl Rng) {
                 .map(|e| e.title.contains("seeks"))
                 .unwrap_or(false);
 
-            let mut desc = String::new();
+            let desc;
             let mut title = format!("{} completes quest", hero_name);
 
             if quest_involved_creature {
@@ -3981,8 +3990,9 @@ fn step_artifact_lifecycle(history: &mut WorldHistory, rng: &mut impl Rng) {
     }
 
     // --- 3. Artifact destruction (very rare, 0.05% per artifact per step) ---
+    // The Shadow's bane (importance 1000) cannot be destroyed: what wounded it once must remain.
     let owned_artifacts: Vec<(ArtifactId, ArtifactQuality)> = history.artifacts.values()
-        .filter(|a| !a.destroyed && !a.lost)
+        .filter(|a| !a.destroyed && !a.lost && a.historical_importance < 1000)
         .map(|a| (a.id, a.quality))
         .collect();
 

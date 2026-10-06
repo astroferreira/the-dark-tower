@@ -45,6 +45,14 @@ fn bare(name: &str) -> &str {
 }
 
 /// Upper-case the first letter of the visible text (skipping any leading tag).
+/// The year written history (and the Shadow) began.
+fn sh_start(h: &WorldHistory) -> u32 { h.config.prehistory_depth }
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
 fn sentence(html: String) -> String {
     let mut out = String::with_capacity(html.len());
     let (mut in_tag, mut done) = (false, false);
@@ -615,6 +623,59 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
                 esc(&if place.is_empty() { format!("at {},{}", n.x, n.y) } else { format!("{} ({},{})", place, n.x, n.y) }), at);
         }
         body.push_str("</ul></section>");
+    }
+
+    // --- The Shadow ---------------------------------------------------------------------------
+    if let Some(sh) = history.shadow.as_ref() {
+        let present = history.present();
+        let shadow_events: Vec<&Event> = events.iter()
+            .filter(|e| matches!(e.event_type, EventType::ShadowRose | EventType::ShadowConquest | EventType::ShadowRepelled | EventType::ShadowBroken | EventType::ShadowLiberated | EventType::ShadowAlliance | EventType::ShadowBane))
+            .collect();
+        let fell: Vec<&&Event> = shadow_events.iter().filter(|e| e.event_type == EventType::ShadowConquest).collect();
+        let held: Vec<&&Event> = shadow_events.iter().filter(|e| e.event_type == EventType::ShadowRepelled).collect();
+        let freed = shadow_events.iter().filter(|e| e.event_type == EventType::ShadowLiberated).count();
+        let _ = write!(toc, "<li><a href=\"#shadow\">The Shadow<span>{}</span></a></li>", fell.len());
+        let _ = write!(body, "<section class=\"part\" id=\"shadow\"><p class=\"eyebrow\">The darkness of these annals</p><h2>{}</h2><p class=\"part-intro\">{} now rules it from its seat. In these years it took or burned {}, was thrown back {} times, and lost {} to their peoples again.</p>",
+            esc(&capitalize(&sh.name)), esc(&sh.lord(history)), plural(fell.len(), "town", "towns"), held.len(), plural(freed, "town", "towns"));
+        if !present.shadow_acts.is_empty() {
+            body.push_str("<h3>Its story</h3><ul class=\"deeds\">");
+            for (y, act, what) in &present.shadow_acts {
+                let _ = write!(body, "<li><a class=\"yr\" href=\"#y{}\">{}</a> <b>{}</b>: {}</li>", y, y, esc(act), esc(what));
+            }
+            body.push_str("</ul>");
+        }
+        // Its lords, in order.
+        // Each rising of the Shadow (its first and its returns) has its realm: its lords are that
+        // realm's rulers from the rising until the next.
+        let risings: Vec<(u32, crate::history::FactionId)> = shadow_events.iter().filter(|e| e.event_type == EventType::ShadowRose)
+            .filter_map(|e| e.factions_involved.first().map(|f| (e.date.year, *f))).collect();
+        let lords: Vec<&Event> = events.iter().filter(|e| e.event_type == EventType::RulerCrowned && e.date.year > sh_start(history))
+            .filter(|e| risings.iter().enumerate().any(|(k, (from, f))| e.date.year >= *from
+                && risings.get(k + 1).map_or(true, |(next, _)| e.date.year < *next) && e.factions_involved.contains(f)))
+            .collect();
+        if !lords.is_empty() {
+            body.push_str("<h3>Its lords</h3><ul class=\"deeds\">");
+            for e in lords.iter().take(12) { let _ = write!(body, "<li><span class=\"yr\">{}</span> {}</li>", e.date.year, links.text(e, &e.title)); }
+            body.push_str("</ul>");
+        }
+        if !fell.is_empty() {
+            body.push_str("<h3>The fallen</h3><p>");
+            let list: Vec<String> = fell.iter().map(|e| format!("{} ({})", links.text(e, e.title.split(" falls to").next().unwrap_or(&e.title).split(" burned by").next().unwrap_or(&e.title)), e.date.year)).collect();
+            body.push_str(&list.join(", "));
+            body.push_str(".</p>");
+        }
+        if !held.is_empty() {
+            let mut towns: Vec<String> = held.iter().map(|e| e.title.split(" holds against").next().unwrap_or("").to_string()).collect();
+            towns.sort();
+            towns.dedup();
+            let _ = write!(body, "<h3>Those that held</h3><p>{}.</p>", esc(&towns.join(", ")));
+        }
+        if !present.weaknesses.is_empty() || present.stronghold.is_some() {
+            body.push_str("<h3>Today</h3>");
+            if let Some(st) = &present.stronghold { let _ = write!(body, "<p>In its path stands {}.</p>", esc(st)); }
+            for w in &present.weaknesses { let _ = write!(body, "<p><b>What can wound it:</b> {}</p>", esc(w)); }
+        }
+        body.push_str("</section>");
     }
 
     // --- Tales worth telling ----------------------------------------------------------------

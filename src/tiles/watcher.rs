@@ -183,6 +183,8 @@ enum Msg {
     Step(Box<Step>),
     /// The world as the game inherits it: lines for the closing card.
     Present(Vec<String>),
+    /// Three places to settle, offered on the closing card.
+    Sites(Vec<super::viewer::SiteOffer>),
     Done,
 }
 
@@ -229,6 +231,7 @@ fn style(kind: &EventType) -> (char, u32, Option<MarkKind>, bool) {
         FigureMoved => ('>', INK_FADED, None, false),
         ShadowAlliance => ('*', GOLD, Some(MarkKind::Battle), true),
         ShadowBane => ('$', GOLD, None, true),
+        Marriage => ('&', GOLD, None, false),
     }
 }
 
@@ -366,6 +369,8 @@ fn simulate(
     if near > 0 { lines.push(format!("{} near towns.", n(near, "beast of legend lairs", "beasts of legend lair"))); }
     if !present.fallen.is_empty() { lines.push(format!("{} towns fell in the last {} years; their survivors are on the roads.", present.fallen.len(), crate::history::present::RECENT_YEARS)); }
     let _ = tx.send(Msg::Present(lines));
+    let _ = tx.send(Msg::Status("Choosing three places to settle...".into()));
+    let _ = tx.send(Msg::Sites(super::viewer::three_sites(world, &history)));
     let _ = tx.send(Msg::Done);
     history
 }
@@ -641,6 +646,9 @@ struct View<'a> {
     banner_msg: Option<(String, Instant)>,
     /// The closing card: the world today.
     present: Vec<String>,
+    sites: Vec<super::viewer::SiteOffer>,
+    /// Where each offered site is drawn (for clicks).
+    site_rects: Vec<Rect>,
     status: String,
     /// The simulation has finished (everything is recorded).
     done: bool,
@@ -679,7 +687,7 @@ impl<'a> View<'a> {
             head: HistoryOverlay::default(), cur: HistoryOverlay::default(), shown: None,
             next_advance: Instant::now(), tw_dirty: false,
             log: VecDeque::new(), marks: Vec::new(),
-            banner_msg: None, present: Vec::new(), status: "Raising the land...".into(),
+            banner_msg: None, present: Vec::new(), sites: Vec::new(), site_rects: Vec::new(), status: "Raising the land...".into(),
             done: false, show_all: false, log_scroll: 0, size: (0, 0), buf: Vec::new(),
             bg: Vec::new(), map_buf: Vec::new(), map_dirty: true, lay, cam, fitted: true,
             last_render: Instant::now() - Duration::from_secs(1), entry_hits: Vec::new(),
@@ -696,6 +704,7 @@ impl<'a> View<'a> {
         match msg {
             Msg::Status(s) => self.status = s,
             Msg::Present(lines) => self.present = lines,
+            Msg::Sites(offers) => self.sites = offers,
             Msg::Done => self.done = true,
             Msg::Start(o) => self.head = *o,
             Msg::Step(step) => {
@@ -968,29 +977,6 @@ impl<'a> View<'a> {
             if alpha > 0.0 { banner(buf, w, h, lay.map, text, alpha); } else { self.banner_msg = None; }
         }
 
-        // The world today: once the age is written, the present the game inherits.
-        if complete && !self.present.is_empty() {
-            let m = lay.map;
-            let cw = (m.w * 3 / 5).max(320).min(m.w - 20);
-            let chars = (cw - 32) / 7;
-            let wrapped: Vec<Vec<String>> = self.present.iter().map(|l| wrap(&ascii(l), chars)).collect();
-            let lines: usize = wrapped.iter().map(|v| v.len()).sum::<usize>() + wrapped.len();
-            let ch = (40 + lines * 11 + 26).min(m.h - 20);
-            let r = Rect { x: m.x + (m.w - cw) / 2, y: m.y + (m.h - ch) / 2, w: cw, h: ch };
-            card(buf, w, r);
-            heading(buf, w, h, r.x + 16, (r.y + 14) as i64, cw - 32, "THE WORLD TODAY");
-            let mut y = r.y as i64 + 34;
-            for (k, block) in wrapped.iter().enumerate() {
-                for l in block {
-                    if y + 10 > (r.y + r.h) as i64 - 22 { break; }
-                    draw_ink(buf, w, h, (r.x + 16) as i64, y, l, if k == 0 { RUBRIC } else { INK }, 1, false);
-                    y += 11;
-                }
-                y += 6;
-            }
-            draw_ink(buf, w, h, (r.x + 16) as i64, (r.y + r.h) as i64 - 18, "ENTER choose where to settle", INK_FADED, 1, true);
-        }
-
         let shown = self.shown.unwrap_or(0);
         let souls: Vec<u64> = self.steps[..(shown + 1).min(self.steps.len())].iter().map(|s| s.stats.souls).collect();
         let status = match self.shown {
@@ -1003,6 +989,69 @@ impl<'a> View<'a> {
         let written = self.steps.len().saturating_sub(1) as u32;
         self.timeline = draw_panel(buf, w, h, lay.panel, current, &souls, &status, ctl, complete, written);
         self.entry_hits = draw_log(buf, w, h, lay.log, &self.log, self.show_all, &mut self.log_scroll, mouse);
+
+        // The world today: once the age is written, the present the game inherits, and three
+        // places to settle. Lettered in IM Fell.
+        if complete && !self.present.is_empty() {
+            use super::fonts::{self, Face};
+            const SOFT: u32 = 0x005A_4634;
+            let m = lay.map;
+            let cw = (m.w * 3 / 5).max(420).min(m.w - 20);
+            let inner = (cw - 36) as f32;
+            let wrapped: Vec<(Vec<String>, Face, f32)> = self.present.iter().enumerate().map(|(k, l)| {
+                let (face, px) = if k == 0 { (Face::Italic, 17.0) } else { (Face::Roman, 15.0) };
+                (fonts::wrap(l, face, px, inner), face, px)
+            }).collect();
+            let text_h: usize = wrapped.iter().map(|(v, _, px)| v.len() * (*px as usize + 4) + 6).sum();
+            let offers: Vec<(String, Vec<String>)> = self.sites.iter().enumerate().map(|(k, o)| {
+                let mut lines = Vec::new();
+                for l in [&o.who, &o.trouble, &o.land] { lines.extend(fonts::wrap(l, Face::Roman, 13.0, inner - 16.0).into_iter().take(2)); }
+                (format!("{}  {}", k + 1, o.name), lines)
+            }).collect();
+            let site_h: usize = if offers.is_empty() { 0 } else { 30 + offers.iter().map(|(_, l)| 30 + l.len() * 16 + 8).sum::<usize>() };
+            // Over the map, or the whole window when the three sites need the room.
+            let ch = (52 + text_h + site_h + 30).min(h - 20);
+            let ry = if ch <= m.h - 20 { m.y + (m.h - ch) / 2 } else { (h - ch) / 2 };
+            let r = Rect { x: m.x + (m.w - cw) / 2, y: ry, w: cw, h: ch };
+            card(buf, w, r);
+            let x0 = (r.x + 18) as f32;
+            let tw = fonts::width("The World Today", Face::SmallCaps, 24.0, 1.5);
+            fonts::draw(buf, w, h, r.x as f32 + (cw as f32 - tw) / 2.0, (r.y + 14) as f32, "The World Today", Face::SmallCaps, 24.0, 1.5, RUBRIC, None);
+            let mut y = (r.y + 52) as f32;
+            let bottom = (r.y + r.h) as f32 - 30.0;
+            for (k, (block, face, px)) in wrapped.iter().enumerate() {
+                for l in block {
+                    if y + px > bottom { break; }
+                    fonts::draw(buf, w, h, x0, y, l, *face, *px, 0.0, if k == 0 { RUBRIC } else { INK }, None);
+                    y += px + 4.0;
+                }
+                y += 6.0;
+            }
+            // Three places to settle: a click (or 1, 2, 3) embarks there.
+            self.site_rects.clear();
+            if !offers.is_empty() {
+                y += 4.0;
+                fonts::draw(buf, w, h, x0, y, "Where to settle", Face::SmallCaps, 17.0, 1.0, RUBRIC, None);
+                y += 26.0;
+                for (name, lines) in &offers {
+                    let bh = 30 + lines.len() * 16;
+                    if y as usize + bh > bottom as usize { break; }
+                    let bx = Rect { x: r.x + 12, y: y as usize, w: cw - 24, h: bh };
+                    super::ui::outline(buf, w, bx, INK_FADED);
+                    fonts::draw(buf, w, h, x0, y + 6.0, name, Face::SmallCaps, 16.0, 0.5, RUBRIC, None);
+                    let mut ly = y + 28.0;
+                    for l in lines {
+                        fonts::draw(buf, w, h, x0 + 8.0, ly, l, Face::Roman, 13.0, 0.0, INK, None);
+                        ly += 16.0;
+                    }
+                    self.site_rects.push(bx);
+                    y += bh as f32 + 8.0;
+                }
+            }
+            let hint = if self.sites.is_empty() { "Enter: choose where to settle" } else { "Click or 1-3: settle there  \u{b7}  Enter: walk the map yourself" };
+            fonts::draw(buf, w, h, x0, (r.y + r.h) as f32 - 24.0, hint, Face::Italic, 14.0, 0.0, SOFT, None);
+        }
+
     }
 }
 
@@ -1027,6 +1076,15 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         let pressed = |k: Key| window.is_key_pressed(k, KeyRepeat::No);
         if pressed(Key::Escape) && !view.complete() { break; }
         if view.complete() && (pressed(Key::Enter) || pressed(Key::Escape) || pressed(Key::Q)) { break; }
+        // A site chosen on the closing card: the viewer embarks there.
+        if view.complete() && !view.sites.is_empty() {
+            let by_key = [Key::Key1, Key::Key2, Key::Key3].iter().position(|k| pressed(*k));
+            let by_click = if clicked { view.site_rects.iter().position(|r| r.contains(mouse.0, mouse.1)) } else { None };
+            if let Some(k) = by_key.or(by_click).filter(|&k| k < view.sites.len()) {
+                super::viewer::set_chosen_site(view.sites[k].tile);
+                break;
+            }
+        }
         if pressed(Key::Space) {
             let p = !ctl.paused.load(Ordering::Relaxed);
             ctl.paused.store(p, Ordering::Relaxed);
@@ -1549,35 +1607,42 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
     let x = r.x + 16;
     let iw = r.w.saturating_sub(32);
     let mut y = r.y as i64 + 14;
-    heading(buf, w, h, x, y, iw.saturating_sub(150), "CHRONICLE OF THE AGE");
+    use super::fonts::{self, Face};
+    // Lettered in IM Fell: the years as red rubrics, the entries in roman (great events in small
+    // capitals), 15 px.
+    const PX: f32 = 15.0;
+    const ROW: i64 = 19;
+    fonts::draw(buf, w, h, x as f32, y as f32 - 4.0, "Chronicle of the Age", Face::SmallCaps, 17.0, 1.0, RUBRIC, None);
     let filter = if show_all { "all that happens" } else { "key events" };
-    draw_ink(buf, w, h, (x + iw - text_width(filter, 1)) as i64, y, filter, INK_FADED, 1, false);
-    y += 18;
-    let bottom = (r.y + r.h) as i64 - if *scroll > 0 { 22 } else { 10 };
+    let fw = fonts::width(filter, Face::Italic, 13.0, 0.0);
+    fonts::draw(buf, w, h, (x + iw) as f32 - fw, y as f32 - 2.0, filter, Face::Italic, 13.0, 0.0, 0x005A_4634, None);
+    y += 22;
+    let bottom = (r.y + r.h) as i64 - if *scroll > 0 { 24 } else { 10 };
     let text_x = x + 64;
-    let max_chars = (iw.saturating_sub(64)) / 7;
+    let text_w = iw.saturating_sub(64) as f32;
     let mut hits = Vec::new();
     let entries: Vec<&LogItem> = log.iter().filter(|e| show_all || e.key).collect();
     *scroll = (*scroll).min(entries.len().saturating_sub(1));
     let mut last_year = None;
     for (n, e) in entries.iter().skip(*scroll).enumerate() {
-        let lines = wrap(&ascii(&e.title), max_chars.max(10));
-        let eh = lines.len() as i64 * LINE;
+        let face = if e.kind.is_major() { Face::SmallCaps } else { Face::Roman };
+        let lines = fonts::wrap(&e.title, face, PX, text_w.max(80.0));
+        let eh = lines.len() as i64 * ROW;
         if y + eh > bottom { break; }
         let rect = Rect { x: x - 4, y: (y - 2) as usize, w: iw + 8, h: eh as usize + 2 };
         let hover = e.location.is_some() && rect.contains(mouse.0, mouse.1);
         if hover { fill(buf, w, rect, PAPER_SHADE); }
-        // Older entries fade towards the paper.
-        let age = (n as f32 / 40.0).min(0.55);
+        // Older entries fade towards the paper (no further than a readable brown).
+        let age = (n as f32 / 40.0).min(0.4);
         let (glyph, gcol, _, _) = style(&e.kind);
         if last_year != Some(e.year) {
-            draw_ink(buf, w, h, x as i64, y, &format!("{}", e.year), mix(RUBRIC, PAPER, age * 0.7), 1, true);
+            fonts::draw(buf, w, h, x as f32, y as f32, &format!("{}", e.year), Face::Italic, PX, 0.0, mix(RUBRIC, PAPER, age * 0.6), None);
             last_year = Some(e.year);
         }
-        draw_ink(buf, w, h, (x + 44) as i64, y, &glyph.to_string(), mix(gcol, PAPER, age), 1, true);
+        draw_ink(buf, w, h, (x + 44) as i64, y + 4, &glyph.to_string(), mix(gcol, PAPER, age), 1, true);
         let ink = if e.kind.is_major() || e.kind == EventType::Authored { INK } else { mix(INK, PAPER, age) };
         for (k, l) in lines.iter().enumerate() {
-            draw_ink(buf, w, h, text_x as i64, y + k as i64 * LINE, l, ink, 1, e.kind.is_major());
+            fonts::draw(buf, w, h, text_x as f32, (y + k as i64 * ROW) as f32, l, face, PX, if face == Face::SmallCaps { 0.3 } else { 0.0 }, ink, None);
         }
         if let Some(loc) = e.location { hits.push((rect, loc)); }
         y += eh + 2;

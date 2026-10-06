@@ -44,6 +44,9 @@ fn dev_world_present_day_has_open_threads() {
         frontier += count(line, " towns on the Shadow's frontier");
         // The Shadow's story ends on a cliffhanger: it can be wounded, and the present knows how.
         assert!(count(line, " known weakness") >= 1, "seed {seed}: no known weakness of the Shadow: {line}");
+        // Land long under the Shadow's blight dies (dead woods, ashlands) in the world's biomes.
+        let scars = out.lines().find(|l| l.contains(" scarred landscapes")).expect("scars line");
+        assert!(count(scars, " killed by the Shadow's blight") >= 1, "seed {seed}: no land killed by the blight: {scars}");
         assert!(out.lines().any(|l| l == "Chronicle: consistent"),
             "seed {seed}: the chronicle contradicts itself:\n{}", out.lines().skip_while(|l| !l.starts_with("Chronicle:")).take(10).collect::<Vec<_>>().join("\n"));
     }

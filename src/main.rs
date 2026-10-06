@@ -53,6 +53,33 @@ struct Args {
     #[arg(long)]
     sim_patron: bool,
 
+    /// Run the colony N unattended days on the dev embark (or --tiles-center) and list the
+    /// projects it set itself
+    #[arg(long, value_name = "DAYS")]
+    sim_projects: Option<u64>,
+
+    /// Live the dev colony (or --tiles-center) to its raid three times: no patron, a careful one,
+    /// a careless one
+    #[arg(long)]
+    sim_raid: bool,
+
+    /// Strip the berries within reach of the dev colony (or --tiles-center) and live N days: the
+    /// settlers should move the camp
+    #[arg(long, value_name = "DAYS")]
+    sim_move: Option<u64>,
+
+    /// Live the dev colony (or --tiles-center) to the refugees twice: take them in, turn them away
+    #[arg(long)]
+    sim_refugees: bool,
+
+    /// Print the three places to settle the end of the history offers
+    #[arg(long)]
+    sites: bool,
+
+    /// Print what grows on an embark for one tile of each world biome
+    #[arg(long)]
+    embark_survey: bool,
+
     /// A world code ("SEED.WxH.STYLE.PEOPLES.YEARS@X,Y", printed by --sim-snapshot and shown in
     /// the colony's title): the same world, site and settlers on any machine
     #[arg(long, value_name = "CODE")]
@@ -61,6 +88,10 @@ struct Args {
     /// Patron interventions to replay ("tick verb args" per line, as the colony records them)
     #[arg(long, value_name = "FILE")]
     interventions: Option<String>,
+
+    /// With --code (and --interventions): open the window on that colony at this day
+    #[arg(long, value_name = "DAY")]
+    day: Option<u64>,
 
     /// Run the dev colony 100 days without and with founding stones and compare the layouts;
     /// writes <PREFIX>_plain.png and <PREFIX>_stones.png
@@ -523,13 +554,14 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
     if let Some(code) = args.code.clone() {
         match parse_world_code(&code) {
-            Some((seed, w, h, style, peoples, years, site)) => {
+            Some((seed, w, h, style, peoples, years, site, cell)) => {
+                if let Some(c) = cell { tiles::viewer::set_start_cell(c); }
                 args.seed = Some(seed); args.width = w; args.height = h; args.world_style = style;
                 args.civilizations = peoples; args.history_years = years; args.no_history = years == 0;
                 args.tiles_center = Some(format!("{},{}", site.0, site.1));
@@ -556,13 +588,17 @@ fn parse_args() -> Args {
 /// (water, fish), woods (timber), high ground nearby (stone), and a living town one to three tiles
 /// away (neighbours to trade with or fear) but not on the tile itself. Ties go to the lowest index.
 /// "76.96x48.earthlike.8.250@45,12" -> (seed, width, height, style, peoples, years, site).
-fn parse_world_code(code: &str) -> Option<(u64, usize, usize, String, u32, u32, (usize, usize))> {
+/// "SEED.WxH.STYLE.PEOPLES.YEARS@X,Y" or, for a camp made where the walker stood,
+/// "...@X,Y:CX,CY" (the cell, in global cells).
+fn parse_world_code(code: &str) -> Option<(u64, usize, usize, String, u32, u32, (usize, usize), Option<(u64, u64)>)> {
     let (world, site) = code.split_once('@')?;
     let p: Vec<&str> = world.split('.').collect();
     if p.len() != 5 { return None; }
     let (w, h) = p[1].split_once('x')?;
-    let (x, y) = site.split_once(',')?;
-    Some((p[0].parse().ok()?, w.parse().ok()?, h.parse().ok()?, p[2].to_string(), p[3].parse().ok()?, p[4].parse().ok()?, (x.parse().ok()?, y.parse().ok()?)))
+    let (tile, cell) = match site.split_once(':') { Some((t, c)) => (t, Some(c)), None => (site, None) };
+    let (x, y) = tile.split_once(',')?;
+    let cell = match cell { Some(c) => { let (cx, cy) = c.split_once(',')?; Some((cx.parse().ok()?, cy.parse().ok()?)) } None => None };
+    Some((p[0].parse().ok()?, w.parse().ok()?, h.parse().ok()?, p[2].to_string(), p[3].parse().ok()?, p[4].parse().ok()?, (x.parse().ok()?, y.parse().ok()?), cell))
 }
 
 /// The code for this world and an embark site.
@@ -634,6 +670,12 @@ const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 fn main() {
     let mut args = parse_args();
     if let Some(px) = args.tiles_zoom { tiles::viewer::set_start_zoom(px); }
+    // A colony to open at a given day: its code, the patron's acts and the day.
+    if let (Some(_), Some(day)) = (&args.code, args.day) {
+        let script: Vec<String> = args.interventions.as_ref().and_then(|f| std::fs::read_to_string(f).ok())
+            .map(|t| t.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty() && !l.starts_with('#')).collect()).unwrap_or_default();
+        tiles::viewer::set_resume(script, day);
+    }
     // A plate reopens its world: run again with the arguments it carries, centred on its view.
     if let Some(path) = &args.plate {
         match tiles::plates::read(path) {
@@ -664,7 +706,8 @@ fn main() {
             history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
             civilizations: args.civilizations,
             shadow: !args.no_shadow,
-            watch: args.watch,
+            // Watching the history being written is the game's opening: on unless turned off.
+            watch: true,
         };
         match tiles::start::run_start_screen(initial) {
             Ok(Some(cfg)) => {
@@ -919,7 +962,7 @@ fn main() {
         ..terrain::TerrainConfig::new(width, height, world_style)
     };
     let terrain::Terrain {
-        plate_map, plates, stress_map, mut heightmap, climate: climate_sim, hardness: hardness_map,
+        plate_map, plates, stress_map, heightmap, climate: climate_sim, hardness: hardness_map,
         flow_accumulation, volcanoes, ..
     } = terrain::generate_terrain(&terrain_config, &seeds, &mut |_| true).expect("terrain generation runs to the end");
     let moisture = climate_sim.mean_moisture.clone();
@@ -1567,7 +1610,8 @@ fn main() {
         eco.apply_scars(&mut world_data);
         if !eco.scars.is_empty() {
             let some: Vec<String> = eco.scars.iter().take(4).map(|s| format!("{:?} at {},{}", s.biome, s.x, s.y)).collect();
-            eprintln!("{} scarred landscapes (e.g. {})", eco.scars.len(), some.join(", "));
+            let blighted = eco.scars.iter().filter(|s| matches!(s.source, planet_generator::history::ecology::ScarSource::Blight(..))).count();
+            eprintln!("{} scarred landscapes, {} killed by the Shadow's blight (e.g. {})", eco.scars.len(), blighted, some.join(", "));
         }
     }
 
@@ -1699,7 +1743,11 @@ fn main() {
                 println!("{}\n{}", h.present().report(), history::people::report(h));
                 let rare = lore::rare::find(&world_data, h);
                 println!("Rare in this world:{}", if rare.is_empty() { " nothing" } else { "" });
-                for (r, line) in &rare { println!("  {} ({}): {}", r.label(), r.rate(), line); }
+                // The rates were measured on dev-sized worlds; bigger worlds hold more of everything.
+                let measured = world_data.width <= 128;
+                for (r, line) in &rare {
+                    if measured { println!("  {} ({}): {}", r.label(), r.rate(), line); } else { println!("  {}: {}", r.label(), line); }
+                }
                 println!("Tales worth telling:");
                 for t in lore::sifting::sift(h).iter().take(12) { println!("  [{}] {}: {}", t.kind.label(), t.title, t.text); }
             }
@@ -1828,6 +1876,32 @@ fn main() {
             if let Err(e) = tiles::viewer::founding_trial(&world_data, history.as_ref(), &atlas, tile, prefix) { eprintln!("--sim-founding: {e}"); }
             return;
         }
+        if let (Some(days), Some(tile)) = (args.sim_projects, center) {
+            tiles::viewer::projects_trial(&world_data, history.as_ref(), tile, days);
+            return;
+        }
+        if args.embark_survey {
+            tiles::viewer::embark_survey(&world_data, history.as_ref());
+            return;
+        }
+        if let (true, Some(h)) = (args.sites, history.as_ref()) {
+            for (k, o) in tiles::viewer::three_sites(&world_data, h).iter().enumerate() {
+                println!("Site {} at {},{}: {}\n  {}\n  {}\n  {}", k + 1, o.tile.0, o.tile.1, o.name, o.who, o.trouble, o.land);
+            }
+            return;
+        }
+        if let (true, Some(tile)) = (args.sim_refugees, center) {
+            tiles::viewer::refugee_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
+        if let (Some(days), Some(tile)) = (args.sim_move, center) {
+            tiles::viewer::move_trial(&world_data, history.as_ref(), tile, days);
+            return;
+        }
+        if let (true, Some(tile)) = (args.sim_raid, center) {
+            tiles::viewer::raid_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
         if let (true, Some(tile)) = (args.sim_patron, center) {
             tiles::viewer::patron_trial(&world_data, history.as_ref(), tile);
             return;
@@ -1885,7 +1959,9 @@ fn main() {
             }
             return;
         }
-        if let Err(e) = tiles::run_tile_viewer(&world_data, history.as_ref(), atlas, center, args.dev_embark) {
+        // A site chosen on the watcher's closing card: embark there at once.
+        let (center, embark) = match tiles::viewer::chosen_site() { Some(t) => (Some(t), true), None => (center, args.dev_embark) };
+        if let Err(e) = tiles::run_tile_viewer(&world_data, history.as_ref(), atlas, center, embark) {
             eprintln!("Tile viewer error: {}", e);
         }
         return;

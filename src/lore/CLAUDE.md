@@ -63,6 +63,12 @@ Derived world lore: resources, landmarks, focal points, the journal and the bard
   Search box and category chips filter the annals. Styled like the ink map (parchment, sepia,
   red year rubrics; dark theme).
 
+## The Shadow in the journal
+- A part of its own (before the tales): its name and lord now, a tally (towns taken or burned,
+  times thrown back, towns freed), its story in acts with their years, its lords (each rising's
+  realm's rulers from that rising until the next: the first seat's people, then the return's),
+  the fallen with their years, the towns that held, and today's stronghold and weakness.
+
 ## Story sifting (`lore/sifting.rs`)
 - `sift(history)` finds the coincidences people retell, as queries over the chronicle's
   participants and causes: FellWhereTheyWon (a figure named "the Victor of X" dies in battle at
@@ -86,7 +92,8 @@ Derived world lore: resources, landmarks, focal points, the journal and the bard
   battles; and Baelen Storm-Caller killed 1,239 in its raids and lives yet."
 - Shown under the journal's title, first in `--present` (named after the largest continent) and
   as the summary's `Records:` line; the present-day test requires six dev seeds to give six
-  different sentences. Plates (when they exist) should carry it too.
+  different sentences. A reign ends at the ruler's death or their people's fall, and "rules
+  still" needs both alive (dev 76 had said a ruler of a people destroyed in 444 "rules still"). Plates (when they exist) should carry it too.
 
 ## Rare outcomes (`lore/rare.rs`)
 - `find(world, history)` detects seven world-defining outcomes, each with a cause line: the
@@ -96,8 +103,10 @@ Derived world lore: resources, landmarks, focal points, the journal and the bard
   one founding capital never besieged, its people at 5+ wars), Risen again (fell, rose, now the
   greatest realm), Unbroken peace (neighbouring peoples from the dawn who never fought).
 - `RATES` are measured per 100 dev worlds (mean of seeds 1-100 and 101-200 with
-  `scripts/rare_rates.sh N`): 10, 24, 31, 21, 5, 6, 25. Re-measure when history changes.
-  `--present` lists the ones a world has with "1 world in N"; the summary prints `Rare:`.
+  `scripts/rare_rates.sh N`), re-measured after heirs and marriages: 11, 22, 31, 20, 4, 4, 21. Re-measure when history changes.
+  `--present` lists the ones a world has, with "1 world in N" only on dev-sized worlds (128
+  wide or less; bigger worlds hold more of everything, and 'Unbroken peace' showed on 6 of 6 at
+  256x128); the summary prints `Rare:`.
 
 ## Marginalia (`lore/notes.rs`)
 - The player pins notes to places: `M` in the tile viewer at the tile under the mouse (type,

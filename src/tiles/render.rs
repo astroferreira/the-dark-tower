@@ -20,7 +20,8 @@ pub struct ZoomCamera {
     pub px_per_cell: f32,
 }
 
-const OFF_MAP: u32 = 0x002A_2420;
+/// Beyond the map's edge: parchment, as on the plates.
+const OFF_MAP: u32 = 0x00DC_CCA8;
 const RIVER: [f32; 3] = [112.0, 148.0, 160.0];
 const ICE: [f32; 3] = [214.0, 224.0, 226.0];
 const ROAD: [f32; 3] = [136.0, 92.0, 60.0];
@@ -734,7 +735,15 @@ pub fn render_minimap(
         for x in 0..mw {
             let i = (y * tw.height / mh) * tw.width + x * tw.width / mw;
             let c = tw.color[i];
-            buf[(oy + y) * w + ox + x] = pack([c[0] as f32, c[1] as f32, c[2] as f32]);
+            let mut col = [c[0] as f32, c[1] as f32, c[2] as f32];
+            // The Shadow: its reach a cold grey wash, deeper with corruption; its dominion dark.
+            let k = tw.shadow.get(i).copied().unwrap_or(0.0);
+            if k >= crate::history::shadow::REACH && !tw.ground[i].is_water() {
+                col = mix(col, [70.0, 66.0, 74.0], (0.2 + 0.5 * k).min(0.7));
+            }
+            if tw.dominion.get(i).copied().unwrap_or(false) { col = mix(col, [34.0, 28.0, 32.0], 0.55); }
+            if tw.shadow_seat.map_or(false, |(sx, sy)| sx == i % tw.width && sy == i / tw.width) { col = [190.0, 40.0, 30.0]; }
+            buf[(oy + y) * w + ox + x] = pack(col);
         }
     }
     let to_mm = |wx: f32, wy: f32| -> (i64, i64) {
@@ -891,6 +900,11 @@ pub fn render_local(map: &LocalMap, atlas: &Atlas, cam: &LocalCamera, buf: &mut 
         super::local_ink::render_local_ink(map, cam, buf, w, h);
         return;
     }
+    // Level slices are drawn in ink too (the old tiles below are kept for --tileset sheets).
+    if std::env::var("PLANET_TILE_LEVELS").is_err() {
+        super::local_ink::render_level_ink(map, cam, buf, w, h);
+        return;
+    }
     let t = cam.tile_px;
     let src_px = t.ceil() as usize;
     let (mw, mh) = (map.width, map.height);
@@ -1011,7 +1025,7 @@ pub fn render_local(map: &LocalMap, atlas: &Atlas, cam: &LocalCamera, buf: &mut 
                         Feature::Nest => Some(TileKind::Nest),
                         Feature::Den => Some(TileKind::Den),
                         Feature::Bones | Feature::Grave => Some(TileKind::Bones),
-                        Feature::Stone | Feature::Spring => None,
+                        Feature::Stone | Feature::Spring | Feature::Stump => None,
                     };
                     if let Some(k) = mark {
                         let q = tile_px(atlas, k, var, u, v, src_px);

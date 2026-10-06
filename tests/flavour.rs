@@ -121,3 +121,45 @@ fn dev_chronicle_names_only_real_things() {
     assert!(unbound.is_empty(), "{} names in the dev chronicle resolve to nothing:\n{}",
         unbound.len(), unbound.iter().take(40).cloned().collect::<Vec<_>>().join("\n"));
 }
+
+/// Receipts that agree with each other: a settler cites nothing from before they were born, and
+/// a threat said to be days away can reach the camp before the raid (six dev seeds).
+#[test]
+fn settlers_and_rumours_keep_to_their_lifetimes() {
+    let now = 451u32;
+    for seed in ["76", "11", "23", "58", "3", "5"] {
+        let dir = std::env::temp_dir().join(format!("receipts_{}_{}", seed, std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let prefix = dir.join("r");
+        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+            .args(["--dev", "--seed", seed, "--sim-snapshot", prefix.to_str().unwrap()])
+            .output()
+            .expect("run planet_generator");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let settlers = std::fs::read_to_string(dir.join("r_settlers.txt")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        // "Name, 28, kin of X; ..." then indented lines; every year cited is in their lifetime.
+        let mut born = 0u32;
+        for line in settlers.lines() {
+            if !line.starts_with(' ') {
+                let age: u32 = line.split(", ").nth(1).and_then(|a| a.trim().parse().ok()).unwrap_or(0);
+                born = now.saturating_sub(age);
+                continue;
+            }
+            for word in line.split(|c: char| !c.is_ascii_digit()).filter(|w| w.len() >= 3) {
+                let year: u32 = word.parse().unwrap();
+                if year > 100 && year <= now {
+                    assert!(year >= born, "seed {seed}: a settler born in {born} cites {year}: {line}\n{settlers}");
+                }
+            }
+        }
+        // The rumour's distance: within the days to the raid, or how the beast covers it.
+        if let Some(r) = text.lines().find(|l| l.starts_with("Arc day 3: A rumour")) {
+            if let Some(i) = r.find(" days' walk") {
+                let days: u32 = r[..i].rsplit(' ').next().and_then(|d| d.parse().ok()).unwrap_or(0);
+                assert!(days <= 11 || r.contains("nights' hunting"), "seed {seed}: a threat {days} days away strikes in 11: {r}");
+            }
+            assert!(!r.contains("(because its lair is"), "seed {seed}: the rumour's because repeats the rumour: {r}");
+        }
+    }
+}

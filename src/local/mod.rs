@@ -109,6 +109,7 @@ impl Cell {
     const AIR: Cell = Cell { shape: Shape::Empty, material: Material::Air, water: 0, plant: Plant::None, boulder: false };
 }
 
+#[derive(Clone)]
 pub struct LocalMap {
     pub width: usize,
     pub height: usize,
@@ -128,10 +129,18 @@ pub struct LocalMap {
     pub biome: Biome,
     /// Signs of animal life on each column's surface (trails, burrows, nests, dens, bones).
     pub features: Vec<wildlife::Feature>,
+    /// Who lies in each grave (`site::furnish`): (x, y, the words on it).
+    pub graves: Vec<(usize, usize, String)>,
     /// Which roofed house covers each column (index + 1 into `houses`; 0 = open sky).
     pub roofs: Vec<u32>,
     /// The standing houses' roofs, for drawing the surface from above.
     pub houses: Vec<RoofPlan>,
+    /// The world tile's mean temperature (°C) in spring, summer, autumn and winter.
+    pub season_temps: [f32; 4],
+    /// What the site held within reach before it was furnished: water, trees, stone, bushes.
+    pub found: [usize; 4],
+    /// What furnishing added so the site is livable ("a spring", "a grove", ...).
+    pub furnished: Vec<String>,
 }
 
 /// A house's roof seen from above, in cell units: a pitched roof whose ridge runs along the
@@ -231,6 +240,31 @@ fn seg_dist(px: f64, py: f64, a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
 }
 
 /// Trees per floor tile and the species mix for a biome.
+/// Vegetation the world's biome dictates (None: let the local climate decide).
+fn world_vegetation(b: crate::biomes::ExtendedBiome) -> Option<(f32, f32, &'static [TreeKind])> {
+    use crate::biomes::ExtendedBiome::*;
+    use TreeKind::*;
+    Some(match b {
+        DeadForest => (0.25, 0.01, &[Dead]),
+        PetrifiedForest => (0.15, 0.0, &[Dead]),
+        Ashlands | VolcanicWasteland => (0.01, 0.0, &[Dead]),
+        SaltFlats | CrystalWasteland => (0.0, 0.0, &[Dead]),
+        BoneFields => (0.004, 0.02, &[Dead]),
+        AncientGrove => (0.6, 0.05, &[Broadleaf, Broadleaf, Conifer]),
+        TitanBones => (0.01, 0.03, &[Acacia]),
+        MonsoonForest => (0.3, 0.08, &[Broadleaf, Jungle]),
+        MediterraneanShrubland => (0.04, 0.15, &[Broadleaf]),
+        Foothills => (0.08, 0.05, &[Conifer, Broadleaf]),
+        Swamp | MangroveSaltmarsh => (0.15, 0.08, &[Broadleaf, Jungle]),
+        Marsh => (0.01, 0.06, &[Broadleaf]),
+        Bog => (0.03, 0.05, &[Conifer]),
+        MushroomForest | BioluminescentForest | CrystalForest => (0.3, 0.06, &[Broadleaf, Conifer]),
+        // Water tiles: the local climate decides the shore.
+        DeepOcean | Ocean | CoastalWater | HighlandLake | CraterLake | Lagoon | AcidLake | LavaLake | FrozenLake | BioluminescentWater | CoralPlateau => return None,
+        other => vegetation(other.parent_biome()),
+    })
+}
+
 fn vegetation(biome: Biome) -> (f32, f32, &'static [TreeKind]) {
     use Biome::*;
     use TreeKind::*;
@@ -476,8 +510,19 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         world_tile,
         biome: Biome::classify(cols[n * n / 2 + n / 2].e, cols[n * n / 2 + n / 2].temp, cols[n * n / 2 + n / 2].moist),
         features: vec![wildlife::Feature::None; n * n],
+        graves: Vec::new(),
         roofs: vec![0; n * n],
         houses: Vec::new(),
+        season_temps: {
+            let (tx, ty) = (world_tile.0.min(world.width - 1), world_tile.1.min(world.height - 1));
+            let base = *world.temperature.get(tx, ty);
+            let north = ty < world.height / 2;
+            use crate::seasons::Season;
+            let at = |s: Season, k: usize| world.seasonal_climate.as_ref().map(|c| c.get_temperature(tx, ty, s, north)).unwrap_or(base + [0.0, 8.0, 0.0, -8.0][k]);
+            [at(Season::Spring, 0), at(Season::Summer, 1), at(Season::Autumn, 2), at(Season::Winter, 3)]
+        },
+        found: [0; 4],
+        furnished: Vec::new(),
     };
 
     for j in 0..n {
@@ -553,7 +598,16 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             } else {
                 soil
             };
-            let (tree_density, shrub_density, species) = vegetation(biome);
+            // What grows follows the world's biome for the tile this column lies on (looked up
+            // through a jitter so tile borders blend), so a desert embark is a desert and the
+            // caused landscapes (dead woods, ashlands, bone fields...) are drawn as what they are;
+            // the local climate decides only where the world gives no rule.
+            let jx = (hash(i as i64 / 6, j as i64 / 6, 31) - 0.5) as f64 * 24.0;
+            let jy = (hash(i as i64 / 6, j as i64 / 6, 37) - 0.5) as f64 * 24.0;
+            let rx = region.world_x0 * s + (cx + (i as f64 + 0.5 - n as f64 / 2.0) * tile_cells + jx) as i64;
+            let ry = region.world_y0 * s + (cy + (j as f64 + 0.5 - n as f64 / 2.0) * tile_cells + jy) as i64;
+            let wb = *world.biomes.get(rx.div_euclid(s).rem_euclid(world.width as i64) as usize, ry.div_euclid(s).clamp(0, world.height as i64 - 1) as usize);
+            let (tree_density, shrub_density, species) = world_vegetation(wb).unwrap_or_else(|| vegetation(biome));
             // Forests have clearings and groves rather than uniform density.
             let grove = 0.35 + 0.95 * smoothstep(-0.3, 0.3, fbm(&patch_noise, mx / 150.0, my / 150.0, 3));
             let r = hash(gtx, gty, 7);

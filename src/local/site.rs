@@ -98,9 +98,11 @@ fn count(map: &LocalMap) -> Counts {
 pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
     let salt = hash(map.world_tile.0 as i64, map.world_tile.1 as i64, 0x517E);
     let have = count(map);
+    map.found = [have.water, have.trees, have.stone, have.shrubs];
     // Water: a spring and its pool where the site is dry.
     if have.water == 0 {
         if let Some(at) = spot(map, salt ^ 1, 2) {
+            map.furnished.push("a spring".into());
             let k = at.1 * map.width + at.0;
             map.features[k] = Feature::Spring;
             scatter(map, at, 2, 9, salt ^ 2, |m, x, y| {
@@ -117,6 +119,7 @@ pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
         let kind = reach(map).find_map(|(i, j)| match map.cell(i, j, map.surface_z[j * map.width + i].max(0) as usize).plant { Plant::Tree(k) if k != TreeKind::Dead => Some(k), _ => None })
             .unwrap_or(TreeKind::Broadleaf);
         if let Some(at) = spot(map, salt ^ 3, 6) {
+            map.furnished.push("a grove".into());
             scatter(map, at, 6, 24, salt ^ 4, |m, x, y| { let i = m.idx(x, y, m.surface_z[y * m.width + x] as usize); m.cells[i].plant = Plant::Tree(kind); });
         }
     }
@@ -124,6 +127,7 @@ pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
     if have.stone < 6 {
         let rock = (0..map.depth).rev().find_map(|z| match map.cell(map.width / 2, map.height / 2, z).material { Material::Rock(r) => Some(r), _ => None });
         if let (Some(at), Some(rock)) = (spot(map, salt ^ 5, 3), rock) {
+            map.furnished.push("an outcrop of stone".into());
             scatter(map, at, 3, 20, salt ^ 6, |m, x, y| {
                 let i = m.idx(x, y, m.surface_z[y * m.width + x] as usize);
                 m.cells[i].material = Material::Rock(rock);
@@ -135,14 +139,30 @@ pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
     // Food: berry thickets.
     if have.shrubs < 15 {
         if let Some(at) = spot(map, salt ^ 7, 4) {
+            map.furnished.push("a berry thicket".into());
             scatter(map, at, 4, 18, salt ^ 8, |m, x, y| { let i = m.idx(x, y, m.surface_z[y * m.width + x] as usize); m.cells[i].plant = Plant::Shrub; });
         }
     }
     // Something to look at: the graves of a battle fought here, else a standing stone.
-    let dead: usize = battles.iter().map(|b| 3 + b.2.len()).sum();
-    if dead > 0 {
+    // Each grave says who lies there: the named dead first, then the nameless of each battle.
+    let (mut words, mut nameless): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+    for (title, year, named) in battles {
+        let place = match title.strip_prefix("The ") { Some(rest) => format!("the {}", rest), None => title.clone() };
+        // "X falls at Ripu" (a captain on the walls) names the place itself.
+        let place = place.split(" falls at ").nth(1).map(|p| p.to_string()).unwrap_or(place);
+        for n in named { words.push(format!("{}. Fell at {} in {}.", n, place, year)); }
+        if !title.contains(" falls at ") {
+            for _ in 0..3 { nameless.push(format!("A soldier whose name is lost. Fell at {} in {}.", place, year)); }
+        }
+    }
+    words.extend(nameless);
+    words.truncate(16);
+    if !words.is_empty() {
         if let Some(at) = spot(map, salt ^ 9, 4) {
-            scatter(map, at, 4, dead.min(16), salt ^ 10, |m, x, y| { m.features[y * m.width + x] = Feature::Grave; });
+            let mut k = 0;
+            let mut placed = Vec::new();
+            scatter(map, at, 4, words.len(), salt ^ 10, |m, x, y| { m.features[y * m.width + x] = Feature::Grave; placed.push((x, y)); });
+            for (x, y) in placed { if k < words.len() { map.graves.push((x, y, words[k].clone())); k += 1; } }
         }
     } else if have.landmark == 0 {
         if let Some(at) = spot(map, salt ^ 11, 1) { map.features[at.1 * map.width + at.0] = Feature::Stone; }
@@ -170,5 +190,58 @@ pub fn report(map: &LocalMap) -> Vec<String> {
     if reach(map).any(|(i, j)| map.features[j * map.width + i] == Feature::Bones) { out.push("old bones".into()); }
     if stone { out.push("a standing stone".into()); }
     if ruin { out.push("buildings".into()); }
+    if !map.furnished.is_empty() { out.push(format!("(the land was short of these; added: {})", map.furnished.join(", "))); }
     out
+}
+
+/// One gift and one scarcity of a site, counted before furnishing: ("a river and 900 trees",
+/// "stone").
+pub fn gift_and_lack(map: &LocalMap) -> (String, String) {
+    // Counted within 40 cells of the centre (a camp's foraging ground; the site's own reach is
+    // smaller and missed rivers), less what furnishing put there.
+    let (n, c) = (map.width as i64, (map.width / 2) as i64);
+    let (mut water, mut trees, mut stone, mut shrubs) = (0usize, 0usize, 0usize, 0usize);
+    for y in (c - 40).max(0)..(c + 40).min(n) {
+        for x in (c - 40).max(0)..(c + 40).min(n) {
+            let (i, j) = (x as usize, y as usize);
+            let sz = map.surface_z[j * map.width + i].max(0) as usize;
+            let cell = map.cell(i, j, sz);
+            if sz + 1 < map.depth && map.cell(i, j, sz + 1).water > 0 { water += 1; }
+            match cell.plant { Plant::Tree(_) => trees += 1, Plant::Shrub => shrubs += 1, _ => {} }
+            if cell.boulder || matches!(cell.material, Material::Rock(_)) { stone += 1; }
+        }
+    }
+    // Water a longer walk away (the river beyond the clearing).
+    let mut far_water = 0usize;
+    for y in (c - 70).max(0)..(c + 70).min(n) {
+        for x in (c - 70).max(0)..(c + 70).min(n) {
+            let (i, j) = (x as usize, y as usize);
+            let sz = map.surface_z[j * map.width + i].max(0) as usize;
+            if sz + 1 < map.depth && map.cell(i, j, sz + 1).water > 0 { far_water += 1; }
+        }
+    }
+    let added = |w: &str| map.furnished.iter().any(|f| f.contains(w));
+    if added("spring") { water = water.saturating_sub(9); }
+    if added("grove") { trees = trees.saturating_sub(24); }
+    if added("outcrop") { stone = stone.saturating_sub(20); }
+    if added("thicket") { shrubs = shrubs.saturating_sub(18); }
+    // Each against what a camp wants within reach.
+    let scores = [(water as f32 / 300.0, "water"), (trees as f32 / 600.0, "timber"), (stone as f32 / 150.0, "stone"), (shrubs as f32 / 300.0, "berries")];
+    let best = scores.iter().copied().max_by(|a, b| a.0.total_cmp(&b.0)).unwrap();
+    let worst = scores.iter().copied().min_by(|a, b| a.0.total_cmp(&b.0)).unwrap();
+    let gift = match best.1 {
+        "water" => if water > 300 { "a river or lake at hand".to_string() } else { format!("water ({} cells)", water) },
+        "timber" => format!("woods ({} trees)", trees),
+        "stone" => format!("stone ({} cells of rock)", stone),
+        _ => format!("berries ({} bushes)", shrubs),
+    };
+    let lack = match worst.1 {
+        "water" if water < 10 && far_water > 10 => "water close by (a stream an hour's walk off)".to_string(),
+        "water" if water < 10 => "water (only a spring)".to_string(),
+        "timber" if trees < 20 => "timber (they will build in stone)".to_string(),
+        "stone" if stone < 30 => "stone (little rock to quarry)".to_string(),
+        "berries" if shrubs < 15 => "berries (food is short)".to_string(),
+        k => format!("{} (less of it than elsewhere)", k),
+    };
+    (gift, lack)
 }

@@ -112,6 +112,13 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   1,500 or 400 with iron/copper), replaced when they die. When a town burns or falls to another
   people its notables flee to the nearest town of their own (`FigureMoved`), go into exile, or
   (captains, 40%) die on the walls (`HeroDied`); each is `caused_by` the fall.
+- Heirs and marriages: each spring a ruler under a dynastic law (aged 30+) with no living child
+  gets one (role `Heir`, raised at the seat, a figure of the dynasty), and `step::succeed` crowns
+  the dead ruler's eldest living child of their people instead of inventing a successor. Heirs
+  (16+, unwed) marry a notable of a people that likes theirs (opinion 25+) with 8% a year:
+  `EventType::Marriage` (appended), +10 opinion both ways, and the spouse moves to the heir's
+  seat (`FigureMoved` "X leaves Y to wed", caused by the marriage). Dev: 11 marriages. The
+  Shadow's bane (artifact importance 1000) can no longer be destroyed by chance.
 - `people::link_lives` (in `HistoryEngine::finish`) fills `Figure::events` from event
   participants, so the journal's lives of note list their deeds (up to 8). The summary and
   `--present` print a `People:` line. Dev world: 91 of 93 living figures housed, 29 of 36 towns
@@ -134,7 +141,11 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   attacker), titan bones where huge legendary beasts were slain, ashlands / dead woods /
   crystal woods around long-held lairs of huge beasts with elemental / necromantic / spell
   powers, crystal wastes where towers stood over razed towns, overgrown or cyclopean ruins a
-  century after a town falls. `apply_scars` writes them into `world.biomes` (in `main`).
+  century after a town falls, and dead woods (where forest grows) or ashlands where the Shadow's
+  blight (`shadow::BLIGHT`) lay 30 years (`blight_scars`: radius 2.2, at most 3 a year, caused by
+  its latest deed, `ScarSource::Blight` appended; they outlast the Shadow). Dev: 14 of 53 scars;
+  the summary prints "N killed by the Shadow's blight" and `tests/present_day.rs` requires one on
+  every dev seed. `apply_scars` writes them into `world.biomes` (in `main`).
 - Shown: tile viewer draws `Fields`, thinned/felled forests, `Bones` / `TitanBones` sprites;
   hover lists wildlife and the scar's chronicle entry. Embarks (`local/wildlife.rs`, via
   `RegionLore::wildlife`) get game trails (least-cost paths to water), burrows, nests, predator

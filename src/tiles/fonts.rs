@@ -88,3 +88,20 @@ pub fn draw(buf: &mut [u32], w: usize, h: usize, x: f32, y: f32, text: &str, fac
         }
     }
 }
+
+/// Greedy word wrap to a pixel width in `face` at `px`.
+pub fn wrap(text: &str, face: Face, px: f32, max_w: f32) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let trial = if line.is_empty() { word.to_string() } else { format!("{} {}", line, word) };
+        if !line.is_empty() && width(&trial, face, px, 0.0) > max_w {
+            lines.push(std::mem::replace(&mut line, word.to_string()));
+        } else {
+            line = trial;
+        }
+    }
+    if !line.is_empty() { lines.push(line); }
+    lines
+}
+
