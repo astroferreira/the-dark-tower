@@ -23,6 +23,52 @@ the zoomed region around a point.
   10-15 s.
 - Houses record their footprints (`LocalMap::roofs`, `houses`) for roofs in the ink surface view.
 
+## Towns in three dimensions (2026-10-08, `local/structures.rs`; DF's site realizations)
+- A storey is two levels (its floor, then standing room). After the ground is stamped, `raise`
+  builds each house from its footprint (`HouseCell`: column, wall/floor/door, house axes): walls
+  from each column's ground up to the footprint's highest ground + the design's top, a floor
+  laid at each storey, a stair (`Shape::Stair`) in the floor's back corner away from the door
+  (it needs two floor cells beside it, else the house keeps one storey: a house turned to its
+  street can pinch its corners to a cell between walls).
+- The keep (capitals 3 storeys, forts 2; dressed stone): floors at +2 (+4), a walkable roof of
+  flags at +6 (+4) with merlons on every other rim cell; it is now placed before the house lots
+  (houses had been built into it). Towers on stone walls (`BuildingKind::Tower`, 5x5 cells, one
+  per ~70 m of ring between the gates, at most 24, door to the town): walls to +2, roof at +3, a
+  level over the wall's walk (one steps down onto it). Flat roofs (`RoofPlan::flat`) are drawn
+  in the surface view as flags and merlons with the stair's head.
+- Stone houses: in cities two in three have an upper storey (the town hall always), in towns
+  half of those 10 m+ wide; timber and earth houses 10 m+ wide one in three a loft (a floor at +2
+  over the back half). Villages none.
+- Cellars (`cut_cellar`; DF's hillock houses and undercrofts): one house in four (villages too,
+  not camps or outposts; the hall always): the stair cut on down 2 levels from inside (the surface cell becomes a stair,
+  `surface_z` unchanged) to a room under the house within 1-2 cells of the stair; a carving
+  people's (`Site::carved`) one house in two, 3 levels down, 5x5 to 7x7 running past the walls;
+  the keep's undercroft 3 down. Cut only in whole ground (no cavern, water, magma or aquifer)
+  under at least a level of ground, with ground left between two cellars; under 3 cells beside
+  the stair, none. `LocalMap::buildings` (`Building`: kind, storeys, loft, stair, upper floors,
+  platform, cellar cells) records it all; `local_map_is_consistent` allows cellar columns as it
+  does places'.
+- Ruins: 40% of wall cells stand, to 1 + u^2 of their height; stone upper floors survive in
+  fragments (one cell in four where a standing wall still holds it), a third of the ground floor
+  is rubble, the stair is broken after its first step; cellars are whole, and empty.
+- The surface view casts a soft shadow down-light, 0.6 cells per level of built height (a
+  two-storey house a cell, the keep four). The ramp pass leaves stairs alone.
+- `--local-snapshot` prints "Embarking on <town> (...)" and "Town in three dimensions: ..." with
+  walks from the street (`nav::path3`) to each keep and tower roof, upper floor and cellar, and
+  the count of open cells below the ground outside caverns, places and cellars (0).
+  `PLANET_LOCAL_LEVELS="2,4,-2"` writes level frames relative to the centre's ground (whole, and
+  16 px at `PLANET_LOCAL_CLOSE`), `PLANET_LOCAL_ROW` the section's row, `PLANET_LOCAL_OFFSET=
+  "dx,dy"` (m) moves the embark off the town's middle.
+- Dev: Greenburg (44,9, the default): 546 buildings, 396 of two storeys or more, the keep's roof
+  6 levels up walked in 34 steps, 137 cellars (690 cells); 394 of 397 upper floors and 136 of
+  137 cellars reached (the rest have their doors off the map or built over). Dreammere's wall
+  (71,12, offset 731,0): 2 towers, roofs reached in 102-105 steps. Slaglair (61,19, earth): 86
+  lofts. Seed 3 Swanworth (77,11, dwarves): 183 cellars, 8286 cells. A forced camp in ruined
+  Slagmaw (15,31) and in Venomash (19,33) lives 60 days. Tested (`tests/towns.rs`).
+- Not yet: every house is 8 m deep (`plan_for`: `unit(hsh >> 9)` shifts away the bits `unit`
+  reads; old, left so towns keep their layout); a house can lose its door to a neighbour; the
+  colony doesn't use town storeys or cellars; cellars hold nothing.
+
 ## Sites worth settling (`local/site.rs`)
 - `furnish` (end of `generate_local`) adds what a first camp needs within 48 cells (~100 m) of
   the centre and nature left out: a spring and a pool on a dry site (`Feature::Spring`), a

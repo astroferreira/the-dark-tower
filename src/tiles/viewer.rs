@@ -2679,15 +2679,25 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
         l.sites.iter().find(|site| {
             let (gx, gy) = (site.x + tx, site.y + ty);
             (gx / s) as usize == tile.0 && (gy / s) as usize == tile.1
-        }).map(|site| (site.x, site.y))
+        }).map(|site| {
+            println!("Embarking on {} ({:?}, walls {:?}, {:?}{}{}, core {:.0} m)", site.name, site.kind, site.walls, site.style,
+                if site.carved { ", carved" } else { "" }, site.destroyed_year.map(|y| format!(", fell in {y}")).unwrap_or_default(), site.core_m);
+            (site.x, site.y)
+        })
     });
     let (ex, ey) = target.unwrap_or_else(|| pick_embark_spot(&zs.region));
+    // PLANET_LOCAL_OFFSET="dx,dy" (metres) moves the embark off the town's centre (to its walls).
+    let (ex, ey) = match std::env::var("PLANET_LOCAL_OFFSET").ok().and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.trim().parse::<f64>().ok()?, b.trim().parse::<f64>().ok()?)))) {
+        Some((dx, dy)) => (ex + dx / zs.region.cell_m as f64, ey + dy / zs.region.cell_m as f64),
+        None => (ex, ey),
+    };
     let region = &zs.region;
     let t0 = std::time::Instant::now();
     let map = crate::local::generate_local(world, region, zs.lore.as_ref(), ex, ey);
     println!("Playable area: {}x{} tiles x {} z-levels, biome {:?}, generated in {:.2}s", map.width, map.height, map.depth, map.biome, t0.elapsed().as_secs_f32());
     let site = crate::local::site::report(&map);
     println!("Site ({} kinds): {}", site.len(), site.join(", "));
+    town_levels_report(&map);
     let n = map.width;
     let cz = map.surface_z[(n / 2) * n + n / 2];
     let (w, h) = (n * 6, n * 6);
@@ -2731,11 +2741,95 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
         image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
     }).save(&path)?;
     written.push(path);
-    let section = render_cross_section(&map, n / 2, 4);
+    // Levels relative to the centre's ground (PLANET_LOCAL_LEVELS="2,4,-2": a town's upper floors,
+    // roofs and cellars), whole and as a 16 px close-up at the close-up's spot.
+    if let Ok(list) = std::env::var("PLANET_LOCAL_LEVELS") {
+        for dz in list.split(',').filter_map(|s| s.trim().parse::<i32>().ok()) {
+            let z = cz + dz;
+            render_local(&map, atlas, &cam(z, false), &mut buf, w, h);
+            render_local(&map, atlas, &LocalCamera { cx: ccx, cy: ccy, tile_px: 16.0, z, surface_view: false }, &mut close, cw, ch);
+            for (path, b, bw, bh) in [(format!("{prefix}_lvl{z}.png"), &buf, w, h), (format!("{prefix}_lvl{z}_close.png"), &close, cw, ch)] {
+                image::RgbImage::from_fn(bw as u32, bh as u32, |x, y| {
+                    let p = b[y as usize * bw + x as usize];
+                    image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
+                }).save(&path)?;
+                written.push(path);
+            }
+        }
+    }
+    // The section's row: the middle, or PLANET_LOCAL_ROW.
+    let row = std::env::var("PLANET_LOCAL_ROW").ok().and_then(|v| v.trim().parse::<usize>().ok()).filter(|&r| r < n).unwrap_or(n / 2);
+    let section = render_cross_section(&map, row, 4);
     let path = format!("{prefix}_section.png");
     section.save(&path)?;
     written.push(path);
     Ok(written)
+}
+
+/// Print what the towns on an embark are in three dimensions (`local::structures`), and check
+/// them: each keep's and tower's roof, each upper floor and each cellar walked to from the
+/// street (`nav::path3`), and the ground solid below the surface but for caverns, places and
+/// cellars.
+fn town_levels_report(map: &crate::local::LocalMap) {
+    use crate::colony::nav::{path3, standable};
+    use crate::local::structures::BuildingKind as K;
+    use crate::local::Shape;
+    let b = &map.buildings;
+    if b.is_empty() { return; }
+    let n = map.width;
+    let sz = |x: usize, y: usize| map.surface_z[y * n + x];
+    let count = |f: &dyn Fn(&crate::local::structures::Building) -> bool| b.iter().filter(|x| f(x)).count();
+    let cellars: Vec<_> = b.iter().filter(|x| !x.cellar.is_empty()).collect();
+    let cellar_cells: usize = cellars.iter().map(|x| x.cellar.len()).sum();
+    let downs: Vec<i32> = cellars.iter().map(|x| sz(x.cellar[0].0 .0 as usize, x.cellar[0].0 .1 as usize) - x.cellar[0].1).collect();
+    println!("Town in three dimensions: {} buildings ({} ruined): {} standing two storeys or more, {} lofts, {} keeps, {} towers on the walls; {} cellars ({} cells, {}-{} levels down, {} under ruins)",
+        b.len(), count(&|x| x.ruined), count(&|x| !x.ruined && x.storeys >= 2), count(&|x| !x.ruined && x.loft), count(&|x| x.kind == K::Keep), count(&|x| x.kind == K::Tower),
+        cellars.len(), cellar_cells, downs.iter().min().unwrap_or(&0), downs.iter().max().unwrap_or(&0), count(&|x| x.ruined && !x.cellar.is_empty()));
+    // From the street: the nearest open ground outside every roof, round the stair.
+    let street = |s: (u16, u16)| -> Option<(u16, u16, i32)> {
+        for r in 1..24i32 { for dy in -r..=r { for dx in -r..=r {
+            if dx.abs() != r && dy.abs() != r { continue; }
+            let (x, y) = (s.0 as i32 + dx, s.1 as i32 + dy);
+            if x < 0 || y < 0 || x >= n as i32 || y >= map.height as i32 { continue; }
+            let (x, y) = (x as usize, y as usize);
+            if map.roofs[y * n + x] == 0 && standable(map, x, y, sz(x, y)) && map.cell(x, y, sz(x, y) as usize + 1).shape == Shape::Empty
+                && !b.iter().any(|o| o.stair == Some((x as u16, y as u16))) { return Some((x as u16, y as u16, sz(x, y))); }
+        } } }
+        None
+    };
+    // A cell of floor beside the stair at level z (or the stair's own top).
+    let beside = |s: (u16, u16), z: i32| -> Option<(u16, u16, i32)> {
+        [(1i32, 0i32), (-1, 0), (0, 1), (0, -1), (0, 0)].iter().map(|&(dx, dy)| ((s.0 as i32 + dx) as usize, (s.1 as i32 + dy) as usize))
+            .find(|&(x, y)| x < n && y < map.height && standable(map, x, y, z)).map(|(x, y)| (x as u16, y as u16, z))
+    };
+    let walk = |s: (u16, u16), to: Option<(u16, u16, i32)>| -> Option<usize> {
+        let from = street(s)?;
+        path3(map, None, from, to?, 40_000).map(|p| p.len())
+    };
+    let tally = |what: &str, items: Vec<((u16, u16), Option<(u16, u16, i32)>)>| {
+        if items.is_empty() { return; }
+        let walked: Vec<usize> = items.iter().filter_map(|&(s, to)| walk(s, to)).collect();
+        println!("  {what}: {} of {} walked to from the street{}", walked.len(), items.len(),
+            if walked.is_empty() { String::new() } else { format!(" ({}-{} steps)", walked.iter().min().unwrap(), walked.iter().max().unwrap()) });
+    };
+    tally("keep roofs", b.iter().filter(|x| x.kind == K::Keep).filter_map(|x| Some((x.stair?, beside(x.stair?, x.platform?)))).collect());
+    tally("tower roofs", b.iter().filter(|x| x.kind == K::Tower).filter_map(|x| Some((x.stair?, beside(x.stair?, x.platform?)))).collect());
+    tally("upper floors", b.iter().filter(|x| !x.ruined && x.kind != K::Tower).flat_map(|x| x.upper.iter().filter_map(move |&z| Some((x.stair?, beside(x.stair?, z))))).collect());
+    tally("cellars", cellars.iter().filter_map(|x| { let (c, z) = *x.cellar.last()?; Some((x.cellar[0].0, Some((c.0, c.1, z)))) }).collect());
+    // Below the ground: solid but for caverns, places and cellars.
+    let cut: std::collections::HashSet<(u16, u16)> = map.places.iter().flat_map(|p| p.cells.iter().map(|c| c.0))
+        .chain(b.iter().flat_map(|x| x.cellar.iter().map(|c| c.0))).collect();
+    let mut open = 0;
+    for y in 0..map.height { for x in 0..n {
+        if cut.contains(&(x as u16, y as u16)) { continue; }
+        for z in 0..sz(x, y).max(0) as usize {
+            let c = map.cell(x, y, z);
+            let above = map.cell(x, y, z + 1);
+            let bed = c.shape == Shape::Floor && (above.water > 0 || above.material == crate::local::Material::Ice);
+            if c.shape != Shape::Wall && c.water == 0 && !bed && map.cavern_at(x, y, z as i32).is_none() { open += 1; }
+        }
+    } }
+    println!("  below the ground: {open} cells open outside caverns, places and cellars");
 }
 
 #[cfg(test)]

@@ -142,9 +142,35 @@ impl<'a> View<'a> {
                 .filter(|&&(qx, qy)| qx < w && qy < h).map(|&(qx, qy)| map.surface_z[qy * w + qx]).max().unwrap_or(z);
             hi - z
         };
+        // How many levels a building stands over its ground (a storey is two), for the shadow it
+        // casts down-light: 0.6 cells a level, so a two-storey house throws one cell of shade, a
+        // keep four.
+        let tall: Vec<i32> = (0..w * h).into_par_iter().map(|k| {
+            let (x, y, z) = (k % w, k / w, map.surface_z[k]);
+            (1..=10).rev().find(|&dz| {
+                let zz = z + dz;
+                zz >= 0 && (zz as usize) < map.depth && {
+                    let c = map.cell(x, y, zz as usize);
+                    c.shape != Shape::Empty && matches!(c.material, Material::Wood | Material::Block(_) | Material::Clay)
+                }
+            }).unwrap_or(0)
+        }).collect();
+        let s = (SHADOW.0 * SHADOW.0 + SHADOW.1 * SHADOW.1).sqrt();
+        let shaded = |k: usize| {
+            let (x, y) = ((k % w) as f32, (k / w) as f32);
+            tall[k] == 0 && (1..=4).any(|d| {
+                let (qx, qy) = ((x - SHADOW.0 / s * d as f32).round(), (y - SHADOW.1 / s * d as f32).round());
+                qx >= 0.0 && qy >= 0.0 && (qx as usize) < w && (qy as usize) < h && tall[qy as usize * w + qx as usize] as f32 * 0.6 >= d as f32
+            })
+        };
         let wash = (0..w * h).into_par_iter().map(|k| match top[k] {
             Top::Water(d) => water_wash(d),
-            _ => { let c = wash(floor_of(k)); let d = sunk(k); if d >= 2 { mix(c, [70.0, 60.0, 50.0], (0.18 * d as f32).min(0.5)) } else { c } }
+            _ => {
+                let c = wash(floor_of(k));
+                let d = sunk(k);
+                let c = if d >= 2 { mix(c, [70.0, 60.0, 50.0], (0.18 * d as f32).min(0.5)) } else { c };
+                if shaded(k) { mix(c, [70.0, 60.0, 50.0], 0.22) } else { c }
+            }
         }).collect();
         let crowns = (0..w * h).into_par_iter().map(|k| {
             if !matches!(top[k], Top::Ground) { return None; }
@@ -285,6 +311,24 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
     let roof = v.map.roofs[(cy as usize) * v.map.width + cx as usize];
     if roof > 0 && !matches!(top, Top::Water(_)) {
         let r = v.map.houses[(roof - 1) as usize];
+        let same = |dx: i64, dy: i64| v.inside(cx + dx, cy + dy) && v.map.roofs[((cy + dy) as usize) * v.map.width + (cx + dx) as usize] == roof;
+        if r.flat {
+            // A keep's or tower's walkable roof: dressed flags, the parapet's merlons (every other
+            // cell of its rim) standing up pale with their shadow side hatched, the stair's head
+            // as steps, ink round it all.
+            let mut k = mix([192.0, 184.0, 168.0], PAPER, 0.08 * (mottle(fx, fy, 1.5, 96) - 0.5));
+            if fx.fract() < line || (fy + if (fx.floor() as i64) % 2 == 0 { 0.0 } else { 0.5 }).fract() < line { k = mix(k, INK, 0.2); }
+            let (west, east, north, south) = (!same(-1, 0), !same(1, 0), !same(0, -1), !same(0, 1));
+            if (west || east || north || south) && (cx + cy) % 2 == 0 {
+                k = [214.0, 206.0, 190.0];
+                if (u > 0.6 || w > 0.6) && hatch(3) { k = mix(k, INK, 0.5); }
+                if edge_distance(u, w, true, true, true, true) < line * 1.2 { k = mix(k, INK, 0.8); }
+            }
+            let up = v.sz(cx, cy) + 1;
+            if (up as usize) < v.map.depth && v.map.cell(cx as usize, cy as usize, up as usize).shape == Shape::Stair && (w * 4.0).fract() < 0.3 && u > 0.15 && u < 0.85 { k = mix(k, INK, 0.5); }
+            if edge_distance(u, w, west, east, north, south) < line * 1.4 { k = mix(k, INK, 0.9); }
+            return k;
+        }
         let (px, py) = (fx - r.cx, fy - r.cy);
         let across = px * -r.axis.1 + py * r.axis.0;
         let tiles: Rgb = if r.stone { [172.0, 98.0, 72.0] } else { [190.0, 164.0, 104.0] };
@@ -298,7 +342,6 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
         if away && hatch(3) { k = mix(k, INK, 0.5); }
         // Ridge line, then the eaves where the roof ends.
         if across.abs() < line * 0.8 { k = mix(k, INK, 0.85); }
-        let same = |dx: i64, dy: i64| v.inside(cx + dx, cy + dy) && v.map.roofs[((cy + dy) as usize) * v.map.width + (cx + dx) as usize] == roof;
         let d = edge_distance(u, w, !same(-1, 0), !same(1, 0), !same(0, -1), !same(0, 1));
         if d < line * 1.4 { k = mix(k, INK, 0.9); }
         return k;

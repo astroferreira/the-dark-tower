@@ -144,6 +144,9 @@ pub struct LocalMap {
     pub roofs: Vec<u32>,
     /// The standing houses' roofs, for drawing the surface from above.
     pub houses: Vec<RoofPlan>,
+    /// The towns' buildings as built in three dimensions (`structures.rs`): storeys, stairs,
+    /// a keep's or tower's platform, cellars cut under the ground.
+    pub buildings: Vec<structures::Building>,
     /// The world tile's mean temperature (°C) in spring, summer, autumn and winter.
     pub season_temps: [f32; 4],
     /// What the site held within reach before it was furnished: water, trees, stone, bushes.
@@ -178,6 +181,8 @@ pub struct RoofPlan {
     pub half_width: f32,
     /// Stone houses have tiled roofs; timber and earth ones thatch.
     pub stone: bool,
+    /// A flat roof one can walk on behind battlements (a keep, a wall's tower), not pitched.
+    pub flat: bool,
 }
 
 impl LocalMap {
@@ -613,6 +618,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         graves: Vec::new(),
         roofs: vec![0; n * n],
         houses: Vec::new(),
+        buildings: Vec::new(),
         season_temps: {
             let (tx, ty) = (world_tile.0.min(world.width - 1), world_tile.1.min(world.height - 1));
             let base = *world.temperature.get(tx, ty);
@@ -869,7 +875,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             });
             let k = map.idx(i, j, sz as usize);
             let built_over = (sz as usize + 1) < map.depth && map.cells[map.idx(i, j, sz as usize + 1)].shape == Shape::Wall;
-            let paved = matches!(map.cells[k].material, Material::Wood | Material::Block(_));
+            let paved = matches!(map.cells[k].material, Material::Wood | Material::Block(_)) || map.cells[k].shape == Shape::Stair;
             if up && map.cells[k].plant == Plant::None && map.cells[k].water == 0 && !built_over && !paved {
                 map.cells[k].shape = Shape::Ramp;
             }
@@ -893,7 +899,9 @@ mod tests {
         let map = generate_local(&world, &region, None, region.width as f64 / 2.0, region.height as f64 / 2.0);
         assert_eq!(map.cells.len(), LOCAL_SIZE * LOCAL_SIZE * map.depth);
         // Places carved under the ground (caves, lairs, tombs: `places.rs`) are open below it.
-        let carved: std::collections::HashSet<(u16, u16)> = map.places.iter().flat_map(|p| p.cells.iter().map(|c| c.0)).collect();
+        // So are the cellars cut under town houses, and their stairs (`structures.rs`).
+        let carved: std::collections::HashSet<(u16, u16)> = map.places.iter().flat_map(|p| p.cells.iter().map(|c| c.0))
+            .chain(map.buildings.iter().flat_map(|b| b.cellar.iter().map(|c| c.0))).collect();
         assert!(!map.caverns.is_empty(), "no cavern under the test embark");
         for y in 0..map.height {
             for x in 0..map.width {
