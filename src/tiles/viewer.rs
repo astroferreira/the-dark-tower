@@ -1879,19 +1879,43 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
             super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history);
             save_rgb_png(&format!("{prefix}_place{}.png", k + 1), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
         }
+        // The stair's foot (a cavern's floor once one is breached) and the magma pipe's top, if
+        // any: for checking cavern floors and the magma.
+        let mut extra: Vec<(String, (u16, u16), i32)> = Vec::new();
+        if let Some(sp) = colony.spine { extra.push((format!("{prefix}_foot.png"), sp.at, sp.bottom)); }
+        if let Some(p) = colony.map.magma_pipe { let sz = colony.map.surface_z[p.1 as usize * w0 + p.0 as usize]; extra.push((format!("{prefix}_magma.png"), (p.0 as u16, p.1 as u16), sz - 4)); }
+        for (name, c, z) in extra {
+            let cam = LocalCamera { cx: c.0 as f32 + 0.5, cy: c.1 as f32 + 0.5, tile_px: 20.0, z, surface_view: false };
+            let mut buf = vec![0u32; w * h];
+            super::local_ink::render_level_ink(&colony.map, &cam, &mut buf, w, h);
+            super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history);
+            save_rgb_png(&name, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        }
         // The camp at its own ground level, as the level view draws it, beside the surface view
         // (to compare the two).
         let zc = colony.map.surface_z[colony.camp.1 as usize * w0 + colony.camp.0 as usize];
         let cam = LocalCamera { cx: colony.camp.0 as f32 + 0.5, cy: colony.camp.1 as f32 + 0.5, tile_px: 16.0, z: zc, surface_view: false };
         let mut buf = vec![0u32; w * h];
-        super::local_ink::render_level_ink(&colony.map, &cam, &mut buf, w, h);
-        super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history);
+        // (Timed best of three, as `--local-snapshot` does.)
+        let mut level_ms = f64::MAX;
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            super::local_ink::render_level_ink(&colony.map, &cam, &mut buf, w, h);
+            super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history);
+            level_ms = level_ms.min(t0.elapsed().as_secs_f64() * 1000.0);
+        }
         save_rgb_png(&format!("{prefix}_camp_level.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
         let cam = LocalCamera { surface_view: true, ..cam };
         let mut buf = vec![0u32; w * h];
-        super::local_ink::render_local_ink(&colony.map, &cam, &mut buf, w, h);
-        super::local_ink::draw_colony(&colony, &cam, &mut buf, w, h, history);
+        let mut surface_ms = f64::MAX;
+        for _ in 0..3 {
+            let t0 = std::time::Instant::now();
+            super::local_ink::render_local_ink(&colony.map, &cam, &mut buf, w, h);
+            super::local_ink::draw_colony(&colony, &cam, &mut buf, w, h, history);
+            surface_ms = surface_ms.min(t0.elapsed().as_secs_f64() * 1000.0);
+        }
         save_rgb_png(&format!("{prefix}_camp_surface.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("Frame times ({w}x{h} at 16 px, best of three): the camp's level {:.1} ms, its surface {:.1} ms", level_ms, surface_ms);
         println!("Frames: {prefix}_section.png, {}, {prefix}_above.png, {prefix}_camp_level.png, {prefix}_camp_surface.png", names.join(", "));
     }
     let deaths: Vec<String> = colony.log.iter().filter(|l| l.contains("died of") || l.contains("was killed") || l.contains("was the last")).map(|l| l.split("  ").next().unwrap_or("").to_string() + ": " + if l.contains("hunger") { "hunger" } else if l.contains("killed") { "raid" } else { "other" }).collect();

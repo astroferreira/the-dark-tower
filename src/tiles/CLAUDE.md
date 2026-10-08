@@ -286,3 +286,23 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   (`Colony::delve_levels`: the tower's platform, the camp's ground, levels with rooms or rooms
   being dug, the cavern the stair reaches, the stair's foot); `[` past the top returns to the
   surface view. "[/] delve" in the key bar.
+- Visual pass on the embark frames (2026-10-08): worn ground is a smooth dusty wash blended
+  between cells (was a disc per cell: polka dots over every camp), never on roofs or walls;
+  in a level view the camp's marks, worn ground, night and winter are drawn only where the level
+  shows the surface (`level_shows_surface` mask: no dots or "cut away" hatching over rock and
+  dug rooms); labels share one placement list between `draw_colony` and `draw_delve` (roof
+  counts, "N below", patron names first; settlers' names and bed names step aside, 3 px air);
+  level views draw settlers with the surface figure (`draw_figure`: pictograms; a pick for the
+  dig, a hammer for craft, a spear for the hunt). Ground below the viewed level fades with depth
+  (10% a level down ... 72%) instead of 72% at once with square halos round trees. Rock cut at
+  a level (`cut_rock`, shared with the cover over unfound places, which now takes the nearest
+  rock of the level so no stratum ghost shows): the aquifer a blue tint with a few ripples (was
+  blue noise), gems inked. Doors are a plank leaf across the doorway (were crate squares); a
+  tower's top has planks and a merlon parapet; stair marks were inverted (up drew v): up ^,
+  down v, both X (`stair_mark`). Drawbridges drawn as planked decks with rails, a hatched leaf
+  when raised. Stumps faint and off-grid. Magma mottled with thin crust veins (level and
+  section). Section: stairs in profile (treads and risers), fungus as stalk and cap, strata named
+  down the left, settlers as inked figures in their colours, deep rock under the last level
+  (was sky). `PLANET_FRAMES` also writes `_foot.png` (stair's foot) and `_magma.png` (the pipe)
+  and prints best-of-three frame times (~12-13 ms each at 1280x800, 16 px, unloaded M4 Pro).
+  Not done: `--local-snapshot`'s `_section.png` is still the old pixel cross-section.
