@@ -84,9 +84,9 @@ impl Colony {
         for &i in &cands {
             let p = &self.settlers[i].persona;
             let skill = self.fight_skill(i);
-            let force = self.arm_of(i).map_or(1.0, |a| a.force) * (1.0 + 0.5 * skill);
             let hit = (p.attr(Attr::Agility) / 1000.0 * 0.5 + 0.3 + 0.1 * size + 0.25 * skill).min(0.95);
-            let power = p.attr(Attr::Strength) / 1000.0 * force / size;
+            // Their blow against the beast's layers, over its parts (`fight.rs`, `materials.rs`).
+            let power = self.blow_harm(i, threat.monster.as_ref());
             harm += hit * power;
             if power > hardest { hardest = power; striker = Some(i); }
         }
@@ -133,7 +133,7 @@ impl Colony {
             s.job = Job::Idle;
             s.hunger = s.hunger.min(0.6);
             // Armour turns some of what the lair gives (`armour.rs`).
-            let worn = self.armour_of(i).map_or(1.0, |a| 1.0 - a.cover);
+            let worn = 1.0 - self.armour_guard(i, &super::fight::foe_of(&e.beast, Some(&m)));
             let danger = (size / (size + harm)).clamp(0.05, 0.9) * if slain { 0.4 } else { 0.8 } * worn;
             let roll = (crate::history::settlers::hash_pub(self.seed ^ day, 0xE7 + k as u64) % 1000) as f32 / 1000.0;
             if roll < danger * 0.3 { fallen.push(i); } else if roll < danger { hurt.push(i); }

@@ -113,8 +113,10 @@ of the camps kept with the world (`legend.rs`, `--sim-legend`), and space in thr
 `Shape::Stair`), dig a stair spine with bedrooms and a great hall on its levels (`delve.rs`), and
 raise the lookout as a tower; who knows what: per-town and per-people knowledge of the
 chronicle with each people's own account (`history/knowledge.rs`, `--rumours`), which caravans,
-visitors, migrants and bards carry to the camp (`colony/news.rs`); and industries: a smelter,
-forge, mason's, carpenter's and kiln cut below, ore -> bars -> tools and arms (`industry.rs`).
+visitors, migrants and bards carry to the camp (`colony/news.rs`); industries: a smelter,
+forge, mason's, carpenter's and kiln cut below, ore -> bars -> tools and arms (`industry.rs`);
+and blows resolved by a material model (`src/materials.rs`, `data/defaults/materials.json`:
+density, hardness, edge, capability flags; weapon shapes; tissue layers and armour by part).
 Each has its notes in `src/colony/CLAUDE.md` (knowledge in `src/history/CLAUDE.md`). Debug forcing: `PLANET_FORCE_WERE`, `PLANET_FORCE_SEEKER`,
 `PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`, `PLANET_FORCE_PET_PREY`, `PLANET_FORCE_ORE`. Board cards `df-*`; progress log in the Claude Doc
 "Dwarf Fortress systems: progress log".

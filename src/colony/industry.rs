@@ -239,13 +239,13 @@ impl Colony {
                 opts.push((0.6 * smith, format!("Making tools of {} at {}: picks, axes and mallets", tool_metal.unwrap(), if self.shop(RoomKind::Forge).is_some() { "the forge" } else { "the magma forge" })));
             } else if let Some(m) = self.arm_metal(1) {
                 // A spear of wood and stone borne by someone, and a shaft to hand.
-                let worst = self.arms.iter().filter(|a| a.holder.is_some() && Self::metal_in(&a.kind).is_none()).min_by(|a, b| a.force.total_cmp(&b.force));
+                let worst = self.arms.iter().filter(|a| a.holder.is_some() && Self::metal_in(&a.kind).is_none()).min_by(|a, b| a.rating().total_cmp(&b.rating()));
                 let shaft = self.stored_count(ItemKind::Log) + self.stored_count(ItemKind::Stone) > 0;
                 if let (Some(a), true) = (worst, shaft) {
                     let who = self.settlers[a.holder.unwrap()].name.clone();
                     opts.push((0.55 * smith, format!("Forging a spear of {} at the forge, to replace {}'s {}", m, who, a.kind.trim_start_matches("a ").trim_start_matches("an "))));
                 } else if let Some(m) = self.arm_metal(MAIL_BARS) {
-                    let worst = self.armour.iter().filter(|a| a.holder.is_some() && Self::metal_in(&a.kind).is_none()).min_by(|a, b| a.cover.total_cmp(&b.cover));
+                    let worst = self.armour.iter().filter(|a| a.holder.is_some() && Self::metal_in(&a.kind).is_none()).min_by(|a, b| a.rating().total_cmp(&b.rating()));
                     if let Some(a) = worst {
                         let who = self.settlers[a.holder.unwrap()].name.clone();
                         opts.push((0.5 * smith, format!("Forging mail of {} at the forge, to replace {}'s {}", m, who, a.kind.trim_start_matches("a ").trim_start_matches("an "))));
@@ -315,10 +315,10 @@ impl Colony {
             // A new spear of metal (`finish_arm` takes the bar and the shaft); the poorest one
             // left without a bearer is broken up for its shaft.
             let before = self.arms.len();
-            let old: Option<String> = self.arms.iter().filter(|a| a.holder.is_some() && Self::metal_in(&a.kind).is_none()).min_by(|a, b| a.force.total_cmp(&b.force)).map(|a| a.kind.clone());
+            let old: Option<String> = self.arms.iter().filter(|a| a.holder.is_some() && Self::metal_in(&a.kind).is_none()).min_by(|a, b| a.rating().total_cmp(&b.rating())).map(|a| a.kind.clone());
             self.finish_arm(i);
             if self.arms.len() > before {
-                if let Some(k) = (0..self.arms.len()).filter(|&k| self.arms[k].holder.is_none()).min_by(|&a, &b| self.arms[a].force.total_cmp(&self.arms[b].force)) {
+                if let Some(k) = (0..self.arms.len()).filter(|&k| self.arms[k].holder.is_none()).min_by(|&a, &b| self.arms[a].rating().total_cmp(&self.arms[b].rating())) {
                     self.arms.remove(k);
                     self.arm_militia();
                 }
@@ -329,7 +329,7 @@ impl Colony {
             let before = self.armour.len();
             self.finish_armour(i);
             if self.armour.len() > before {
-                if let Some(k) = (0..self.armour.len()).filter(|&k| self.armour[k].holder.is_none()).min_by(|&a, &b| self.armour[a].cover.total_cmp(&self.armour[b].cover)) {
+                if let Some(k) = (0..self.armour.len()).filter(|&k| self.armour[k].holder.is_none()).min_by(|&a, &b| self.armour[a].rating().total_cmp(&self.armour[b].rating())) {
                     let old = self.armour.remove(k);
                     self.armour_up();
                     let new = self.armour.last().map(|a| a.kind.clone()).unwrap_or_default();

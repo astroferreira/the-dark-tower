@@ -435,7 +435,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   struck; a lunge may be dodged (agility); defenders (the saviour, the watcher, else the
   strongest) strike back with what they work with (woodcutter an axe, builder a mallet, fisher a
   spear; iron once ore is worked), hit chance from agility and the foe's size, force from
-  strength x weapon / size: misses, glances off a hard substance ("glances off the basalt of its
+  strength x weapon / size (now the material model: "Materials and blows" at the end): misses, glances off a hard substance ("glances off the basalt of its
   flank with a ring"), bruises, cuts, bites deep; the foe may bruise the boldest defender. A
   rescue wounds the struck on a weighted body part (head, body, arms, legs), broken when the foe
   is big against their toughness. `Settler::wounds` (`Wound`: part, severity 1-3, heals in 3/8/24
@@ -965,6 +965,10 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   tools) (since the industries: forged or bought tools, and metal heads take bars); a mood that wants a metal needs that metal's own ore (iron also when bought). Spearheads
   are the best to hand (`finish_arm`): iron 1.45, copper 1.3, obsidian from a gem cluster 1.25
   (uses one), the land's stone 1.15, bone 1.05 where the land has no named stone. No dev seed
+  tools); a mood that wants a metal needs that metal's own ore (iron also when bought). Spearheads
+  are the best to hand (`finish_arm`): adamantine, iron, copper, obsidian from a gem cluster
+  (uses one), bone where the land has no named stone, the land's stone (their old flat forces are
+  gone: what a head does is its material's, "Materials and blows" at the end). No dev seed
   strikes ore yet, so its spears are flint or sandstone. Mithril has no deposits; adamantine comes
   from the deep shaft (`deep.rs`).
 - The deep shaft (`deep.rs`, DF's adamantine and the hollow): from day 60, with a cavern breached
@@ -1036,7 +1040,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   Skullmaw Horde friends on day 166. Tested (`the_world_remembers_what_the_camp_did`).
 - Armour (`armour.rs`, DF's armour layers): the best hand at the workshop makes armour for each
   spear borne ("Making armour", by day; 1.0 with trouble foretold, else 0.6; spears first while
-  a raid is foretold, armour first in quiet times), of the best to hand: adamantine mail 0.75 (deep shaft), iron mail 0.55 (iron
+  a raid is foretold, armour first in quiet times), of the best to hand (the shares were the old
+  flat cover; now layers, "Materials and blows"): adamantine mail 0.75 (deep shaft), iron mail 0.55 (iron
   ore or bought tools, iron worked), copper scale 0.45, a leather jerkin 0.25 (a hide: `hunted`
   less `hides_used`; the pen's slaughter counts). `armour_up` gives the best to the best fighters
   with the spears; "Bears X in the militia, and wears Y" on the settler page. In the clash a
@@ -1643,3 +1648,51 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   `find_site_within` marks taken cells once per call; engravings phrase only moments that could
   win; `temple_at` skips reading the god. Still most of the time: the A* itself (~45%, ~300
   expansions a search underground), then `decide`'s options.
+
+## Materials and blows (2026-10-08, DF's items: geometry on the item, physics on the material)
+- `src/materials.rs` + `data/defaults/materials.json` (loaded like monsters.json; pure, no RNG)
+  replace the flat spear forces (1.05-2.2) and armour covers (0.25-0.75). Materials: density,
+  `hard` (shear yield), `edge`, `resist` (edge cost/mm), `absorb` (blunt loss/mm), `fracture`
+  (rigid crack cost/mm), `rigid`, flags `weapon`/`armour` (DF's capability flags): the land's
+  stones (flint 40 hard / edge 0.9, granite/basalt 35, sandstone/limestone 25), copper 45, iron
+  70, adamantine 1000 (density 0.2), bone, wood, leather, beasts' coverings (fur, hide, chitin,
+  scales...) and substances (granite plates, smoke, salt...), tissues. Weapon subtypes (spear,
+  fishing spear, stake, axe, mallet, hammer; raiders' sword, mace, club, long knife): edge/blunt,
+  contact, penetration mm, head cm3 of the material + haft cm3 of wood, velocity. Natural
+  weapons (jaws, tusks, horns, mandibles, talons, tentacles): material (tooth, ivory, horn...,
+  or the beast's substance if weapon-flagged: an iron beast bites with iron), force x size^1.3.
+  Bodies: settler head/body/arm/leg, raider arm/shoulder/leg, beast head/flank/leg/wing/tail/
+  tentacle/shell/horn, as skin/fat/muscle/bone mm (settlers x toughness, beasts x size; a beast's
+  covering or 8 mm/size plates of its substance on top); armour subtypes are a layer over body
+  and arms (mail 1.6 mm, scale 2, jerkin 4, coat 6, plate coat 4; x quality).
+- `strike(blow, layers)`: momentum = 100 x strength (attr/1000 x (1 + 0.5 drill) x the maker's
+  hand 0.9-1.1 x a hashed 0.85-1.15) x velocity x sqrt(kg). An edge bites a layer only if 1.5x
+  as hard (else it lands blunt from there); cutting costs resist x mm x contact / keenness x
+  (layer/edge hardness)^0.215. Blunt: soft layers absorb, rigid ones must crack. Outcome by where
+  it stops: Glance (the outer rigid covering: "glances off the chitin of its shell with a ring",
+  "glances off its horn"), Turned (armour), Bruise, Cut, Deep (60%+ of the muscle or to the
+  bone), Broken (blunt past the bone's fracture, or an edge's leftover past 2x it; 3x under
+  armour, which spreads the blow): "drives a flint-tipped spear into the raider's leg, and the bone
+  breaks", "breaks/cracks its head with a mallet". Harm = 1.75 x the share of the part's
+  resistance gone through (bone 5% of its cost to an edge; 1.2 at most); glances do none.
+  Severity on settlers: bruise 1, cut/deep 2, broken 3.
+- In the clash (`fight.rs`: `Foe`, `foe_of`, `body_of`, `blow_harm`): defenders' blows, the
+  crowd's half blows, the rescue wound (struck with and without the victim's armour: "does not
+  get through", "though X took the worst of it" when it is a step lighter), the counter-bruise
+  (a half blow, turned when the armour stops it), the killing blow (`armour_turns_killing`: head
+  or chest at 1.5x, turned when held to a bruise), expeditions (`blow_harm` over the beast's
+  parts; danger x(1 - `armour_guard`), the share of the beast's blows the armour lightens). Arms
+  and armour keep a material and quality (`Arm::rating`, `Armour::rating` for handing out);
+  magma-forged metal x1.12 momentum, armour x1.15 thickness. A beast's coat is made only of
+  armour-flagged remains (seed 3's Kaelgar's salt is no longer worn).
+- What it gives (strength 1.2): flint spear vs a raider bites deep (harm ~1.3), vs a size-2
+  furred beast cuts (~0.6), adamantine bites deep (~1.2) and cuts through granite plates that
+  every stone and iron head glances off; iron mail holds a raider's iron sword to a bruise
+  (iron cannot bite iron), leather only lightens it; size 2 jaws gash, 2.5 tusks break bones;
+  chitin beasts glance off sandstone (seed 5's Skorvurr: 5 glances in 300 days).
+- Balance, six dev seeds x 300 days (`PLANET_DEBUG_BLOWS=1` prints each beast's harm against its
+  need): beasts slain at the camp 2/2/0/1/2/0 (76/11/23/58/3/5), the same as before, plus seed
+  3's hunting party taking Zarnak on day 155; raid deaths 8 (was 7: seed 3 3, a moved timeline);
+  armour turned 5 blows (was 4). The log has fewer "bruises" (stakes now cut) and broken bones
+  on raiders where a strong drilled hand drives the spear home. `cargo test materials -- --nocapture`
+  prints the whole table.
