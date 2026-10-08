@@ -122,6 +122,14 @@ impl Colony {
             }
             ProjectKind::GreatHall | ProjectKind::Tombs => self.plan_level(kind, 0),
             ProjectKind::Moat => self.plan_moat(),
+            // The deep shaft (`deep.rs`): the stair on down from its foot (the cavern floor) to
+            // the deepest rock, through the caverns below (a stair is let down through each).
+            ProjectKind::DeepShaft => {
+                let sp = self.spine?;
+                let mouth = self.delve_mouth?;
+                let cuts: Vec<DigCell> = (4..sp.bottom).rev().map(|z| DigCell::stair(sp.at, z)).collect();
+                (cuts.len() >= 8).then(|| DelvePlan { cuts, rooms: Vec::new(), spine: None, mouth })
+            }
             _ => None,
         }
     }
@@ -240,7 +248,7 @@ impl Colony {
             if r.kind == RoomKind::Hall { self.hall_cells = r.cells.clone(); self.hall_z = r.z; }
             self.rooms.push(r);
         }
-        let _ = kind;
+        if kind == ProjectKind::DeepShaft { self.deep_shaft_done(); }
     }
 
     /// The lookout raised as a tower (DF's constructions: walls, a floor and a stair built of

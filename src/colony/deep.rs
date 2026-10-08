@@ -4,8 +4,9 @@
 //! spires down into the dark, and those who mine it out to the bottom break into a hollow where
 //! demons wait. Here, once the mine has broken into a cavern and nothing of the deep is still
 //! coming (the forgotten beast slain, caged or long gone), a camp that builds in stone, or whose
-//! speaker is greedy (60+), sinks a deep shaft below the cavern floor (`ProjectKind::DeepShaft`, 24
-//! loads of timber shoring; the work is told, not walked). When it is done the shaft has reached
+//! speaker is greedy (60+), sinks a deep shaft below the cavern floor (`ProjectKind::DeepShaft`: the
+//! delve's stair cut on down from its foot to the deepest rock, a cut a level, with a stair let
+//! down through each cavern below; `delve.rs`). When it is done the shaft has reached
 //! the deepest rock: where the land has three cavern layers, one camp in two strikes adamantine
 //! ("a vein of adamantine, glittering blue-white", a moment; `Colony::ores` gains it, and spearheads
 //! of it strike at 2.2). Greed follows the vein: 12-20 days later the miners break into a hollow
@@ -15,6 +16,12 @@
 
 use super::*;
 use super::arc::{Threat, ThreatKind};
+
+/// "an iron-headed spear" made at the magma: "a magma-forged iron-headed spear".
+pub(crate) fn magma_forged(kind: &str) -> String {
+    let rest = kind.strip_prefix("an ").or_else(|| kind.strip_prefix("a ")).unwrap_or(kind);
+    format!("a magma-forged {}", rest)
+}
 
 impl Colony {
     /// Whether the camp would sink the deep shaft now.
@@ -30,6 +37,15 @@ impl Colony {
     /// The shaft is done: the deepest rock, and perhaps adamantine.
     pub(crate) fn deep_shaft_done(&mut self) {
         let day = self.clock.day();
+        // Over the magma sea (`LocalMap::magma_top`, at the bottom of every embark): the rock at
+        // the shaft's foot is warm, and a forge set over a vent needs no fuel (DF's magma forges).
+        if self.map.magma_top.is_some() && !self.magma_forge {
+            self.magma_forge = true;
+            let line = "At the foot of the deep shaft the rock is warm to the hand: below it the magma sea glows through the cracks. They set a forge over a vent, and the workshop's metal is worked in its heat from now on.".to_string();
+            self.note(line.clone());
+            let at = self.mine_mouth().unwrap_or(self.camp);
+            self.moment("The sea of fire".into(), line, "because the deep shaft reached the bottom of the world, where the magma sea lies".into(), at);
+        }
         let three = self.map.caverns.len() >= 3;
         let struck = three && crate::history::settlers::hash_pub(self.seed, 0xADA) % 2 == 0;
         let at = self.mine_mouth().unwrap_or(self.camp);

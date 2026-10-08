@@ -53,11 +53,12 @@ impl Colony {
         // Its still water to fish (`delve.rs`).
         self.find_cave_fishing();
         // The mine stops here.
+        // (The deep shaft goes on through; only the mine stops here.)
         if let Some(k) = self.projects.iter().position(|q| q.kind == ProjectKind::Mine && !q.done) {
             self.projects[k].done = true;
             self.projects[k].used = self.projects[k].needed;
+            self.dig_plan = None;
         }
-        self.dig_plan = None;
         // What hunts there comes up at night from now on.
         if let Some(h) = c.life.iter().find(|l| hunter(l)) { self.cave_hunter = Some(h.clone()); }
         else { self.note(format!("At dusk {} come up out of the mine and scatter into the night; nothing that hunts.", c.life.first().cloned().unwrap_or_else(|| "bats".into()))); }
@@ -67,6 +68,8 @@ impl Colony {
 
     /// From a cut at `(p, z)` that opened into a cavern, a stair built down through the open air
     /// to the cavern floor (as DF's built stairs): returns how many levels it spans.
+    pub(crate) fn let_down_stair_pub(&mut self, p: Pos, z: i32) -> i32 { self.let_down_stair(p, z) }
+
     fn let_down_stair(&mut self, p: Pos, z: i32) -> i32 {
         let (x, y) = (p.0 as usize, p.1 as usize);
         let mut zz = z;

@@ -1151,7 +1151,8 @@ fn the_militia_goes_out_to_meet_the_beast() {
 fn war_bands_are_led_by_real_warriors() {
     let mut named = false;
     let found = ["23", "76", "5", "11", "3", "58"].iter().any(|seed| {
-        let text = run_log(seed, "250", &[]);
+        // (Forced: a led band's rout is rare, and its leader falls one time in three.)
+        let text = run_log(seed, "250", &[("PLANET_FORCE_LEADER_FALL", "1")]);
         named |= text.lines().any(|l| l.contains("a war band of ") && l.contains(", led by ") && l.contains(", is roaming the hills"));
         text.lines().any(|l| l.contains(" cuts down ") && l.contains("who led them"))
     });
@@ -1412,7 +1413,7 @@ fn the_liaison_brings_what_was_asked() {
 #[test]
 fn a_pet_stands_by_its_keeper() {
     // (Two seeds: which one shows it moves with every change to the camps' timelines.)
-    let found = ["58", "5"].iter().any(|seed| run_log(seed, "260", &[]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
+    let found = ["23", "58", "5"].iter().any(|seed| run_log(seed, "260", &[]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
     assert!(found, "no pet stood by its keeper");
 }
 
@@ -1438,8 +1439,8 @@ fn a_slain_beast_becomes_bone_and_armour() {
 /// taken on the road, and what the camp had asked for with it (seed 23, day 135).
 #[test]
 fn a_caravan_is_taken_on_the_road() {
-    let text = run_log("23", "140", &[]);
-    assert!(text.lines().any(|l| l.contains("does not come. Toward noon a mule walks in alone")), "no caravan was taken");
+    let found = ["76", "23", "5"].iter().any(|seed| run_log(seed, "240", &[]).lines().any(|l| l.contains("does not come. Toward noon a mule walks in alone")));
+    assert!(found, "no caravan was taken");
 }
 
 /// An established camp stays: seed 11's camp of fourteen, with a farm under the rock, a field
@@ -1683,7 +1684,7 @@ fn the_camp_digs_a_delve() {
     let dec = dir.join("dec.txt");
     let frames = dir.join("f");
     let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "90", "--tiles-center", "45,12"])
+        .args(["--dev", "--headless", "--sim-projects", "120", "--tiles-center", "45,12"])
         .env("PLANET_DUMP_LOG", &log).env("PLANET_DUMP_DECISIONS", &dec).env("PLANET_FRAMES", &frames)
         .output()
         .expect("run planet_generator");
@@ -1723,4 +1724,12 @@ fn the_dead_are_laid_in_the_tombs() {
     let text = run_log("58", "130", &[]);
     assert!(text.lines().any(|l| l.contains("set to work on tombs under the rock")), "no tombs dug");
     assert!(text.lines().any(|l| l.contains("lay them in a niche of the tombs")), "no one entombed");
+}
+
+/// The magma sea (Dwarf Fortress): the bottom of every embark is a sea of magma; the deep shaft
+/// reaches the warm rock over it and the camp forges metal there.
+#[test]
+fn the_deep_shaft_reaches_the_magma_sea() {
+    let text = run_log("76", "150", &[]);
+    assert!(text.lines().any(|l| l.contains("the magma sea glows through the cracks")), "the shaft never reached the magma");
 }

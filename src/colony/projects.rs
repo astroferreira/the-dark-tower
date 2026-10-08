@@ -18,7 +18,7 @@ pub enum ProjectKind { Woodpile, DryingRack, SecondHut, Palisade, Windbreak, Smo
 pub fn feeds(k: ProjectKind) -> bool { matches!(k, ProjectKind::Field | ProjectKind::CaveFarm | ProjectKind::Pen | ProjectKind::Jetty) }
 
 /// Works that are dug, not built (no loads to lay).
-pub fn is_dig(k: ProjectKind) -> bool { matches!(k, ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat) }
+pub fn is_dig(k: ProjectKind) -> bool { matches!(k, ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft) }
 
 impl ProjectKind {
     pub fn word(self) -> &'static str {
@@ -188,10 +188,12 @@ impl Colony {
             }
         }
         // The deep shaft below the cavern floor (`deep.rs`).
-        if !have(self, ProjectKind::DeepShaft) && self.wants_deep_shaft() {
-            let below = self.map.caverns.iter().map(|c| c.depth_levels).max().unwrap_or(40) + 10;
-            let at = self.mine_mouth().unwrap_or(self.camp);
-            c.push((1.1, ProjectKind::DeepShaft, format!("the cavern floor is not the bottom of the world: {} levels of rock lie under the camp, and the miners say the deep glitters", below), 24, at));
+        if !have(self, ProjectKind::DeepShaft) && self.wants_deep_shaft() && self.dig_plan.is_none() {
+            if let Some(plan) = self.plan_dig(ProjectKind::DeepShaft) {
+                let below = plan.cuts.len();
+                let at = self.spine.map(|s| s.at).unwrap_or(self.camp);
+                c.push((1.1, ProjectKind::DeepShaft, format!("the cavern floor is not the bottom of the world: {} levels of rock lie under the stair's foot, and the miners say the deep glitters", below), below as u32, at));
+            }
         }
         // A pen for beasts of a herd nearby (`livestock.rs`).
         if !have(self, ProjectKind::Pen) && day >= 40 && self.alive() >= 10 {
@@ -448,7 +450,6 @@ impl Colony {
                 ProjectKind::CaveFarm => {}
                 ProjectKind::Tavern => self.raise_building_at(at, 5, 4, material == ItemKind::Stone, true),
                 ProjectKind::Pen => { self.stamp_posts(at, 6, 5); self.fill_pen(); }
-                ProjectKind::DeepShaft => self.deep_shaft_done(),
                 ProjectKind::GuildHall => self.raise_building_at(at, 4, 3, material == ItemKind::Stone, true),
                 ProjectKind::Kitchen => self.raise_building_at(at, 3, 3, material == ItemKind::Stone, true),
                 ProjectKind::Library => self.raise_building_at(at, 4, 3, material == ItemKind::Stone, true),
@@ -472,7 +473,7 @@ impl Colony {
                 ProjectKind::Field => { self.stamp_posts(at, 8, 6); self.sow_field(at); }
                 ProjectKind::Jetty => { self.jetty = Some(at); }
                 ProjectKind::Well => self.stamp_block(at, 1, 1, ItemKind::Stone),
-                ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat => {}
+                ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft => {}
                 ProjectKind::Lining => {
                     // The wet shaft is lined: the dig goes on, dry (`dig.rs`).
                     self.aquifer_lined = true;

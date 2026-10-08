@@ -59,6 +59,8 @@ impl Colony {
     pub(crate) fn finish_armour(&mut self, i: usize) {
         let Some((kind, cover, src)) = self.armour_to_hand() else { return };
         match src { Source::Hide => self.hides_used += 1, Source::Beast(b) => self.remains[b].3 -= 1, Source::Ore => {} }
+        // Mail forged at the magma (`deep.rs`): closer rings.
+        let (kind, cover) = if self.magma_forge && matches!(src, Source::Ore) { (super::deep::magma_forged(&kind), (cover + 0.05).min(0.85)) } else { (kind, cover) };
         let day = self.clock.day();
         let name = self.settlers[i].name.clone();
         self.settlers[i].made.push(format!("{} (day {})", kind, day));

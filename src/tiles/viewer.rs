@@ -1813,6 +1813,7 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
         println!("  Cavern: {}, {} levels down, {} cells of floor ({} fungus trees, {} under water): {}{}", c.name, c.depth_levels, c.floor_cells, c.fungus, c.water_cells, c.life.join(", "),
             c.beast.as_ref().map(|(n, m)| format!("; {} the {} sleeps there: {}", n, m.kind_word, m.description)).unwrap_or_default());
     }
+    if let Some(m) = colony.map.magma_top { println!("  Magma: a sea of it at levels 1-{}{}{}", m, colony.map.magma_pipe.map(|p| format!("; a pipe rises at {},{} (volcanic ground)", p.0, p.1)).unwrap_or_default(), if colony.magma_forge { "; the deep shaft has reached it, and metal is forged at the magma" } else { "" }); }
     let game: Vec<String> = colony.map.game.iter().map(|(n, h)| format!("{} {}", h, n)).collect();
     println!("  Game: {} on the land; {} brought down", if game.is_empty() { "none".to_string() } else { game.join(", ") }, colony.hunted);
     if colony.stone_dug > 0 || colony.dug_cells() > 0 {

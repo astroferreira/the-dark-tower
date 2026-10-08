@@ -81,6 +81,9 @@ impl Colony {
             else if stone == "stone" && self.hunted > 0 { ("a bone-tipped spear".to_string(), 1.05 * hand) }
             else { (format!("a {}-tipped spear", stone), 1.15 * hand) };
         if kind.starts_with("an obsidian") { if let Some(g) = self.gems.iter_mut().find(|x| x.0 == "obsidian") { g.1 -= 1; } }
+        // Metal forged at the magma (`deep.rs`): a truer temper.
+        let at_magma = self.magma_forge && (kind.contains("iron") || kind.contains("copper") || kind.contains("adamantine"));
+        let (kind, force) = if at_magma { (super::deep::magma_forged(&kind), force * 1.12) } else { (kind, force) };
         let day = self.clock.day();
         let name = self.settlers[i].name.clone();
         self.settlers[i].made.push(format!("{} (day {})", kind, day));

@@ -134,3 +134,11 @@ the zoomed region around a point.
   where the tile's water table is 0.45+, levels 4-8 under the median ground), and the caverns
   ("3 cavern layers (the first 16 levels down); the old songs say something sleeps in the deep",
   the beast unnamed). Gems: `local::gem_in` (one rock cell in sixty, by world place and rock).
+
+## The magma sea (2026-10-08, DF)
+- The bottom three levels of every embark (1-3, `LocalMap::magma_top`) are a sea of magma
+  (`Material::Magma`, a liquid: `water` 7) wherever the caverns leave rock. Under ground a volcano
+  stands near (within 8 world tiles; `PLANET_FORCE_MAGMA=1`), a pipe of magma (radius ~2) rises
+  from it to three levels under the surface, 40-70 cells from the middle (`magma_pipe`). Drawn
+  glowing orange in level views and sections; the section reaches down to it once the colony's
+  stair comes near. `--sim-projects` prints a `Magma:` line.

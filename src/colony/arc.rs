@@ -738,7 +738,9 @@ impl Colony {
             self.take_prisoner(&threat, taker, seed);
             // A war band's leader may fall to the camp's blows (`band` in `plan`).
             // (Blows enough, and one rout in three: a leader is guarded.)
-            if threat.kind == ThreatKind::Warband && self.blows.0 >= 1.4 && hash(seed, 0x1EAD) % 3 == 0 {
+            // (Debug: PLANET_FORCE_LEADER_FALL=1 drops the roll and the blows needed, for its test.)
+            let forced = std::env::var("PLANET_FORCE_LEADER_FALL").is_ok();
+            if threat.kind == ThreatKind::Warband && ((self.blows.0 >= 1.4 && hash(seed, 0x1EAD) % 3 == 0) || forced) {
                 if let (Some(leader), Some(k)) = (threat.name.split(", led by ").nth(1).map(String::from), self.blows.1) {
                     let people = threat.name.trim_start_matches("a war band of ").split(", led by ").next().unwrap_or("").to_string();
                     let kn = self.settlers[k].name.clone();

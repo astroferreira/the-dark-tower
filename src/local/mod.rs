@@ -63,6 +63,8 @@ pub enum Material {
     Block(RockType),
     /// Ore vein in the rock.
     Ore(crate::history::civilizations::economy::ResourceType),
+    /// The magma sea at the bottom of the world, under volcanic ground (a liquid: `water` 7).
+    Magma,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -156,6 +158,10 @@ pub struct LocalMap {
     pub cavern_z: Vec<[(i16, i16); caverns::LAYERS]>,
     /// The cavern layers under this embark, with what lives there.
     pub caverns: Vec<caverns::Cavern>,
+    /// The top level of the magma sea at the bottom of the map.
+    pub magma_top: Option<i32>,
+    /// Where a pipe of magma rises from the sea toward the surface, under volcanic ground.
+    pub magma_pipe: Option<(u16, u16)>,
     /// Levels (absolute z, inclusive) of wet permeable rock: an aquifer (`is_aquifer`).
     pub aquifer: Option<(i32, i32)>,
 }
@@ -622,6 +628,8 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         cavern_z: Vec::new(),
         caverns: Vec::new(),
         aquifer: None,
+        magma_top: None,
+        magma_pipe: None,
     };
 
     for j in 0..n {
@@ -763,6 +771,41 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         let refs: Vec<f32> = cols.iter().map(|c| c.base).collect();
         let abs = |i: usize, j: usize| (ox_m + (cx + (i as f64 + 0.5 - n as f64 / 2.0) * tile_cells) * cell_m, oy_m + (cy + (j as f64 + 0.5 - n as f64 / 2.0) * tile_cells) * cell_m);
         map.caverns = caverns::carve(&mut map, &refs, &hs, &abs, seed, world_tile);
+        // The magma sea (DF): the bottom three levels of every embark, wherever the caverns
+        // leave rock; under ground a volcano stands near (within 8 tiles; `PLANET_FORCE_MAGMA=1`)
+        // a pipe of magma rises from it to three levels under the surface.
+        if map.depth > 12 {
+            let top = 3;
+            let molten = |map: &mut LocalMap, x: usize, y: usize, z: i32| {
+                let k = map.idx(x, y, z as usize);
+                map.cells[k] = Cell { shape: Shape::Empty, material: Material::Magma, water: WATER_FULL, plant: Plant::None, boulder: false };
+            };
+            for y in 0..map.height { for x in 0..map.width {
+                for z in 1..=top {
+                    if map.cavern_at(x, y, z).is_some() || z >= map.surface_z[y * map.width + x] - 2 { continue; }
+                    molten(&mut map, x, y, z);
+                }
+            } }
+            map.magma_top = Some(top);
+            let volcanic = world.volcanoes.iter().any(|v| (v.x as i64 - world_tile.0 as i64).abs().max((v.y as i64 - world_tile.1 as i64).abs()) <= 8)
+                || std::env::var("PLANET_FORCE_MAGMA").is_ok();
+            if volcanic {
+                // The pipe: 40-70 cells from the middle, in a direction hashed by the tile.
+                let h = (world_tile.0 as u64).wrapping_mul(0x9E37_79B9) ^ (world_tile.1 as u64).wrapping_mul(0x85EB_CA6B) ^ 0x7A6A;
+                let a = (h % 628) as f32 / 100.0;
+                let r = 40.0 + (h / 628 % 30) as f32;
+                let (px, py) = ((map.width as f32 / 2.0 + a.cos() * r) as i32, (map.height as f32 / 2.0 + a.sin() * r) as i32);
+                for dy in -2i32..=2 { for dx in -2i32..=2 {
+                    if dx * dx + dy * dy > 5 { continue; }
+                    let (x, y) = (px + dx, py + dy);
+                    if x < 2 || y < 2 || x as usize + 2 >= map.width || y as usize + 2 >= map.height { continue; }
+                    let (x, y) = (x as usize, y as usize);
+                    let sz = map.surface_z[y * map.width + x];
+                    for z in top + 1..sz - 2 { if map.cavern_at(x, y, z).is_none() { molten(&mut map, x, y, z); } }
+                } }
+                map.magma_pipe = Some((px.max(0) as u16, py.max(0) as u16));
+            }
+        }
         // An aquifer (DF): where the land holds water (the tile's water table 0.45+), a band of
         // wet permeable rock five levels thick, four levels under the usual ground.
         if hs.water_table >= 0.45 {

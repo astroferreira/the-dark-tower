@@ -866,7 +866,7 @@ fn cell_tiles(c: &Cell) -> (TileKind, [f32; 3], Option<TileKind>) {
                 Material::Ice => TileKind::SeaIce,
                 Material::Rock(_) | Material::Block(_) | Material::Ore(_) => TileKind::StoneFloor,
                 Material::Wood => TileKind::WoodFloor,
-                Material::Air => TileKind::Dirt,
+                Material::Air | Material::Magma => TileKind::Dirt,
             };
             let ground_tint = if matches!(ground, TileKind::Grass | TileKind::Sand | TileKind::Snow | TileKind::SeaIce) { [1.0; 3] } else { tint };
             let sprite = if c.shape == Shape::Ramp {
@@ -1074,6 +1074,7 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
                 Material::Wood => [140, 96, 54],
                 Material::Block(_) => [180, 176, 168],
                 Material::Ore(r) => crate::lore::resource_color(r),
+                Material::Magma => [220, 80, 20],
             };
             let t = material_tint(c.material);
             let f = if c.shape == Shape::Wall { 1.0 } else { 1.15 };

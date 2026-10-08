@@ -1463,3 +1463,15 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
 - Picking in the window (`Colony::settler_at`): in the surface view only those not below, in a
   level view those on that level (and surface settlers near it), for the hover chip, the title,
   clicks and the patron's verbs.
+- The deep shaft is walked (`ProjectKind::DeepShaft` is a dig now, `plan_dig`): the stair cut on
+  down from its foot to level 4; a stair cut into open dark lets a stair down to that cavern's
+  floor at once (`let_down_stair_pub`), so it passes through the second and third caverns (each
+  a breach with its life and moment; a breach no longer clears a dig that is not the mine). Done:
+  `deep_shaft_done` as before (adamantine one camp in two with three layers, the hollow), and
+  the magma: the rock over the magma sea is warm, a forge is set over a vent (`magma_forge`, "The
+  sea of fire", a moment), and metal spears and armour made after are "magma-forged" (x1.12
+  force, +0.05 cover). Dev 76: second cavern day 70, third day 85, adamantine and the sea of fire
+  day 87. Tested (`the_deep_shaft_opens_the_hollow`, `the_deep_shaft_reaches_the_magma_sea`).
+- `PLANET_FORCE_LEADER_FALL=1` lets a routed war band's leader fall whatever the blows (the test:
+  led bands raid once or twice in 300 days). Chance tests that moved with the ditch now try two
+  or three seeds (pet, caravan ambush).

@@ -74,6 +74,7 @@ fn wash(c: &crate::local::Cell) -> Rgb {
         Material::Block(_) => [196.0, 188.0, 170.0],
         Material::Wood => [176.0, 140.0, 100.0],
         Material::Air => [182.0, 160.0, 120.0],
+        Material::Magma => [214.0, 86.0, 30.0],
     }
 }
 
@@ -558,7 +559,11 @@ pub fn render_level_ink(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: u
                 let kd = kind(x as i64, y as i64).unwrap_or(0);
                 let edge_to = |want: u8| (u < e && kind(x as i64 - 1, y as i64) == Some(want)) || (u > 1.0 - e && kind(x as i64 + 1, y as i64) == Some(want))
                     || (v < e && kind(x as i64, y as i64 - 1) == Some(want)) || (v > 1.0 - e && kind(x as i64, y as i64 + 1) == Some(want));
-                if body.water > 0 && kd != 0 {
+                if body.material == Material::Magma {
+                    // The magma sea: glowing orange, darker crust-veins across it.
+                    let vein = unit((fx * 3.0) as i64, (fy * 3.0) as i64, 0x3A6) < 0.25;
+                    if vein { [120.0, 40.0, 20.0] } else { mix([236.0, 120.0, 30.0], [200.0, 50.0, 20.0], mottle(fx, fy, 3.0, 0x3A7)) }
+                } else if body.water > 0 && kd != 0 {
                     water_wash(body.water as f32)
                 } else if kd == 0 {
                     // Rock or soil at standing height, hatched in its colour.
@@ -1110,7 +1115,9 @@ pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize,
         if colony.under_rock((x as u16, row_c as u16)) { deepest = deepest.min(map.surface_z[row_c * map.width + x]); }
         for &l in &colony.breached { if let Some((f, _)) = map.cavern_z.get(row_c * map.width + x).map(|c| c[l as usize]) { if f >= 0 { deepest = deepest.min(f as i32); } } }
     }
-    let (ztop, levels) = (zc + 9, (zc + 9 - deepest + 4).clamp(19, 60));
+    // Down to the magma sea when the stair comes within reach of it.
+    if let (Some(m), Some(sp)) = (map.magma_top, colony.spine) { if sp.bottom <= m + 3 { deepest = deepest.min(1); } }
+    let (ztop, levels) = (zc + 9, (zc + 9 - deepest + 3).clamp(19, 75));
     let margin = 56.0f32;
     let cw = (w as f32 - margin - 12.0) / (x1 - x0).max(1) as f32;
     let ch = (h as f32 - 60.0) / levels as f32;
@@ -1151,6 +1158,8 @@ pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize,
                     let (u, v) = (fx.fract(), fz.fract());
                     let step = ((u + v) * 3.0).fract() < 0.3;
                     if step { mix(paper, INK, 0.6) } else { mix(paper, [205.0, 190.0, 160.0], 0.6) }
+                } else if cell.material == Material::Magma {
+                    mix([236.0, 120.0, 30.0], [200.0, 50.0, 20.0], unit(sx as i64 / 4, sy as i64 / 4, 0x3A6))
                 } else if cell.water > 0 {
                     water_wash(cell.water as f32)
                 } else if map.cavern_at(x, row, z).is_some() {

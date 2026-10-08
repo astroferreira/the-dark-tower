@@ -237,6 +237,10 @@ impl Colony {
         self.dig_fails = 0;
         let Some(m) = self.dig_cell(p, z, stair) else { return };
         if stair { if let Some(sp) = self.spine.as_mut().filter(|sp| sp.at == p) { sp.bottom = sp.bottom.min(z); } }
+        // A stair cut into open dark (a cavern below): a stair is let down to its floor at once.
+        if stair && z >= 1 && self.map.cell(p.0 as usize, p.1 as usize, z as usize).shape == Shape::Empty && self.map.cavern_at(p.0 as usize, p.1 as usize, z).is_some() {
+            self.let_down_stair_pub(p, z);
+        }
         let name = self.settlers[i].name.clone();
         if let Some(g) = gem {
             let n = 1 + (crate::history::settlers::hash_pub(self.seed ^ self.clock.tick, 0x6E3) % 3) as u32;
