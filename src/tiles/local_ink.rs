@@ -1266,6 +1266,31 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         }
     }
     let mut labels: Vec<(f32, f32, String, bool)> = Vec::new();
+    // The unknown is blank: places in the hills not yet found are drawn as the rock around them
+    // (DF shows only what has been seen). Their mouths on the surface stay as they are.
+    for (k, pl) in colony.map.places.iter().enumerate() {
+        if colony.places_found.contains(&k) || pl.mouth.is_none() { continue; }
+        let sz_of = |c: (u16, u16)| colony.map.surface_z[c.1 as usize * colony.map.width + c.0 as usize];
+        let hidden: Vec<((u16, u16), i32)> = pl.cells.iter().filter(|(c, z)| (*z == cam.z || *z + 1 == cam.z) && *z < sz_of(*c) - 1).copied().collect();
+        // (And the rock beside them, whose inked edges would trace the place's shape.)
+        let mut cover: Vec<((u16, u16), i32)> = hidden.clone();
+        for &(c, z) in &hidden { for dy in -1i32..=1 { for dx in -1i32..=1 {
+            let q = ((c.0 as i32 + dx).max(0) as u16, (c.1 as i32 + dy).max(0) as u16);
+            if (q.0 as usize) < colony.map.width && (q.1 as usize) < colony.map.height && !cover.iter().any(|h| h.0 == q) && colony.map.cell(q.0 as usize, q.1 as usize, (cam.z + 1).max(0) as usize).shape == crate::local::Shape::Wall { cover.push((q, z)); }
+        } } }
+        for &(c, z) in &cover {
+            let (x, y) = to_screen(c.0 as f32, c.1 as f32);
+            // (The level renderer's own rock: its wash, and its hatching in cell units.)
+            let body = colony.map.cell(c.0 as usize, c.1 as usize, (cam.z + 1).max(0) as usize);
+            let rock = if body.shape == crate::local::Shape::Wall { body } else { colony.map.cell(c.0 as usize, c.1 as usize, z.max(0) as usize) };
+            let base = mix([234.0, 222.0, 196.0], wash(rock), 0.5);
+            for yy in y as i64..(y + t).ceil() as i64 { for xx in x as i64..(x + t).ceil() as i64 {
+                let (fx, fy) = (cam.cx + (xx as f32 + 0.5 - w as f32 / 2.0) / t, cam.cy + (yy as f32 + 0.5 - h as f32 / 2.0) / t);
+                let hatch = ((fx * 6.0 + fy * 6.0) as i64).rem_euclid(3) == 0;
+                put(xx, yy, if hatch { mix(base, INK, 0.18) } else { base }, 1.0);
+            } }
+        }
+    }
     // The hatch over the stair below the first cavern: planks bound with iron, barred.
     if let Some((p, z)) = colony.hatch.filter(|h| h.1 == cam.z || h.1 == cam.z + 1) {
         let (x, y) = to_screen(p.0 as f32, p.1 as f32);

@@ -87,7 +87,10 @@ the zoomed region around a point.
   passage or sinkhole. `UnderPlace::cells` are (column, floor level), the far end last. The level
   view draws a found place's far end (a sarcophagus, bones and a hoard, an ore cart) and names
   it; `PLANET_FRAMES` writes `_placeN.png` at each place's deepest level. Dev: the lair, the tomb
-  and the caves span six levels, all walkable from their mouths.
+  and the caves span six levels, all walkable from their mouths. The unknown is blank: in the
+  level view a place the camp has not found is drawn as the rock round it (`draw_delve`, with
+  the renderer's own wash and hatching, and the rock beside it too so no inked edge gives it
+  away); its mouth on the surface shows as it is.
 - `--sim-projects N` prints a `Place:` line per place (with its levels and "walkable from the
   surface", checked with `nav::path3`).
   Dev: 46,13 the living Baelfang's lair, 47,14 a tomb, 50,20 a limestone cave; 7 of 18
