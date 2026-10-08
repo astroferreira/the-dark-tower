@@ -63,6 +63,8 @@ pub struct PresentDay {
     pub weaknesses: Vec<String>,
     /// The strongest free town on the Shadow's frontier: the one in its path.
     pub stronghold: Option<String>,
+    /// How the free peoples' check went (`shadow::CheckShape::word`), if it came.
+    pub shadow_shape: Option<String>,
 }
 
 impl PresentDay {
@@ -152,7 +154,7 @@ impl PresentDay {
             let act = match e.event_type {
                 EventType::ShadowRose if !rose => { rose = true; "I. The Rising" }
 
-                EventType::ShadowAlliance => "III. The Check",
+                EventType::ShadowAlliance => { p.shadow_shape = Some(crate::history::shadow::CheckShape::of_title(&e.title).word().to_string()); "III. The Check" }
                 EventType::ShadowRose if p.shadow_acts.iter().any(|a| a.1.starts_with("III")) && !p.shadow_acts.iter().any(|a| a.1.starts_with("IV")) => "IV. The Return",
                 _ => continue,
             };
@@ -264,6 +266,7 @@ impl PresentDay {
         let _ = writeln!(s, "The Shadow's frontier:");
         for t in &self.frontier { let _ = writeln!(s, "  {} ({}), darkness {:.2}", t.town, t.people, t.darkness); }
         let _ = writeln!(s, "In its path: {}", self.stronghold.as_deref().unwrap_or("no free town"));
+        let _ = writeln!(s, "The check: {}", self.shadow_shape.as_deref().unwrap_or("not yet come"));
         let _ = writeln!(s, "What can wound it:");
         for w in &self.weaknesses { let _ = writeln!(s, "  {}", w); }
         let _ = writeln!(s, "Disputes over resources (last {} years):", RECENT_YEARS);

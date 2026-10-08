@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 
-use planet_generator::{biome_feathering, biomes, cartography, climate, coastline, colony, erosion, exr_export, grid_export, heightmap, history, islands, local, lore, map_export, microclimate, plates, region, scale, seasons, seeds, soils, terrain, tilemap, tiles, underground_water, water_bodies, weather_zones, world, world_export};
+use planet_generator::{biome_feathering, biomes, cartography, climate, coastline, colony, erosion, exr_export, grid_export, heightmap, history, islands, local, lore, map_export, microclimate, monsters, plates, region, scale, seasons, seeds, soils, terrain, tilemap, tiles, underground_water, water_bodies, weather_zones, world, world_export};
 #[cfg(feature = "legacy")]
 use planet_generator::{explorer, menu};
 #[cfg(feature = "legacy")]
@@ -79,6 +79,27 @@ struct Args {
     /// Print what grows on an embark for one tile of each world biome
     #[arg(long)]
     embark_survey: bool,
+
+    /// Print, for the land tiles round the dev embark (or --tiles-center), whether the world has a
+    /// river there and whether the default embark carries it
+    #[arg(long)]
+    river_survey: bool,
+
+    /// Live the dev colony 40 days, kill its builder, and see who takes up the hammer
+    #[arg(long)]
+    sim_roles: bool,
+
+    /// Live the dev colony 60 days, keep its legend, and found a second camp nearby that heeds it
+    #[arg(long)]
+    sim_legend: bool,
+
+    /// Bless a meadow / forbid the east on the dev colony and see where it builds
+    #[arg(long)]
+    sim_plan: bool,
+
+    /// Settle the dev site as dwarves, elves, orcs and humans and compare the villages
+    #[arg(long)]
+    sim_ways: bool,
 
     /// A world code ("SEED.WxH.STYLE.PEOPLES.YEARS@X,Y", printed by --sim-snapshot and shown in
     /// the colony's title): the same world, site and settlers on any machine
@@ -224,6 +245,24 @@ struct Args {
     /// frontier, disputes, heirless rulers and recently fallen towns
     #[arg(long)]
     present: bool,
+    /// Print the page of each living ruler (life, kin, who they are, deeds), as the inspector
+    /// shows it
+    #[arg(long)]
+    who: bool,
+    /// Print every living legendary beast and what it is (generated body, attack, description)
+    #[arg(long)]
+    bestiary: bool,
+    /// Print each living people's arts: instruments, poems, music and dances, and who made them
+    #[arg(long)]
+    arts: bool,
+    /// Print what each living people's seat knows (`history::knowledge`): how much of the last
+    /// 50 years' news reached it, its latest news as it tells it, and differing accounts
+    #[arg(long)]
+    rumours: bool,
+    /// Reject worlds that miss these targets and try the next seed (Dwarf Fortress style), e.g.
+    /// "rivers=4,lakes=2,ranges=3,forests=2,deserts=1,islands=1"; up to 40 tries
+    #[arg(long)]
+    require: Option<String>,
     /// Print the named geography (rivers, ranges, seas, regions...) after history
     #[arg(long)]
     gazetteer: bool,
@@ -467,6 +506,11 @@ struct Args {
     #[arg(long)]
     journal: Option<String>,
 
+    /// Write the world's legends to DIR: a cross-linked HTML page for every people, site,
+    /// figure, beast, treasure, war, faith, age and year, with causes, a map and a search box
+    #[arg(long, value_name = "DIR")]
+    legends: Option<std::path::PathBuf>,
+
     /// Run N benchmark simulations and print aggregate quality metrics
     #[arg(long)]
     benchmark: Option<u32>,
@@ -554,7 +598,7 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
@@ -1480,6 +1524,44 @@ fn main() {
         return;
     }
 
+    // Generate, validate, reject (Dwarf Fortress): a world that misses the --require targets is
+    // thrown away with its reason, and the next seed tried (the process restarts on it, so every
+    // later step sees exactly what a plain run of that seed would).
+    if let (Some(spec), None) = (args.require.as_ref(), args.load_world.as_ref()) {
+        let gaz = lore::build_gazetteer(&world_data, None, master_seed);
+        let count = |k: lore::FeatureKind| gaz.features.iter().filter(|f| f.kind == k).count();
+        let mut misses = Vec::new();
+        for part in spec.split(',').filter(|p| !p.trim().is_empty()) {
+            let (key, want) = part.split_once('=').unwrap_or((part, "1"));
+            let want: usize = want.trim().parse().unwrap_or(1);
+            let kind = match key.trim() {
+                "rivers" => lore::FeatureKind::River, "lakes" => lore::FeatureKind::Lake, "ranges" | "mountains" => lore::FeatureKind::MountainRange,
+                "forests" => lore::FeatureKind::Forest, "deserts" => lore::FeatureKind::Desert, "islands" => lore::FeatureKind::Island,
+                "continents" => lore::FeatureKind::Continent, "marshes" => lore::FeatureKind::Marsh, "jungles" => lore::FeatureKind::Jungle,
+                "seas" => lore::FeatureKind::Sea, "peaks" => lore::FeatureKind::Peak,
+                other => { eprintln!("--require: unknown feature '{}'", other); std::process::exit(2); }
+            };
+            let have = count(kind);
+            if have < want { misses.push(format!("{} {} (want {})", have, key.trim(), want)); }
+        }
+        let tries: u32 = std::env::var("PLANET_REQUIRE_TRY").ok().and_then(|t| t.parse().ok()).unwrap_or(0);
+        if misses.is_empty() {
+            if tries > 0 { println!("World accepted: seed {} meets {} after {} rejected", master_seed, spec, tries); }
+        } else if tries >= 40 {
+            eprintln!("--require: gave up after 40 worlds; seed {} has {}", master_seed, misses.join(", "));
+        } else {
+            println!("World rejected: seed {} has {}", master_seed, misses.join(", "));
+            let mut argv: Vec<String> = std::env::args().skip(1).collect();
+            match argv.iter().position(|a| a == "--seed") {
+                Some(i) if i + 1 < argv.len() => argv[i + 1] = (master_seed + 1).to_string(),
+                _ => { argv.push("--seed".into()); argv.push((master_seed + 1).to_string()); }
+            }
+            let status = std::process::Command::new(std::env::current_exe().expect("own path")).args(&argv)
+                .env("PLANET_REQUIRE_TRY", (tries + 1).to_string()).status();
+            std::process::exit(status.ok().and_then(|s| s.code()).unwrap_or(1));
+        }
+    }
+
     // Load or simulate history
     // The tile viewer is the default viewer, so it wants a history unless running headless or
     // in the legacy terminal explorer.
@@ -1734,6 +1816,59 @@ fn main() {
             Err(e) => eprintln!("--arms-sheet: {e}"),
         }
     }
+    if let (true, Some(h)) = (args.arts, history.as_ref()) {
+        let mut peoples: Vec<_> = h.factions.values().filter(|f| f.is_active()).collect();
+        peoples.sort_by_key(|f| f.id);
+        for f in peoples {
+            let a = history::arts::of_people(h, f.id);
+            println!("== {}: {}", f.name, a.instruments.iter().map(|i| i.describe()).collect::<Vec<_>>().join("; "));
+            for l in a.lines(h) { println!("  {}", l); }
+        }
+    }
+    if let (true, Some(h)) = (args.rumours, history.as_ref()) {
+        let k = history::knowledge::Knowledge::new(h);
+        let now = h.current_date.year;
+        let recent: Vec<_> = h.chronicle.events.iter().filter(|e| e.date.year + 50 >= now && history::knowledge::fame(e) >= history::knowledge::Fame::Notable).collect();
+        println!("Knowledge: town spacing {:.1} tiles; {} notable events in the last 50 years", k.spacing, recent.len());
+        let mut peoples: Vec<_> = h.factions.values().filter(|f| f.is_active()).collect();
+        peoples.sort_by_key(|f| f.id);
+        for f in peoples {
+            let Some(seat) = f.capital.and_then(|c| h.settlements.get(&c)) else { continue };
+            let knows = recent.iter().filter(|e| k.town_knows(seat.id, e)).count();
+            println!("== {} (seat {}): knows {} of {} ({:.0}%)", f.name, seat.name, knows, recent.len(), 100.0 * knows as f32 / recent.len().max(1) as f32);
+            for t in k.news_of_town(seat.id, 30, 3) { println!("  news: {}{}", t.line(), if t.as_told().is_empty() { String::new() } else { format!(" ({})", t.as_told()) }); }
+        }
+        println!("== Differing accounts");
+        let mut shown = 0;
+        for e in h.chronicle.events.iter().rev() {
+            let t = history::knowledge::account(h, e, None);
+            if t.others.len() < 2 { continue; }
+            let (n, m) = k.known_in(e);
+            println!("{} (known in {} of {} towns)", t.line(), n, m);
+            for (_, name, g) in &t.others { println!("  as {} {} it: {}", name, history::knowledge::tell_verb(name), g); }
+            shown += 1;
+            if shown >= 6 { break; }
+        }
+    }
+    if let (true, Some(h)) = (args.bestiary, history.as_ref()) {
+        let mut beasts: Vec<_> = h.legendary_creatures.values().filter(|c| c.is_alive()).collect();
+        beasts.sort_by_key(|c| c.id);
+        for c in beasts {
+            let m = monsters::of_legend(h, c);
+            let shifter = c.unique_abilities.contains(&history::creatures::anatomy::MagicAbility::Shapeshifting) || h.creature_species.get(&c.species_id).map_or(false, |sp| sp.magical_abilities.contains(&history::creatures::anatomy::MagicAbility::Shapeshifting));
+            println!("{}{} (lair {:?}; {}): {}", c.full_name(), if shifter { " [shapeshifter: a werebeast under the moon]" } else { "" }, c.lair_location, m.spheres.join(", "), m.description);
+        }
+    }
+    if let (true, Some(h)) = (args.who, history.as_ref()) {
+        let mut rulers: Vec<_> = h.factions.values().filter(|f| f.is_active()).filter_map(|f| f.current_leader).collect();
+        rulers.sort();
+        for r in rulers {
+            let page = tiles::inspector::figure_page(h, r);
+            println!("== {}", page.title);
+            for l in &page.lines { println!("{}{}", if l.gap { "\n# " } else { "" }, l.text); }
+            println!();
+        }
+    }
     if args.present {
         match history.as_ref() {
             Some(h) => {
@@ -1741,6 +1876,8 @@ fn main() {
                 let name = gaz.features.iter().filter(|f| f.kind == lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
                 println!("{}", lore::claims::sentence(&name, &lore::claims::claims(h)));
                 println!("{}\n{}", h.present().report(), history::people::report(h));
+                println!("{}", history::bands::report(h));
+                if let Some(age) = history::ages::current(h) { println!("The present age: {}, since the year {} ({} ages in all)", age.name, age.start.year, h.timeline.eras.len()); }
                 let rare = lore::rare::find(&world_data, h);
                 println!("Rare in this world:{}", if rare.is_empty() { " nothing" } else { "" });
                 // The rates were measured on dev-sized worlds; bigger worlds hold more of everything.
@@ -1846,6 +1983,21 @@ fn main() {
         }
     }
 
+    if let Some(dir) = &args.legends {
+        match history.as_ref() {
+            Some(h) => {
+                let gaz = lore::build_gazetteer(&world_data, Some(h), master_seed);
+                let map = tiles::viewer::map_image(&world_data, Some(h), &load_atlas(args.tileset.as_deref()), 1024);
+                let camps = colony::legend::load(world_data.seed());
+                match lore::legends::write_legends(&world_data, h, &gaz, &camps, Some(&map), dir) {
+                    Ok(rep) => eprintln!("Wrote legends to {}: {}", dir.display(), rep.line()),
+                    Err(e) => eprintln!("Failed to write legends: {}", e),
+                }
+            }
+            None => eprintln!("--legends needs a history: load a world saved with history, or add --history-years"),
+        }
+    }
+
     // Skip the viewer in headless mode (snapshots still render: they never open a window).
     if args.headless && args.tiles_snapshot.is_none() && args.local_snapshot.is_none() && args.province_snapshot.is_none() && !args.dev_embark {
         return;
@@ -1880,8 +2032,28 @@ fn main() {
             tiles::viewer::projects_trial(&world_data, history.as_ref(), tile, days);
             return;
         }
+        if let (true, Some(tile)) = (args.sim_ways, center) {
+            tiles::viewer::ways_trial(&world_data, history.as_ref(), &atlas, tile);
+            return;
+        }
+        if let (true, Some(tile)) = (args.sim_plan, center) {
+            tiles::viewer::plan_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
+        if let (true, Some(tile)) = (args.sim_roles, center) {
+            tiles::viewer::roles_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
+        if let (true, Some(tile)) = (args.sim_legend, center) {
+            tiles::viewer::legend_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
         if args.embark_survey {
             tiles::viewer::embark_survey(&world_data, history.as_ref());
+            return;
+        }
+        if let (true, Some(tile)) = (args.river_survey, center) {
+            tiles::viewer::river_survey(&world_data, history.as_ref(), tile);
             return;
         }
         if let (true, Some(h)) = (args.sites, history.as_ref()) {

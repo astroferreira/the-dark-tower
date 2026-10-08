@@ -67,6 +67,9 @@ pub fn apply(map: &mut LocalMap, world: &WorldData, lore: &RegionLore, origin: (
     let Some(dens) = lore.wildlife.get(&map.world_tile) else { return };
     let grazers: f32 = SPECIES.iter().zip(dens).filter(|(s, _)| s.trophic == Trophic::Grazer).map(|(_, d)| *d).sum();
     let predators = dens[WOLF] + dens[BEAR] + dens[LION];
+    // The game a camp could hunt: each grazer at its density (up to eight head).
+    map.game = SPECIES.iter().zip(dens).filter(|(s, d)| s.trophic == Trophic::Grazer && **d > 0.05)
+        .map(|(s, d)| (s.name.to_string(), ((d * 10.0).round() as u32).clamp(1, 8))).collect();
     let bone_field = matches!(*world.biomes.get(map.world_tile.0, map.world_tile.1), ExtendedBiome::BoneFields | ExtendedBiome::TitanBones);
 
     let surface = |map: &LocalMap, x: usize, y: usize| map.idx(x, y, map.surface_z[y * n + x] as usize);

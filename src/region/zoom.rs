@@ -81,6 +81,8 @@ pub struct ZoomRegion {
     /// World tile at the window's top-left corner.
     pub world_x0: i64,
     pub world_y0: i64,
+    /// The world's height in tiles (for each row's latitude).
+    pub world_height: usize,
     pub params: ZoomParams,
     pub elevation_m: Vec<f32>,
     /// Contributing drainage area in cells (including inflow from outside the window).
@@ -677,6 +679,7 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         cell_m: ctx.cell_m,
         world_x0: core_x0,
         world_y0: core_y0,
+        world_height: world.height,
         params: params.clone(),
         elevation_m: Vec::with_capacity(w * ht),
         drainage_cells: Vec::with_capacity(w * ht),
@@ -697,7 +700,9 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
             // Drier ground needs a larger catchment before a permanent stream appears.
             let threshold = RIVER_AREA_FRACTION * tile_cells / (0.25 + moist[k]);
             let river = if e > 0.0 && lake == 0.0 && acc[k] > threshold {
-                0.8 * (acc[k] * cell_km2).sqrt() // hydraulic geometry: width (m) ~ 0.8 sqrt(A km2)
+                // Hydraulic geometry: width (m) ~ 0.8 sqrt(A km2), the cell's true area shrinking
+                // toward the poles (as the world's own river widths do).
+                0.8 * (acc[k] * cell_km2 * out.lat_cos(j - off)).sqrt()
             } else {
                 0.0
             };
@@ -742,6 +747,14 @@ fn blend(a: (u8, u8, u8), b: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
 }
 
 impl ZoomRegion {
+    /// How much a cell's true area shrinks at row `y`'s latitude (cos of the latitude): a
+    /// cell's nominal area is the equator's.
+    pub fn lat_cos(&self, y: usize) -> f32 {
+        let s = (self.params.cells_per_tile.max(8) & !1) as f32;
+        let v = self.world_y0 as f32 + (y as f32 + 0.5) / s;
+        (std::f32::consts::FRAC_PI_2 - v / self.world_height.max(1) as f32 * std::f32::consts::PI).cos().abs().max(0.05)
+    }
+
     /// Number of river cells and lake cells.
     pub fn stats(&self) -> (usize, usize) {
         (

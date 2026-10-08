@@ -86,6 +86,51 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
 
 ---
 
+## Dwarf Fortress as the model
+The DF design guide (`../dfdecomp/guide/README.md`, read `00-ideas-catalogue.md` first) is the
+reference for game systems: reuse ideas and algorithms, never its decompiled code. Done:
+rolled individuals (`src/persona.rs`, `data/defaults/persona.json`), figure pages
+(`inspector::figure_page`, `--who`), thoughts/stress/breaks and festivals (`colony/mind.rs`),
+generated monsters (`src/monsters.rs`, `data/defaults/monsters.json`, `--bestiary`), cavern
+layers (`local/caverns.rs`) and the mine that wakes a forgotten beast (`colony/mine.rs`), named
+ages and event collections (`history/ages.rs`, `collections.rs`), arts (`history/arts.rs`,
+`data/defaults/arts.json`, `--arts`), blows and wounds (`colony/fight.rs`), crafts that show
+history (`colony/craft.rs`), caravans and migrants (`colony/trade.rs`), a speaker and mandates
+(`colony/society.rs`), the dead walking under the Shadow (`colony/dead.rs`), outlaw bands of
+exiles (`history/bands.rs`), `--require`; then (2026-10-08) strange moods of five kinds
+(`colony/mood.rs`), the werebeast's curse (`curse.rs`), the camp's annals (`annals.rs`), temples
+and justice (`society.rs`, `justice.rs`), a lost relic and its seeker (`relic.rs`), slain beasts
+and their hoards (`fight.rs`), a militia (`militia.rs`), visitors from the world
+(`visitors.rs`), engravings (`engrave.rs`), vampires (`night.rs`), pets (`pets.rs`), healing
+(`heal.rs`), families (`family.rs`), ghosts and memorial slabs (`ghosts.rs`), expeditions against beasts
+(`expedition.rs`), drink (`drink.rs`), war band leaders from the history, cage traps
+(`traps.rs`), years and old age (`ageing.rs`), a lord sent from home
+(`nobles.rs`), farms under the rock (`cavefarm.rs`), experience
+that changes character (`temper.rs`), a tavern and sellswords (`tavern.rs`), books (`books.rs`), livestock
+(`livestock.rs`), the deep shaft, adamantine and the hollow (`deep.rs`),
+places in the hills found and robbed (`explore.rs`), prisoners (`prisoners.rs`), the world's regard for the camp (`regard.rs`), armour (`armour.rs`), snatchers (`snatch.rs`), sieges (`siege.rs`), evil weather (`weather.rs`), guilds (`guild.rs`), a rising against the lord (`rising.rs`), the caravan's liaison (`liaison.rs`), pets that defend their keepers (`pets.rs`), old comrades and enemies (`recognize.rs`), a slain beast's bones and hide worked into trophies and armour, caravans ambushed on the road, wolves' dens cleared and the restless dead burned (`respond.rs`), artifact thieves (`thieves.rs`), the temple's priest (`priest.rs`), the call to arms (`warcall.rs`), woods that grow back (`regrow.rs`), the tithe (`tithe.rs`), widows and widowers, vows of vengeance (`vow.rs`), peace after vengeance, the kitchen and its cook (`kitchen.rs`), clothes that wear out (`clothes.rs`), dreams of a lifetime (`dreams.rs`), childhood (`childhood.rs`), troubles that come again, rations (`rations.rs`), frozen water and wintering herds, tavern brawls, the patron's bell (`ring_bell`, key B), aquifers and gems (`local/mod.rs`, `dig.rs`), legends
+of the camps kept with the world (`legend.rs`, `--sim-legend`), and space in three dimensions: settlers walk any level (`nav::path3`,
+`Shape::Stair`), dig a stair spine with bedrooms and a great hall on its levels (`delve.rs`), and
+raise the lookout as a tower; who knows what: per-town and per-people knowledge of the
+chronicle with each people's own account (`history/knowledge.rs`, `--rumours`), which caravans,
+visitors, migrants and bards carry to the camp (`colony/news.rs`); industries: a smelter,
+forge, mason's, carpenter's and kiln cut below, ore -> bars -> tools and arms (`industry.rs`);
+and blows resolved by a material model (`src/materials.rs`, `data/defaults/materials.json`:
+density, hardness, edge, capability flags; weapon shapes; tissue layers and armour by part).
+Each has its notes in `src/colony/CLAUDE.md` (knowledge in `src/history/CLAUDE.md`). Debug forcing: `PLANET_FORCE_WERE`, `PLANET_FORCE_SEEKER`,
+`PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`, `PLANET_FORCE_PET_PREY`, `PLANET_FORCE_ORE`. Board cards `df-*`; progress log in the Claude Doc
+"Dwarf Fortress systems: progress log".
+Legends mode as linked HTML pages: `--legends DIR` (`lore/legends.rs`; notes in `src/history/CLAUDE.md`).
+
+### Rejecting worlds (`--require`)
+`--require rivers=4,lakes=2,ranges=3,...` (rivers, lakes, ranges/mountains, forests, deserts,
+islands, continents, marshes, jungles, seas, peaks, counted in the gazetteer) checks the built
+world before history; a world that misses is rejected with its counts ("World rejected: seed 1
+has 0 rivers (want 4), ...") and the process restarts on seed + 1 (`PLANET_REQUIRE_TRY`, 40 at
+most), so the accepted world is exactly what a plain run of that seed gives. DF's worldgen idea;
+its other worldgen ideas (midpoint fields, river walkers, a wind table) are simpler than this
+pipeline and were not taken.
+
 ## Module notes (load when working in that folder)
 
 Detailed notes, tuning numbers and gotchas live next to the code:

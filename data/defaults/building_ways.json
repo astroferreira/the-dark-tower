@@ -1,0 +1,15 @@
+{
+  "_comment": "How each people builds its first village (keyed by race, lower case). first: works that come sooner (x1.6 urgency); late: works that come later (x0.5); stone_first: the hut and works in stone even where timber grows; keep_trees: no tree inside the wall is felled; say: the line the log gives at founding.",
+  "dwarf": { "first": ["Storehouse", "Workshop", "Well", "Mine"], "late": ["Field", "DryingRack"], "stone_first": true, "keep_trees": false,
+             "say": "They are dwarves: they build in stone before timber, and the store and the workshop come before the field." },
+  "elf": { "first": ["Field", "Jetty"], "late": ["Woodpile", "Woodshed", "Workshop"], "stone_first": false, "keep_trees": true,
+           "say": "They are elves: no tree inside the wall will be felled, and the timber comes from further off." },
+  "orc": { "first": ["Palisade", "Lookout", "Mending"], "late": ["Storehouse", "Field", "DryingRack"], "stone_first": false, "keep_trees": false,
+           "say": "They are orcs: the wall goes up before the second roof, and a lookout before a store." },
+  "goblin": { "first": ["Palisade", "Lookout"], "late": ["Field"], "stone_first": false, "keep_trees": false,
+              "say": "They are goblins: walls and a lookout first, fields when they must." },
+  "halfling": { "first": ["Field", "Storehouse", "DryingRack"], "late": ["Palisade", "Lookout"], "stone_first": false, "keep_trees": false,
+                "say": "They are halflings: they farm early and store well, and wall themselves in last." },
+  "human": { "first": ["Field", "SecondHut"], "late": ["Palisade"], "stone_first": false, "keep_trees": false,
+             "say": "They are humans: fields and roofs spread outward, and the wall comes last." }
+}

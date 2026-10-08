@@ -31,8 +31,9 @@ const SEEDS: [&str; 6] = ["76", "11", "23", "58", "3", "5"];
 fn dev_world_present_day_has_open_threads() {
     let (mut wars, mut near, mut grudges, mut peoples, mut frontier) = (0, 0, 0, 0, 0);
     let mut sentences = std::collections::HashSet::new();
+    let mut shapes = std::collections::HashSet::new();
     for seed in SEEDS {
-        let out = run_dev(&["--seed", seed]);
+        let out = run_dev(&["--seed", seed, "--present"]);
         // Each world has its own one-sentence description (lore::claims).
         let records = out.lines().find(|l| l.starts_with("Records: ")).expect("records line");
         assert!(sentences.insert(records.to_string()), "seed {seed} repeats another world's sentence: {records}");
@@ -42,14 +43,20 @@ fn dev_world_present_day_has_open_threads() {
         grudges += count(line, " grudges");
         peoples += count(line, " peoples");
         frontier += count(line, " towns on the Shadow's frontier");
-        // The Shadow's story ends on a cliffhanger: it can be wounded, and the present knows how.
-        assert!(count(line, " known weakness") >= 1, "seed {seed}: no known weakness of the Shadow: {line}");
+        // The Shadow's story has more than one shape; after a victory it can be wounded, and the
+        // present knows how.
+        let shape = out.lines().find(|l| l.starts_with("The check: ")).unwrap_or("The check: none").to_string();
+        if shape.contains("the Last Alliance won") {
+            assert!(count(line, " known weakness") >= 1, "seed {seed}: no known weakness of the Shadow after its defeat: {line}");
+        }
+        shapes.insert(shape);
         // Land long under the Shadow's blight dies (dead woods, ashlands) in the world's biomes.
         let scars = out.lines().find(|l| l.contains(" scarred landscapes")).expect("scars line");
         assert!(count(scars, " killed by the Shadow's blight") >= 1, "seed {seed}: no land killed by the blight: {scars}");
         assert!(out.lines().any(|l| l == "Chronicle: consistent"),
             "seed {seed}: the chronicle contradicts itself:\n{}", out.lines().skip_while(|l| !l.starts_with("Chronicle:")).take(10).collect::<Vec<_>>().join("\n"));
     }
+    assert!(shapes.len() >= 2, "the Shadow's story took one shape on all six seeds: {shapes:?}");
     let n = SEEDS.len() as f32;
     let mean = |x: usize| x as f32 / n;
     assert!(mean(wars) >= 1.5, "fewer than 1.5 wars or sieges per world at the present day: {}", mean(wars));
@@ -109,4 +116,104 @@ fn a_note_pinned_on_the_map_appears_in_the_journal() {
     let at = html.find("class=\"entry margin\"").expect("no note in the annals' margin");
     assert!(html[at..].contains("My grandmother was born here"));
     assert!(html.contains("id=\"marginalia\""), "no Marginalia part");
+}
+
+/// Every living beast is a generated monster (Dwarf Fortress style) whose description never
+/// contradicts its body, with a special attack and its warning; beasts differ from each other.
+#[test]
+fn beasts_are_generated_monsters() {
+    let out = run_dev(&["--bestiary"]);
+    let lines: Vec<&str> = out.lines().filter(|l| l.contains("(lair ")).collect();
+    assert!(lines.len() >= 5, "too few living beasts:\n{out}");
+    let mut bodies = std::collections::HashSet::new();
+    for l in &lines {
+        let d = l.split("): ").nth(1).unwrap_or("");
+        assert!(d.contains("Beware") || d.contains("Do not"), "no special attack: {l}");
+        assert!(!(d.contains("no fur at all") && d.contains("Its fur")), "words contradict the body: {l}");
+        bodies.insert(d.split('.').next().unwrap_or("").to_string());
+    }
+    assert!(bodies.len() >= lines.len() * 3 / 4, "beasts look alike: {lines:?}");
+}
+
+/// The world names its own ages from who held power (Dwarf Fortress style): every dev seed has
+/// two or more ages, none called by a bare number, each named for something the world holds,
+/// and the present day says which age it is.
+#[test]
+fn ages_are_named_by_their_powers() {
+    let mut kinds = std::collections::HashSet::new();
+    for seed in SEEDS {
+        let out = run_dev(&["--seed", seed, "--present"]);
+        let line = out.lines().find(|l| l.starts_with("The present age: ")).unwrap_or_else(|| panic!("seed {seed}: no present age:\n{out}"));
+        let n: usize = line.rsplit('(').next().and_then(|x| x.split_whitespace().next()).and_then(|x| x.parse().ok()).unwrap_or(0);
+        assert!(n >= 2, "seed {seed}: one age for the whole history: {line}");
+        assert!(!line.contains("Era "), "seed {seed}: a numbered era: {line}");
+        let name = line.trim_start_matches("The present age: ");
+        kinds.insert(name.split(" of ").next().unwrap_or("").to_string());
+    }
+    assert!(!kinds.is_empty());
+}
+
+/// Every living people has its own arts (Dwarf Fortress's two layers): instruments, then works
+/// each credited to a real figure, at a town, in a year; no people repeats a form's shape.
+#[test]
+fn peoples_have_arts_with_makers() {
+    let out = run_dev(&["--arts"]);
+    let heads: Vec<&str> = out.lines().filter(|l| l.starts_with("== ")).collect();
+    assert!(heads.len() >= 4, "too few peoples with arts:\n{out}");
+    let mut people_lines: Vec<Vec<&str>> = Vec::new();
+    for l in out.lines() {
+        if l.starts_with("== ") { people_lines.push(Vec::new()); } else if l.starts_with("  the ") { if let Some(v) = people_lines.last_mut() { v.push(l); } }
+    }
+    for works in &people_lines {
+        assert!(works.len() >= 4, "a people with few works: {works:?}");
+        assert!(works.iter().all(|w| w.contains("(made by ")), "a work with no maker: {works:?}");
+        assert!(!works.iter().any(|w| w.contains("the the ")), "doubled article: {works:?}");
+        let shapes: std::collections::HashSet<String> = works.iter().map(|w| w.split(", ").nth(1).unwrap_or("").split(" about ").next().unwrap_or("").chars().take(18).collect()).collect();
+        assert_eq!(shapes.len(), works.len(), "a people repeats a form: {works:?}");
+    }
+}
+
+/// Outlaw bands (Dwarf Fortress's wandering groups): the living exiles gather into bands, each led
+/// by a real figure and named for the town they lost.
+#[test]
+fn exiles_gather_into_bands() {
+    let out = run_dev(&["--present"]);
+    let line = out.lines().find(|l| l.starts_with("Outlaw bands: ")).expect("bands line");
+    assert!(line.contains("the Exiles of ") && line.contains(", led by "), "no band with a leader: {line}");
+}
+
+/// Generate, validate, reject (Dwarf Fortress): --require throws away worlds that miss their
+/// targets, says why, and accepts the first seed that meets them.
+#[test]
+fn worlds_that_miss_their_targets_are_rejected() {
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        .args(["--width", "96", "--height", "48", "--seed", "1", "--headless", "--no-history", "--require", "rivers=4,lakes=2,deserts=1"])
+        .output()
+        .expect("run planet_generator");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("World rejected: seed 1 has "), "seed 1 was not rejected:\n{text}");
+    assert!(text.lines().any(|l| l.starts_with("World accepted: seed ")), "no world accepted:\n{text}");
+}
+
+/// Per-people knowledge (`history::knowledge`, DF's `local_known_events`): each people's seat
+/// knows part of the last 50 years' news, not all of it and not the same part, and peoples who
+/// took part in an event tell it differently (a victory against treachery, a just conquest
+/// against a betrayal). The layer is derived: the journal stays byte-identical (above).
+#[test]
+fn peoples_know_and_tell_their_own_news() {
+    let out = run_dev(&["--rumours"]);
+    let shares: Vec<usize> = out.lines().filter(|l| l.starts_with("== ") && l.contains(": knows "))
+        .map(|l| l.split(": knows ").nth(1).unwrap().split(' ').next().unwrap().parse().unwrap()).collect();
+    let total: usize = out.lines().find(|l| l.starts_with("Knowledge: ")).and_then(|l| l.split("; ").nth(1)).and_then(|s| s.split(' ').next()).and_then(|n| n.parse().ok()).expect("knowledge line");
+    assert!(shares.len() >= 4, "too few peoples: {out}");
+    for k in &shares { assert!(*k * 10 >= total * 2 && *k * 10 <= total * 9, "a seat knows {k} of {total}: all or nothing"); }
+    let mut distinct = shares.clone();
+    distinct.sort();
+    distinct.dedup();
+    assert!(distinct.len() >= 3, "seats know the same: {shares:?}");
+    // Differing accounts: events told two ways by the peoples they touched.
+    let accounts = out.split("== Differing accounts").nth(1).unwrap_or("");
+    let two_ways = accounts.lines().filter(|l| l.starts_with("  as ")).count();
+    assert!(two_ways >= 8, "few differing accounts:\n{accounts}");
+    assert!(out.lines().any(|l| l.contains(" (as the ") && l.contains("news: ")), "no news told with a slant:\n{out}");
 }

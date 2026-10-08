@@ -212,3 +212,138 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   with a red eye. The watcher has a Shadow panel (lord, darkened/blighted land, towns held,
   fallen, held out) and marks its realm in red.
 - Saved as the world file's last field (`WORLD_FILE_VERSION` 5; v1-v4 still load).
+
+## The Shadow's story has more than one shape (`shadow::CheckShape`)
+- The free peoples' check is no longer always a victory. At the check (`check`), from the state
+  of the world: allies under 1.2x the Shadow's realm's people -> the Shadow wins (the alliance
+  is destroyed, the champion falls, +0.3 strength); the champion's people do not hate the
+  Shadow's (opinion >= 0) -> the champion takes the dark crown (the lord dies, the seat and
+  `Shadow::faction` pass to the champion's people; it does not break); discord among the allies
+  -95 or worse -> the alliance breaks before the gate (their opinions of each other -20); the
+  Shadow strong (1.5+) and the allies under 3x -> peace bought with tribute; else the Last
+  Alliance wins (today's story, the bane). All are recorded as `ShadowAlliance` events (no enum
+  change) told apart by title (`CheckShape::of_title`); `PresentDay::shadow_shape` and
+  `--present`'s "The check: ..." name it. Only a victory leaves a bane, so the present-day test
+  asks for a weakness only then, and for two shapes among its six seeds. Dev seeds
+  76/11/23/58/3/5: broke, broke, won, won, won, tribute; over 13 seeds all five appear.
+  `PLANET_DEBUG_CHECK=1` prints the numbers behind each check. Not done: each shape's own
+  first arc for the colony, the Shadow scaled to hold 10-20% of the land at every map size.
+
+
+## Generated monsters (`src/monsters.rs`, `data/defaults/monsters.json`; DF design guide ch. 09)
+- An ordered decision list where each step narrows the next and owns its words: a body profile
+  (49, each with a base body, class, `must`/`cannot` parts, `min_size`, spheres, sometimes its
+  own attack), structural tweaks (the profile's and the request's, then one more the base
+  allows), a class or one uniform substance (1 in 12, 1 in 4 with an elemental sphere), a class
+  tweak (which may rename the skin: "bald" -> hide) or odd eyes (dark ones only for evil),
+  glowing eyes 1 in 8, a special attack (always; the hinted one, the profile's, else weighed by
+  spheres among those the body allows: a sting needs a stinger), colours from the spheres. The
+  description is assembled from those fragments ("A huge bald winged bat. It has wings like a
+  vast moth's, ... Its hide is dark violet. Beware its scalding steam!"). Weighted picks walk
+  vectors in file order, never hash maps, so a seed is stable.
+- `of_legend(h, c)` makes a legendary beast's monster from what the history holds: its species'
+  parts (wings, tentacles, horns, mandibles, tail; legs and arms pick the base), material
+  (stone -> granite, flame, ice, bone...), specials (fire/ice breath, venom, acid, paralysis),
+  magic (necromancy -> death...), the epithet's words (`spheres_of_words`: "Storm-Caller" ->
+  storm) and the species' first habitat (volcanic -> fire). Seeded by id and name: pure, the
+  same in the inspector, the colony and `--bestiary` (prints every living beast).
+- Used: the inspector's beast page ("What it is", its blood, whether it flies); the colony's
+  beast threats (`Threat::monster`): the rumour says what it is and its warning; the raid adds
+  the attack's `deadly` to the danger, names it in a death ("It breathed fire on X, who was
+  killed...") and leaves its wound on the struck (ill for the attack's days, "It had choked X
+  with dust: the sickness of it lingers."). Tested (`beasts_are_generated_monsters`, unit test).
+  Not yet: forgotten beasts in the caverns (card df-caverns), creature colours on the map.
+
+## Named ages and collections (`ages.rs`, `collections.rs`; DF design guide ch. 05-06)
+- `ages::name_ages` (in `HistoryEngine::finish`, replacing the old 50-year `define_eras`) reads
+  each decade for what held power: 2+ Shadow conquests (Shadow), one people holding 40%+ of 6+
+  living towns by the tiles' ownership records (Empire), 5+ beast raids and twice the battles
+  and sieges (Myth), 2+ beasts slain against a third of the fighting (Heroes), 4+ battles and
+  sieges (Strife), else Peace. Runs of a kind merge; ages under 30 years fold into the longer
+  neighbour. Names come from the whole span: the two beasts that raided most ("The Age of
+  Baelfang and Gru"), the Shadow's name, the people holding most towns, the war with most
+  battles ("The Age of the War of the Altars at Illusionfall"), the great slayer, "The Peace of
+  <people>"; repeats get ordinals ("The Second Age of the Shadow of Greenford"). The last age is
+  open. Dev seeds: 3-4 ages each, e.g. 76: The Peace of the Sandrock Clans (2-211), The Age of the
+  War of the Altars at Illusionfall (212-291), The Age of the Shadow of Saizsheik (292-). The
+  journal's books use them; `--present` prints "The present age: ...". Tested
+  (`ages_are_named_by_their_powers`). Saved histories keep the eras they were saved with.
+- `collections::context(h, e)`: an event's age, war (holds its declaration, battles, sieges and
+  what they caused) and battle (itself or found within three cause links), read back from the
+  chronicle, nothing saved; the inspector's event page shows "Part of ..." lines (linked).
+  `war_events` lists a war's events in order (not used by a page yet).
+
+## Legends (`lore/legends.rs`, `--legends DIR`; DF's legends mode, guide ch. 06)
+- The history as a folder of linked pages, text generated from the chronicle when written: a
+  page per people (arms PNG, towns, rulers, wars, arts, its story), site (holders, notables,
+  monuments, made here), figure (life, kin, persona, deeds), beast (`monsters::of_legend`, hoard),
+  artifact (keepers), monument, war (`collections::war_events`), faith, age, earlier camp
+  (`colonies/legends_<seed>.json`) and year; every event has an entry `year-Y.html#eID` with
+  "Part of" its war and battle, "Because" (5 back), "It led to" and its sifted tale. Names are
+  linked from participants plus any name only one thing bears. One ink map (`viewer::map_image`)
+  with CSS pins; a search box on every page (`legends.js`). Journal styling. No RNG, sorted ids:
+  byte-identical per seed. Dev: 1,337 pages in ~0.3 s; seed 42: 7,439 pages, 78 MB.
+  `tests/legends.rs`: links and anchors resolve, one entry per event, camps linked, two runs equal.
+- Not done: dynasties and deities have no pages of their own; no per-site map crops.
+
+## Who knows what (`knowledge.rs`; DF's `local_known_events` / `known_info`, ch. 06)
+- A derived layer over the finished chronicle: no RNG, nothing saved, the history unchanged.
+  `Knowledge::new(h)` (trade links, each people's living towns, the town spacing = median
+  nearest-neighbour distance between living towns, so dev and 512-wide worlds behave alike).
+  `town_knows(s, e)`: its own (a participant, its tile, its people involved: always for notable+)
+  or word reached it: `fame(e)` (Local/Notable/Great/Legend by kind; "empty-handed" quests Local,
+  failed plots at most Notable) gives a reach of 1.5/3.5/7/any spacings and a memory of
+  30/80/200/forever years (reach fades to half by then); word travels 3 spacings a year (this
+  year's news has not reached far towns); the distance is the least of direct, via a trade
+  partner whose route ran since the event (+1/4 of the road) or via a town of its people (+1/2);
+  the edge is jittered 0.7-1.3 per (event, town) by hash. `people_knows` = any of its towns;
+  `figure_knows` = own deeds, else their home town (`people.rs`), else their people.
+- `account(h, e, teller)` -> `Told` (headline as a phrase, the teller's gloss, `Slant`
+  Plain/Proud/Bitter, `stakes` (+1/-1 per people, town, figure, beast; victors read off the
+  chronicle: a battle's first-named people, "X prevailed", a siege's taker or holder) and
+  `others`, each involved people's own gloss). Glosses by kind: battles (proud: the enemy's dead
+  doubled to quadrupled, the commander's rout; bitter: treachery, numbers, a broken truce),
+  wars' ends, declarations (the declarer blames the other "by the trade dispute ..."), takings,
+  burnings, lifted sieges, slain beasts (exaggerated by the slayer's people, belittled by a people
+  that hates them), assassinations and foiled plots, the Shadow's conquests, repulses, liberations.
+  A third people sides with one it loves (opinion 40+) or against one it hates (-40 or worse).
+- `news_of_town` / `news_of_people` / `news_of_figure` (the n most worth telling of the last
+  `years`: fame x20 - age + 15 if the teller's own; newest first), `sung_by` (a people's slanted
+  deeds), `known_in` (living towns that know it). `--rumours` prints each seat's share and news
+  and the latest differing accounts. Dev 76: spacing 4.1 tiles; seats know 36-52% of the 400
+  notable events of the last 50 years (seeds 11: 47-58%, 23: 44-59%); "Primalspire razed by the
+  Ashpit Horde (450)" is known in 38 of 44 towns, "a nest of raiders cleared" as the Ashpit Horde
+  tells it, "a massacre, Primalspire burned with its children inside" as the Kingdom of Titankeep
+  tells it. Tested (`peoples_know_and_tell_their_own_news`). The inspector's event page has "How
+  it is told" (known in N of M towns, each people's account), a town's page "Word heard here"
+  (both cached per subject: pages are rebuilt every frame). The colony's use: `colony/news.rs`.
+
+## Arts (`arts.rs`, `data/defaults/arts.json`; DF design guide ch. 07)
+- Two layers, built on demand (nothing saved, no RNG): a people's vocabulary (two instruments of
+  its race's kinds with a name in its tongue and a material, "the dulmgar, a set of pipes of birch
+  bark, blown"; subjects leaning on its culture's strong values), then five works (poems, music,
+  a dance; no shape twice) each credited to a real figure of the people (ranked by persona
+  creativity, art-inclination and musicality), in a year of their adult life, at their home or
+  the seat ("the Bamuld, a marching tune for the bramou (a drum) and many voices (made by
+  Chau-gnuoa at Brolmdustoor, 298)"). The inspector's people page has an Arts section (makers
+  link to their pages); `--arts` prints every living people's. Settlers carry their people's
+  works (`Past::arts`, `settlers::arts_of`) and every other evening the most art-given settler
+  near the fire recites, plays or leads one (`colony::mind::evening_arts`): `Feel::Performed`,
+  listeners `Feel::Heard` (more for their own people's), +1 opinion. Seed 58's hard year: 8
+  breaks before, 4 after. Tested (`peoples_have_arts_with_makers`).
+
+## Outlaw bands (`bands.rs`; DF design guide ch. 05, wandering groups and bandit camps)
+- Read from the present day, nothing saved: every living exile (`people.rs` Role::Exile) is
+  placed at the town whose fall drove them out (the cause of their "goes into exile" event);
+  exiles within 4 tiles gather into one band, "the Exiles of <town>", led by the member with the
+  most violence + bravery + ambition (persona), with a hideout a tile or two from the lost town.
+  `--present` prints "Outlaw bands: ..." (dev 76: the Exiles of Brolmdustoor, 14 exiles, led by
+  Gouatwaan). The colony's outlaws (`colony::arc::outlaws`) are the nearest band within 10 tiles:
+  named with its leader, its why ("they went into exile when Brolmdustoor fell, and live by
+  raiding from the hills at 47,16"), its cause, its people (for settlers who hate them) and its
+  hideout (the raid's side). Tested (`exiles_gather_into_bands`). Not yet: a band that parleys
+  with settlers who knew its leader before the fall.
+- Parley (`colony::arc::raid_at`): when the outlaws are the Exiles of a town some settler fled
+  (their calling ends with that town's name), that settler knew the leader before the fall: no
+  fight and no scorch; they talk by the fire, the exiles take a meal a head and go back to the
+  hills, a moment ("Gaunauth talks with the exiles"), the knower is liked more. Dev 76 day 76.

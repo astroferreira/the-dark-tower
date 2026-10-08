@@ -1,0 +1,62 @@
+{
+  "_comment": "Each people's arts (Dwarf Fortress style, two layers): a vocabulary made once per people from these tables (instruments, poetic, musical and dance forms, biased by race), then each form credited to a real figure of that people, in a real year and town. Words in {braces} are filled: {instrument}, {subject}, {lines}, {people}.",
+
+  "instruments": {
+    "_comment": "Kinds of instrument: [kind, how it is played, the materials it may be made of].",
+    "kinds": [
+      ["drum", "struck with the palms", ["hide over oak", "hide over a hollow log", "hide over a bronze bowl"]],
+      ["horn", "blown", ["ram's horn", "bronze", "aurochs horn", "bone"]],
+      ["lyre", "plucked", ["willow and gut", "horn and gut", "cedar and silver wire"]],
+      ["pipes", "blown", ["reed", "bone", "birch bark", "copper"]],
+      ["zither", "plucked across a flat box", ["pine and gut", "maple and bronze wire"]],
+      ["bell-staff", "shaken", ["iron and bronze bells", "copper rings on ash"]],
+      ["fiddle", "bowed", ["spruce and horsehair", "walnut and gut"]],
+      ["gong", "struck with a padded mallet", ["bronze", "iron"]],
+      ["rattle", "shaken", ["gourd and seeds", "bone and teeth"]],
+      ["harp", "plucked", ["oak and gut", "yew and silver wire"]]
+    ],
+    "by_race": {
+      "dwarf": ["gong", "drum", "horn", "bell-staff"],
+      "elf": ["harp", "lyre", "pipes", "zither"],
+      "orc": ["drum", "horn", "rattle"],
+      "goblin": ["rattle", "drum", "pipes"],
+      "halfling": ["fiddle", "pipes", "drum"],
+      "human": ["fiddle", "horn", "lyre", "drum", "pipes"],
+      "default": ["drum", "pipes", "horn", "lyre"]
+    }
+  },
+
+  "subjects": {
+    "_comment": "What a work is about, by the culture's leaning.",
+    "martial": ["the deeds of warriors", "a battle won", "the shame of the beaten"],
+    "tradition": ["the founders of the people", "the old law", "the ancestors"],
+    "nature": ["the turning seasons", "the forest", "the beasts of the land"],
+    "wealth": ["a good bargain", "treasure and its keeping", "the wealth of a town"],
+    "honor": ["an oath kept", "a debt repaid", "the death of a hero"],
+    "any": ["love lost", "the dead", "a journey", "the night sky", "a great beast slain", "home"]
+  },
+
+  "poetic": [
+    "a lament of {lines}-line stanzas, each ending on the name of the dead, about {subject}",
+    "a boast spoken by one voice and answered by many, about {subject}",
+    "a riddle-poem of {lines} lines whose answer is never said aloud, about {subject}",
+    "a chant in which every line repeats the last word of the one before, about {subject}",
+    "a long saga in lines of {lines} beats, told over many nights, about {subject}",
+    "a short verse of {lines} lines with the same sound at the end of each, about {subject}"
+  ],
+  "musical": [
+    "a slow air for the {instrument}, played at burials",
+    "a marching tune for the {instrument} and many voices",
+    "a work song for the {instrument}, kept in time by those who labour",
+    "a round sung in {lines} parts over the {instrument}",
+    "a wild piece for the {instrument} that quickens until the players stop",
+    "a cradle song sung softly over the {instrument}"
+  ],
+  "dance": [
+    "a circle dance around a fire, faster at each turn",
+    "a line dance of stamping feet and clapping hands",
+    "a war dance of {lines} dancers with spears",
+    "a slow dance of pairs that turn and part",
+    "a leaping dance done by the young at the turn of the year"
+  ]
+}

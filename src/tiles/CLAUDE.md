@@ -260,3 +260,49 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   thread in `main`), bucketing river segments and houses, writing the timelapse on a worker.
   Not tried in a real window.
 
+- The colony's winter (`local_ink::draw_colony`, 2026-10-08): in a hard winter the embark pales
+  toward snow (28%, 42% in a deep freeze), lighter ground more than ink, before the night wash;
+  the map's own colours stay annual. Checked on seed 3's day-100 frame (`PLANET_FRAMES`).
+
+- The delve in the window (2026-10-08): `<` / `>` go through the levels; each level is drawn by
+  `render_level_ink` and `local_ink::draw_delve` (replacing the dots of `draw_settlers_by_level`,
+  now a wrapper): a caption ("Level 51 - 3 below the camp's ground: the cellar, bedrooms (being
+  dug)"), the dig's cuts still to make as dashed red outlines (the one being dug filled), a bed
+  and door in each bedroom with its owner's name when they are not in it, the great hall's table
+  and benches, room names, and the settlers on that level as on the surface (a level off: faint).
+  The surface view hides those below and letters "N below" by the delve's mouth, which is drawn
+  as a stair going down. The section (U) draws stairs, room floors as solid, and settlers at
+  their own level.
+- The level view and the surface view agree (2026-10-08, after "they do not seem compatible"):
+  `local_ink::draw_level` draws, within two levels of the camp's ground, the camp exactly as the
+  surface view does (`draw_colony`: fire, store, marks, crops, creatures, night and winter, those
+  on the surface) before the delve's rooms and those below; ground one or two levels above the
+  viewed level is the surface as drawn, shaded with hachures and inked where it meets this
+  level (it had been cut-rock hatching, which made a slope look like a quarry face), and only
+  ground deeper than that is cut; `<` / `>` or V from the surface view start from the ground's
+  level under the view's centre (they had started from the map centre's). `PLANET_FRAMES` also
+  writes `_camp_level.png` and `_camp_surface.png` to compare the two.
+- `[` / `]` in the embark (2026-10-08): up or down to the next level worth looking at
+  (`Colony::delve_levels`: the tower's platform, the camp's ground, levels with rooms or rooms
+  being dug, the cavern the stair reaches, the stair's foot); `[` past the top returns to the
+  surface view. "[/] delve" in the key bar.
+- Visual pass on the embark frames (2026-10-08): worn ground is a smooth dusty wash blended
+  between cells (was a disc per cell: polka dots over every camp), never on roofs or walls;
+  in a level view the camp's marks, worn ground, night and winter are drawn only where the level
+  shows the surface (`level_shows_surface` mask: no dots or "cut away" hatching over rock and
+  dug rooms); labels share one placement list between `draw_colony` and `draw_delve` (roof
+  counts, "N below", patron names first; settlers' names and bed names step aside, 3 px air);
+  level views draw settlers with the surface figure (`draw_figure`: pictograms; a pick for the
+  dig, a hammer for craft, a spear for the hunt). Ground below the viewed level fades with depth
+  (10% a level down ... 72%) instead of 72% at once with square halos round trees. Rock cut at
+  a level (`cut_rock`, shared with the cover over unfound places, which now takes the nearest
+  rock of the level so no stratum ghost shows): the aquifer a blue tint with a few ripples (was
+  blue noise), gems inked. Doors are a plank leaf across the doorway (were crate squares); a
+  tower's top has planks and a merlon parapet; stair marks were inverted (up drew v): up ^,
+  down v, both X (`stair_mark`). Drawbridges drawn as planked decks with rails, a hatched leaf
+  when raised. Stumps faint and off-grid. Magma mottled with thin crust veins (level and
+  section). Section: stairs in profile (treads and risers), fungus as stalk and cap, strata named
+  down the left, settlers as inked figures in their colours, deep rock under the last level
+  (was sky). `PLANET_FRAMES` also writes `_foot.png` (stair's foot) and `_magma.png` (the pipe)
+  and prints best-of-three frame times (~12-13 ms each at 1280x800, 16 px, unloaded M4 Pro).
+  Not done: `--local-snapshot`'s `_section.png` is still the old pixel cross-section.

@@ -1,0 +1,171 @@
+{
+  "_comment": "Generated monsters (Dwarf Fortress style): a body profile (with what it must and cannot have), a structural tweak, a class or a uniform substance, a class tweak or odd eyes, a special attack, colours from its spheres, and a description assembled from fragments that each choice owns, so the words cannot contradict the body. Weights are relative; 'spheres' bias a choice toward worlds and lairs that share them.",
+
+  "bases": {
+    "_comment": "What a base body is made of, and which structural tweaks it allows.",
+    "quadruped": {"legs": 4, "allows": ["wings", "tail", "shell", "trunk", "horns", "tusks", "spines"]},
+    "insect": {"legs": 6, "allows": ["wings", "antennae", "mandibles", "stinger", "horns"]},
+    "spider": {"legs": 8, "allows": ["mandibles", "stinger", "shell"]},
+    "serpent": {"legs": 0, "allows": ["wings", "horns", "spines", "hood"]},
+    "worm": {"legs": 0, "allows": ["mandibles", "spines", "tentacles"]},
+    "humanoid": {"legs": 2, "allows": ["wings", "tail", "horns", "tusks", "trunk"]},
+    "bird": {"legs": 2, "allows": ["tail", "horns", "crest"]},
+    "blob": {"legs": 0, "allows": ["tentacles", "spines"]},
+    "crustacean": {"legs": 8, "allows": ["antennae", "spines", "stinger"]},
+    "lizard": {"legs": 4, "allows": ["wings", "tail", "horns", "spines", "shell", "crest"]}
+  },
+
+  "profiles": [
+    {"name": "hornet", "base": "insect", "class": "chitin", "weight": 4, "must": ["wings", "stinger"], "spheres": ["fire", "storm"]},
+    {"name": "beetle", "base": "insect", "class": "chitin", "weight": 5, "must": ["shell"], "cannot": [], "spheres": ["earth", "death"]},
+    {"name": "mantis", "base": "insect", "class": "chitin", "weight": 3, "spheres": ["nature"]},
+    {"name": "moth", "base": "insect", "class": "chitin", "weight": 3, "must": ["wings", "antennae"], "spheres": ["darkness", "night"]},
+    {"name": "locust", "base": "insect", "class": "chitin", "weight": 3, "must": ["wings"], "spheres": ["plague", "storm"]},
+    {"name": "ant", "base": "insect", "class": "chitin", "weight": 4, "must": ["mandibles"], "spheres": ["earth"]},
+    {"name": "fly", "base": "insect", "class": "chitin", "weight": 3, "must": ["wings"], "spheres": ["plague", "death"]},
+    {"name": "spider", "base": "spider", "class": "chitin", "weight": 5, "spheres": ["darkness", "death"], "attack": "webs"},
+    {"name": "scorpion", "base": "spider", "class": "chitin", "weight": 3, "must": ["stinger"], "spheres": ["fire", "death"]},
+    {"name": "tick", "base": "spider", "class": "chitin", "weight": 2, "spheres": ["plague"], "attack": "proboscis"},
+    {"name": "centipede", "base": "worm", "class": "chitin", "weight": 3, "spheres": ["darkness", "earth"]},
+    {"name": "crab", "base": "crustacean", "class": "chitin", "weight": 3, "spheres": ["water"]},
+    {"name": "lobster", "base": "crustacean", "class": "chitin", "weight": 2, "spheres": ["water"]},
+    {"name": "serpent", "base": "serpent", "class": "reptile", "weight": 5, "spheres": ["water", "death"]},
+    {"name": "cobra", "base": "serpent", "class": "reptile", "weight": 2, "must": ["hood"], "spheres": ["fire", "death"]},
+    {"name": "eel", "base": "serpent", "class": "amphibian", "weight": 2, "spheres": ["water", "storm"]},
+    {"name": "worm", "base": "worm", "class": "fleshy", "weight": 4, "spheres": ["earth", "death", "plague"]},
+    {"name": "leech", "base": "worm", "class": "fleshy", "weight": 2, "spheres": ["water", "plague"], "attack": "proboscis"},
+    {"name": "slug", "base": "worm", "class": "fleshy", "weight": 3, "spheres": ["water", "plague"]},
+    {"name": "maggot", "base": "worm", "class": "fleshy", "weight": 2, "spheres": ["death", "plague"]},
+    {"name": "wolf", "base": "quadruped", "class": "mammal", "weight": 4, "spheres": ["night", "nature"]},
+    {"name": "bear", "base": "quadruped", "class": "mammal", "weight": 4, "spheres": ["nature", "earth"]},
+    {"name": "boar", "base": "quadruped", "class": "mammal", "weight": 3, "must": ["tusks"], "spheres": ["nature", "fire"]},
+    {"name": "ox", "base": "quadruped", "class": "mammal", "weight": 2, "must": ["horns"], "spheres": ["earth"]},
+    {"name": "elk", "base": "quadruped", "class": "mammal", "weight": 2, "must": ["horns"], "spheres": ["nature", "cold"]},
+    {"name": "lion", "base": "quadruped", "class": "mammal", "weight": 2, "spheres": ["fire", "sun"]},
+    {"name": "rat", "base": "quadruped", "class": "mammal", "weight": 3, "must": ["tail"], "spheres": ["plague", "darkness"]},
+    {"name": "mole", "base": "quadruped", "class": "mammal", "weight": 2, "cannot": ["wings"], "spheres": ["earth", "darkness"]},
+    {"name": "bat", "base": "quadruped", "class": "mammal", "weight": 3, "must": ["wings"], "spheres": ["night", "darkness"]},
+    {"name": "elephant", "base": "quadruped", "class": "mammal", "weight": 1, "must": ["trunk", "tusks"], "min_size": 2.0, "spheres": ["earth", "nature"]},
+    {"name": "tortoise", "base": "quadruped", "class": "reptile", "weight": 2, "must": ["shell"], "cannot": ["wings"], "spheres": ["water", "earth"]},
+    {"name": "lizard", "base": "lizard", "class": "reptile", "weight": 4, "spheres": ["fire", "sun"]},
+    {"name": "dragon", "base": "lizard", "class": "feathered reptile", "weight": 1, "must": ["wings", "tail"], "min_size": 2.5, "spheres": ["fire", "storm"], "attack": "fire"},
+    {"name": "crocodile", "base": "lizard", "class": "reptile", "weight": 2, "must": ["tail"], "spheres": ["water", "death"]},
+    {"name": "salamander", "base": "lizard", "class": "amphibian", "weight": 2, "spheres": ["fire", "water"]},
+    {"name": "toad", "base": "lizard", "class": "amphibian", "weight": 3, "cannot": ["wings", "tail"], "spheres": ["water", "plague"]},
+    {"name": "newt", "base": "lizard", "class": "amphibian", "weight": 2, "spheres": ["water"]},
+    {"name": "eagle", "base": "bird", "class": "avian", "weight": 2, "spheres": ["storm", "sun", "sky"]},
+    {"name": "vulture", "base": "bird", "class": "avian", "weight": 2, "spheres": ["death"]},
+    {"name": "owl", "base": "bird", "class": "avian", "weight": 2, "spheres": ["night", "darkness"]},
+    {"name": "raven", "base": "bird", "class": "avian", "weight": 2, "spheres": ["death", "darkness"]},
+    {"name": "ape", "base": "humanoid", "class": "mammal", "weight": 2, "spheres": ["nature"]},
+    {"name": "giant", "base": "humanoid", "class": "fleshy", "weight": 2, "min_size": 1.5, "spheres": ["earth", "cold"]},
+    {"name": "troll", "base": "humanoid", "class": "fleshy", "weight": 2, "spheres": ["night", "earth"]},
+    {"name": "ogre", "base": "humanoid", "class": "fleshy", "weight": 2, "spheres": ["earth"]},
+    {"name": "blob", "base": "blob", "class": "fleshy", "weight": 3, "spheres": ["plague", "water", "darkness"]},
+    {"name": "jelly", "base": "blob", "class": "fleshy", "weight": 2, "must": ["tentacles"], "spheres": ["water"]},
+    {"name": "octopus", "base": "blob", "class": "fleshy", "weight": 2, "must": ["tentacles"], "spheres": ["water", "darkness"]}
+  ],
+
+  "tweaks": {
+    "_comment": "Structural tweaks: adjective, a 'with' phrase for the first sentence, a 'has' clause for the second.",
+    "wings": {"adj": "winged", "with": "with great ragged wings", "has": "it has wings like a vast moth's", "flies": true},
+    "tail": {"adj": "long-tailed", "with": "with a lashing tail", "has": "it has a long, whip-like tail"},
+    "shell": {"adj": "shelled", "with": "with a heavy shell", "has": "it has a ridged shell across its back"},
+    "trunk": {"adj": "trunked", "with": "with a long trunk", "has": "it has a short, grasping trunk"},
+    "horns": {"adj": "horned", "with": "with curling horns", "has": "it has great curling horns"},
+    "tusks": {"adj": "tusked", "with": "with yellowed tusks", "has": "it has tusks as long as a spear"},
+    "spines": {"adj": "spined", "with": "covered in spines", "has": "its back bristles with spines"},
+    "antennae": {"adj": "feathery", "with": "with long feathery antennae", "has": "it has long, sweeping antennae"},
+    "mandibles": {"adj": "fanged", "with": "with snapping mandibles", "has": "it has great snapping mandibles"},
+    "stinger": {"adj": "stinging", "with": "with a curved stinger", "has": "it carries a curved stinger"},
+    "hood": {"adj": "hooded", "with": "with a broad hood", "has": "it spreads a broad, ribbed hood"},
+    "tentacles": {"adj": "tentacled", "with": "with a mass of tentacles", "has": "it has a mass of writhing tentacles"},
+    "crest": {"adj": "crested", "with": "with a tall crest", "has": "it has a tall, bright crest"}
+  },
+
+  "classes": {
+    "_comment": "Body classes and the tweaks each allows second (adjective, 'has' clause, and a new word for its skin when the tweak changes it).",
+    "mammal": {"skin": "fur", "blood": "blood", "tweaks": [["shaggy", "its fur hangs in long matted ropes"], ["bald", "it has no fur at all, only bare hide", "hide"], ["striped", "its fur is barred in stripes"]]},
+    "chitin": {"skin": "chitin", "blood": "ichor", "tweaks": [["armoured", "its plates are thick as a shield"], ["glistening", "its plates glisten wetly"], ["pitted", "its shell is pitted and scarred"]]},
+    "reptile": {"skin": "scales", "blood": "blood", "tweaks": [["scaly", "its scales overlap like roof tiles"], ["frilled", "it has a frill about its neck"], ["warty", "its hide is thick with warts"]]},
+    "amphibian": {"skin": "slimy skin", "blood": "blood", "tweaks": [["slimy", "it is coated in slime"], ["bloated", "it has a bloated body"], ["translucent", "its skin is nearly clear"]]},
+    "avian": {"skin": "feathers", "blood": "blood", "tweaks": [["plumed", "its feathers trail behind it"], ["bald-headed", "its head is bare and raw"], ["ragged", "its feathers are ragged and falling"]]},
+    "feathered reptile": {"skin": "scales and feathers", "blood": "blood", "tweaks": [["feathered", "its scales give way to feathers"], ["crested", "it has a crest of feathers"]]},
+    "fleshy": {"skin": "skin", "blood": "blood", "tweaks": [["lumpy", "its body is lumpy and uneven"], ["pallid", "its flesh is pale as a fish's"], ["sinewy", "every sinew shows under its skin"]]}
+  },
+
+  "eyes": {
+    "_comment": "Odd eyes (DF's second tweak includes eye counts); evil ones only where the spheres are dark.",
+    "eyeless": {"adj": "eyeless", "has": "it has no eyes", "weight": 3},
+    "one-eyed": {"adj": "one-eyed", "has": "it has a single great eye", "weight": 3},
+    "three-eyed": {"adj": "three-eyed", "has": "it has three eyes", "weight": 2},
+    "many-eyed": {"adj": "many-eyed", "has": "its head is studded with eyes", "weight": 1},
+    "lidless": {"adj": "lidless", "has": "it has lidless, staring eyes", "weight": 2, "evil": true},
+    "ribbed": {"adj": "hollow", "has": "its ribs show through its flesh", "weight": 2, "evil": true},
+    "noseless": {"adj": "noseless", "has": "it has no nose, only two slits", "weight": 2, "evil": true}
+  },
+
+  "materials": {
+    "_comment": "Uniform substances: a whole body of one thing (1 in 20, or when a sphere demands it). Sphere tags pull them in.",
+    "granite": ["earth"], "basalt": ["earth", "fire"], "obsidian": ["fire", "darkness"], "iron": ["earth", "war"],
+    "copper": ["earth"], "salt": ["water", "earth"], "ash": ["fire", "death"], "mud": ["water", "earth", "plague"],
+    "snow": ["cold"], "ice": ["cold", "water"], "steam": ["fire", "water"], "flame": ["fire"], "amber": ["nature", "sun"],
+    "coral": ["water"], "glass": ["fire", "sky"], "bone": ["death"], "smoke": ["fire", "darkness"], "jet": ["darkness", "night"],
+    "rust": ["plague", "earth"], "grime": ["plague"], "sand": ["earth", "sun"], "slate": ["earth", "storm"]
+  },
+
+  "attacks": {
+    "_comment": "Special attacks: a warning for the description, a verb for the log ({} is whom it struck), and what it does to whoever it strikes in a raid (effect: burn, poison, web, bleed, blind, chill, sicken; ill_days; deadly adds to the danger).",
+    "fire": {"warning": "Beware its fiery breath!", "verb": "breathed fire on {}", "effect": "burn", "ill_days": 3, "deadly": 0.1, "spheres": ["fire", "sun"]},
+    "frost": {"warning": "Beware its freezing breath!", "verb": "breathed frost on {}", "effect": "chill", "ill_days": 2, "deadly": 0.05, "spheres": ["cold"]},
+    "steam": {"warning": "Beware its scalding steam!", "verb": "scalded {}", "effect": "burn", "ill_days": 2, "deadly": 0.05, "spheres": ["fire", "water"]},
+    "sting": {"warning": "Beware its poisonous sting!", "verb": "stung {}", "effect": "poison", "ill_days": 3, "deadly": 0.05, "needs": ["stinger"], "spheres": ["death", "plague"]},
+    "bite": {"warning": "Beware its poisonous bite!", "verb": "bit {}", "effect": "poison", "ill_days": 3, "deadly": 0.05, "spheres": ["death", "plague", "darkness"]},
+    "webs": {"warning": "Beware its webs!", "verb": "bound {} in webs", "effect": "web", "ill_days": 1, "deadly": 0.0, "needs_base": ["spider", "insect", "worm"], "spheres": ["darkness"]},
+    "acid": {"warning": "Beware its acid spittle!", "verb": "spat acid on {}", "effect": "burn", "ill_days": 3, "deadly": 0.05, "spheres": ["plague", "water"]},
+    "dust": {"warning": "Beware its deadly dust!", "verb": "choked {} with dust", "effect": "sicken", "ill_days": 4, "deadly": 0.05, "spheres": ["earth", "plague", "death"]},
+    "proboscis": {"warning": "Beware its blood-sucking proboscis!", "verb": "drank the blood of {}", "effect": "bleed", "ill_days": 3, "deadly": 0.1, "spheres": ["death", "night"]},
+    "blood": {"warning": "Beware its poisonous blood!", "verb": "spattered {} with poison blood", "effect": "poison", "ill_days": 2, "deadly": 0.0, "spheres": ["plague"]},
+    "gaze": {"warning": "Do not meet its gaze!", "verb": "froze {} with its gaze", "effect": "blind", "ill_days": 2, "deadly": 0.05, "spheres": ["darkness", "night", "magic"]},
+    "lightning": {"warning": "Beware the lightning that crawls over it!", "verb": "struck {} with lightning", "effect": "burn", "ill_days": 2, "deadly": 0.1, "spheres": ["storm", "sky"]}
+  },
+
+  "colours": {
+    "_comment": "Surface colours by sphere (the first sphere that has a list wins; 'any' otherwise).",
+    "fire": ["crimson", "scarlet", "orange", "amber", "black and red"],
+    "cold": ["white", "pale blue", "silver", "grey"],
+    "water": ["sea green", "blue", "grey-green", "teal"],
+    "earth": ["brown", "ochre", "grey", "umber", "rust"],
+    "death": ["bone white", "grey", "black", "ashen"],
+    "darkness": ["black", "midnight blue", "charcoal", "dark violet"],
+    "night": ["black", "indigo", "grey"],
+    "plague": ["sickly yellow", "green", "bruise purple", "grey-green"],
+    "storm": ["slate", "steel blue", "white"],
+    "nature": ["moss green", "brown", "tawny", "russet"],
+    "sun": ["gold", "tawny", "amber"],
+    "sky": ["pale blue", "white", "silver"],
+    "magic": ["violet", "iridescent", "shimmering silver"],
+    "any": ["grey", "brown", "black", "white", "tawny", "red", "green"]
+  },
+
+  "extras": {
+    "_comment": "A random extra clause (DF's good/evil/default tables).",
+    "default": ["it squirms and fidgets", "it moves with terrible speed", "it is utterly silent", "it smells of wet stone", "it seems to be always hungry", "it never seems to sleep"],
+    "evil": ["it reeks of rot", "flies follow it everywhere", "it leaves a trail of withered grass", "its breath stinks of the grave", "it weeps black tears", "the ground smokes where it has lain"]
+  },
+
+  "sizes": {
+    "_comment": "Size adjectives by size (1 = a large bear).",
+    "huge": [3.0, ["great", "gigantic", "towering", "enormous", "colossal"]],
+    "very large": [1.8, ["huge", "massive"]],
+    "large": [1.0, ["large"]],
+    "small": [0.0, ["lean"]]
+  },
+
+  "kinds": {
+    "_comment": "What each kind of monster is called and its sphere tendencies.",
+    "beast": {"word": "beast", "spheres": []},
+    "forgotten": {"word": "forgotten beast", "spheres": ["darkness", "earth"]},
+    "titan": {"word": "titan", "spheres": []}
+  }
+}

@@ -117,7 +117,7 @@ impl HistoryEngine {
         crate::history::people::link_lives(history);
 
         // Define eras from major events
-        self.define_eras(history);
+        crate::history::ages::name_ages(history);
 
         // Compute and print quality metrics
         let metrics = SimulationMetrics::compute(history);
@@ -162,7 +162,8 @@ impl HistoryEngine {
                 );
             }
         }
-        self.define_eras(&mut history);
+        // The world names its own ages from who held power (`ages.rs`).
+        crate::history::ages::name_ages(&mut history);
         let metrics = SimulationMetrics::compute(&history);
         (history, metrics)
     }

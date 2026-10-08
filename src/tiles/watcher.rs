@@ -1082,6 +1082,7 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
             let by_click = if clicked { view.site_rects.iter().position(|r| r.contains(mouse.0, mouse.1)) } else { None };
             if let Some(k) = by_key.or(by_click).filter(|&k| k < view.sites.len()) {
                 super::viewer::set_chosen_site(view.sites[k].tile);
+                if let Some(c) = view.sites[k].cell { super::viewer::set_start_cell(c); }
                 break;
             }
         }

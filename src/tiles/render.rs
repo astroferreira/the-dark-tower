@@ -836,6 +836,7 @@ fn tree_kind(t: TreeKind) -> TileKind {
         TreeKind::Palm => TileKind::Palm,
         TreeKind::Acacia => TileKind::Acacia,
         TreeKind::Dead => TileKind::DeadTree,
+        TreeKind::Fungus => TileKind::BigBroadleaf,
     }
 }
 
@@ -865,7 +866,7 @@ fn cell_tiles(c: &Cell) -> (TileKind, [f32; 3], Option<TileKind>) {
                 Material::Ice => TileKind::SeaIce,
                 Material::Rock(_) | Material::Block(_) | Material::Ore(_) => TileKind::StoneFloor,
                 Material::Wood => TileKind::WoodFloor,
-                Material::Air => TileKind::Dirt,
+                Material::Air | Material::Magma => TileKind::Dirt,
             };
             let ground_tint = if matches!(ground, TileKind::Grass | TileKind::Sand | TileKind::Snow | TileKind::SeaIce) { [1.0; 3] } else { tint };
             let sprite = if c.shape == Shape::Ramp {
@@ -1056,8 +1057,13 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
     image::RgbImage::from_fn((w * px) as u32, (d * px) as u32, |x, y| {
         let (tx, z) = (x as usize / px, d - 1 - y as usize / px);
         let c = map.cell(tx, row, z);
+        let cavern = map.cavern_at(tx, row, z as i32).is_some();
         let rgb = if c.shape == Shape::Empty {
-            if c.water > 0 { [50, 110, 175] } else { [200, 222, 240] }
+            // Cavern air is dark; its pools darker still. The magma sea (a liquid, so `water`
+            // is set too) glows orange, not water blue.
+            if c.material == Material::Magma { [220, 80, 20] }
+            else if cavern { if c.water > 0 { [30, 60, 100] } else { [44, 38, 48] } }
+            else if c.water > 0 { [50, 110, 175] } else { [200, 222, 240] }
         } else {
             let base = match c.material {
                 Material::Soil => [120, 86, 52],
@@ -1070,9 +1076,11 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
                 Material::Wood => [140, 96, 54],
                 Material::Block(_) => [180, 176, 168],
                 Material::Ore(r) => crate::lore::resource_color(r),
+                Material::Magma => [220, 80, 20],
             };
             let t = material_tint(c.material);
-            let f = if c.shape == Shape::Wall { 1.0 } else { 1.15 };
+            // A stair: its steps as darker bars across the cell.
+            let f = if c.shape == Shape::Wall { 1.0 } else if c.shape == Shape::Stair && (y as usize % px) * 2 < px { 0.7 } else { 1.15 };
             let rock = matches!(c.material, Material::Rock(_));
             let (r, g, b) = if rock {
                 ((base[0] as f32 * t[0] * f) as u8, (base[1] as f32 * t[1] * f) as u8, (base[2] as f32 * t[2] * f) as u8)
@@ -1080,7 +1088,9 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
                 ((base[0] as f32 * f).min(255.0) as u8, (base[1] as f32 * f).min(255.0) as u8, (base[2] as f32 * f).min(255.0) as u8)
             };
             match c.plant {
+                Plant::Tree(crate::local::TreeKind::Fungus) => [150, 110, 140],
                 Plant::Tree(_) if c.shape != Shape::Wall => [40, 100, 40],
+                Plant::Grass if cavern => [84, 104, 70],
                 Plant::Grass => [90, 150, 60],
                 _ => [r, g, b],
             }
