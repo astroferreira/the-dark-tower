@@ -12,13 +12,15 @@ use super::{Colony, ItemKind, Pos, HUT_H, HUT_W};
 use crate::local::{Material, Plant, Shape};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProjectKind { Woodpile, DryingRack, SecondHut, Palisade, Windbreak, Smokehouse, Woodshed, Lookout, Fence, Mending, Storehouse, Workshop, Field, Jetty, Well, DugHall, Cellar, Mine, Temple, Lining, Still, Traps, LordsHall, CaveFarm, Tavern, Pen, DeepShaft, GuildHall, Kitchen, Library, Bedrooms, GreatHall, Tombs, Moat, Workshops, Hatch, Drawbridges, MasonShop, CarpenterShop, Smelter, Forge, Kiln }
+pub enum ProjectKind { Woodpile, DryingRack, SecondHut, Palisade, Windbreak, Smokehouse, Woodshed, Lookout, Fence, Mending, Storehouse, Workshop, Field, Jetty, Well, DugHall, Cellar, Mine, Temple, Lining, Still, Traps, LordsHall, CaveFarm, Tavern, Pen, DeepShaft, GuildHall, Kitchen, Library, Bedrooms, GreatHall, Tombs, Moat, Workshops, Hatch, Drawbridges, MasonShop, CarpenterShop, Smelter, Forge, Kiln,
+    /// A gallery cut off the stair for its stone, when none is left in reach (`delve.rs`).
+    StoneCut }
 
 /// Works that feed the camp: built even while it goes hungry.
 pub fn feeds(k: ProjectKind) -> bool { matches!(k, ProjectKind::Field | ProjectKind::CaveFarm | ProjectKind::Pen | ProjectKind::Jetty) }
 
 /// Works that are dug, not built (no loads to lay).
-pub fn is_dig(k: ProjectKind) -> bool { matches!(k, ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::CaveFarm | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln) }
+pub fn is_dig(k: ProjectKind) -> bool { matches!(k, ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::CaveFarm | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln | ProjectKind::StoneCut) }
 
 impl ProjectKind {
     pub fn word(self) -> &'static str {
@@ -30,7 +32,7 @@ impl ProjectKind {
             ProjectKind::Storehouse => "a storehouse", ProjectKind::Temple => "a temple", ProjectKind::Workshop => "a workshop", ProjectKind::Field => "a fenced field",
             ProjectKind::Jetty => "a jetty", ProjectKind::Well => "a well",
             ProjectKind::DugHall => "a hall in the hill", ProjectKind::Cellar => "a cellar", ProjectKind::Mine => "a mine", ProjectKind::Lining => "the lining of the wet shaft", ProjectKind::Still => "a still", ProjectKind::Traps => "cage traps at the gates", ProjectKind::LordsHall => "a hall for the lord", ProjectKind::CaveFarm => "a farm under the rock", ProjectKind::Tavern => "a tavern", ProjectKind::Pen => "a pen for beasts", ProjectKind::DeepShaft => "the deep shaft", ProjectKind::GuildHall => "a guildhall", ProjectKind::Kitchen => "a kitchen", ProjectKind::Library => "a library", ProjectKind::Bedrooms => "bedrooms under the rock", ProjectKind::GreatHall => "a great hall below", ProjectKind::Tombs => "tombs under the rock", ProjectKind::Moat => "a ditch round the wall", ProjectKind::Workshops => "workshops below", ProjectKind::Hatch => "a hatch over the stair below", ProjectKind::Drawbridges => "drawbridges over the ditch",
-            ProjectKind::MasonShop => "a mason's workshop below", ProjectKind::CarpenterShop => "a carpenter's workshop below", ProjectKind::Smelter => "a smelter below", ProjectKind::Forge => "a forge below", ProjectKind::Kiln => "a kiln below",
+            ProjectKind::MasonShop => "a mason's workshop below", ProjectKind::CarpenterShop => "a carpenter's workshop below", ProjectKind::Smelter => "a smelter below", ProjectKind::Forge => "a forge below", ProjectKind::Kiln => "a kiln below", ProjectKind::StoneCut => "a gallery cut for stone",
         }
     }
 }
@@ -103,6 +105,12 @@ impl Colony {
     }
 
     /// Whether a tree stands within working reach of the camp (else they build in stone).
+    /// Neither timber nor quarry stone within reach, and hardly any stone laid by.
+    pub(crate) fn materials_out(&self) -> bool {
+        !self.timber_near() && self.nearest_pub(self.camp, |c, p| c.is_quarry_stone_pub(p)).is_none()
+            && self.items.iter().filter(|it| it.kind == ItemKind::Stone && it.stored).count() < 4
+    }
+
     pub(crate) fn timber_near(&self) -> bool {
         self.nearest_tree_by(self.camp, |_, _| true).is_some()
     }
@@ -123,7 +131,43 @@ impl Colony {
                 self.note(format!("No {} is left within reach; they finish {} in {}.", if m == ItemKind::Stone { "stone" } else { "timber" }, word, if other == ItemKind::Stone { "stone" } else { "timber" }));
             } else {
                 self.projects[k].done = true;
+                let key = (self.projects[k].kind, self.projects[k].at, self.projects[k].day);
+                if !matches!(key.0, ProjectKind::Lining | ProjectKind::Mending) { self.set_aside.push(key); }
                 self.note(format!("Neither stone nor timber is left within reach; {} is set aside, {} of {} loads laid.", word, self.projects[k].used, self.projects[k].needed));
+            }
+        }
+        // A work set aside is taken up again when stone or timber is to hand (one a dawn; a
+        // palisade had stood at 14 of 24 loads for good once the boulders in reach were broken).
+        if let Some(n) = self.set_aside.iter().position(|key| self.projects.iter().any(|p| (p.kind, p.at, p.day) == *key)) {
+            let key = self.set_aside[n];
+            let k = self.projects.iter().position(|p| (p.kind, p.at, p.day) == key).unwrap();
+            let m = self.projects[k].material;
+            let other = if m == ItemKind::Stone { ItemKind::Log } else { ItemKind::Stone };
+            // (Enough laid by to finish it, or ten loads: a few stones at a time had set it aside
+            // and taken it up again every other dawn.)
+            let left = (self.projects[k].needed - self.projects[k].used.min(self.projects[k].needed)).min(10) as usize;
+            let stored = |c: &Colony, x: ItemKind| c.items.iter().filter(|it| it.kind == x && it.stored).count() >= left.max(1);
+            let take = if have(self, m) || stored(self, m) { Some(m) } else if have(self, other) || stored(self, other) { Some(other) } else { None };
+            if let Some(t) = take {
+                self.set_aside.remove(n);
+                self.projects[k].done = false;
+                self.projects[k].material = t;
+                let p = &self.projects[k];
+                self.note(format!("They take up {} again ({} of {} loads laid): there is {} to hand now.", p.kind.word(), p.used, p.needed, if t == ItemKind::Stone { "stone" } else { "timber" }));
+            }
+        }
+        self.set_aside.retain(|key| self.projects.iter().any(|p| (p.kind, p.at, p.day) == *key));
+        // A dig waiting on its lining, with the lining set aside: the wet shaft is abandoned
+        // (dev 70,6 had planned nothing from day 39 to 150 behind a mine paused for ever).
+        if self.dig_paused && !self.aquifer_lined && !self.projects.iter().any(|p| p.kind == ProjectKind::Lining && !p.done) {
+            self.dig_paused = false;
+            if let Some(k) = self.projects.iter().position(|q| !q.done && is_dig(q.kind)) {
+                if let Some(first) = self.dig_plan.as_ref().and_then(|p| p.first().map(|c| c.p)) { self.digs_given_up.push(first); }
+                let kind = self.projects[k].kind;
+                self.projects.remove(k);
+                self.dig_plan = None;
+                self.dig_rooms.clear();
+                self.note(format!("They abandon {}: the water in the rock cannot be held back with nothing to line it.", kind.word()));
             }
         }
     }
@@ -349,6 +393,9 @@ impl Colony {
             c.push((4.0, ProjectKind::Mending, format!("the raid of day {} broke the palisade at {},{}", d, p.0, p.1), 6, self.camp));
         }
         if food_first { c.retain(|x| feeds(x.1)); }
+        // No stone or timber to be had: only digs (which bring up stone) are worth planning (a
+        // mending had been planned and set aside every dawn).
+        if self.materials_out() { c.retain(|x| is_dig(x.1)); }
         c.sort_by(|a, b| b.0.total_cmp(&a.0));
         let Some((_, kind, why, needed, at)) = c.into_iter().next() else { return };
         // A fixed place on forbidden ground: take the plan's next lot instead.
@@ -565,7 +612,7 @@ impl Colony {
                 ProjectKind::Field => { self.stamp_posts(at, 8, 6); self.sow_field(at); }
                 ProjectKind::Jetty => { self.jetty = Some(at); }
                 ProjectKind::Well => self.stamp_block(at, 1, 1, ItemKind::Stone),
-                ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln => {}
+                ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln | ProjectKind::StoneCut => {}
                 ProjectKind::Lining => {
                     // The wet shaft is lined: the dig goes on, dry (`dig.rs`).
                     self.aquifer_lined = true;
@@ -738,7 +785,7 @@ impl Colony {
             ProjectKind::SecondHut => (HUT_W as u16, HUT_H as u16), ProjectKind::Storehouse => (4, 3), ProjectKind::Workshop | ProjectKind::LordsHall | ProjectKind::Tavern => (5, 4), ProjectKind::Temple => (4, 4), ProjectKind::GuildHall => (4, 3), ProjectKind::Kitchen => (3, 3), ProjectKind::Library => (4, 3),
             ProjectKind::Field => (8, 6), ProjectKind::Pen => (6, 5), ProjectKind::Smokehouse => (3, 3), ProjectKind::Woodpile => (3, 1), ProjectKind::Windbreak => (HUT_W as u16, 1),
             ProjectKind::DryingRack | ProjectKind::Lookout | ProjectKind::Still => (2, 2), ProjectKind::Fence => (4, 4), ProjectKind::Well | ProjectKind::Jetty => (1, 1),
-            ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln => return None,
+            ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln | ProjectKind::StoneCut => return None,
         })
     }
 
@@ -764,7 +811,7 @@ impl Colony {
                 ProjectKind::SecondHut => (HUT_W as u16, HUT_H as u16), ProjectKind::Storehouse => (4, 3), ProjectKind::Workshop | ProjectKind::LordsHall | ProjectKind::Tavern => (5, 4), ProjectKind::Temple => (4, 4), ProjectKind::GuildHall => (4, 3), ProjectKind::Kitchen => (3, 3), ProjectKind::Library => (4, 3),
                 ProjectKind::Field => (8, 6), ProjectKind::Pen => (6, 5), ProjectKind::Smokehouse => (3, 3), ProjectKind::Woodpile => (3, 1), ProjectKind::Windbreak => (HUT_W as u16, 1),
                 ProjectKind::DryingRack | ProjectKind::Lookout | ProjectKind::Still => (2, 2), ProjectKind::Fence => (4, 4), ProjectKind::Well | ProjectKind::Jetty => (1, 1),
-                ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln => continue,
+                ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln | ProjectKind::StoneCut => continue,
             };
             let pad = if matches!(q.kind, ProjectKind::Well | ProjectKind::Jetty) { 1 } else { 0 };
             if p.0 + pad >= q.at.0 && p.0 < q.at.0 + w + pad && p.1 + pad >= q.at.1 && p.1 < q.at.1 + h + pad {

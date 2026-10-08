@@ -1978,3 +1978,25 @@ fn settlers_mourn_and_court() {
     assert!(text.lines().any(|l| l.contains("wandering        Standing at ") && l.contains("'s grave, remembering them")), "no one stood at a grave");
     assert!(text.lines().any(|l| l.contains("wandering        Walking out with ") && (l.contains(" is fond of ") || l.contains(" is sweet on "))), "no one walked out with anyone");
 }
+
+/// Stone from the rock (DF: dwarves mine for their stone): dev 70,6 breaks every boulder in reach
+/// and has no timber; it cuts a gallery off the stair for stone and builds on, instead of setting
+/// its works aside for good.
+#[test]
+fn a_camp_without_stone_digs_for_it() {
+    let dir = std::env::temp_dir().join(format!("stonecut_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("log.txt");
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        .args(["--dev", "--headless", "--sim-projects", "100", "--tiles-center", "70,6"])
+        .env("PLANET_DUMP_LOG", &log)
+        .output()
+        .expect("run planet_generator");
+    assert!(out.status.success());
+    let text = std::fs::read_to_string(&log).unwrap_or_default();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(text.lines().any(|l| l.contains("breaks through the last of a gallery cut for stone")), "no gallery cut for stone:\n{text}");
+    let done = stdout.lines().filter(|l| l.trim_start().starts_with("Project day") && l.contains(", done)")).count();
+    assert!(done >= 12, "only {done} works done in 100 days");
+}

@@ -1839,3 +1839,13 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   one-at-a-time rule): 50,20's hall had stayed bare for 150 days.
 - `PLANET_FORCE_GHOST=1`: no slab is carved for six days after a violent death (the ghost test,
   with `PLANET_FORCE_RAID_DEATH`).
+- Out of stone (`projects.rs`: `materials_out`, `set_aside`; `delve.rs`: `ProjectKind::StoneCut`):
+  with no timber and no quarry stone within reach and under 4 stones laid by, only digs are
+  planned (a mending had been planned and set aside every dawn), and a gallery three wide and ten
+  long is cut off the stair for its stone ("a gallery cut for stone", 2.5). A dig paused for a
+  lining that was set aside is abandoned ("the water in the rock cannot be held back"; it had
+  blocked all planning: dev 70,6 planned nothing from day 39 to 150). Works set aside are taken up
+  again, one a dawn, when their material (or the other) is in reach or enough is laid by to finish
+  them (10 at most): "They take up a palisade again (14 of 24 loads laid)". Dev 70,6 by day 200:
+  palisade, gallery, ditch, temple, pen, storehouse, tavern, workshop, still, traps, drawbridges,
+  library, guildhall, kitchen, field. Tested (`a_camp_without_stone_digs_for_it`).
