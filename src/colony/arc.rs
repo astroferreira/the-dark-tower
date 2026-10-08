@@ -657,7 +657,7 @@ impl Colony {
         let victim = match clash { Some(p) => alive.iter().copied().min_by_key(|&i| (d(i, p), i)).unwrap(), None => alive[(hash(seed, 0x51C7) as usize) % alive.len()] };
         let vname = self.settlers[victim].name.clone();
         // Armour may turn the killing blow (`armour.rs`): struck down, but alive.
-        let mail = if danger > ready + 0.3 { self.armour_turns(victim, 0.5, threat.size, 0xA4A3 ^ seed) } else { None };
+        let mail = if danger > ready + 0.3 { self.armour_turns_killing(victim, &super::fight::foe_of(&capital(&threat.name), threat.monster.as_ref()), 0xA4A3 ^ seed) } else { None };
         if danger > ready + 0.3 && mail.is_none() {
             let how = attack.as_ref().map(|a| format!(" It {}; {}", a.did_to(&vname), vname)).unwrap_or_else(|| format!(" {}", vname));
             self.arc_event("The raid".into(), format!("{} {}.{} was killed before the others could reach them{}.", who, came, how, readiness), None);

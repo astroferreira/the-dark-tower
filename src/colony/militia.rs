@@ -7,10 +7,12 @@
 //! flint-tipped, iron-headed once iron is worked) until every adult who would fight has one; the
 //! brave and the martial drill from 17:00 to 19:00 at the drill ground under the camp's best
 //! fighter (a veteran first), each evening adding to their `Settler::drill` by how quickly they
-//! learn. At dawn the spears go to the best fighters. In the clash (`fight.rs`) a spear's force
-//! replaces the work tool's, and the fighting skill (a veteran's 0.4 plus drill) adds to the
-//! chance to hit and to the force; each armed and drilled hand adds 0.015 to readiness (0.06 at
-//! most), shown in the eve's tally as "N under arms".
+//! learn. At dawn the spears go to the best fighters. In the clash (`fight.rs`) the spear
+//! replaces the work tool: a spear-shaped blow of its head's material (`materials.rs`: the head's
+//! density weighs the spear, its hardness and edge decide what it cuts), and the fighting skill
+//! (a veteran's 0.4 plus drill) adds to the chance to hit and to the blow's momentum; each armed
+//! and drilled hand adds 0.015 to readiness (0.06 at most), shown in the eve's tally as "N under
+//! arms".
 
 use super::*;
 use crate::persona::{Facet, Val};
@@ -19,10 +21,21 @@ use crate::persona::{Facet, Val};
 pub struct Arm {
     /// "a flint-tipped spear", "an iron-headed spear".
     pub kind: String,
-    pub force: f32,
+    /// What its head is of ("flint", "iron", "adamantine"; `materials.json`).
+    pub material: String,
+    /// The maker's hand and the forge: x the blow's momentum.
+    pub quality: f32,
     pub maker: usize,
     pub day: u64,
     pub holder: Option<usize>,
+}
+
+impl Arm {
+    /// How good a spear it is, for handing out: its harm to a big furred beast's flank.
+    pub fn rating(&self) -> f32 {
+        let b = crate::materials::weapon_blow("spear", &self.material, self.quality);
+        crate::materials::strike(&b, &crate::materials::body("beast", "flank", 1.5, Some(("fur", false)), None)).harm
+    }
 }
 
 impl Colony {
@@ -63,31 +76,31 @@ impl Colony {
         self.items.remove(k);
         self.fix_refs_pub(k);
         let iron = self.iron_worked();
-        let stone = {
-            let (x, y) = (self.camp.0 as usize, self.camp.1 as usize);
-            let sz = self.map.surface_z[y * self.map.width + x].max(0) as usize;
-            (0..=sz).rev().find_map(|z| match self.map.cell(x, y, z).material { crate::local::Material::Rock(r) if r != crate::erosion::materials::RockType::Sediment => crate::persona::material_of_the_land(&format!("{:?}", r)), _ => None }).unwrap_or("stone").to_string()
-        };
+        let stone = self.land_stone();
         // A sure hand makes a better head.
         let hand = 0.9 + 0.2 * self.settlers[i].skill[4];
-        // The best head to hand: iron, copper, obsidian from the rock, bone from the hunt, the
-        // land's stone (DF: the weapon's material decides its edge).
+        // The best head to hand: adamantine, iron, copper, obsidian from the rock, bone from the
+        // hunt where the land gives no named stone, the land's stone; whatever it is must be
+        // weapon-worthy (DF's capability flags), and what it does in a blow is its material's
+        // (`materials.rs`: density, hardness, edge).
         let metal = |m: &str| self.ores.iter().any(|o| o == m);
         let gem = |g: &str| self.gems.iter().any(|x| x.0 == g && x.1 > 0);
-        let (kind, force) = if metal("adamantine") && self.workshop_spot().is_some() { ("an adamantine-headed spear".to_string(), 2.2 * hand) }
-            else if iron && (metal("iron") || self.tools_bought) { ("an iron-headed spear".to_string(), 1.45 * hand) }
-            else if iron && metal("copper") { ("a copper-headed spear".to_string(), 1.3 * hand) }
-            else if gem("obsidian") { ("an obsidian-tipped spear".to_string(), 1.25 * hand) }
-            else if stone == "stone" && self.hunted > 0 { ("a bone-tipped spear".to_string(), 1.05 * hand) }
-            else { (format!("a {}-tipped spear", stone), 1.15 * hand) };
-        if kind.starts_with("an obsidian") { if let Some(g) = self.gems.iter_mut().find(|x| x.0 == "obsidian") { g.1 -= 1; } }
+        let worthy = |m: &str| crate::materials::known(m).map_or(false, |x| x.can("weapon"));
+        let (kind, material) = if metal("adamantine") && self.workshop_spot().is_some() { ("an adamantine-headed spear".to_string(), "adamantine") }
+            else if iron && (metal("iron") || self.tools_bought) { ("an iron-headed spear".to_string(), "iron") }
+            else if iron && metal("copper") { ("a copper-headed spear".to_string(), "copper") }
+            else if gem("obsidian") { ("an obsidian-tipped spear".to_string(), "obsidian") }
+            else if (stone == "stone" || !worthy(&stone)) && self.hunted > 0 { ("a bone-tipped spear".to_string(), "bone") }
+            else { (format!("a {}-tipped spear", stone), stone.as_str()) };
+        let material = material.to_string();
+        if material == "obsidian" { if let Some(g) = self.gems.iter_mut().find(|x| x.0 == "obsidian") { g.1 -= 1; } }
         // Metal forged at the magma (`deep.rs`): a truer temper.
-        let at_magma = self.magma_forge && (kind.contains("iron") || kind.contains("copper") || kind.contains("adamantine"));
-        let (kind, force) = if at_magma { (super::deep::magma_forged(&kind), force * 1.12) } else { (kind, force) };
+        let at_magma = self.magma_forge && matches!(material.as_str(), "iron" | "copper" | "adamantine");
+        let (kind, quality) = if at_magma { (super::deep::magma_forged(&kind), hand * 1.12) } else { (kind, hand) };
         let day = self.clock.day();
         let name = self.settlers[i].name.clone();
         self.settlers[i].made.push(format!("{} (day {})", kind, day));
-        self.arms.push(militia::Arm { kind: kind.clone(), force, maker: i, day, holder: None });
+        self.arms.push(militia::Arm { kind: kind.clone(), material, quality, maker: i, day, holder: None });
         let why = self.trouble_foretold().map(|t| format!("for fear of {}", t)).unwrap_or_else(|| "against the next trouble".into());
         if self.arms.len() == 1 { self.note(format!("{} makes {} at the workshop, {}; the first of the camp's arms.", name, kind, why)); }
         self.arm_militia();
@@ -97,7 +110,8 @@ impl Colony {
     pub(crate) fn arm_militia(&mut self) {
         let m = self.militia();
         let mut order: Vec<usize> = (0..self.arms.len()).collect();
-        order.sort_by(|&a, &b| self.arms[b].force.total_cmp(&self.arms[a].force).then(a.cmp(&b)));
+        let rating: Vec<f32> = self.arms.iter().map(|a| a.rating()).collect();
+        order.sort_by(|&a, &b| rating[b].total_cmp(&rating[a]).then(a.cmp(&b)));
         for a in self.arms.iter_mut() { a.holder = None; }
         for (k, &ai) in order.iter().enumerate() { self.arms[ai].holder = m.get(k).copied(); }
         self.armour_up();

@@ -1,15 +1,24 @@
 //! Blows and wounds: the raid's clash played between bodies.
 //!
 //! The idea is Dwarf Fortress's combat report: each blow is a body against a body part, its
-//! chance from agility against the target's size, its force from strength and the weapon
-//! against the target's toughness or substance, and what it leaves is a wound on a named part
-//! that changes what the wounded can do until it heals. Here the raid's outcome is still the
-//! patron's game (readiness against danger, `arc::raid_at`); the fight is how it happened, told
-//! blow by blow from the settlers' personas and the monster's body (`monsters.rs`), and its
-//! wounds are real: a broken arm makes felling and building slow, a broken leg makes walking
-//! slow, every wound hurts, and they heal at the pace of the wounded (`Persona::healing`).
+//! chance from agility against the target's size, and what it does from the weapon and the
+//! layers it meets (`materials.rs`, `data/defaults/materials.json`; DF's attack geometry on the
+//! item and physics on the material): a blow's momentum is strength x the drill x the weapon's
+//! velocity x the square root of its mass (a head of its material on a haft of wood); an edge
+//! cuts layer by layer while its material is well harder than the layer (else it lands blunt
+//! there), a blunt blow is cushioned by flesh and must crack what is rigid; where it stops is
+//! what the log says (glances off the granite of its flank with a ring, bruises, cuts, bites
+//! deep, breaks the bone) and how much of the part it went through is its harm. A beast strikes
+//! with its own weapons (jaws, tusks, horns, mandibles, talons, tentacles; of its substance when
+//! that is weapon-worthy: an iron beast's jaws are iron) at a momentum of its size, raiders with
+//! their people's iron (a club of wood). The raid's outcome is still the patron's game
+//! (readiness against danger, `arc::raid_at`); the fight is how it happened, told blow by blow
+//! from the settlers' personas and the monster's body (`monsters.rs`), and its wounds are real: a
+//! broken arm makes felling and building slow, a broken leg makes walking slow, every wound
+//! hurts, and they heal at the pace of the wounded (`Persona::healing`).
 
 use super::*;
+use crate::materials::{self, Blow, Layer, Outcome};
 use crate::persona::Attr;
 
 /// A wound on a body part.
@@ -45,30 +54,106 @@ impl Wound {
     pub fn leg(&self) -> bool { self.part.ends_with("leg") }
 }
 
-const PARTS: [(&str, u32); 6] = [("head", 2), ("body", 4), ("left arm", 2), ("right arm", 2), ("left leg", 2), ("right leg", 2)];
+pub(crate) const PARTS: [(&str, u32); 6] = [("head", 2), ("body", 4), ("left arm", 2), ("right arm", 2), ("left leg", 2), ("right leg", 2)];
 
-/// The weapon a settler fights with: what they work with.
-fn weapon(c: &Colony, i: usize) -> (String, f32) {
-    // A spear of the militia's (`militia.rs`), and the hand that has drilled with it.
-    let skill = 1.0 + 0.5 * c.fight_skill(i);
-    if let Some(a) = c.arm_of(i) { return (a.kind.clone(), a.force * skill); }
-    let (w, f) = tool(c, i);
-    (w.to_string(), f * skill)
+/// What a settler fights with: the words, the weapon's subtype and material, and the maker's hand.
+pub(crate) struct Arms { pub words: String, pub subtype: &'static str, pub material: String, pub quality: f32 }
+
+/// The weapon a settler fights with: a spear of the militia's (`militia.rs`), else what they work with.
+fn weapon(c: &Colony, i: usize) -> Arms {
+    if let Some(a) = c.arm_of(i) { return Arms { words: a.kind.clone(), subtype: "spear", material: a.material.clone(), quality: a.quality }; }
+    tool(c, i)
 }
 
-/// What a settler works with.
-fn tool(c: &Colony, i: usize) -> (&'static str, f32) {
+/// What a settler works with: iron once ore is worked, else the land's stone and wood.
+fn tool(c: &Colony, i: usize) -> Arms {
     let iron = c.iron_worked();
-    match c.settlers[i].role {
-        Some(2) => if iron { ("an iron axe", 1.5) } else { ("an axe", 1.2) },
-        Some(4) => if iron { ("an iron hammer", 1.4) } else { ("a mallet", 1.0) },
-        Some(1) => ("a fishing spear", 1.1),
-        _ => if iron { ("an iron-headed spear", 1.3) } else { ("a sharpened stake", 0.9) },
+    let (words, subtype, material) = match c.settlers[i].role {
+        Some(2) => if iron { ("an iron axe", "axe", "iron".to_string()) } else { ("an axe", "axe", c.land_stone()) },
+        Some(4) => if iron { ("an iron hammer", "hammer", "iron".to_string()) } else { ("a mallet", "mallet", "wood".to_string()) },
+        Some(1) => ("a fishing spear", "fishing spear", "bone".to_string()),
+        _ => if iron { ("an iron-headed spear", "spear", "iron".to_string()) } else { ("a sharpened stake", "stake", "wood".to_string()) },
+    };
+    Arms { words: words.to_string(), subtype, material, quality: 1.0 }
+}
+
+/// What the foe strikes with: a beast's own body, a raider's arms.
+pub(crate) struct Foe {
+    /// "its tusks", "a spear".
+    pub words: String,
+    /// A natural weapon ("tusks") or a weapon subtype ("spear"; `materials.json`).
+    key: &'static str,
+    natural: bool,
+    /// What it strikes with: the beast's substance, or the raider's weapon's material.
+    material: Option<String>,
+    size: f32,
+}
+
+impl Foe {
+    /// Its blow, at `luck` x its momentum.
+    pub(crate) fn blow(&self, luck: f32) -> Blow {
+        let mut b = if self.natural { materials::natural_blow(self.key, self.material.as_deref(), self.size) }
+            else { materials::weapon_blow(self.key, self.material.as_deref().unwrap_or("iron"), 1.0) };
+        b.momentum *= luck;
+        b
+    }
+}
+
+/// What `foe` strikes with: a beast's tusks, horns, mandibles, tentacles, talons or jaws; raiders
+/// carry their people's arms (the same weapon for the same people, by the name).
+pub(crate) fn foe_of(foe: &str, monster: Option<&crate::monsters::Monster>) -> Foe {
+    if let Some(m) = monster {
+        let has = |t: &str| m.tweaks.iter().any(|x| x == t);
+        let key = if has("tusks") { "tusks" } else if has("horns") { "horns" } else if has("mandibles") { "mandibles" } else if has("tentacles") { "tentacles" } else if m.base == "bird" { "talons" } else { "jaws" };
+        return Foe { words: format!("its {}", key), key, natural: true, material: m.material.clone(), size: m.size.max(0.6) };
+    }
+    let (words, key) = [("a spear", "spear"), ("an axe", "axe"), ("a sword", "sword"), ("a mace", "mace"), ("a club", "club"), ("a long knife", "long knife")][(crate::persona::seed_of(foe.split(", led by ").next().unwrap_or(foe), 0xA4E5) % 6) as usize];
+    Foe { words: words.to_string(), key, natural: false, material: Some(if key == "club" { "wood" } else { "iron" }.to_string()), size: 1.0 }
+}
+
+/// The parts of the foe a blow may land on.
+fn foe_parts(monster: Option<&crate::monsters::Monster>) -> Vec<String> {
+    let mut v = if monster.is_some() { vec!["head".to_string(), "flank".to_string(), "leg".to_string()] } else { vec!["arm".to_string(), "shoulder".to_string(), "leg".to_string()] };
+    if let Some(m) = monster { for t in &m.tweaks { match t.as_str() { "wings" => v.push("wing".into()), "tail" => v.push("tail".into()), "tentacles" => v.push("tentacle".into()), "shell" => v.push("shell".into()), "horns" => v.push("horn".into()), _ => {} } } }
+    v
+}
+
+/// The layers of the foe's `part`: a beast's covering (or plates of its substance) over its
+/// flesh and bone, at its size; a raider's flesh.
+fn foe_layers(monster: Option<&crate::monsters::Monster>, part: &str) -> Vec<Layer> {
+    match monster {
+        Some(m) => {
+            let cover = m.material.as_deref().map(|x| (x, true)).unwrap_or((m.skin.as_str(), false));
+            materials::body("beast", part, m.size.max(0.6), Some(cover), None)
+        }
+        None => materials::body("raider", part, 1.0, None, None),
     }
 }
 
 impl Colony {
     fn roll(&self, salt: u64) -> f32 { (crate::history::settlers::hash_pub(self.seed ^ self.clock.tick, salt) % 10_000) as f32 / 10_000.0 }
+
+    /// The layers of settler `i`'s `part`: skin, fat, muscle and bone by their toughness, under
+    /// their armour if `armoured` and it covers the part.
+    pub(crate) fn body_of(&self, i: usize, part: &str, armoured: bool) -> Vec<Layer> {
+        let tough = (self.settlers[i].persona.attr(Attr::Toughness) / 1000.0).clamp(0.6, 1.6);
+        let worn = if armoured { self.armour_of(i).map(|a| (a.material.as_str(), a.piece.as_str(), a.quality)) } else { None };
+        materials::body("settler", part, tough, None, worn)
+    }
+
+    /// Settler `i`'s blow with `arms`: strength x the drill (x(1 + 0.5 x skill)) x the maker's hand x `luck`.
+    fn settler_blow(&self, i: usize, arms: &Arms, luck: f32) -> Blow {
+        let strength = self.settlers[i].persona.attr(Attr::Strength) / 1000.0 * (1.0 + 0.5 * self.fight_skill(i)) * arms.quality * luck;
+        materials::weapon_blow(arms.subtype, &arms.material, strength)
+    }
+
+    /// The harm settler `i`'s blow does a beast on the mean, over its parts (an expedition's reckoning).
+    pub(crate) fn blow_harm(&self, i: usize, monster: Option<&crate::monsters::Monster>) -> f32 {
+        let arms = weapon(self, i);
+        let blow = self.settler_blow(i, &arms, 1.0);
+        let parts = foe_parts(monster);
+        parts.iter().map(|p| materials::strike(&blow, &foe_layers(monster, p)).harm).sum::<f32>() / parts.len().max(1) as f32
+    }
 
     /// Give settler `i` a wound on `part` of `severity` from `from`; it heals at their pace.
     pub(crate) fn wound(&mut self, i: usize, part: &str, severity: u8, from: String) {
@@ -109,21 +194,15 @@ impl Colony {
         // The foe as named before raiders become "one of the raiders" (for vows).
         let named = foe.to_string();
         let size = monster.map_or(1.0, |m| m.size).max(0.6);
-        let hide = monster.and_then(|m| m.material.clone()).unwrap_or_else(|| monster.map(|m| m.skin.clone()).unwrap_or_else(|| "hide".into()));
-        let hard = monster.and_then(|m| m.material.as_deref()).map_or(false, |m| matches!(m, "granite" | "basalt" | "obsidian" | "iron" | "copper" | "bone" | "glass" | "slate" | "ice" | "coral"));
-        // What the foe strikes with: a beast's own body, a raider's spear.
-        let natural = monster.map(|m| if m.tweaks.iter().any(|t| t == "tusks") { "its tusks" } else if m.tweaks.iter().any(|t| t == "horns") { "its horns" } else if m.tweaks.iter().any(|t| t == "mandibles") { "its mandibles" } else if m.tweaks.iter().any(|t| t == "tentacles") { "its tentacles" } else if m.base == "bird" { "its talons" } else { "its jaws" })
-            // Raiders carry their people's arms: the same weapon for the same people.
-            .unwrap_or_else(|| ["a spear", "an axe", "a sword", "a mace", "a club", "a long knife"][(crate::persona::seed_of(foe.split(", led by ").next().unwrap_or(foe), 0xA4E5) % 6) as usize]);
+        // What the foe strikes with: a beast's own body, a raider's arms.
+        let arms_of_foe = foe_of(foe, monster);
+        let natural = arms_of_foe.words.clone();
+        let natural = natural.as_str();
         let foe_word = if monster.is_some() { foe.to_string() } else { "One of the raiders".to_string() };
         let foe = foe_word.as_str();
         // Whose part a blow lands on.
         let its = if monster.is_some() { "its" } else { "the raider's" };
-        let their_parts: Vec<String> = {
-            let mut v = if monster.is_some() { vec!["head".to_string(), "flank".to_string(), "leg".to_string()] } else { vec!["arm".to_string(), "shoulder".to_string(), "leg".to_string()] };
-            if let Some(m) = monster { for t in &m.tweaks { match t.as_str() { "wings" => v.push("wing".into()), "tail" => v.push("tail".into()), "tentacles" => v.push("tentacle".into()), "shell" => v.push("shell".into()), "horns" => v.push("horn".into()), _ => {} } } }
-            v
-        };
+        let their_parts = foe_parts(monster);
         let vname = self.settlers[victim].name.clone();
         let pick_part = |r: f32| -> &'static str {
             let total: u32 = PARTS.iter().map(|p| p.1).sum();
@@ -131,6 +210,7 @@ impl Colony {
             for (p, w) in PARTS { if x < w { return p; } x -= w; }
             "body"
         };
+        let the = |t: &str| t.replacen("a ", "the ", 1).replacen("an ", "the ", 1);
         // The first blow: the foe on the nearest, the victim.
         let dodge = self.settlers[victim].persona.attr(Attr::Agility) / 1000.0;
         if outcome != "death" && self.roll(1) < 0.25 * dodge {
@@ -168,45 +248,69 @@ impl Colony {
             }
             "death" => lines.push(format!("The others come running, too late.")),
             "rescue" => {
-                // Struck, wounded on a part: broken if the foe is big and the victim not tough.
-                let tough = self.settlers[victim].persona.attr(Attr::Toughness) / 1000.0;
-                let sev = if size / tough.max(0.3) > 1.6 { 3 } else if size / tough.max(0.3) > 0.9 { 2 } else { 1 };
-                // Armour may turn it: a step lighter, a bruise not at all (`armour.rs`).
-                let turned = self.armour_turns(victim, 1.0, size, 0xA4A1);
-                let sev = if turned.is_some() { sev - 1 } else { sev };
+                // Struck on a part: the foe's blow against the victim's layers, under their
+                // armour (`armour.rs`) and without it, to say what the armour took.
+                let blow = arms_of_foe.blow(0.85 + 0.3 * self.roll(4));
+                let with = materials::strike(&blow, &self.body_of(victim, part, true)).outcome.severity();
+                let bare = materials::strike(&blow, &self.body_of(victim, part, false)).outcome.severity().max(1);
+                let worn = self.armour_of(victim).map(|a| a.kind.clone());
+                let sev = if worn.is_none() { bare } else { with };
                 if sev == 0 {
-                    lines.push(format!("{} catches {} with {}, but it does not get through {}.", foe, vname, natural, turned.unwrap_or_default().replacen("a ", "the ", 1).replacen("an ", "the ", 1)));
+                    lines.push(format!("{} catches {} with {}, but it does not get through {}.", foe, vname, natural, the(&worn.unwrap_or_default())));
                 } else {
                     let w = Wound { part: part.into(), severity: sev, healed_at: 0, from: String::new(), tended: 0, infected: false, fever_since: 0 };
-                    lines.push(format!("{} catches {} with {}: {}{}.", foe, vname, natural, w.word(), turned.map(|t| format!(", though {} took the worst of it", t.replacen("a ", "the ", 1).replacen("an ", "the ", 1))).unwrap_or_default()));
+                    let took = worn.filter(|_| sev < bare).map(|t| format!(", though {} took the worst of it", the(&t))).unwrap_or_default();
+                    lines.push(format!("{} catches {} with {}: {}{}.", foe, vname, natural, w.word(), took));
                     self.wound(victim, part, sev, format!("{}, the night of day {}", natural.replacen("its ", &format!("{}'s ", foe), 1), day));
                 }
             }
             _ => {}
         }
         for (k, &d) in defenders.iter().enumerate().take(3) {
-            let (arm, force) = weapon(self, d);
+            let arms = weapon(self, d);
+            let arm = arms.words.clone();
             let dname = self.settlers[d].name.clone();
             let p = &self.settlers[d].persona;
             let hit = (p.attr(Attr::Agility) / 1000.0 * 0.5 + 0.3 + 0.1 * size + 0.25 * self.fight_skill(d)).min(0.95);
-            let power = p.attr(Attr::Strength) / 1000.0 * force / size;
             let target = &their_parts[(self.roll(10 + k as u64) * their_parts.len() as f32) as usize % their_parts.len()];
             if self.roll(20 + k as u64) > hit {
                 lines.push(format!("{} swings {} at {} {} and misses.", dname, arm, its, target));
-            } else if hard && power < 1.6 {
-                lines.push(format!("{}'s {} glances off the {} of {} {} with a ring.", dname, arm.trim_start_matches("an ").trim_start_matches("a "), hide, its, target));
             } else {
-                let what = if power > 1.4 { "bites deep into" } else if power > 0.8 { "cuts" } else { "bruises" };
-                lines.push(format!("{} {} {} {} with {}.", dname, what, its, target, arm));
-                self.blows.0 += power;
-                if power > hardest { hardest = power; self.blows.1 = Some(d); }
+                // The blow against the layers of the part it lands on (`materials.rs`).
+                let blow = self.settler_blow(d, &arms, 0.85 + 0.3 * self.roll(40 + k as u64));
+                let struck = materials::strike(&blow, &foe_layers(monster, target));
+                match struck.outcome {
+                    Outcome::Glance | Outcome::Turned => {
+                        let what = if struck.stopped == *target { format!("{} {}", its, target) } else { format!("the {} of {} {}", struck.stopped, its, target) };
+                        lines.push(format!("{}'s {} glances off {} with a ring.", dname, arm.trim_start_matches("an ").trim_start_matches("a "), what));
+                    }
+                    o => {
+                        let what = match o {
+                            Outcome::Bruise => "bruises",
+                            Outcome::Cut => "cuts",
+                            Outcome::Deep => "bites deep into",
+                            _ => if matches!(target.as_str(), "head" | "shell" | "horn") { "cracks" } else { "breaks" },
+                        };
+                        // A thrust or a cut that breaks the bone says so after it.
+                        if o == Outcome::Broken && blow.edge {
+                            lines.push(format!("{} drives {} into {} {}, and the bone {}.", dname, arm, its, target, if target == "head" { "cracks" } else { "breaks" }));
+                        } else {
+                            lines.push(format!("{} {} {} {} with {}.", dname, what, its, target, arm));
+                        }
+                        self.blows.0 += struck.harm;
+                        if struck.harm > hardest { hardest = struck.harm; self.blows.1 = Some(d); }
+                    }
+                }
             }
-            // The foe answers the bold: a bruise for a defender who stood close.
+            // The foe answers the bold: a bruise for a defender who stood close, unless their
+            // armour turns the glancing blow.
             // (Those behind the first are caught less often.)
             if outcome != "death" && self.roll(30 + 2 * k as u64) < if k == 0 { 0.3 } else { 0.15 } {
                 let dp = pick_part(self.roll(31 + 2 * k as u64));
-                if let Some(t) = self.armour_turns(d, 1.0, size, 0xA4A2) {
-                    lines.push(format!("{} catches {} in the {} with {}, but {} turns it.", foe, dname, if dp == "body" { "ribs" } else { dp }, natural, t.replacen("a ", "the ", 1).replacen("an ", "the ", 1)));
+                let blow = arms_of_foe.blow(0.5 * (0.85 + 0.3 * self.roll(50 + k as u64)));
+                let turned = self.armour_of(d).filter(|_| materials::strike(&blow, &self.body_of(d, dp, true)).outcome.severity() == 0).map(|a| a.kind.clone());
+                if let Some(t) = turned {
+                    lines.push(format!("{} catches {} in the {} with {}, but {} turns it.", foe, dname, if dp == "body" { "ribs" } else { dp }, natural, the(&t)));
                 } else {
                     lines.push(format!("{} catches {} in the {} with {}: a bruise to remember.", foe, dname, if dp == "body" { "ribs" } else { dp }, natural));
                     self.wound(d, dp, 1, format!("{}, the night of day {}", natural.replacen("its ", &format!("{}'s ", foe), 1), day));
@@ -219,11 +323,12 @@ impl Colony {
             for d in 0..self.settlers.len() {
                 if d == victim || defenders.iter().take(3).any(|&x| x == d) || !self.settlers[d].alive || self.settlers[d].ill_until > self.clock.tick || theirs(self, d) { continue; }
                 if self.settlers[d].past.as_ref().map_or(false, |p| p.age < 14) { continue; }
-                let (_, force) = weapon(self, d);
+                let arms = weapon(self, d);
                 let p = &self.settlers[d].persona;
                 let hit = (p.attr(Attr::Agility) / 1000.0 * 0.5 + 0.3 + 0.1 * size + 0.25 * self.fight_skill(d)).min(0.95);
-                let power = p.attr(Attr::Strength) / 1000.0 * force / size;
-                if !(hard && power < 1.6) { self.blows.0 += 0.5 * hit * power; }
+                let target = &their_parts[(self.roll(60 + d as u64) * their_parts.len() as f32) as usize % their_parts.len()];
+                let struck = materials::strike(&self.settler_blow(d, &arms, 1.0), &foe_layers(monster, target));
+                self.blows.0 += 0.5 * hit * struck.harm;
             }
             if self.blows.0 > before + 0.3 { lines.push(format!("The rest of the camp crowds in with {} and torches.", if self.iron_worked() { "iron and stakes" } else { "axes, stakes" })); }
         }
@@ -245,12 +350,14 @@ impl Colony {
     pub(crate) fn maybe_slay(&mut self, threat: &arc::Threat, need: f32, at: Pos) -> bool {
         let Some(m) = threat.monster.as_ref() else { return false };
         let (harm, striker) = self.blows;
+        // (Debug: PLANET_DEBUG_BLOWS prints the camp's harm against what the beast needs.)
+        if std::env::var("PLANET_DEBUG_BLOWS").is_ok() { eprintln!("blows day {}: {} harm {:.2} need {:.2} (size {:.2}, {})", self.clock.day(), threat.name, harm, need * m.size.max(0.6), m.size, m.material.clone().unwrap_or_else(|| m.skin.clone())); }
         let Some(k) = striker else { return false };
         if harm < need * m.size.max(0.6) { return false; }
         let name = threat.name.clone();
         let day = self.clock.day();
         let kname = self.settlers[k].name.clone();
-        let (arm, _) = weapon(self, k);
+        let arm = weapon(self, k).words;
         let part = if m.tweaks.iter().any(|t| t == "shell") { "the soft place under its shell" } else if m.flies { "its throat as it rises" } else { "its heart" };
         let killed = if m.kills > 0 { format!(", that had killed {} in the world's long history", m.kills) } else { String::new() };
         let line = format!("{} drives {} into {}: {}{} falls, and does not rise.", kname, arm, part, name, killed);
