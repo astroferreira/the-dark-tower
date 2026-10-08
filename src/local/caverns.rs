@@ -59,91 +59,127 @@ fn openness(rock: crate::erosion::materials::RockType) -> f32 {
     match rock { Limestone => 0.22, Sandstone => 0.08, Shale => 0.04, Sediment => 0.0, Basalt => -0.04, Granite => -0.08, Ice => -0.3 }
 }
 
-/// Carve the caverns into `map` (after its rock is laid). `refs` is each column's smooth surface
-/// elevation (m), `abs` a column's absolute position (m). Returns the layers that hold room.
-pub(super) fn carve(map: &mut LocalMap, refs: &[f32], hs: &TileHandshake, abs: &dyn Fn(usize, usize) -> (f64, f64), seed: u32, tile: (usize, usize)) -> Vec<Cavern> {
-    let n = map.width;
+/// The rock a layer lies in under a tile: deeper layers further down the tile's stack.
+fn rock_at(hs: &TileHandshake, depth_m: f32) -> crate::erosion::materials::RockType {
+    let mut d = (depth_m / Z_STEP_M) as i32;
+    let mut rock = crate::erosion::materials::RockType::Granite;
+    for l in &hs.rock_stack { rock = l.rock_type; if d <= l.thickness as i32 { break; } d -= l.thickness as i32; }
+    rock
+}
+
+/// What a world tile gives its caverns: each layer's openness (from the rock it lies in) and how
+/// wet they are (the tile's water table).
+pub(super) fn tile_fields(hs: &TileHandshake) -> ([f32; LAYERS], f32) {
+    let mut open = [0.0; LAYERS];
+    for (k, o) in open.iter_mut().enumerate() { *o = openness(rock_at(hs, DEPTH_M[k])) + 0.04 * k as f32; }
+    (open, hs.water_table.clamp(0.0, 1.0))
+}
+
+/// Depth (m) of a layer's lowest open cell below the region's smooth surface: the bottom of the
+/// deepest band (86 + 10 + 9.6 m) stops here, in absolute terms, so it does not hang on how deep
+/// one embark's map happens to reach.
+pub(super) const BOTTOM_M: f32 = 100.0;
+/// Where each layer's pools stand, below the band's centre (m): the mean of the floors' depth
+/// under the centre on dev embarks, so the pools stand about where they stood when the line
+/// was the embark's mean floor.
+const POOL_M: [f32; LAYERS] = [2.5, 3.0, 3.5];
+
+/// One layer's open run in a column, in absolute levels (level L spans L*2 .. L*2+2 m): the
+/// floor's level, the top open level, and the band's centre (m) for the pools.
+#[derive(Clone, Copy)]
+pub(super) struct Run { pub floor: i32, pub top: i32, pub centre: f32 }
+
+/// Where the layers open, column by column, in absolute levels: a pure function of each
+/// column's place (its smooth surface `refs`, its ground level `ground` for the roof, the coarse
+/// `fields` from the world tiles, 3-D noise over absolute position), so two embarks that hold
+/// the same place open the same cells there. Planned before the map is laid out so the map can
+/// be made deep enough to hold every run whole.
+pub(super) fn plan(refs: &[f32], ground: &[i32], fields: &[([f32; LAYERS], f32)], abs: &dyn Fn(usize, usize) -> (f64, f64), n: usize, seed: u32) -> Vec<[Option<Run>; LAYERS]> {
     let shape = Perlin::new(seed.wrapping_add(811));
     let detail = Perlin::new(seed.wrapping_add(812));
     let lift = Perlin::new(seed.wrapping_add(813));
     let band_n = Perlin::new(seed.wrapping_add(814));
-    // The rock the layers lie in: deeper layers further down the tile's stack.
-    let rock_at = |depth_m: f32| -> crate::erosion::materials::RockType {
-        let mut d = (depth_m / Z_STEP_M) as i32;
-        let mut rock = crate::erosion::materials::RockType::Granite;
-        for l in &hs.rock_stack { rock = l.rock_type; if d <= l.thickness as i32 { break; } d -= l.thickness as i32; }
-        rock
-    };
+    let mut out = vec![[None; LAYERS]; n * n];
+    for col in 0..n * n {
+        let (mx, my) = abs(col % n, col / n);
+        let lifted = 10.0 * fbm(&lift, mx / 400.0, my / 400.0, 2);
+        for k in 0..LAYERS {
+            let open_k = fields[col].0[k];
+            let centre = refs[col] - DEPTH_M[k] + lifted;
+            let band = BAND_M[k] * (0.45 + 0.75 * (0.5 + 0.5 * fbm(&band_n, mx / 150.0 + k as f64 * 31.0, my / 150.0, 2)));
+            let bottom = ((refs[col] - BOTTOM_M) / Z_STEP_M).ceil() as i32;
+            let lo = (((centre - band) / Z_STEP_M).floor() as i32).max(bottom);
+            let hi = (((centre + band) / Z_STEP_M).ceil() as i32).min(ground[col] - ROOF);
+            if hi <= lo { continue; }
+            // Open cells in the band: 3-D noise over absolute position.
+            let mut first_open: Option<i32> = None;
+            let mut last_open = i32::MIN;
+            for z in lo..=hi {
+                let zm = (z as f32 + 0.5) * Z_STEP_M;
+                let edge = 1.0 - ((zm - centre).abs() / band).min(1.0);
+                let v = shape.get([mx / 38.0, my / 38.0, zm as f64 / 9.0 + k as f64 * 50.0]) as f32
+                    + 0.45 * detail.get([mx / 14.0, my / 14.0, zm as f64 / 4.0 + k as f64 * 50.0]) as f32;
+                if v + open_k + 0.5 * edge > 0.82 {
+                    // Keep one solid run per column per layer (no floating slabs).
+                    if first_open.is_none() { first_open = Some(z); }
+                    if last_open != i32::MIN && z > last_open + 1 { break; }
+                    last_open = z;
+                }
+            }
+            // The ground of the cavern is the cell below the open run.
+            if let Some(a) = first_open { out[col][k] = Some(Run { floor: a - 1, top: last_open, centre }); }
+        }
+    }
+    out
+}
+
+/// Carve the planned caverns into `map` (after its rock is laid; its `z_min_m` deep enough for
+/// every run), with pools, fungus and moss, and name the layers that hold room. `fields` gives
+/// each column's wetness, `abs` its absolute position (m); `hs` (this embark's own tile) names
+/// what lives there and what sleeps below.
+pub(super) fn carve(map: &mut LocalMap, runs: &[[Option<Run>; LAYERS]], fields: &[([f32; LAYERS], f32)], hs: &TileHandshake, abs: &dyn Fn(usize, usize) -> (f64, f64), seed: u32, tile: (usize, usize)) -> Vec<Cavern> {
+    let n = map.width;
     let wet = hs.water_table.clamp(0.0, 1.0);
+    let base = (map.z_min_m / Z_STEP_M).round() as i32;
     let mean_surface = map.surface_z.iter().map(|&z| z as f64).sum::<f64>() / map.surface_z.len().max(1) as f64;
     map.cavern_z = vec![[(-1, -1); LAYERS]; n * n];
     let mut out = Vec::new();
     for k in 0..LAYERS {
-        let open_k = openness(rock_at(DEPTH_M[k])) + 0.04 * k as f32;
         let (mut floors, mut zsum) = (0usize, 0i64);
-        for j in 0..n {
-            for i in 0..n {
-                let (mx, my) = abs(i, j);
-                let col = j * n + i;
-                let centre = refs[col] - DEPTH_M[k] + 10.0 * fbm(&lift, mx / 400.0, my / 400.0, 2);
-                let band = BAND_M[k] * (0.45 + 0.75 * (0.5 + 0.5 * fbm(&band_n, mx / 150.0 + k as f64 * 31.0, my / 150.0, 2)));
-                let sz = map.surface_z[col];
-                let lo = (((centre - band - map.z_min_m) / Z_STEP_M).floor() as i32).max(2);
-                let hi = (((centre + band - map.z_min_m) / Z_STEP_M).ceil() as i32).min(sz - ROOF);
-                if hi <= lo { continue; }
-                // Open cells in the band: 3-D noise over absolute position.
-                let mut first_open: Option<i32> = None;
-                let mut last_open = -1;
-                for z in lo..=hi {
-                    let zm = map.z_min_m + (z as f32 + 0.5) * Z_STEP_M;
-                    let edge = 1.0 - ((zm - centre).abs() / band).min(1.0);
-                    let v = shape.get([mx / 38.0, my / 38.0, zm as f64 / 9.0 + k as f64 * 50.0]) as f32
-                        + 0.45 * detail.get([mx / 14.0, my / 14.0, zm as f64 / 4.0 + k as f64 * 50.0]) as f32;
-                    if v + open_k + 0.5 * edge > 0.82 {
-                        // Keep one solid run per column per layer (no floating slabs).
-                        if first_open.is_none() { first_open = Some(z); }
-                        if last_open >= 0 && z > last_open + 1 { break; }
-                        last_open = z;
-                    }
-                }
-                let Some(a) = first_open else { continue };
-                if a - 1 < 1 || last_open < a { continue; }
-                for z in a..=last_open {
-                    let c = map.idx(i, j, z as usize);
-                    map.cells[c] = Cell::AIR;
-                }
-                // The ground of the cavern is the cell below the open run.
-                let f = map.idx(i, j, (a - 1) as usize);
-                map.cells[f].shape = Shape::Floor;
-                map.cavern_z[col][k] = ((a - 1) as i16, last_open as i16);
-                floors += 1;
-                zsum += (a - 1) as i64;
+        for col in 0..n * n {
+            let Some(r) = runs[col][k] else { continue };
+            let (f, t) = (r.floor - base, r.top - base);
+            if f < 1 || t < f + 1 || t as usize >= map.depth { continue; }
+            let (i, j) = (col % n, col / n);
+            for z in f + 1..=t {
+                let c = map.idx(i, j, z as usize);
+                map.cells[c] = Cell::AIR;
             }
+            let fl = map.idx(i, j, f as usize);
+            map.cells[fl].shape = Shape::Floor;
+            map.cavern_z[col][k] = (f as i16, t as i16);
+            floors += 1;
+            zsum += f as i64;
         }
-        if floors < MIN_FLOOR {
-            // Too little room to count: fill it back in.
-            for col in 0..n * n {
-                let (f, t) = map.cavern_z[col][k];
-                if f < 0 { continue; }
-                let (i, j) = (col % n, col / n);
-                let below = map.cell(i, j, (f - 1).max(0) as usize).material;
-                for z in f..=t { let c = map.idx(i, j, z as usize); map.cells[c] = Cell { shape: Shape::Wall, material: below, water: 0, plant: Plant::None, boulder: false }; }
-                map.cavern_z[col][k] = (-1, -1);
-            }
-            continue;
-        }
-        let mean_z = (zsum / floors as i64) as i32;
-        // Pools in the hollows: water up to a level set by the tile's water table.
-        let water_line = mean_z - 2 + (wet * 2.0).round() as i32 - k as i32;
+        // Too little room under this embark to count as a layer (it is still carved: the same
+        // pocket may open wide under the next embark).
+        let listed = floors >= MIN_FLOOR;
+        let mean_z = if floors > 0 { (zsum / floors as i64) as i32 } else { 0 };
+        // Pools in the hollows: water up to a line under the band's centre, higher where the
+        // tile's water table is high (keyed on place, so a pool meets itself across embarks).
         let (mut water_cells, mut fungus) = (0, 0);
         for col in 0..n * n {
             let (f, t) = map.cavern_z[col][k];
             if f < 0 { continue; }
             let (i, j) = (col % n, col / n);
             let (mx, my) = abs(i, j);
+            let wet_c = fields[col].1;
+            let centre = runs[col][k].map_or(0.0, |r| r.centre);
+            let line_m = centre - POOL_M[k] + ((wet_c * 2.0).round() - 2.0 - k as f32) * Z_STEP_M;
+            let water_line = (line_m / Z_STEP_M).floor() as i32 - base;
             let (gx, gy) = ((mx / TILE_M as f64).floor() as i64, (my / TILE_M as f64).floor() as i64);
             let mut flooded = false;
-            for z in (f + 1)..=t.min(water_line as i16) {
+            for z in (f + 1)..=t.min(water_line.clamp(-1, i16::MAX as i32) as i16) {
                 let c = map.idx(i, j, z as usize);
                 map.cells[c].water = WATER_FULL;
                 flooded = true;
@@ -152,9 +188,10 @@ pub(super) fn carve(map: &mut LocalMap, refs: &[f32], hs: &TileHandshake, abs: &
             if flooded { continue; }
             let fl = map.idx(i, j, f as usize);
             let r = hash(gx, gy, 0xCA7E + k as u64);
-            if t > f + 1 && r < 0.05 + 0.08 * wet + 0.03 * k as f32 { map.cells[fl].plant = Plant::Tree(TreeKind::Fungus); fungus += 1; }
+            if t > f + 1 && r < 0.05 + 0.08 * wet_c + 0.03 * k as f32 { map.cells[fl].plant = Plant::Tree(TreeKind::Fungus); fungus += 1; }
             else if r < 0.4 { map.cells[fl].plant = Plant::Grass; }
         }
+        if !listed { continue; }
         let hk = |salt: u64| { let mut h = (tile.0 as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (tile.1 as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ salt ^ seed as u64; h ^= h >> 31; h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9); h ^ (h >> 29) };
         let pool = LIFE[k][if wet > 0.45 { 1 } else { 0 }];
         let mut life: Vec<String> = Vec::new();
@@ -171,7 +208,7 @@ pub(super) fn carve(map: &mut LocalMap, refs: &[f32], hs: &TileHandshake, abs: &
         let bseed = block.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ block.1.wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ (seed as u64).wrapping_mul(0xFB);
         let mut spheres = vec!["darkness".to_string(), "earth".to_string()];
         if wet > 0.45 { spheres.push("water".into()); }
-        if matches!(rock_at(DEPTH_M[deep.layer as usize]), crate::erosion::materials::RockType::Basalt) { spheres.push("fire".into()); }
+        if matches!(rock_at(hs, DEPTH_M[deep.layer as usize]), crate::erosion::materials::RockType::Basalt) { spheres.push("fire".into()); }
         let size = 2.0 + (bseed % 200) as f32 / 100.0;
         let m = crate::monsters::generate(&crate::monsters::Request { kind: "forgotten".into(), spheres, size, evil: bseed % 3 == 0, ..Default::default() }, bseed);
         use rand::SeedableRng;

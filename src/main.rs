@@ -80,6 +80,11 @@ struct Args {
     #[arg(long)]
     embark_survey: bool,
 
+    /// Print, for the land tiles round the dev embark (or --tiles-center), whether the world has a
+    /// river there and whether the default embark carries it
+    #[arg(long)]
+    river_survey: bool,
+
     /// Live the dev colony 40 days, kill its builder, and see who takes up the hammer
     #[arg(long)]
     sim_roles: bool,
@@ -584,7 +589,7 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
@@ -1996,6 +2001,10 @@ fn main() {
         }
         if args.embark_survey {
             tiles::viewer::embark_survey(&world_data, history.as_ref());
+            return;
+        }
+        if let (true, Some(tile)) = (args.river_survey, center) {
+            tiles::viewer::river_survey(&world_data, history.as_ref(), tile);
             return;
         }
         if let (true, Some(h)) = (args.sites, history.as_ref()) {
