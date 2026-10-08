@@ -1323,6 +1323,18 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                     }
                 }
             }
+            RoomKind::Workshop => {
+                // The benches: two heavy tables with tools on them, and the room named.
+                if let Some(c) = r.bed {
+                    for (ox, oy) in [(-1.0f32, -1.0f32), (1.0, 1.0)] {
+                        let (x, y) = to_screen(c.0 as f32 + ox, c.1 as f32 + oy);
+                        rect(&mut put, x + t * 0.05, y + t * 0.25, x + t * 1.9, y + t * 0.75, [150.0, 112.0, 76.0]);
+                        for k in 0..(t * 0.4) as i64 { put((x + t * 0.6) as i64 + k, (y + t * 0.45) as i64, INK, 0.8); }
+                    }
+                    let (lx, ly) = to_screen(c.0 as f32 + 0.5, c.1 as f32 - 1.8);
+                    labels.push((lx, ly, "the workshops".into(), false));
+                }
+            }
             RoomKind::Corridor => {}
         }
     }
@@ -1384,7 +1396,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         let d = cam.z - zc;
         let mut kinds: Vec<String> = Vec::new();
         for (r, dug) in colony.rooms.iter().map(|r| (r, true)).chain(colony.dig_rooms.iter().map(|r| (r, false))).filter(|(r, _)| r.z == cam.z) {
-            let k = match r.kind { RoomKind::Bedroom => "bedrooms", RoomKind::GreatHall => "the great hall", RoomKind::Hall => "the hall in the hill", RoomKind::Cellar => "the cellar", RoomKind::Tomb => "the tombs", RoomKind::Corridor => continue };
+            let k = match r.kind { RoomKind::Bedroom => "bedrooms", RoomKind::GreatHall => "the great hall", RoomKind::Hall => "the hall in the hill", RoomKind::Cellar => "the cellar", RoomKind::Tomb => "the tombs", RoomKind::Workshop => "the workshops", RoomKind::Corridor => continue };
             let k = if dug { k.to_string() } else { format!("{} (being dug)", k) };
             if !kinds.iter().any(|x| *x == k) { kinds.push(k); }
         }

@@ -20,7 +20,7 @@ use super::projects::ProjectKind;
 
 /// What a dug room is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RoomKind { Hall, Cellar, Bedroom, GreatHall, Corridor, Tomb }
+pub enum RoomKind { Hall, Cellar, Bedroom, GreatHall, Corridor, Tomb, Workshop }
 
 impl RoomKind {
     pub fn word(self) -> &'static str {
@@ -31,6 +31,7 @@ impl RoomKind {
             RoomKind::GreatHall => "the great hall",
             RoomKind::Corridor => "a passage",
             RoomKind::Tomb => "a tomb",
+            RoomKind::Workshop => "the workshops below",
         }
     }
 }
@@ -120,7 +121,7 @@ impl Colony {
                 let want = (self.grown_without_rooms() as i32).clamp(2, 8);
                 self.plan_level(kind, want)
             }
-            ProjectKind::GreatHall | ProjectKind::Tombs => self.plan_level(kind, 0),
+            ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Workshops => self.plan_level(kind, 0),
             ProjectKind::Moat => self.plan_moat(),
             // The deep shaft (`deep.rs`): the stair on down from its foot (the cavern floor) to
             // the deepest rock, through the caverns below (a stair is let down through each).
@@ -182,6 +183,9 @@ impl Colony {
                 for a in a0..=a0 + 1 { for b in [2, 3] { layout.push((a, side * b, 1 + k)); } }
                 beds_at.push((a0 + 1, side * 3, 1 + k));
             }
+        } else if kind == ProjectKind::Workshops {
+            for a in 1..=2 { layout.push((a, 0, 0)); }
+            for a in 3..=7 { for b in -2..=2 { layout.push((a, b, 200)); } }
         } else {
             for a in 1..=2 { layout.push((a, 0, 0)); }
             for a in 3..=9 { for b in -2..=2 { layout.push((a, b, 100)); } }
@@ -221,6 +225,8 @@ impl Colony {
                         let bed = beds_at.iter().find(|b| b.2 == k).map(|b| at(b.0, b.1));
                         rooms.push(room(RoomKind::Bedroom, zb, cells.iter().filter(|c| c.1 == k).map(|c| c.0).collect(), bed));
                     }
+                } else if kind == ProjectKind::Workshops {
+                    rooms.push(room(RoomKind::Workshop, zb, cells.iter().filter(|c| c.1 == 200).map(|c| c.0).collect(), Some(at(5, 0))));
                 } else {
                     rooms.push(room(RoomKind::GreatHall, zb, cells.iter().filter(|c| c.1 == 100).map(|c| c.0).collect(), Some(at(6, 0))));
                 }
@@ -553,13 +559,15 @@ impl Colony {
         let z = match job {
             Job::Sleep => if self.bedroom_of(i).map_or(false, |r| r.bed == Some(target)) { self.bedroom_of(i).map(|r| r.z) } else { in_room(&[RoomKind::Hall, RoomKind::Cellar]) },
             Job::Eat => in_room(&[RoomKind::GreatHall, RoomKind::Hall, RoomKind::Cellar]),
-            Job::Craft => in_room(&[RoomKind::Hall, RoomKind::GreatHall]),
+            Job::Craft => in_room(&[RoomKind::Workshop, RoomKind::Hall, RoomKind::GreatHall]),
             // A fishing place on a cavern's floor.
             Job::Fish(t) => self.cave_fish.iter().find(|c| c.0 == t).map(|c| c.1),
             // A fungus tree on the cavern floor: stand beside it down there.
             Job::Fell(t) if self.floor_plant_pub(t) == crate::local::Plant::None => self.cavern_tree_level(t),
             // The watch climbs to the lookout's platform.
             Job::Wander(t) if why.starts_with("Keeping watch") && self.tower.map_or(false, |(p, _)| p == t) => self.tower.map(|(_, z)| z),
+            // (A mood holding the workshop below.)
+            Job::Wander(t) if why.contains("workshop") && in_room(&[RoomKind::Workshop]).is_some() => in_room(&[RoomKind::Workshop]),
             Job::Wander(_) => self.settlers.iter().enumerate()
                 .find(|(j, s)| *j != i && s.alive && s.pos == target && !why.starts_with("Playing"))
                 .map(|(j, _)| self.here3(j).2),
@@ -629,6 +637,14 @@ impl Colony {
             }
         }
         let has = |k: RoomKind| self.rooms.iter().any(|r| r.kind == k);
+        // Workshops below, once the workshop has made a good many works (a people of stone first).
+        let works_made = self.works.len();
+        if self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Workshop) && !has(RoomKind::Workshop) && day >= 40 && (masons || works_made >= 20) {
+            if let Some(plan) = self.plan_dig(ProjectKind::Workshops) {
+                let why = format!("{} works have been made at the workshop in the wind and the rain; benches cut in the rock below would keep the makers warm, beside the stair", works_made);
+                c.push((if masons { 1.3 } else { 0.6 }, ProjectKind::Workshops, why, plan.cuts.len() as u32, self.spine.unwrap().at));
+            }
+        }
         // A ditch round the wall, once the palisade stands and trouble keeps coming.
         let walled = self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Palisade);
         let chapters = self.arc.as_ref().map_or(0, |a| a.chapter);

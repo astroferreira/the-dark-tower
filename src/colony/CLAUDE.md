@@ -1475,3 +1475,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
 - `PLANET_FORCE_LEADER_FALL=1` lets a routed war band's leader fall whatever the blows (the test:
   led bands raid once or twice in 300 days). Chance tests that moved with the ditch now try two
   or three seeds (pet, caravan ambush).
+- Workshops below (`ProjectKind::Workshops`, `RoomKind::Workshop`, DF's underground
+  workshops): with the workshop standing, from day 40, for a stone-first people or after 20 works,
+  a level off the stair gets a 5x5 room with two benches (`plan_level`); `workshop_spot` then
+  returns its bench, so crafts (and a mood holding the workshop) go below. Dev 76/3/11: dug on days
+  40-57; seed 76 still makes 158 works in 200 days. Drawn with benches and named.

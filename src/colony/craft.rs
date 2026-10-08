@@ -63,6 +63,8 @@ impl Colony {
     pub(crate) fn workshop_spot(&self) -> Option<Pos> {
         // Inside by the open front, else just before it.
         let p = self.projects.iter().find(|p| p.done && p.kind == projects::ProjectKind::Workshop)?;
+        // The benches below, once cut (`delve.rs`).
+        if let Some(b) = self.rooms.iter().find(|r| r.kind == super::delve::RoomKind::Workshop).and_then(|r| r.bed) { return Some(b); }
         [(p.at.0 + 2, p.at.1 + 3), (p.at.0 + 2, p.at.1 + 4), (p.at.0 + 2, p.at.1 + 2)].into_iter().find(|&q| nav::passable(&self.map, q))
     }
 
