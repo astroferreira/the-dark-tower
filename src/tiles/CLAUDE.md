@@ -315,16 +315,17 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   `<prefix>_ui_settlers/_stocks/_works/_annals/_camp/_sheet.png` and `_ui_store.png` (the store
   close up with the hover chip and every glyph in a strip) and prints "UI leaf: N things to
   click"; `tests/colony.rs::the_ledger_leaves_render`.
-- NOT WIRED INTO THE WINDOW YET: `viewer.rs` still draws the old key bar (`HudState::bar`) and
-  has no tab keys, clicks, wheel scrolling, tools or sheet pause. To do: keep a `UiState`, call
-  `colony_ui::draw` after the HUD (pass `right: reserve_right`, `selected`, `hide_chip` when
-  `over_ui`, `bar: false`), map `Action`s onto the existing calls (`mark_place`,
-  `place_stone`, `favour_settler`, `send_dream` via `dream_for`, `ring_bell`, `name_input`,
-  `answer_refugees`, the Space/1-3/4 code), arm `Tool`s for map clicks, wheel over
-  `body_rect` -> `scroll_by`, no drag from the UI, Esc order (inspector, tool, sheet, panel,
-  card, leave), pause on opening a sheet (`paused_by_sheet`), click a settler -> `Sheet`,
-  `dream_buttons` / `choice_buttons` on the cards. `Tool::NamePlace` needs `name_place` to be
-  recorded in `interventions` (and `apply_intervention`) first: it is not today.
+- Wired into the window (2026-10-08, not yet tried by hand): `viewer.rs` keeps a `UiState`,
+  draws `colony_ui::draw` after the HUD (`right: reserve_right`, `selected`, `hide_chip` over
+  the UI, `bar: false`), C/I/O/L/T toggle the tabs, the wheel over `body_rect` scrolls the leaf
+  (and does not zoom), a press on the UI starts no drag, clicks run `Action`s through the same
+  calls as the keys (Space/skip by flags into the existing code), armed `Tool`s apply on the next
+  map click (bless/forbid stay armed; the hint chip shows the prompt), a click on a settler on
+  the map opens their sheet (`actions_sheet`: the clock stops, `paused_by_sheet` restarts it),
+  `dream_buttons` under the dream card, Esc order: inspector/card/dream first, then tool, sheet,
+  panel, then leave. `Tool::NamePlace` asks for the name (`place_input`) and calls `name_place`,
+  which is NOT recorded in `interventions` (a replay loses the name). Not done: the refugees'
+  `choice_buttons` (Y/N keys work).
 - Items: `colony::Item` carries `what: Stuff` (berries, fish, meat, grain, cave fungus,
   provisions, timber, stone; set where the load is made, kept through hauling; the simulation
   never reads it: the colony hash is unchanged). `glyphs.rs` draws 24 ink glyphs (one stamp:
@@ -332,3 +333,38 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   glyph (piled per cell, a count past 3) and the store as one heap per kind round the fire
   (`local_ink::store_heaps`, fixed slots; counts lettered from 10 px); carriers show the load's
   glyph; the hover chip names a heap or a thing on the ground.
+
+### A sprite for everything (branch ui-graphics, 2026-10-08)
+One ink treatment for every sprite (`ink.rs`: `Pen` draws shapes in a unit box with the atlas's
+wash, sepia rim, lit top-left edge and hatched far side; `facing_left` turns a sprite while the
+light stays top-left; `bone` = a pale stroke with an ink rim, for horns, poles, ropes). Review
+everything with `--sprite-sheet FILE.png` (bestiary; `FILE_folk.png` bubbles, strangers,
+furniture, artifacts; `FILE_moments.png` the moment roundels). The progress doc with images is
+the Claude Doc "Ink graphics: sprites and examples".
+- `beasts.rs`: body plans (profile quadruped with species proportions; spider, insect, crab,
+  lizard, serpent, worm from above; bat, fish, bird, blob, great two-legged) + parts.
+  `of_name` (game, herds, pets, cave life, the risen dead, werebeasts; whole-word match, "ox"
+  is not in "fox"), `of_monster` (base, tweaks, colour or substance, eyes, glow), `px_for` (56 px
+  per settler-width at the figures' scale), `world_beasts`/`draw_world` (legendary beasts at
+  their lairs on the world map from 6 px a tile; names via `build_labels`, rank 650).
+- `folk.rs`: raiders by race and threat kind (Shadow: horned, red-eyed; war band: helms, spears,
+  shields in `band_colours`; outlaws: hoods, clubs, bows), traders; drawn at 1.2x a settler.
+- `local_ink::draw_creature`/`creature_look`: Beast -> the arc's or a cavern's or an
+  expedition's monster; faces its next step, legs step by cell parity, game grazes; traders lead
+  a laden mule.
+- `camp_ink.rs`: fire, palisade stakes (wall cells within the ring not in a footprint), each
+  work's sprite (earth painted over stamped wall blocks first), jetty, chimneys, bell-cote,
+  banners, signboards (`emblem`), graves, standing/hall stones, stone marks by title, cages.
+  Store heaps step off roofs and the fire's ring (`store_heaps`).
+- `furniture.rs`: level-view fittings (beds in the owner's dress colour, table, coffins,
+  workshops, cellar, hatch, lair, ore cart, artifacts by kind).
+- `status_ink.rs`: `emblem_of` (break > strange mood > wound > need act > meal > drink > gloom)
+  drawn as a bubble by the head; `figure_marks` (bandage, office headgear, visitor's hat).
+  Children are drawn smaller by `past.age`.
+- `fx_ink.rs`: blows and blood (attacker within 1.6 cells), beast breath by its attack's effect,
+  the clash's melee and aftermath (`Colony::clash_tick`, cosmetic), siege tents, ghosts at night,
+  the bell, evil weather (`Colony::evil_weather_over`, read only) and snow.
+- `vignette.rs`: the moment card's roundel (`draw_moment` takes the colony; cards are 640 px with
+  it); a raid's beast from `Colony::foes_seen` (cosmetic, filled in `send_attackers`).
+- `--sim-snapshot` adds `_raidclose.png`, `_clash.png`, `_wild.png`. The colony hash (chronicle +
+  log) is unchanged by all of this.
