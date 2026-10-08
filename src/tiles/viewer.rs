@@ -1233,7 +1233,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         else { super::local_ink::draw_level(colony, lcam, &mut buf, w, h, history); }
                     }
                     log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: &status, mouse, right: 0, selected: None, hide_chip: false, bar: true }, &mut buf, w, h);
-                    if let Some(m) = &moment_card { super::colony_hud::draw_moment(m, &mut buf, w, h); }
+                    if let Some(m) = &moment_card { super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h); }
                     let prompt = if leave_asked {
                         Some((format!("Leave {}?", colony.name.clone().unwrap_or_else(|| "the camp".into())), "Enter to leave (the patron's acts are saved). Esc to stay.".to_string()))
                     } else if let Some(t) = &name_input {
@@ -1242,7 +1242,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         Some((format!("A dream for {}", colony.settlers[i].name), "1 the hut finished   2 plenty   3 rest   4 the watch   (Esc: none)".to_string()))
                     } else { None };
                     if let Some((title, text)) = prompt {
-                        super::colony_hud::draw_moment(&crate::colony::Moment { tick: 0, title, text, because: String::new(), at: (0, 0), choice: false }, &mut buf, w, h);
+                        super::colony_hud::draw_moment(&crate::colony::Moment { tick: 0, title, text, because: String::new(), at: (0, 0), choice: false }, None, &mut buf, w, h);
                     }
                     inspect_hits.clear();
                     if let Some(&subject) = inspect.last() {
@@ -2555,7 +2555,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         render_local(&colony.map, atlas, &cam, &mut buf, w, h);
         draw_colony(&colony, &cam, &mut buf, w, h, history);
         super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 0, status: "", mouse: (-100.0, -100.0), right: 0, selected: None, hide_chip: false, bar: true }, &mut buf, w, h);
-        super::colony_hud::draw_moment(m, &mut buf, w, h);
+        super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h);
         let path = format!("{prefix}_moment.png");
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
         written.push(path);

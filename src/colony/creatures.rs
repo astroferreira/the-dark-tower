@@ -140,6 +140,10 @@ impl Colony {
         let besieged = self.siege.as_ref().map(|s| s.at);
         self.creatures.retain(|c| c.kind != CreatureKind::Besieger);
         let Some(arc) = self.arc.as_ref() else { return };
+        if let Some(m) = arc.threat.monster.as_ref() {
+            if !self.foes_seen.iter().any(|f| f.0 == arc.threat.name) { let e = (arc.threat.name.clone(), m.clone()); self.foes_seen.push(e); }
+        }
+        let Some(arc) = self.arc.as_ref() else { return };
         let (kind, n, name, size) = match arc.threat.kind {
             super::arc::ThreatKind::Beast | super::arc::ThreatKind::Deep => (CreatureKind::Beast, 1, arc.threat.name.clone(), arc.threat.size),
             // A band grows with the camp it comes for (DF's sieges grow with the fortress).

@@ -246,16 +246,23 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
 }
 
 /// A great moment's card, across the top middle: its title, what happened and why, until Space.
-pub(crate) fn draw_moment(m: &crate::colony::Moment, buf: &mut [u32], w: usize, h: usize) {
-    let card_w = 520usize.min(w.saturating_sub(40));
+pub(crate) fn draw_moment(m: &crate::colony::Moment, colony: Option<&crate::colony::Colony>, buf: &mut [u32], w: usize, h: usize) {
+    // A roundel at the left with a picture of the moment (`vignette.rs`), when there is room.
+    let pic = w >= 700 && !m.because.is_empty();
+    let card_w = if pic { 640usize } else { 520 }.min(w.saturating_sub(40));
     if card_w < 200 || h < 200 { return; }
-    let inner = card_w as f32 - 40.0;
+    let pic_w = if pic { 120.0 } else { 0.0 };
+    let inner = card_w as f32 - 40.0 - pic_w;
     let text = wrap_px(&m.text, Face::Roman, 17.0, inner);
     let because = wrap_px(&m.because, Face::Italic, BODY, inner);
-    let card_h = 60 + text.len().min(6) * 22 + 8 + because.len().min(4) * 19 + 34;
+    let card_h = (60 + text.len().min(6) * 22 + 8 + because.len().min(4) * 19 + 34).max(if pic { 170 } else { 0 });
     let r = Rect { x: (w - card_w) / 2, y: 70.min(h.saturating_sub(card_h + 10)), w: card_w, h: card_h };
     ui::card(buf, w, r);
-    let x = (r.x + 20) as f32;
+    if pic {
+        let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| ui::blend_px(buf, w, h, x, y, super::ink::pack(c), a);
+        super::vignette::draw(&mut put, colony, m, (r.x + 72) as f32, (r.y + 20) as f32 + (card_h as f32 - 20.0) / 2.0, 52.0);
+    }
+    let x = (r.x + 20) as f32 + pic_w;
     let tw = fonts::width(&m.title, Face::SmallCaps, 24.0, 1.0);
     fonts::draw(buf, w, h, (r.x as f32 + (card_w as f32 - tw) / 2.0).max(x), (r.y + 16) as f32, &m.title, Face::SmallCaps, 24.0, 1.0, RUBRIC, None);
     let mut y = (r.y + 56) as f32;

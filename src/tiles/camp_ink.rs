@@ -107,6 +107,9 @@ fn emblem(kind: ProjectKind) -> Option<fn(&mut Pen, f32, f32)> {
     })
 }
 
+/// The signboard emblem of a work (for the moment cards' vignettes).
+pub fn emblem_pub(kind: ProjectKind) -> Option<fn(&mut Pen, f32, f32)> { emblem(kind) }
+
 /// A roof seen from above, as the ink renderer draws houses (`local_ink`): a ridge along x, two
 /// slopes in courses, the south one hatched, ink eaves.
 fn roof_top(pen: &mut Pen, u0: f32, v0: f32, u1: f32, v1: f32, c: Rgb) {

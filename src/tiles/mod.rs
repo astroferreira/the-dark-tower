@@ -26,6 +26,7 @@ pub mod status_ink;
 pub mod text;
 mod ui;
 pub mod viewer;
+pub mod vignette;
 pub mod watcher;
 
 pub use atlas::{Atlas, TileKind};

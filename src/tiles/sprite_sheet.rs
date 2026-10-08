@@ -50,7 +50,8 @@ pub fn save(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
     }
     sheet.save(path)?;
     let n2 = save_people_and_things(&path.replace(".png", "_folk.png"))?;
-    Ok(n + n2)
+    let n3 = save_vignettes(&path.replace(".png", "_moments.png"))?;
+    Ok(n + n2 + n3)
 }
 
 /// The second page: the bubbles over settlers, strangers, furniture and fittings.
@@ -107,4 +108,24 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
     }
     sheet.save(path)?;
     Ok(n)
+}
+
+/// The third page: the moment cards' roundels for a range of moments.
+fn save_vignettes(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let moments = ["The raid", "They are coming", "A storehouse finished", "A tavern finished", "A temple finished", "A library finished", "A palisade finished",
+        "A woodpile finished", "A fenced field finished", "A well finished", "The hut stands", "The ghost of Aephre", "Thano dies", "A child is born",
+        "A caravan from Ripu", "Refugees", "Aephre the Wanderer comes", "A rumour", "Boutrurn's dream", "The camp's woodcutter", "The camp's builder",
+        "Gaunauth speaks for the camp", "A lord comes", "Austourd breaks", "A fey mood", "Water in the rock", "Amber in the rock", "A sound from below",
+        "A cave in the shale", "Winter comes", "Austourd tends the wounded", "The siege"];
+    let cols = 8;
+    let mut sheet = Sheet::new(cols, (moments.len() + cols - 1) / cols, 150, 150);
+    sheet.title("The moments' roundels");
+    for t in moments {
+        let (cx, cy) = sheet.cell(t);
+        let m = crate::colony::Moment { tick: 0, title: t.to_string(), text: String::new(), because: "because".into(), at: (0, 0), choice: false };
+        let mut put = sheet.put();
+        super::vignette::draw(&mut put, None, &m, cx, cy, 52.0);
+    }
+    sheet.save(path)?;
+    Ok(moments.len())
 }
