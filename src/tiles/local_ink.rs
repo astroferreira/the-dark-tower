@@ -1266,6 +1266,13 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         }
     }
     let mut labels: Vec<(f32, f32, String, bool)> = Vec::new();
+    // The hatch over the stair below the first cavern: planks bound with iron, barred.
+    if let Some((p, z)) = colony.hatch.filter(|h| h.1 == cam.z || h.1 == cam.z + 1) {
+        let (x, y) = to_screen(p.0 as f32, p.1 as f32);
+        rect(&mut put, x + t * 0.05, y + t * 0.05, x + t * 0.95, y + t * 0.95, [140.0, 104.0, 68.0]);
+        for k in [0.33f32, 0.66] { for xx in (x + t * 0.1) as i64..(x + t * 0.9) as i64 { put(xx, (y + t * k) as i64, [70.0, 66.0, 64.0], 0.95); } }
+        let _ = z;
+    }
     // Engravings on this level's walls: a carved panel on the face toward the floor.
     for e in colony.engravings.iter().filter(|e| e.z == cam.z) {
         let (wx, wy) = to_screen(e.wall.0 as f32 + 0.5, e.wall.1 as f32 + 0.5);

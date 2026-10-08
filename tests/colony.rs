@@ -1408,12 +1408,12 @@ fn the_liaison_brings_what_was_asked() {
 }
 
 /// Pets defend their keepers (Dwarf Fortress): a pet runs between its keeper and what hunts them
-/// (seed 5, day 143; rare: a pet near its keeper when something hunts them; its day moves with
-/// every change to the camp's timeline).
+/// (seed 3, day 44; rare: a pet near its keeper when something hunts them; its seed and day move
+/// with every change to the camps' timelines).
 #[test]
 fn a_pet_stands_by_its_keeper() {
     // (Two seeds: which one shows it moves with every change to the camps' timelines.)
-    let found = ["23", "58", "5"].iter().any(|seed| run_log(seed, "260", &[]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
+    let found = ["3", "23", "58", "5"].iter().any(|seed| run_log(seed, "260", &[]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
     assert!(found, "no pet stood by its keeper");
 }
 
@@ -1733,4 +1733,14 @@ fn the_dead_are_laid_in_the_tombs() {
 fn the_deep_shaft_reaches_the_magma_sea() {
     let text = run_log("76", "150", &[]);
     assert!(text.lines().any(|l| l.contains("the magma sea glows through the cracks")), "the shaft never reached the magma");
+}
+
+/// Sealing the caverns (Dwarf Fortress): once the cavern's hunters have come up the stair and
+/// hurt someone twice, the camp sets a hatch in the stair at the cavern's roof, and nothing comes
+/// up after.
+#[test]
+fn the_caverns_are_sealed_with_a_hatch() {
+    let text = run_log("3", "120", &[]);
+    let at = text.lines().position(|l| l.contains("They set a hatch of")).unwrap_or_else(|| panic!("no hatch on seed 3"));
+    assert!(!text.lines().skip(at).any(|l| l.contains("come up from the mine, alone")), "something came up after the hatch");
 }

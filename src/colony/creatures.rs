@@ -259,7 +259,7 @@ impl Colony {
                 else if what == "a wolf" { self.note(format!("{} is bitten by wolves at the edge of the woods, alone and far from the fire.", name)); self.wolf_bites += 1; }
                 else if let Some(who) = what.strip_suffix(super::curse::CHANGED) { self.note(format!("{} is set upon in the dark by a beast with {}'s eyes.", name, who)); }
                 else if what.contains("risen") || what.contains("dead") { self.note(format!("{} is set upon by {} in the dark, alone and far from the fire.", name, what)); }
-                else { self.note(format!("{} is set upon by {} come up from the mine, alone and far from the fire.", name, what)); }
+                else { self.note(format!("{} is set upon by {} come up from the mine, alone and far from the fire.", name, what)); self.cave_bites += 1; }
                 self.cursed_bite(&what, i);
                 for j in 0..self.creatures.len() { if self.creatures[j].kind == CreatureKind::Wolf { self.wolf_home(j); } }
                 return;

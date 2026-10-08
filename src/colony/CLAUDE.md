@@ -1491,3 +1491,9 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   `room_value` = 2 + the bed's quality once furnished, + 1 + quality for each engraving on its
   walls; `Feel::OwnRoom { value }` grows with it ("slept in a fine / splendid bedroom of their
   own"). Dev 76 and 3: the great hall is carved from days 221 and 154.
+- The hatch (`ProjectKind::Hatch`, `delve.rs::seal_caverns`, DF's walled-off caverns): after the
+  cavern's hunters have hurt someone twice (`cave_bites`: bites by those come up the mine, and
+  fellers set upon in the dark), the camp sets a hatch in the stair at the first cavern's roof
+  (6 loads, urgency 2.0, a moment): `cave_hunter` is cleared and later breaches below it set no
+  new one; `Colony::hatch` (column, level), drawn as barred planks. Seeds 76, 23, 58, 3, 5 seal it
+  on days 48-107; nothing comes up after. Tested (`the_caverns_are_sealed_with_a_hatch`).

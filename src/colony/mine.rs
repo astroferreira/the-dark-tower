@@ -60,7 +60,9 @@ impl Colony {
             self.dig_plan = None;
         }
         // What hunts there comes up at night from now on.
-        if let Some(h) = c.life.iter().find(|l| hunter(l)) { self.cave_hunter = Some(h.clone()); }
+        // (Below a hatch nothing comes up: `delve.rs::seal_caverns`.)
+        if self.hatch.is_some() { }
+        else if let Some(h) = c.life.iter().find(|l| hunter(l)) { self.cave_hunter = Some(h.clone()); }
         else { self.note(format!("At dusk {} come up out of the mine and scatter into the night; nothing that hunts.", c.life.first().cloned().unwrap_or_else(|| "bats".into()))); }
         // The digging wakes what sleeps in the deep.
         self.wake_the_deep(&c.name);

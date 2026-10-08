@@ -382,6 +382,7 @@ impl Colony {
             if crate::history::settlers::hash_pub(self.seed ^ self.clock.tick, 0xCA7E) % 8 == 0 {
                 self.settlers[i].ill_until = self.clock.tick + TICKS_PER_DAY;
                 self.note(format!("{} is set upon by {} while felling in the dark of {}, and comes up the stair bleeding.", name, h.trim_end_matches('s'), cavern));
+                self.cave_bites += 1;
                 self.feel(i, mind::Feel::TheDeep { what: format!("the {} in the dark", h) });
             }
         }
@@ -564,6 +565,21 @@ impl Colony {
         furniture + carved
     }
 
+    /// The stair is sealed below the first cavern (DF's walled-off caverns): a hatch of dressed
+    /// stone (or timber) set in the stair at the cavern's roof, barred at night. Nothing comes up
+    /// from below any more; the camp still goes down by day.
+    pub(crate) fn seal_caverns(&mut self) {
+        let Some(sp) = self.spine else { return };
+        let k = sp.at.1 as usize * self.map.width + sp.at.0 as usize;
+        // The level of the first cavern's roof on the stair (or the stair's foot).
+        let z = self.breached.iter().filter_map(|&l| self.map.cavern_z.get(k).map(|c| c[l as usize].1)).filter(|&t| t >= 0).map(|t| t as i32 + 1).max().unwrap_or(sp.bottom + 1);
+        self.hatch = Some((sp.at, z));
+        let what = self.cave_hunter.take().unwrap_or_else(|| "the things of the dark".into());
+        let line = format!("They set a hatch of {} in the stair where it comes through the cavern's roof, and bar it at dusk: {} will not come up the mine again.", if self.projects.iter().any(|p| p.kind == ProjectKind::Hatch && p.material == ItemKind::Stone) { "dressed stone" } else { "heavy timber" }, what);
+        self.note(line.clone());
+        self.moment("The hatch".into(), line, format!("because {} times the cavern's hunters had found someone in the dark", self.cave_bites), sp.at);
+    }
+
     /// Picks to dig with (DF's miners each need one): two brought, two more made at the workshop,
     /// two more of metal once ore is worked or iron bought.
     pub fn picks(&self) -> usize {
@@ -669,6 +685,11 @@ impl Colony {
                 let why = format!("{} works have been made at the workshop in the wind and the rain; benches cut in the rock below would keep the makers warm, beside the stair", works_made);
                 c.push((if masons { 1.3 } else { 0.6 }, ProjectKind::Workshops, why, plan.cuts.len() as u32, self.spine.unwrap().at));
             }
+        }
+        // A hatch over the stair below, once the cavern's hunters have hurt them twice.
+        if self.cave_hunter.is_some() && self.cave_bites >= 2 && !self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) {
+            let why = format!("{} times {} have come up the mine and hurt someone; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
+            c.push((2.0, ProjectKind::Hatch, why, 6, self.spine.unwrap().at));
         }
         // A ditch round the wall, once the palisade stands and trouble keeps coming.
         let walled = self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Palisade);
