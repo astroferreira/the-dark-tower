@@ -232,7 +232,7 @@ impl Colony {
             Feel::Festival { what } => (format!("kept {} with everyone", what), 0.1 * (0.4 + fac(Facet::Gregariousness)) * (1.0 + val(Val::Merriment).max(0.0)) - 0.05 * fac(Facet::Bashfulness)),
             Feel::Mandate { what } => (format!("resented the mandate that {}", what), -0.08 * (0.5 + fac(Facet::Pride)) * (0.5 + fac(Facet::Discord))),
             Feel::Reconciled { by } => (format!("made peace, thanks to {}", by), 0.08 * (0.5 + fac(Facet::Gratitude))),
-            Feel::News { what, good } => (format!("heard that {}", lower_news(what)), if *good { 0.12 * (0.6 + 0.8 * fac(Facet::Cheer)) } else { -0.18 * (0.5 + fac(Facet::Love)) }),
+            Feel::News { what, good } => (if what.starts_with("of ") { format!("heard {}", what) } else { format!("heard that {}", lower_news(what)) }, if *good { 0.12 * (0.6 + 0.8 * fac(Facet::Cheer)) } else { -0.18 * (0.5 + fac(Facet::Love)) }),
             Feel::KilledLiked { what } => (format!("killed a {}, a creature they love", what), -0.12 * (0.4 + fac(Facet::Love)) * (1.0 + val(Val::Nature).max(0.0))),
             Feel::SawLiked { what } => (format!("watched the {} grazing", what), 0.04 * (0.6 + fac(Facet::Curiosity))),
             Feel::Punished { by } => (format!("were put in the stocks by {}", by), -0.15 * (0.5 + fac(Facet::Pride))),

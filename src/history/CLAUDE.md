@@ -273,6 +273,38 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   chronicle, nothing saved; the inspector's event page shows "Part of ..." lines (linked).
   `war_events` lists a war's events in order (not used by a page yet).
 
+## Who knows what (`knowledge.rs`; DF's `local_known_events` / `known_info`, ch. 06)
+- A derived layer over the finished chronicle: no RNG, nothing saved, the history unchanged.
+  `Knowledge::new(h)` (trade links, each people's living towns, the town spacing = median
+  nearest-neighbour distance between living towns, so dev and 512-wide worlds behave alike).
+  `town_knows(s, e)`: its own (a participant, its tile, its people involved: always for notable+)
+  or word reached it: `fame(e)` (Local/Notable/Great/Legend by kind; "empty-handed" quests Local,
+  failed plots at most Notable) gives a reach of 1.5/3.5/7/any spacings and a memory of
+  30/80/200/forever years (reach fades to half by then); word travels 3 spacings a year (this
+  year's news has not reached far towns); the distance is the least of direct, via a trade
+  partner whose route ran since the event (+1/4 of the road) or via a town of its people (+1/2);
+  the edge is jittered 0.7-1.3 per (event, town) by hash. `people_knows` = any of its towns;
+  `figure_knows` = own deeds, else their home town (`people.rs`), else their people.
+- `account(h, e, teller)` -> `Told` (headline as a phrase, the teller's gloss, `Slant`
+  Plain/Proud/Bitter, `stakes` (+1/-1 per people, town, figure, beast; victors read off the
+  chronicle: a battle's first-named people, "X prevailed", a siege's taker or holder) and
+  `others`, each involved people's own gloss). Glosses by kind: battles (proud: the enemy's dead
+  doubled to quadrupled, the commander's rout; bitter: treachery, numbers, a broken truce),
+  wars' ends, declarations (the declarer blames the other "by the trade dispute ..."), takings,
+  burnings, lifted sieges, slain beasts (exaggerated by the slayer's people, belittled by a people
+  that hates them), assassinations and foiled plots, the Shadow's conquests, repulses, liberations.
+  A third people sides with one it loves (opinion 40+) or against one it hates (-40 or worse).
+- `news_of_town` / `news_of_people` / `news_of_figure` (the n most worth telling of the last
+  `years`: fame x20 - age + 15 if the teller's own; newest first), `sung_by` (a people's slanted
+  deeds), `known_in` (living towns that know it). `--rumours` prints each seat's share and news
+  and the latest differing accounts. Dev 76: spacing 4.1 tiles; seats know 36-52% of the 400
+  notable events of the last 50 years (seeds 11: 47-58%, 23: 44-59%); "Primalspire razed by the
+  Ashpit Horde (450)" is known in 38 of 44 towns, "a nest of raiders cleared" as the Ashpit Horde
+  tells it, "a massacre, Primalspire burned with its children inside" as the Kingdom of Titankeep
+  tells it. Tested (`peoples_know_and_tell_their_own_news`). The inspector's event page has "How
+  it is told" (known in N of M towns, each people's account), a town's page "Word heard here"
+  (both cached per subject: pages are rebuilt every frame). The colony's use: `colony/news.rs`.
+
 ## Arts (`arts.rs`, `data/defaults/arts.json`; DF design guide ch. 07)
 - Two layers, built on demand (nothing saved, no RNG): a people's vocabulary (two instruments of
   its race's kinds with a name in its tongue and a material, "the dulmgar, a set of pipes of birch

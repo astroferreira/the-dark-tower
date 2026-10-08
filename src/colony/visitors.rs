@@ -48,6 +48,14 @@ pub struct Visitor {
     pub taught: bool,
     /// A seeker who left before the relic was found (comes back when it is).
     pub left_once: bool,
+    /// The figure of the history they are.
+    pub figure: Option<crate::history::FigureId>,
+    /// What their home knows (`history::knowledge`), as their people tell it: they bring one
+    /// item the camp has not heard when they come.
+    pub news: Vec<crate::history::knowledge::Told>,
+    /// A bard's songs: their people's deeds as their people tell them, one sung a night.
+    pub songs: Vec<crate::history::knowledge::Told>,
+    pub sung: usize,
 }
 
 fn at_war_with(h: &WorldHistory, a: Option<crate::history::FactionId>, b: Option<crate::history::FactionId>) -> bool {
@@ -87,7 +95,7 @@ pub fn plan(h: &WorldHistory, tile: (usize, usize), beasts: &[String], relic: Op
         let why = format!("set out to slay {} in {}", beast, e.date.year);
         let calling = format!("a monster hunter of {}", people(f));
         let past = past_of(f, calling.clone(), vec![(format!("Set out to slay {} in {}.", beast, e.date.year), Some(e.id))]);
-        out.push(Visitor { name: f.full_name(), kind: VisitKind::Hunter { beast: beast.clone() }, calling, why, cause: Some(e.id), past, hand: (0.2 + 0.05 * combat).min(0.6), came: false, taught: false, left_once: false });
+        out.push(Visitor { name: f.full_name(), kind: VisitKind::Hunter { beast: beast.clone() }, calling, why, cause: Some(e.id), past, hand: (0.2 + 0.05 * combat).min(0.6), came: false, taught: false, left_once: false, figure: Some(f.id), news: Vec::new(), songs: Vec::new(), sung: 0 });
     }
     // The seeker of the lost thing near here: the latest living hero whose quest names it.
     // Else an heir: the last holder's living child or spouse (as Dwarf Fortress's heirs claim).
@@ -100,7 +108,7 @@ pub fn plan(h: &WorldHistory, tile: (usize, usize), beasts: &[String], relic: Op
                 let why = format!("has sought {} since {}", a.name, e.date.year);
                 let calling = format!("a seeker of lost things, of {}", people(f));
                 let past = past_of(f, calling.clone(), vec![(format!("Set out to recover {} in {}.", a.name, e.date.year), Some(e.id))]);
-                out.push(Visitor { name: f.full_name(), kind: VisitKind::Seeker { relic: a.name.clone() }, calling, why, cause: Some(e.id), past, hand: 0.25, came: false, taught: false, left_once: false });
+                out.push(Visitor { name: f.full_name(), kind: VisitKind::Seeker { relic: a.name.clone() }, calling, why, cause: Some(e.id), past, hand: 0.25, came: false, taught: false, left_once: false, figure: Some(f.id), news: Vec::new(), songs: Vec::new(), sung: 0 });
             } else if let Some(hf) = holder.and_then(|x| h.figures.get(&x)) {
                 let mut heirs: Vec<&crate::history::entities::figures::Figure> = hf.children.iter().chain(hf.spouse.iter()).filter_map(|c| h.figures.get(c)).filter(|c| c.is_alive()).collect();
                 heirs.sort_by_key(|c| (c.birth_date, c.id));
@@ -112,7 +120,7 @@ pub fn plan(h: &WorldHistory, tile: (usize, usize), beasts: &[String], relic: Op
                     let why = why.replacen(&format!("{}'s ", rel), &format!("their {}'s ", rel), 1).replacen("'s The ", "'s ", 1);
                     let calling = format!("an heir seeking what was lost, of {}", people(f));
                     let past = past_of(f, calling.clone(), lost.map(|e| vec![(format!("Lost {} when {} died ({}).", a.name, hf.name, e.date.year), Some(e.id))]).unwrap_or_default());
-                    out.push(Visitor { name: f.full_name(), kind: VisitKind::Seeker { relic: a.name.clone() }, calling, why, cause: lost.map(|e| e.id), past, hand: 0.15, came: false, taught: false, left_once: false });
+                    out.push(Visitor { name: f.full_name(), kind: VisitKind::Seeker { relic: a.name.clone() }, calling, why, cause: lost.map(|e| e.id), past, hand: 0.15, came: false, taught: false, left_once: false, figure: Some(f.id), news: Vec::new(), songs: Vec::new(), sung: 0 });
                 }
             }
         }
@@ -132,7 +140,7 @@ pub fn plan(h: &WorldHistory, tile: (usize, usize), beasts: &[String], relic: Op
         if let Some((_, f)) = swords.first() {
             let calling = format!("a sellsword of {}", people(f));
             let past = past_of(f, calling.clone(), vec![]);
-            out.push(Visitor { name: f.full_name(), kind: VisitKind::Sellsword, calling, why: format!("has killed {} and fights for pay", f.kills.len()), cause: None, past, hand: 0.45, came: false, taught: false, left_once: false });
+            out.push(Visitor { name: f.full_name(), kind: VisitKind::Sellsword, calling, why: format!("has killed {} and fights for pay", f.kills.len()), cause: None, past, hand: 0.45, came: false, taught: false, left_once: false, figure: Some(f.id), news: Vec::new(), songs: Vec::new(), sung: 0 });
         }
     }
     // Bards: loremasters and silver tongues within ten tiles' reach of their people's towns,
@@ -158,7 +166,16 @@ pub fn plan(h: &WorldHistory, tile: (usize, usize), beasts: &[String], relic: Op
         let lines = last.map(|e| vec![(format!("{} ({}).", e.title, e.date.year), Some(e.id))]).unwrap_or_default();
         let past = past_of(f, calling.clone(), lines);
         if past.arts.is_empty() { continue; }
-        out.push(Visitor { name: f.full_name(), kind: VisitKind::Bard, calling, why: "travels the roads with the songs of their people".into(), cause: last.map(|e| e.id), past, hand: 0.1, came: false, taught: false, left_once: false });
+        out.push(Visitor { name: f.full_name(), kind: VisitKind::Bard, calling, why: "travels the roads with the songs of their people".into(), cause: last.map(|e| e.id), past, hand: 0.1, came: false, taught: false, left_once: false, figure: Some(f.id), news: Vec::new(), songs: Vec::new(), sung: 0 });
+    }
+    // What each knows of the world, and what a bard sings (`history::knowledge`).
+    let k = crate::history::knowledge::Knowledge::new(h);
+    for v in out.iter_mut() {
+        let Some(f) = v.figure else { continue };
+        v.news = k.news_of_figure(f, 30, 4);
+        if v.kind == VisitKind::Bard {
+            if let Some(p) = h.figures.get(&f).and_then(|x| x.faction) { v.songs = k.sung_by(p, 80, 2); }
+        }
     }
     out
 }
@@ -170,7 +187,7 @@ pub fn forced_seeker(name: &str, relic: &str, owners: Option<crate::history::Fac
     persona.facets[Facet::Greed as usize] = 80;
     let calling = "a seeker of lost things".to_string();
     let past = crate::history::settlers::Past { age: 40, people: owners, calling: calling.clone(), persona: Some(persona), ..Default::default() };
-    Visitor { name: name.to_string(), kind: VisitKind::Seeker { relic: relic.to_string() }, calling, why: format!("has sought {} for years", relic), cause: None, past, hand: 0.2, came: false, taught: false, left_once: false }
+    Visitor { name: name.to_string(), kind: VisitKind::Seeker { relic: relic.to_string() }, calling, why: format!("has sought {} for years", relic), cause: None, past, hand: 0.2, came: false, taught: false, left_once: false, figure: None, news: Vec::new(), songs: Vec::new(), sung: 0 }
 }
 
 impl Colony {
@@ -238,6 +255,11 @@ impl Colony {
         for j in 0..self.settlers.len() {
             if j != i && self.settlers[j].alive && self.settlers[j].persona.facet(Facet::Gregariousness) >= 60 { self.like(i, j, 2); }
         }
+        // They bring word of the world as their home tells it (`news.rs`).
+        if let Some(t) = self.unheard(&v.news) {
+            self.note(format!("{} brings word from the world: {}.", v.name, Colony::news_words(&t)));
+            self.hear(&t, &v.name, Some(i));
+        }
     }
 
     /// 20:30: a visiting bard performs; on the last night they teach a work.
@@ -279,6 +301,14 @@ impl Colony {
                     self.works.push(craft::Work { maker: i, kind: "book".into(), material: "hide".into(), quality: 3, image: None, day, called: Some(title.clone()), traded: false });
                     self.note(format!("{} writes out {} and leaves it in the library.", name, title));
                 }
+            }
+            // Then a song of their people's deeds, as their people tell them (`news.rs`).
+            // (Not what they told the camp themselves when they came.)
+            let song = vk.and_then(|k| { let v = &self.visitors[k]; v.songs.iter().skip(v.sung).position(|t| !self.heard.iter().any(|x| x.from == name && x.told.event == t.event)).map(|p| (v.sung + p, v.songs[v.sung + p].clone())) });
+            if let (Some((at, t)), Some(k)) = (song, vk) {
+                self.visitors[k].sung = at + 1;
+                self.note(format!("Then {} sings of {}, {}: {}.", name, t.headline, t.as_told(), t.gloss.clone().unwrap_or_default()));
+                self.hear(&t, &name, Some(i));
             }
         }
     }

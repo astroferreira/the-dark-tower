@@ -2237,6 +2237,10 @@ fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, til
             // The town of their people that will send caravans (`trade.rs`).
             colony.trade = crate::colony::trade::partner(h, tile, colony.settlers.first().and_then(|s| s.past.as_ref()).and_then(|p| p.people));
             colony.migrants = later;
+            // What the migrants' people know, as they tell it (`history::knowledge`).
+            if let Some(f) = colony.migrants.first().and_then(|m| m.1.people) {
+                colony.migrant_news = crate::history::knowledge::Knowledge::new(h).news_of_people(f, 30, 6);
+            }
             colony.world_width = h.tile_history.width.max(1);
             // Peoples among the troubles who steal children: goblins and orcs (`snatch.rs`).
             if let Some(a) = colony.arc.as_ref() {

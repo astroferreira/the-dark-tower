@@ -4,14 +4,14 @@
 //! a real town of the history, buy what the camp has made and bring what it lacks. Here the
 //! partner is the nearest living town of the first settler's people (`partner`, read once from
 //! the history at founding), its goods from what that people holds (iron among them), and its
-//! news the latest great events of the chronicle near it. A caravan sets out each season; three
+//! news what that town has heard, as its people tell it (`history::knowledge`). A caravan sets out each season; three
 //! traders walk in from the town's side of the map, trade at the fire, and walk home. They take
 //! the camp's works (`craft.rs`) other than its masterworks, paying in meals and, once, in iron
 //! tools; with nothing to buy they share the news and move on.
 
 use super::*;
 use super::creatures::{Creature, CreatureKind};
-use crate::history::{EventId, FactionId};
+use crate::history::FactionId;
 
 /// The town that trades with the camp.
 #[derive(Clone, Debug)]
@@ -25,11 +25,9 @@ pub struct Partner {
     pub days: u64,
     /// It can sell iron tools.
     pub iron: bool,
-    /// News it carries (the last 30 years' great events near the town): (a line, the event).
-    pub news: Vec<(String, EventId)>,
-    /// For each item of news: the towns and peoples it touches, and whether it is good (+1) or
-    /// bad (-1) for them.
-    pub touches: Vec<(Vec<crate::history::SettlementId>, Vec<FactionId>, i8)>,
+    /// News it carries: what the town has heard of the last 30 years (`history::knowledge`), as
+    /// its people tell it, one item a caravan.
+    pub news: Vec<crate::history::knowledge::Told>,
 }
 
 /// The camp's trading partner: the nearest living town of `people`, else (their people gone) the
@@ -46,25 +44,10 @@ pub fn partner(h: &crate::history::world_state::WorldHistory, tile: (usize, usiz
     let km = dist(town.location) as f32 * 40_075.0 / w as f32;
     let days = (km / 25.0).ceil().max(1.0) as u64;
     let iron = fac.resources.get(&R::Iron).copied().unwrap_or(0) > 0 || fac.resources.get(&R::Copper).copied().unwrap_or(0) > 0;
-    // The latest great events within 8 tiles of the town, newest first.
-    // Distinct headlines (the same title in another year is old news).
-    let mut seen: Vec<String> = Vec::new();
-    let news: Vec<(String, EventId)> = h.chronicle.events.iter().rev()
-        .filter(|e| e.date.year + 30 >= h.current_date.year)
-        .filter(|e| e.is_major && e.location.map_or(false, |l| { let dx = l.0.abs_diff(town.location.0); dx.min(w.saturating_sub(dx)) + l.1.abs_diff(town.location.1) <= 8 }))
-        .filter(|e| if seen.contains(&e.title) { false } else { seen.push(e.title.clone()); true })
-        .take(6).map(|e| (format!("{} ({})", e.title.trim_end_matches('.'), e.date.year), e.id)).collect();
-    use crate::history::events::types::EventType as E;
-    let touches = news.iter().filter_map(|(_, id)| h.chronicle.get(*id)).map(|e| {
-        let towns = e.primary_participants.iter().filter_map(|p| if let crate::history::EntityId::Settlement(s) = p { Some(*s) } else { None }).collect();
-        let good: i8 = match e.event_type {
-            E::SettlementDestroyed | E::ShadowConquest | E::SiegeBegun | E::Massacre | E::Plague | E::WarDeclared | E::Raid | E::MonsterRaid | E::HeroDied | E::FactionDestroyed => -1,
-            E::SettlementFounded | E::ShadowLiberated | E::ShadowRepelled | E::TreatySigned | E::WarEnded | E::CreatureSlain | E::FactionFounded | E::MonumentBuilt | E::RulerCrowned => 1,
-            _ => if e.title.contains("rises again") { 1 } else { 0 },
-        };
-        (towns, e.factions_involved.clone(), good)
-    }).collect();
-    Some(Partner { town: town.name.clone(), people: fac.name.clone(), faction: f, from: town.location, days, iron, news, touches })
+    // What the town has heard (word reaches it by distance, roads and its own people), told
+    // its people's way.
+    let news = crate::history::knowledge::Knowledge::new(h).news_of_town(town.id, 30, 6);
+    Some(Partner { town: town.name.clone(), people: fac.name.clone(), faction: f, from: town.location, days, iron, news })
 }
 
 impl Colony {
@@ -99,6 +82,13 @@ impl Colony {
             if self.settlers[j].alive && self.settlers[j].persona.facet(crate::persona::Facet::Gregariousness) >= 60 {
                 self.feel(j, mind::Feel::Friend { with: "the newcomers".into() });
             }
+        }
+        // They carry what their people know, told their people's way (`news.rs`).
+        let mn = self.migrant_news.clone();
+        if let (Some(t), Some(&first)) = (self.unheard(&mn), came.first()) {
+            let who = self.settlers[first].name.clone();
+            self.note(format!("{} brings word from home: {}.", who, Colony::news_words(&t)));
+            self.hear(&t, &who, Some(first));
         }
     }
 
@@ -190,9 +180,9 @@ impl Colony {
         }
         let count = self.works.iter().filter(|w| w.traded).count() as u32 - self.traded_before;
         self.traded_before += count;
-        // Each item of news is told once, oldest-told last (the newest first).
-        let news = p.news.get((self.caravans as usize).saturating_sub(1)).cloned();
-        let news_line = news.as_ref().map(|(n, _)| format!(" They bring news: {}.", n)).unwrap_or_default();
+        // Each item of news is told once, the newest first (what visitors told already is old news).
+        let news = self.unheard(&p.news);
+        let news_line = news.as_ref().map(|t| format!(" They bring news: {}.", Colony::news_words(t))).unwrap_or_default();
         if value == 0 {
             self.note(format!("The traders of {} find nothing they want; they share the fire and move on.{}", p.town, news_line));
         } else {
@@ -213,23 +203,8 @@ impl Colony {
         self.liaison(&p, value > 0);
         // A lost thing near here: the traders know the tale (`relic.rs`).
         self.relic_told(&p.town);
-        // News that touches someone (their people, a town of their past) moves them.
-        let k = (self.caravans as usize).saturating_sub(1);
-        if let (Some((line, _)), Some((towns, peoples, good))) = (p.news.get(k), p.touches.get(k)) {
-            if *good != 0 {
-                let mut moved = Vec::new();
-                for j in 0..self.settlers.len() {
-                    if !self.settlers[j].alive { continue; }
-                    let hit = self.settlers[j].past.as_ref().map_or(false, |x| x.towns.iter().any(|t| towns.contains(t)) || x.people.map_or(false, |f| peoples.contains(&f)));
-                    if hit { let what = line.clone(); self.feel(j, mind::Feel::News { what, good: *good > 0 }); moved.push(self.settlers[j].name.clone()); }
-                }
-                if !moved.is_empty() {
-                    let n = moved.len();
-                    let who = if n > 3 { format!("{} and {} others", moved[..2].join(", "), n - 2) } else { crate::persona::list(&moved) };
-                    self.note(format!("{} {} at the news: it is their people's, or their own town's.", who, if *good > 0 { "take heart" } else { "grieve" }));
-                }
-            }
-        }
+        // News moves those it touches, as their pasts make them take it (`news.rs`).
+        if let Some(t) = news { self.hear(&t, &format!("the traders of {}", p.town), None); }
         // How it sits with each: the greedy and the trade-minded are glad; those who hate the
         // traders' people are not.
         for j in 0..self.settlers.len() {

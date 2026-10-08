@@ -86,6 +86,21 @@ h1,h2{{color:#9a2a1e;font-variant:small-caps;letter-spacing:.05em}}b{{color:#9a2
             }
             o.push_str("</ul>");
         }
+        // News from the world, as each teller told it, and how the others tell it (`news.rs`).
+        if !self.heard.is_empty() {
+            o.push_str("<h2>News from the World</h2><ul>");
+            for hd in &self.heard {
+                let t = &hd.told;
+                let mut how: Vec<String> = Vec::new();
+                if !t.as_told().is_empty() { how.push(t.as_told()); }
+                for (f, name, g) in &t.others {
+                    if Some(*f) != t.teller && t.gloss.as_deref() != Some(g.as_str()) { how.push(format!("{} {} it {}", name, if name.ends_with('s') { "call" } else { "calls" }, g)); }
+                }
+                let how = if how.is_empty() { String::new() } else { format!(" <span class=\"why\">({})</span>", esc(&how.join("; "))) };
+                o.push_str(&format!("<li>Day {}, from {}: {}.{}</li>", hd.day, esc(&hd.from), esc(&capital(&t.line())), how));
+            }
+            o.push_str("</ul>");
+        }
         // The people.
         o.push_str("<h2>The People</h2>");
         for (i, s) in self.settlers.iter().enumerate() {
