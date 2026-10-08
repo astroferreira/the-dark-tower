@@ -93,6 +93,13 @@ the zoomed region around a point.
   away); its mouth on the surface shows as it is.
 - `--sim-projects N` prints a `Place:` line per place (with its levels and "walkable from the
   surface", checked with `nav::path3`).
+- The halls of a fallen dwarven town (DF's mountain halls; `PlaceKind::Halls`; `Site::carved`:
+  dwarves always, any people whose architecture is carving): a town of theirs that fell on the
+  tile leaves its halls instead of an old mine: a stair five levels down to a great hall two
+  levels high (7x9), a chamber off each side, and a stair on down to a deep chamber. Found, they
+  give up a carved stone chest (a treasure) and three gems. Dev seed 3, tile 27,9: the halls of
+  Slitash, 106 cells on 8 levels. `PLANET_REVEAL=1` draws unfound places in level frames; the
+  halls' frame shows the great hall's level.
   Dev: 46,13 the living Baelfang's lair, 47,14 a tomb, 50,20 a limestone cave; 7 of 18
   livable embarks hold nothing. Tested (`tests/colony.rs` something_down_there). Not yet: the
   places' pages, drawing the hoard and bones, the found/unknown state (card 'The unknown is

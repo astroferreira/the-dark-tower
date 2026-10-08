@@ -12,11 +12,11 @@ use super::{LocalMap, Material, Plant, Shape};
 use crate::erosion::materials::RockType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PlaceKind { Cave, Lair, Tomb, OldMine, Cavern }
+pub enum PlaceKind { Cave, Lair, Tomb, OldMine, Cavern, Halls }
 
 impl PlaceKind {
     pub fn word(self) -> &'static str {
-        match self { PlaceKind::Cave => "a cave", PlaceKind::Lair => "a lair", PlaceKind::Tomb => "a tomb", PlaceKind::OldMine => "an old mine", PlaceKind::Cavern => "a deep cavern" }
+        match self { PlaceKind::Cave => "a cave", PlaceKind::Lair => "a lair", PlaceKind::Tomb => "a tomb", PlaceKind::OldMine => "an old mine", PlaceKind::Cavern => "a deep cavern", PlaceKind::Halls => "halls under the ground" }
     }
 }
 
@@ -242,6 +242,25 @@ fn layout(map: &LocalMap, kind: PlaceKind, mx: i32, my: i32, salt: u64) -> Optio
             shaft(&mut cuts, &mut walk, sx, sy, zb, zb - 2);
             chamber(&mut cuts, &mut walk, sx, sy, d, 3, 1, zb - 2, true);
         }
+        PlaceKind::Halls => {
+            // DF's mountain halls: a stair five levels down from the plaza to a great hall two
+            // levels high, a chamber off each of its other sides (stores, a forge, the dead),
+            // and a stair on down from the hall's far end to a deep chamber.
+            let d = dirs[d0];
+            let e = (-d.1, d.0);
+            shaft(&mut cuts, &mut walk, mx, my, z0, z0 - 5);
+            let zb = z0 - 5;
+            let (hx, hy) = passage(&mut cuts, &mut walk, mx, my, d, 2, zb);
+            chamber(&mut cuts, &mut walk, hx, hy, d, 9, 3, zb, true);
+            let (cx, cy) = (hx + d.0 * 5, hy + d.1 * 5);
+            for side in [1i32, -1] {
+                let (px, py) = passage(&mut cuts, &mut walk, cx + e.0 * side * 3, cy + e.1 * side * 3, (e.0 * side, e.1 * side), 2, zb);
+                chamber(&mut cuts, &mut walk, px, py, (e.0 * side, e.1 * side), 3, 1, zb, false);
+            }
+            let (fx, fy) = passage(&mut cuts, &mut walk, hx + d.0 * 9, hy + d.1 * 9, d, 2, zb);
+            shaft(&mut cuts, &mut walk, fx, fy, zb, zb - 3);
+            chamber(&mut cuts, &mut walk, fx, fy, d, 3, 1, zb - 3, false);
+        }
         PlaceKind::Lair | PlaceKind::Cave | PlaceKind::Cavern => {
             // A tunnel winding down from a pit, a level every other step, to a den two levels
             // high (a lair's wide, a cave's long and narrow).
@@ -318,9 +337,15 @@ pub fn place(map: &mut LocalMap, lore: Option<&crate::lore::RegionLore>, world: 
     if let Some(l) = lore {
         if let Some(t) = l.sites.iter().filter(|t| t.destroyed_year.is_some()).find(|t| tile_of(t.x, t.y) == world_tile) {
             let year = t.destroyed_year.unwrap_or(0);
+            // A people who carved their dwellings (dwarves: DF's mountain halls) left halls.
+            if t.carved {
+                want.push((PlaceKind::Halls, format!("The halls of {}", t.name), format!("{} of {} carved its halls under the ground here, and they stand empty since it fell in {}", t.name, t.faction_name, year),
+                    vec!["a pillared hall gone cold, empty bins, a forge without fire".to_string(), "bones by a broken door".to_string()]));
+            } else {
             match ore {
                 Some(kind) => want.push((PlaceKind::OldMine, format!("The old {:?} mine of {}", kind, t.name), format!("{} worked the {:?} here until it fell in {}", t.name, kind, year), vec![format!("worked-out galleries and a seam of {:?} left behind", kind)])),
                 None => want.push((PlaceKind::OldMine, format!("The undercroft of {}", t.name), format!("{} kept its stores under the ground here until it fell in {}", t.name, year), vec!["empty bins, a broken lamp, and a door barred from within".into()])),
+            }
             }
         }
     }

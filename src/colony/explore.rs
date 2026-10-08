@@ -116,6 +116,22 @@ impl Colony {
                 self.moment(p.name.clone(), line, format!("because {}", p.cause), at);
             }
             PlaceKind::Cavern => {}
+            PlaceKind::Halls => {
+                // A fallen town's halls give up what its people left: an heirloom and a few
+                // stones; a living town's are its people's own.
+                let fallen = p.cause.contains("since it fell") || p.cause.contains("until it fell");
+                let line = if fallen {
+                    let town = p.name.trim_start_matches("The halls of ").to_string();
+                    let gem = ["rock crystal", "garnets", "amber", "jet"][(crate::history::settlers::hash_pub(self.seed, 0x4A12 + k as u64) % 4) as usize];
+                    match self.gems.iter_mut().find(|x| x.0 == gem) { Some(x) => x.1 += 3, None => self.gems.push((gem.to_string(), 3)) }
+                    self.treasures.push(format!("a carved stone chest from the halls of {}", town));
+                    format!("{} goes down the stair into {} ({}): {}. In the deep chamber lies a carved stone chest, and {} in a cup on the forge.", name, lower, p.cause, super::arc::capital_word(&p.contents.first().cloned().unwrap_or_default()), gem)
+                } else {
+                    format!("{} walks down into {}, {}: its people let them see the great hall.", name, lower, p.cause)
+                };
+                self.note(line.clone());
+                self.moment(p.name.clone(), line, format!("because {}", p.cause), at);
+            }
         }
         self.feel(i, mind::Feel::Found { what: lower });
     }

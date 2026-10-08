@@ -1870,7 +1870,9 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
         save_rgb_png(&format!("{prefix}_above.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
         // Each place in the hills at its deepest level (`local/places.rs`).
         for (k, pl) in colony.map.places.iter().enumerate().filter(|(_, p)| p.mouth.is_some()) {
-            let Some(&(c, z)) = pl.cells.iter().min_by_key(|c| c.1) else { continue };
+            // (Halls: their great hall's level, the busiest, rather than the deepest chamber.)
+            let hall_level = if pl.kind == crate::local::places::PlaceKind::Halls { pl.cells.iter().map(|c| c.1).fold(i32::MIN, |m, z| if pl.cells.iter().filter(|c| c.1 == z).count() > pl.cells.iter().filter(|c| c.1 == m).count() { z } else { m }) } else { i32::MIN };
+            let Some(&(c, z)) = (if hall_level != i32::MIN { pl.cells.iter().find(|c| c.1 == hall_level) } else { pl.cells.iter().min_by_key(|c| c.1) }) else { continue };
             let cam = LocalCamera { cx: c.0 as f32 + 0.5, cy: c.1 as f32 + 0.5, tile_px: 20.0, z, surface_view: false };
             let mut buf = vec![0u32; w * h];
             super::local_ink::render_level_ink(&colony.map, &cam, &mut buf, w, h);

@@ -1268,8 +1268,10 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
     let mut labels: Vec<(f32, f32, String, bool)> = Vec::new();
     // The unknown is blank: places in the hills not yet found are drawn as the rock around them
     // (DF shows only what has been seen). Their mouths on the surface stay as they are.
+    // (Debug: PLANET_REVEAL=1 shows them.)
+    let reveal = std::env::var("PLANET_REVEAL").is_ok();
     for (k, pl) in colony.map.places.iter().enumerate() {
-        if colony.places_found.contains(&k) || pl.mouth.is_none() { continue; }
+        if reveal || colony.places_found.contains(&k) || pl.mouth.is_none() { continue; }
         let sz_of = |c: (u16, u16)| colony.map.surface_z[c.1 as usize * colony.map.width + c.0 as usize];
         let hidden: Vec<((u16, u16), i32)> = pl.cells.iter().filter(|(c, z)| (*z == cam.z || *z + 1 == cam.z) && *z < sz_of(*c) - 1).copied().collect();
         // (And the rock beside them, whose inked edges would trace the place's shape.)

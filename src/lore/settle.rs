@@ -44,6 +44,8 @@ pub struct Site {
     pub core_m: f32,
     pub fields_m: f32,
     pub faction_name: String,
+    /// A people who carve their dwellings into the rock (DF's mountain halls): halls under it.
+    pub carved: bool,
 }
 
 pub struct RegionLore {
@@ -193,6 +195,10 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
             core_m,
             fields_m: if st.is_destroyed() { 0.0 } else { core_m * 2.5 + 400.0 },
             faction_name,
+            // (Dwarves always: DF's mountain halls; any people whose architecture is carving.)
+            carved: history.factions.get(&st.faction).and_then(|f| history.races.get(&f.race_id))
+                .map_or(false, |r| r.base_type == crate::history::entities::races::RaceType::Dwarf
+                    || history.cultures.get(&r.culture_id).map_or(false, |c| matches!(c.architecture, ArchitectureStyle::Carved))),
         };
         site_cell.insert((tx, ty), (site.x, site.y));
         sites.push(site);
