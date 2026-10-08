@@ -723,20 +723,24 @@ fn a_speaker_proclaims_a_mandate() {
 /// buried rise and hunt on dark nights.
 #[test]
 fn the_dead_walk_under_the_shadow() {
-    let dir = std::env::temp_dir().join(format!("dead_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--seed", "11", "--sim-projects", "40"])
-        .env("PLANET_DUMP_LOG", &log)
-        .output()
-        .expect("run planet_generator");
-    assert!(out.status.success());
-    let text = std::fs::read_to_string(&log).unwrap_or_default();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let _ = std::fs::remove_dir_all(&dir);
-    assert!(stdout.lines().any(|l| l.contains("Darkness: ")), "the camp knows nothing of the Shadow:\n{stdout}");
-    assert!(text.lines().any(|l| l.contains("rises from the grave")), "no dead rose under the Shadow:\n{text}");
+    // (Seeds 11, 58 and 5 lie under the Shadow; with fewer deaths since settlers have needs of
+    // their own, 58 and 5 are the ones whose graves give up their dead within 40 days.)
+    let found = ["11", "58", "5"].iter().any(|seed| {
+        let dir = std::env::temp_dir().join(format!("dead_{}_{}", seed, std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("log.txt");
+        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+            .args(["--dev", "--headless", "--seed", seed, "--sim-projects", "40"])
+            .env("PLANET_DUMP_LOG", &log)
+            .output()
+            .expect("run planet_generator");
+        assert!(out.status.success());
+        let text = std::fs::read_to_string(&log).unwrap_or_default();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let _ = std::fs::remove_dir_all(&dir);
+        stdout.lines().any(|l| l.contains("Darkness: ")) && text.lines().any(|l| l.contains("rises from the grave"))
+    });
+    assert!(found, "no dead rose under the Shadow on seeds 11, 58 or 5");
 }
 
 /// Strange moods (Dwarf Fortress): a creative settler is seized, claims the workshop and makes a
@@ -943,19 +947,11 @@ fn the_militia_drills_and_arms() {
 /// neighbouring peoples perform and teach a work the camp then performs as they were taught.
 #[test]
 fn visitors_come_from_the_world() {
-    let dir = std::env::temp_dir().join(format!("visitors_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--seed", "11", "--sim-projects", "190"])
-        .env("PLANET_DUMP_LOG", &log)
-        .output()
-        .expect("run planet_generator");
-    assert!(out.status.success());
-    let text = std::fs::read_to_string(&log).unwrap_or_default();
-    let _ = std::fs::remove_dir_all(&dir);
-    let has = |s: &str| text.lines().any(|l| l.contains(s));
-    assert!(has("a monster hunter of") && has("who set out to slay"), "no hunter came:\n{text}");
+    // (Seed 11 for the hunter; seed 3 too, whose taught works are performed: seed 11's pupil is
+    // seldom at the fire at eight in the evening since settlers have spare hours of their own.)
+    let logs: Vec<String> = ["11", "3"].iter().map(|s| run_log(s, "190", &[])).collect();
+    let has = |s: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(s)));
+    assert!(has("a monster hunter of") && has("who set out to slay"), "no hunter came");
     // (To the fire, or to the tavern once one stands: seed 11's drinkers press for one early.)
     assert!(has("A traveller comes to the fire") || has("A traveller comes to the tavern"), "no bard came");
     assert!(has(" teaches "), "the bard taught nothing");
@@ -1527,9 +1523,12 @@ fn an_established_camp_does_not_walk_away() {
 /// den after four bites and burns the dead that rose three times.
 #[test]
 fn the_camp_clears_the_den_and_burns_the_restless() {
-    let text = run_log("11", "60", &[]);
-    assert!(text.lines().any(|l| l.contains("go out to the wolves' den at ")), "the wolves were never answered");
-    assert!(text.lines().any(|l| l.contains("burn what is left on a pyre") || l.contains("burn the bones in it")), "the restless dead were never burned");
+    // (Since settlers live through more, fewer graves rise: seed 58 burns its restless dead on
+    // day 23, seed 11 clears its den the same day.)
+    let logs: Vec<String> = ["11", "58"].iter().map(|s| run_log(s, "60", &[])).collect();
+    let any = |f: &dyn Fn(&str) -> bool| logs.iter().any(|t| t.lines().any(|l| f(l)));
+    assert!(any(&|l| l.contains("go out to the wolves' den at ")), "the wolves were never answered");
+    assert!(any(&|l| l.contains("burn what is left on a pyre") || l.contains("burn the bones in it")), "the restless dead were never burned");
 }
 
 /// A hungry camp plants first: seed 58, hungry from its first weeks, sets a field ahead of the
@@ -1843,9 +1842,9 @@ fn ore_becomes_bars_tools_and_iron_spears() {
     let spear = at("forges an iron-headed spear at the forge");
     assert!(seam < smelter && smelter < charcoal && charcoal < bars, "ore, smelter, fuel, bars out of order");
     assert!(forge < tools && bars < tools && tools < spear, "the forge's tools and spear came before its bars");
-    // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 76 sells six on
-    // day 45.)
-    let spare = run_log("76", "60", &[("PLANET_FORCE_ORE", "30")]);
+    // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 76 sells them to
+    // the caravan of day 105.)
+    let spare = run_log("76", "110", &[("PLANET_FORCE_ORE", "30")]);
     assert!(spare.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron")), "no bars sold");
     assert!(text.lines().any(|l| l.contains("dresses the first blocks of")), "no blocks at the mason's");
 }
@@ -1911,4 +1910,41 @@ fn camps_lay_themselves_out_differently() {
     let (a, b) = (radius("23"), radius("5"));
     assert!((9..=13).contains(&a) && (9..=13).contains(&b));
     assert!((a - b).abs() >= 3, "walls alike: {a} and {b}");
+}
+
+/// Haunts: a need met out of doors is met again at the same place, which its settler marks (a
+/// cairn where they pray, a bench where they rest...); others come to share it.
+#[test]
+fn settlers_make_places_their_own() {
+    let text = run_log("3", "120", &[]);
+    let marks = text.lines().filter(|l| l.contains("raises a cairn of fieldstones") || l.contains("sets a bench of split logs")
+        || l.contains("lays flat stones as a seat") || l.contains("leaves a small cairn") || l.contains("carves it all over") || l.contains("sets up a standing stone")).count();
+    assert!(marks >= 4, "only {marks} places made their own:\n{text}");
+    assert!(text.lines().any(|l| l.contains(" adds a stone to ") && l.contains("'s cairn")), "no one shared another's cairn");
+}
+
+/// Talk (Dwarf Fortress's conversations): idle hours are spent talking, about a moment both lived
+/// through, a home, a value both hold dear; the quarrelsome argue over values, and say so aloud.
+#[test]
+fn settlers_talk_and_argue() {
+    let (text, _) = run_decisions("23", "60");
+    let talks = text.lines().filter(|l| l.contains("wandering        Talking with ") || l.contains("wandering        Passing the time with ")).count();
+    assert!(talks >= 30, "only {talks} talks in 60 days");
+    assert!(text.lines().any(|l| l.contains("wandering        Arguing with ")), "no one argued");
+    let log = run_log("23", "60", &[]);
+    assert!(log.lines().any(|l| l.contains(" argue ") && l.contains(" holds ") && l.contains(" dear")), "no argument said aloud");
+}
+
+/// Gates where the paths go: the palisade's gates face the water, the woods and the road to the
+/// trading town, two for an uneasy people and up to four for a bold one.
+#[test]
+fn gates_face_where_the_paths_go() {
+    let gates = |seed: &str| {
+        // (Chosen when the palisade is begun: seed 58 begins it late.)
+        let log = run_log(seed, "90", &[]);
+        log.lines().find(|l| l.contains("They will leave ") && l.contains(" in the wall")).map(|l| l.to_string()).unwrap_or_else(|| panic!("no gates chosen on seed {seed}"))
+    };
+    let (a, b) = (gates("23"), gates("58"));
+    assert!(a.contains("2 gates") && a.contains("uneasy"), "{a}");
+    assert!(b.contains("toward the woods") && b.contains("toward the road to "), "{b}");
 }

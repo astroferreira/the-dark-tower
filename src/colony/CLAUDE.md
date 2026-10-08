@@ -1756,3 +1756,36 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   `the_camp_presses_for_what_its_people_want`, `camps_lay_themselves_out_differently`. Moved:
   the bard may come "to the tavern"; Gru may meet someone on the stair (the raid "out of the
   mine"); gems at 120 days; news on seed 3; jaded, tombs on seed 1; suppers on 5, 1, 23.
+- Haunts (`haunts.rs`): a need met out of doors (prayer, rest, time to think, a walk alone,
+  whittling, the old ways) is met again where it was first met (`haunt_of`; the act's why says
+  "at her cairn" / "at 111,103, where she always goes"); on the third visit the settler leaves a
+  mark there (`MarkKind::{Cairn, Bench, Carving}`, or a raised stone for the old ways; inked as
+  a heap of three stones, a plank on legs, a notched post; hover and click as any mark): "Grang
+  raises a cairn of fieldstones on the rise at 111,103, where he prays to Heleleon". A newcomer
+  whose spot lies within 5 cells of another's place of the same need shares it ("Ord adds a stone
+  to Grang's cairn, and prays there too"; +1 opinion), and the devout without a place of their
+  own pray at another's cairn one day in two (`shared_haunt`). Six dev seeds, 120 days: 7-15
+  such marks a camp, no two camps alike. `Colony::haunts`.
+- Talk (`talk.rs`, DF's conversations): a talk has a topic chosen when they sit down
+  (`talk_topic`, in the why): a moment both lived through in the last 20 days (raids, deaths,
+  births, weddings, festivals, masterworks...), a home both name in their callings, a value both
+  hold dear, or small talk; where a value pulls them apart (both 20+ apart in sign), an argument,
+  likelier for the quarrelsome (discord, anger). `talk_done` when they get up: agreement and a
+  shared home +2 both ways; shared grief +2 and comfort; an argument -3 both ways, a quarrel
+  thought when either is angry, said aloud once a pair in 20 days ("Snokh and Graadrozz argue
+  under the trees about cunning: Snokh has no use for cunning; Graadrozz holds it dear, and voices
+  are raised"). Idle hours become talk (`idle_talk`: with nothing to do, sit with the dearest
+  idle, eating or resting settler within 12 cells; 0.06, 0.3 in the evening), so a camp talks
+  90-390 times in 120 days. Spear-bearers owe the evening drill first (`drill_due`: no need act or
+  idle talk then; drills had fallen a third and no hunting party went out).
+- Gates where the paths go (`traps.rs`: `choose_gates`, `gate_dirs`, `gate_point`): when the
+  palisade is begun the camp chooses its gates on the eight compass points, toward the water (the
+  lane), the nearest timber outside the wall and the road to the trading town, a quarter turn
+  apart at least; 2 for an uneasy people (founders' mean anxiety 58+), 4 for a bold one (under
+  45), else 3 ("They will leave 2 gates in the wall: north toward the water and south-west toward
+  the road to Swanworth, and no more: they are an uneasy people"). The palisade leaves the gaps
+  there, the cages stand there, the ditch's crossings are where each gate's way meets its square
+  (a corner for a diagonal; `crossings`), with steps beside, and the drawbridges span them.
+- A work set with a gem is always logged. Tests: `settlers_make_places_their_own`,
+  `settlers_talk_and_argue`, `gates_face_where_the_paths_go`; moved: risings on 58/5, the pyre on
+  58, the taught work on seed 3, spare bars sold on day 105.

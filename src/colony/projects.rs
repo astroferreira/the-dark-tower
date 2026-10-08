@@ -361,6 +361,8 @@ impl Colony {
         if is_dig(kind) {
             match self.plan_dig(kind) { Some(plan) => self.begin_dig(plan), None => return }
         }
+        // The palisade's gates are chosen as it is begun (`traps.rs`).
+        if kind == ProjectKind::Palisade && self.gate_dirs.is_empty() { self.choose_gates(); }
         let p = Project { kind, at, needed, used: 0, material, why, done: false, day };
         if food_first { self.projects.insert(0, p); } else { self.projects.push(p); }
     }
@@ -621,7 +623,9 @@ impl Colony {
                 if v.last() != Some(&p) { v.push(p); }
             }
             v.dedup();
-            v.into_iter().filter(|(x, y)| x.abs() > 1 && y.abs() > 1).collect()
+            // Open where the gates are (`traps.rs`: `gates`).
+            let gates: Vec<(i32, i32)> = self.gate_dirs().into_iter().map(|d| super::traps::gate_point(d, r)).collect();
+            v.into_iter().filter(|&(x, y)| !gates.iter().any(|g| (x - g.0).pow(2) + (y - g.1).pow(2) <= 2)).collect()
         };
         let mat = if m == ItemKind::Stone { Material::Rock(crate::erosion::materials::RockType::Granite) } else { Material::Wood };
         // A load raises the next stretch; (needed, needed) with `used` past the end... a mending

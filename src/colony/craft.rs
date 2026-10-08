@@ -173,7 +173,7 @@ impl Colony {
                     self.feel(j, mind::Feel::Admired { what: w });
                 }
             }
-        } else if quality >= 3 || self.works.len() == 1 {
+        } else if quality >= 3 || self.works.len() == 1 || what.contains(" set with ") {
             self.note(format!("{} finishes {} at the workshop.", name, what));
         }
     }

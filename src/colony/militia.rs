@@ -166,6 +166,11 @@ impl Colony {
     }
 
     /// The militia's share of readiness, and its words for the tally.
+    /// Whether settler `i` owes the drill now (a duty: their own needs wait for it).
+    pub(crate) fn drill_due(&self, i: usize) -> bool {
+        (17..19).contains(&self.clock.hour()) && !self.settlers[i].mind.drilled && self.trouble_foretold().is_some() && self.militia().contains(&i)
+    }
+
     pub(crate) fn militia_ready(&self) -> (f32, usize) {
         let n = self.arms.iter().filter_map(|a| a.holder).filter(|&i| self.settlers[i].alive && self.settlers[i].drill >= 0.1).count();
         ((0.015 * n as f32).min(0.06), n)

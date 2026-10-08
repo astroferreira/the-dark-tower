@@ -601,13 +601,14 @@ impl Colony {
     /// come in by the gates, where the cage traps stand.
     fn plan_moat(&self) -> Option<DelvePlan> {
         let r = self.wall_r() + 2;
+        let crossings = self.crossings(r);
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
         let w = self.map.width;
         let mut ring: Vec<Pos> = Vec::new();
         for dy in -r..=r { for dx in -r..=r {
             if dx.abs() != r && dy.abs() != r { continue; }
-            // The crossings: three cells at each gate's axis.
-            if dx.abs() <= 1 || dy.abs() <= 1 { continue; }
+            // The crossings: the cells round where each gate's way meets the ditch.
+            if crossings.iter().any(|c| (dx - c.0).abs() <= 1 && (dy - c.1).abs() <= 1) { continue; }
             let (x, y) = (cx + dx, cy + dy);
             if x < 4 || y < 4 || x as usize + 4 >= w || y as usize + 4 >= self.map.height { return None; }
             let p = (x as u16, y as u16);
@@ -624,18 +625,21 @@ impl Colony {
         // So do the cells beside any stretch left uncut, by a building or on wet or forbidden
         // ground: a stretch of ditch closed at both ends had trapped its digger, who starved.)
         let cut: std::collections::HashSet<Pos> = ring.iter().copied().collect();
-        let on_ring = |x: i32, y: i32| (x - cx).abs() == r || (y - cy).abs() == r;
+        let on_ring = |x: i32, y: i32| ((x - cx).abs() == r || (y - cy).abs() == r) && (x - cx).abs() <= r && (y - cy).abs() <= r;
         let step = |p: Pos| {
-            let (dx, dy) = ((p.0 as i32 - cx).abs(), (p.1 as i32 - cy).abs());
-            if (dx == 2 && dy == r) || (dy == 2 && dx == r) { return true; }
             (-1i32..=1).any(|oy| (-1i32..=1).any(|ox| {
                 let (x, y) = (p.0 as i32 + ox, p.1 as i32 + oy);
-                (ox, oy) != (0, 0) && on_ring(x, y) && (x - cx).abs() <= r && (y - cy).abs() <= r
-                    && (x - cx).abs() > 1 && (y - cy).abs() > 1 && !cut.contains(&(x as u16, y as u16))
+                (ox, oy) != (0, 0) && on_ring(x, y) && !cut.contains(&(x as u16, y as u16))
             }))
         };
         cuts.extend(ring.iter().filter(|&&p| !step(p)).map(|&p| DigCell::room(p, sz(p) - 2)));
         Some(DelvePlan { cuts, rooms: Vec::new(), spine: None, mouth: self.camp })
+    }
+
+    /// Where each gate's way meets the square ring of the ditch (radius `r`, offsets from the
+    /// camp): straight out on an axis, at the corner on a diagonal.
+    pub(crate) fn crossings(&self, r: i32) -> Vec<(i32, i32)> {
+        self.gate_dirs().into_iter().map(|d| (d.0 * r, d.1 * r)).collect()
     }
 
     /// Whether the ditch round the wall is dug.
@@ -717,9 +721,12 @@ impl Colony {
         let r = self.wall_r() + 2;
         let w = self.map.width;
         let mut bridges = Vec::new();
-        for (ax, ay) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
-            for k in -1i32..=1 {
-                let (x, y) = (cx + ax * r + ay.abs() * k, cy + ay * r + ax.abs() * k);
+        let crossings = self.crossings(r);
+        let cells: Vec<(i32, i32)> = (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| (dx, dy)))
+            .filter(|&(dx, dy)| (dx.abs() == r || dy.abs() == r) && crossings.iter().any(|c| (dx - c.0).abs() <= 1 && (dy - c.1).abs() <= 1)).collect();
+        for (dx, dy) in cells {
+            {
+                let (x, y) = (cx + dx, cy + dy);
                 if x < 3 || y < 3 || x as usize + 3 >= w || y as usize + 3 >= self.map.height { continue; }
                 let (ux, uy) = (x as usize, y as usize);
                 let sz = self.map.surface_z[uy * w + ux];
@@ -746,7 +753,7 @@ impl Colony {
         if self.bridges.is_empty() || self.bridges_up == up { return; }
         // (Not with anyone still outside: they would be shut out. Tried again at dawn.)
         if up && (0..self.settlers.len()).any(|i| self.settlers[i].alive && self.settlers[i].away_until == 0 && !self.below(i)
-            && (self.settlers[i].pos.0 as i32 - self.camp.0 as i32).abs().max((self.settlers[i].pos.1 as i32 - self.camp.1 as i32).abs()) >= 13) { return; }
+            && (self.settlers[i].pos.0 as i32 - self.camp.0 as i32).abs().max((self.settlers[i].pos.1 as i32 - self.camp.1 as i32).abs()) >= self.wall_r() + 2) { return; }
         let w = self.map.width;
         for &(p, z) in &self.bridges.clone() {
             let (x, y) = (p.0 as usize, p.1 as usize);
