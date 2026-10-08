@@ -1360,6 +1360,20 @@ fn plate_info(world: &WorldData, history: Option<&WorldHistory>, gaz: &crate::lo
 /// scaled up, realm borders, the Shadow's dominion, ruins, the great battles with their years, a
 /// compass rose in open sea, a scale bar, a ruled border and a cartouche with the world's name,
 /// the year and its one sentence.
+/// The ink map of the whole world, unlabelled, about `width` px wide (2 px a tile at least): the
+/// legends' map, where sites and realms are pinned (`lore::legends`).
+pub fn map_image(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, width: usize) -> image::RgbImage {
+    let mut tw = TileWorld::build(world, atlas);
+    tw.set_season(world, crate::seasons::Season::Summer);
+    if let Some(h) = history { tw.apply_history(world, h, atlas); }
+    let tile_px = (width / world.width).max(2) as f32;
+    let (w, h) = ((tile_px as usize) * world.width, (tile_px as usize) * world.height);
+    let cam = Camera { cx: world.width as f32 / 2.0, cy: world.height as f32 / 2.0, tile_px };
+    let mut buf = vec![0u32; w * h];
+    render_world(&tw, atlas, &cam, &mut buf, w, h);
+    image::RgbImage::from_fn(w as u32, h as u32, |x, y| { let p = buf[y as usize * w + x as usize]; image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8]) })
+}
+
 pub fn save_poster(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, path: &str, width: usize) -> Result<(usize, usize), Box<dyn Error>> {
     use super::fonts::{self, Face};
     let t0 = std::time::Instant::now();

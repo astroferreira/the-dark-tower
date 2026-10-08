@@ -273,6 +273,19 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   chronicle, nothing saved; the inspector's event page shows "Part of ..." lines (linked).
   `war_events` lists a war's events in order (not used by a page yet).
 
+## Legends (`lore/legends.rs`, `--legends DIR`; DF's legends mode, guide ch. 06)
+- The history as a folder of linked pages, text generated from the chronicle when written: a
+  page per people (arms PNG, towns, rulers, wars, arts, its story), site (holders, notables,
+  monuments, made here), figure (life, kin, persona, deeds), beast (`monsters::of_legend`, hoard),
+  artifact (keepers), monument, war (`collections::war_events`), faith, age, earlier camp
+  (`colonies/legends_<seed>.json`) and year; every event has an entry `year-Y.html#eID` with
+  "Part of" its war and battle, "Because" (5 back), "It led to" and its sifted tale. Names are
+  linked from participants plus any name only one thing bears. One ink map (`viewer::map_image`)
+  with CSS pins; a search box on every page (`legends.js`). Journal styling. No RNG, sorted ids:
+  byte-identical per seed. Dev: 1,337 pages in ~0.3 s; seed 42: 7,439 pages, 78 MB.
+  `tests/legends.rs`: links and anchors resolve, one entry per event, camps linked, two runs equal.
+- Not done: dynasties and deities have no pages of their own; no per-site map crops.
+
 ## Arts (`arts.rs`, `data/defaults/arts.json`; DF design guide ch. 07)
 - Two layers, built on demand (nothing saved, no RNG): a people's vocabulary (two instruments of
   its race's kinds with a name in its tongue and a material, "the dulmgar, a set of pipes of birch

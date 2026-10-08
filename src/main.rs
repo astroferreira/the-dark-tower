@@ -497,6 +497,11 @@ struct Args {
     #[arg(long)]
     journal: Option<String>,
 
+    /// Write the world's legends to DIR: a cross-linked HTML page for every people, site,
+    /// figure, beast, treasure, war, faith, age and year, with causes, a map and a search box
+    #[arg(long, value_name = "DIR")]
+    legends: Option<std::path::PathBuf>,
+
     /// Run N benchmark simulations and print aggregate quality metrics
     #[arg(long)]
     benchmark: Option<u32>,
@@ -1941,6 +1946,21 @@ fn main() {
                 }
             }
             None => eprintln!("--journal needs a history: load a world saved with history, or add --history-years"),
+        }
+    }
+
+    if let Some(dir) = &args.legends {
+        match history.as_ref() {
+            Some(h) => {
+                let gaz = lore::build_gazetteer(&world_data, Some(h), master_seed);
+                let map = tiles::viewer::map_image(&world_data, Some(h), &load_atlas(args.tileset.as_deref()), 1024);
+                let camps = colony::legend::load(world_data.seed());
+                match lore::legends::write_legends(&world_data, h, &gaz, &camps, Some(&map), dir) {
+                    Ok(rep) => eprintln!("Wrote legends to {}: {}", dir.display(), rep.line()),
+                    Err(e) => eprintln!("Failed to write legends: {}", e),
+                }
+            }
+            None => eprintln!("--legends needs a history: load a world saved with history, or add --history-years"),
         }
     }
 

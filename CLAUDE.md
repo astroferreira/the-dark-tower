@@ -115,6 +115,7 @@ raise the lookout as a tower. Each has its notes in
 `src/colony/CLAUDE.md`. Debug forcing: `PLANET_FORCE_WERE`, `PLANET_FORCE_SEEKER`,
 `PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`. Board cards `df-*`; progress log in the Claude Doc
 "Dwarf Fortress systems: progress log".
+Legends mode as linked HTML pages: `--legends DIR` (`lore/legends.rs`; notes in `src/history/CLAUDE.md`).
 
 ### Rejecting worlds (`--require`)
 `--require rivers=4,lakes=2,ranges=3,...` (rivers, lakes, ranges/mountains, forests, deserts,
