@@ -79,6 +79,10 @@ impl Colony {
     /// A dig whose cuts no one can reach any more is given up (forty failed ways in a row): the
     /// work is struck off, nothing is registered, and the same dig is not planned again.
     pub(crate) fn give_up_dig(&mut self) {
+        if std::env::var("PLANET_DEBUG_DIG").is_ok() {
+            let next = self.dig_plan.as_ref().and_then(|pl| pl.iter().find(|c| !self.cut_done(c)).copied());
+            eprintln!("GIVEUP day {} next {:?} stand {:?} spine {:?}", self.clock.day(), next, next.and_then(|c| self.cut_stand(&c)), self.spine);
+        }
         self.dig_fails = 0;
         let Some(first) = self.dig_plan.as_ref().and_then(|p| p.first().map(|c| c.p)) else { return };
         self.digs_given_up.push(first);
@@ -116,6 +120,9 @@ impl Colony {
                 let sp = self.spine?;
                 let mouth = self.delve_mouth?;
                 if self.marked_at(mouth, true) || self.marked_at(sp.at, true) { return None; }
+                // Toward the first cavern (DF's miners follow the draught): the stair down to the
+                // nearest cavern floor's level within 40 cells, then a gallery across to it.
+                if let Some(cuts) = self.mine_toward_cavern(sp) { return Some(DelvePlan { cuts, rooms: Vec::new(), spine: None, mouth }); }
                 let cuts: Vec<DigCell> = (1..=35).map(|k| sp.bottom - k).take_while(|&z| z >= 2).map(|z| DigCell::stair(sp.at, z)).collect();
                 if cuts.is_empty() { return None; }
                 Some(DelvePlan { cuts, rooms: Vec::new(), spine: None, mouth })
@@ -136,6 +143,42 @@ impl Colony {
             }
             _ => None,
         }
+    }
+
+    /// The mine's way to the first cavern when it does not lie under the stair: the stair down to
+    /// the floor level of the nearest column of it (within 40 cells), then a gallery along the
+    /// rows and columns to it, ending where the next cut opens into the cavern's air.
+    fn mine_toward_cavern(&self, sp: Spine) -> Option<Vec<DigCell>> {
+        let w = self.map.width;
+        let k0 = sp.at.1 as usize * w + sp.at.0 as usize;
+        // Under the stair already: the old straight mine finds it.
+        if self.map.cavern_z.get(k0).map_or(false, |c| c[0].0 >= 0 && (c[0].0 as i32) < sp.bottom) { return None; }
+        let mut best: Option<(i32, Pos, i32)> = None;
+        for dy in -40i32..=40 { for dx in -40i32..=40 {
+            let (x, y) = (sp.at.0 as i32 + dx, sp.at.1 as i32 + dy);
+            if x < 4 || y < 4 || x as usize + 4 >= w || y as usize + 4 >= self.map.height { continue; }
+            let c = self.map.cavern_z[y as usize * w + x as usize][0];
+            if c.0 < 3 || c.0 as i32 >= sp.bottom - 1 { continue; }
+            let d = dx.abs() + dy.abs();
+            if best.map_or(true, |b| d < b.0) { best = Some((d, (x as u16, y as u16), c.0 as i32)); }
+        } }
+        let (_, target, f) = best?;
+        // A level above the floor there, so the gallery breaks into the cavern's air from the side.
+        let zg = f + 1;
+        let mut cuts: Vec<DigCell> = (zg..sp.bottom).rev().map(|z| DigCell::stair(sp.at, z)).collect();
+        let (mut x, mut y) = (sp.at.0 as i32, sp.at.1 as i32);
+        while (x, y) != (target.0 as i32, target.1 as i32) {
+            if x != target.0 as i32 { x += (target.0 as i32 - x).signum(); } else { y += (target.1 as i32 - y).signum(); }
+            let (ux, uy) = (x as usize, y as usize);
+            // Into the cavern's air: the breach comes with this cut (`finish_dig`).
+            let open = self.map.cavern_at(ux, uy, zg + 1).is_some() || self.map.cavern_at(ux, uy, zg).is_some();
+            if !open && (self.map.cell(ux, uy, zg as usize).water > 0 || self.map.cell(ux, uy, (zg + 1) as usize).water > 0) { return None; }
+            // (Not through rock already opened: a place in the hills lies across the way.)
+            if !open && !matches!(self.map.cell(ux, uy, (zg + 1) as usize).shape, crate::local::Shape::Wall) { return None; }
+            cuts.push(DigCell::room((x as u16, y as u16), zg));
+            if open { break; }
+        }
+        (cuts.len() <= 120).then_some(cuts)
     }
 
     /// Settlers grown and living here who have no bedroom (a married pair share one).
@@ -392,7 +435,9 @@ impl Colony {
     /// The next room to furnish: the great hall's table first (once ten live here), then the beds
     /// of bedrooms with an owner, eldest room first.
     fn unfurnished(&self) -> Option<usize> {
-        self.rooms.iter().position(|r| r.kind == RoomKind::GreatHall && r.furnished.is_none())
+        // (The lord's room first.)
+        self.lords_room().filter(|&r| self.rooms[r].furnished.is_none())
+            .or_else(|| self.rooms.iter().position(|r| r.kind == RoomKind::GreatHall && r.furnished.is_none()))
             .or_else(|| self.rooms.iter().position(|r| r.kind == RoomKind::Bedroom && r.furnished.is_none() && r.owner.is_some()))
     }
 
@@ -666,6 +711,15 @@ impl Colony {
         if !dug || self.projects.iter().any(|p| !p.done && projects::is_dig(p.kind)) { return; }
         let day = self.clock.day();
         let masons = self.way.as_ref().map_or(false, |w| w.stone_first);
+        // The farm under the rock first: it feeds them through the winter; rooms can wait.
+        let farm_first = self.can_cave_farm() && !self.projects.iter().any(|p| p.kind == ProjectKind::CaveFarm);
+        if farm_first {
+            if self.cave_hunter.is_some() && self.cave_bites >= 2 && !self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) {
+                let why = format!("{} times {} have come up the mine and hurt someone; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
+                c.push((2.0, ProjectKind::Hatch, why, 6, self.spine.unwrap().at));
+            }
+            return;
+        }
         let without = self.grown_without_rooms();
         if day >= 20 && without >= 4 {
             if let Some(plan) = self.plan_dig(ProjectKind::Bedrooms) {

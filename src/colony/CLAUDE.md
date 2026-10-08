@@ -1497,3 +1497,20 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   (6 loads, urgency 2.0, a moment): `cave_hunter` is cleared and later breaches below it set no
   new one; `Colony::hatch` (column, level), drawn as barred planks. Seeds 76, 23, 58, 3, 5 seal it
   on days 48-107; nothing comes up after. Tested (`the_caverns_are_sealed_with_a_hatch`).
+- The lord's quarters (`nobles.rs::lord_quarters`, DF's nobles' room requirements): a lord takes
+  the best bedroom (its owner is moved to the lord's old one, or none, and resents it: a grievance
+  and -3), wants it worth 8 (`room_value`), and its bed and walls come first (`unfurnished`,
+  `bare_walls`); the camp's builder carves them by order whatever their taste. Unmet 30 days on,
+  every 20 days "finds the lord's rooms mean" (the lord likes everyone less); met, "is pleased
+  with the lord's rooms" once (+1). Seed 23: Baangh takes Snaazo's room day 90, pleased day 126.
+- The mine follows the draught (`delve.rs::mine_toward_cavern`): when no cavern lies under the
+  stair, it goes down to a level above the floor of the nearest first-cavern column within 40
+  cells and cuts a gallery along rows and columns to it (never through rock a place has already
+  opened), breaking in from the side; else straight down as before. The farm under the rock comes
+  before the comfort digs (`delve_candidates` returns early, but for the hatch, while a farm could
+  be planted and is not). A cut is made from the level above only on open ground (a digger on the
+  stair had cut a gallery's first cell a level early and left the next out of reach), and floors
+  that places opened are never ground known to be walked (`cut_stand`). Seed 11 had starved
+  and left its land in winter with its mine missing the caverns; now it breaks in on day 35,
+  digs the farm next, and holds out. The still's spot is open ground beside its posts (brewers
+  had walked to a post). `PLANET_DEBUG_DIG` also prints why a dig is given up.

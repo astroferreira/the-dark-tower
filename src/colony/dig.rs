@@ -185,12 +185,15 @@ impl Colony {
     /// Where to stand to make a cut: on the stair cell itself for a stair (digging down underfoot),
     /// else beside the cell on its level (or the level above), on ground known to be walked to:
     /// the surface, the spine, or a cut already made.
-    fn cut_stand(&self, c: &DigCell) -> Option<nav::P3> {
+    pub(crate) fn cut_stand(&self, c: &DigCell) -> Option<nav::P3> {
         let w = self.map.width;
+        // (A place carved the old way lowers its columns' ground; that floor is not ground known
+        // to be walked: it may lie cut off beside the stair.)
+        let in_place = |q: nav::P3| self.map.places.iter().any(|pl| pl.cells.iter().any(|c| c.0 == (q.0, q.1) && c.1 == q.2));
         let known = |q: nav::P3| {
-            self.map.surface_z[q.1 as usize * w + q.0 as usize] == q.2
+            (self.map.surface_z[q.1 as usize * w + q.0 as usize] == q.2 && !in_place(q))
                 || self.spine.as_ref().map_or(false, |s| s.at == (q.0, q.1) && q.2 >= s.bottom && q.2 <= s.top)
-                || self.dig_plan.iter().flatten().any(|d| d.p == (q.0, q.1) && d.z == q.2 && self.cut_done(d))
+                || (self.dig_plan.iter().flatten().any(|d| d.p == (q.0, q.1) && d.z == q.2 && self.cut_done(d)) && !in_place(q))
                 || self.rooms.iter().any(|r| r.z == q.2 && r.cells.contains(&(q.0, q.1)))
                 || (self.hall_z == q.2 && self.hall_cells.contains(&(q.0, q.1)))
         };
@@ -203,6 +206,9 @@ impl Colony {
             if q.0 < 0 || q.1 < 0 || q.0 as usize >= w || q.1 as usize >= self.map.height { continue; }
             for qz in [c.z, c.z + 1] {
                 let s = (q.0 as u16, q.1 as u16, qz);
+                // (From a level above only on open ground: cutting a gallery's first cell from the
+                // stair a level up left the next one out of reach.)
+                if qz == c.z + 1 && self.map.surface_z[q.1 as usize * w + q.0 as usize] != qz { continue; }
                 if nav::standable(&self.map, q.0 as usize, q.1 as usize, qz) && known(s) { return Some(s); }
             }
         }

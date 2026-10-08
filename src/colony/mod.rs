@@ -1439,7 +1439,7 @@ impl Colony {
             let camp = self.camp;
             self.chilled_nights += self.settlers.iter().filter(|s| s.alive && s.exposure >= 0.5
                 && (s.pos.0 as i32 - camp.0 as i32).abs().max((s.pos.1 as i32 - camp.1 as i32).abs()) <= 12).count() as u32;
-            self.spoil(); self.reckon_hunger_days(); self.field_season(); self.draw_water(); self.plan_projects(); self.reckon_company(); self.reckon_roles(); self.arm_militia(); self.reckon_wounds(); self.reckon_temper(); self.reckon_minds(); self.reckon_society(); self.reckon_hollow(); self.lord_arrives(); self.lord_displeased(); self.lord_demands(); self.sellsword_comes(); self.reckon_expedition(); self.vampire_dawn(); self.reckon_prisoner(); self.reckon_regard(); self.reckon_snatched(); self.reckon_siege(); self.reckon_guilds(); self.reckon_rising(); self.reckon_old_fields(); self.reckon_responses(); self.reckon_priest(); self.reckon_war_call(); self.reckon_cook(); self.reckon_clothes(); self.reckon_dreams(); self.reckon_childhood(); self.reckon_rations(); self.reckon_ice(); self.reckon_herds(); self.reckon_rooms(); self.regrow(); self.reckon_tithe(); self.reckon_justice(); self.reckon_mood(); self.reckon_pets(); self.reckon_years(); self.pen_slaughter(); self.reckon_family(); self.reckon_thirst(); self.moon_sets();
+            self.spoil(); self.reckon_hunger_days(); self.field_season(); self.draw_water(); self.plan_projects(); self.reckon_company(); self.reckon_roles(); self.arm_militia(); self.reckon_wounds(); self.reckon_temper(); self.reckon_minds(); self.reckon_society(); self.reckon_hollow(); self.lord_arrives(); self.lord_displeased(); self.lord_demands(); self.sellsword_comes(); self.reckon_expedition(); self.vampire_dawn(); self.reckon_prisoner(); self.reckon_regard(); self.reckon_snatched(); self.reckon_siege(); self.reckon_guilds(); self.reckon_rising(); self.reckon_old_fields(); self.reckon_responses(); self.reckon_priest(); self.reckon_war_call(); self.reckon_cook(); self.reckon_clothes(); self.reckon_dreams(); self.reckon_childhood(); self.reckon_rations(); self.reckon_ice(); self.reckon_herds(); self.reckon_rooms(); self.lord_quarters(); self.regrow(); self.reckon_tithe(); self.reckon_justice(); self.reckon_mood(); self.reckon_pets(); self.reckon_years(); self.pen_slaughter(); self.reckon_family(); self.reckon_thirst(); self.moon_sets();
         }
         if self.clock.minute() == 0 { self.evil_weather(); }
         if self.clock.hour() == 16 && self.clock.minute() == 0 { self.cook_supper(); }
@@ -2124,7 +2124,9 @@ impl Colony {
                 if let Job::Forage(t) | Job::Fish(t) | Job::Fell(t) | Job::Quarry(t) = job { self.unreachable.insert(t); }
                 if let Job::Haul(k) = job { let at = self.items[k].at; self.unreachable.insert(at); }
                 // A cut no one can reach: after forty tries the dig is given up (`delve.rs`).
-                if let Job::Dig(..) = job { self.dig_fails += 1; if self.dig_fails >= 40 { self.give_up_dig(); } }
+                if let Job::Dig(..) = job {
+                    self.dig_fails += 1; if self.dig_fails >= 40 { self.give_up_dig(); }
+                }
                 if let Job::Hunt(id) = job { self.game_unreachable.insert(id); }
                 if !matches!(job, Job::Wander(_)) { self.settlers[i].stuck += 1; }
                 // Every failed way waits a quarter hour before the next try (a wander to an

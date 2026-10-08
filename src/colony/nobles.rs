@@ -110,6 +110,56 @@ impl Colony {
         for j in 0..self.settlers.len() { if j != k && self.settlers[j].alive { self.like(k, j, -1); } }
     }
 
+    /// Dawn: a lord takes the best bedroom (DF's nobles and their room requirements) and wants it
+    /// worth 8 or more (`room_value`: the bed and engravings); its furniture and its walls come
+    /// first, and the camp's builder carves them by order whatever their taste. Unmet 30 days
+    /// after they came, every twenty days the lord finds the rooms mean (the camp is liked less);
+    /// met, the lord is pleased, once.
+    pub(crate) fn lord_quarters(&mut self) {
+        use super::delve::RoomKind;
+        let Some(came) = self.lord.as_ref().and_then(|l| l.came) else { return };
+        let Some(k) = self.speaker.filter(|&s| self.settlers[s].alive && self.settlers[s].office.as_deref() == Some("Lord of the camp")) else { return };
+        let day = self.clock.day();
+        // The best room: the lord's, whoever had it.
+        let best = (0..self.rooms.len()).filter(|&r| self.rooms[r].kind == RoomKind::Bedroom)
+            .max_by_key(|&r| (self.room_value(&self.rooms[r]), std::cmp::Reverse(r)));
+        let Some(best) = best else { return };
+        let mine = self.rooms.iter().position(|r| r.kind == RoomKind::Bedroom && r.owner == Some(k));
+        if mine.map_or(true, |m| self.room_value(&self.rooms[m]) < self.room_value(&self.rooms[best])) && mine != Some(best) {
+            let had = self.rooms[best].owner;
+            self.rooms[best].owner = Some(k);
+            if let Some(m) = mine { self.rooms[m].owner = had; }
+            let lname = self.settlers[k].name.clone();
+            match had {
+                Some(o) if o != k && self.settlers[o].alive => {
+                    let oname = self.settlers[o].name.clone();
+                    self.note(format!("{} takes {}'s bedroom, the best below, for the lord's own{}.", lname, oname, if mine.is_some() { format!("; {} has the lord's old one", oname) } else { String::new() }));
+                    self.feel(o, mind::Feel::Mandate { what: format!("give up their room to {}", lname) });
+                    self.like(o, k, -3);
+                }
+                _ => self.note(format!("{} takes the best bedroom below for the lord's own.", lname)),
+            }
+        }
+        let value = self.room_value(&self.rooms[best]);
+        let name = self.settlers[k].name.clone();
+        if value >= 8 {
+            if self.milestones.insert("lord's rooms") {
+                self.note(format!("{} is pleased with the lord's rooms: a bed of {} and walls carved with the camp's story.", name, self.rooms[best].furnished.clone().unwrap_or_else(|| "wood".into())));
+                for j in 0..self.settlers.len() { if j != k && self.settlers[j].alive { self.like(k, j, 1); } }
+            }
+        } else if day >= came + 30 && (day - came) % 20 == 10 {
+            let bare = if self.rooms[best].furnished.is_some() { "a bed and bare walls are" } else { "a bare room of rock is" };
+            self.note(format!("{} finds the lord's rooms mean: {} no place for the kin of a ruler.", name, bare));
+            for j in 0..self.settlers.len() { if j != k && self.settlers[j].alive { self.like(k, j, -1); } }
+        }
+    }
+
+    /// Whose room comes first for furniture and engravings: the lord's.
+    pub(crate) fn lords_room(&self) -> Option<usize> {
+        let k = self.speaker.filter(|&s| self.settlers[s].alive && self.settlers[s].office.as_deref() == Some("Lord of the camp"))?;
+        self.rooms.iter().position(|r| r.kind == super::delve::RoomKind::Bedroom && r.owner == Some(k))
+    }
+
     /// Dawn: the lord demands a fine work of a material they love; unmet in thirty days, someone
     /// pays for it in the stocks, and the lord demands again.
     pub(crate) fn lord_demands(&mut self) {

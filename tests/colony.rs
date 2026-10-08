@@ -577,7 +577,7 @@ fn raids_are_fought_blow_by_blow() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "20"])
+        .args(["--dev", "--headless", "--sim-projects", "60"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -585,7 +585,8 @@ fn raids_are_fought_blow_by_blow() {
     let text = std::fs::read_to_string(&log).unwrap_or_default();
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = text.lines().collect();
-    let raid = lines.iter().position(|l| l.contains("The raid:")).unwrap_or_else(|| panic!("no raid in 20 days:\n{text}"));
+    // (The first raid fought: a beast taken in a cage trap fights no one.)
+    let raid = lines.iter().position(|l| l.contains("The raid:") && !l.contains("cage trap") && !l.contains("talked by the fire")).unwrap_or_else(|| panic!("no raid fought in 60 days:\n{text}"));
     let stamp = &lines[raid][..13];
     let blows: Vec<&&str> = lines[raid + 1..].iter().take_while(|l| l.starts_with(stamp)).collect();
     assert!(blows.len() >= 2, "the raid has no blows: {blows:?}");
@@ -1713,8 +1714,8 @@ fn fungus_trees_are_felled_in_the_cavern() {
     let text = run_log("76", "45", &[("PLANET_FORCE_CAVERN", "1")]);
     assert!(text.lines().any(|l| l.contains("breaks through into darkness")), "no cavern breached");
     assert!(text.lines().any(|l| l.contains("fells a fungus tree in ") && l.contains("haul up the stair")), "no fungus tree felled");
-    // (Seed 76 eats well and never fishes; seed 23 does, from day 21.)
-    let fished = run_log("23", "40", &[("PLANET_FORCE_CAVERN", "1")]);
+    // (Seed 76 eats well and never fishes; seed 3 does below from day 24.)
+    let fished = run_log("3", "60", &[("PLANET_FORCE_CAVERN", "1")]);
     assert!(fished.lines().any(|l| l.contains("the first blind white fish")), "no fish from the cavern's water");
 }
 

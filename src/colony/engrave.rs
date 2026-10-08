@@ -54,6 +54,8 @@ impl Colony {
     fn bare_walls(&self) -> Vec<(Pos, Pos, i32, String)> {
         use super::delve::RoomKind;
         let mut places: Vec<(Vec<Pos>, i32, String)> = Vec::new();
+        // The lord's room first (`nobles.rs`).
+        if let Some(r) = self.lords_room() { places.push((self.rooms[r].cells.clone(), self.rooms[r].z, "the walls of the lord's room".into())); }
         if !self.hall_cells.is_empty() { places.push((self.hall_cells.clone(), self.hall_z, "the hall's wall".into())); }
         for r in self.rooms.iter().filter(|r| r.kind == RoomKind::GreatHall) { places.push((r.cells.clone(), r.z, "the great hall's wall".into())); }
         for r in self.rooms.iter().filter(|r| r.kind == RoomKind::Bedroom && r.owner.is_some()) {
@@ -93,6 +95,9 @@ impl Colony {
         if self.clock.is_night() { return None; }
         if self.settlers.iter().enumerate().any(|(j, s)| j != i && s.alive && s.job == Job::Craft && s.why.starts_with("Engraving")) { return None; }
         let wish = self.craft_wish_any(i);
+        // The lord's order: the camp's builder carves the lord's walls, taste or none (`nobles.rs`).
+        let ordered = self.settlers[i].role == Some(4) && self.engrave_place() == "the walls of the lord's room";
+        let wish = if ordered { wish.max(0.6) } else { wish };
         if wish < 0.3 { return None; }
         self.engrave_spot()?;
         let (image, _) = self.engraving_image(i);

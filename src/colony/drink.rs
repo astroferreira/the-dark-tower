@@ -17,7 +17,12 @@ use crate::persona::Facet;
 impl Colony {
     /// Whether the still stands.
     pub fn still(&self) -> Option<Pos> {
-        self.projects.iter().find(|p| p.done && p.kind == projects::ProjectKind::Still).map(|p| (p.at.0, p.at.1 + 2))
+        // Just below its posts, or the nearest open ground beside them (something may have been
+        // raised or dug where the brewer stood).
+        let p = self.projects.iter().find(|p| p.done && p.kind == projects::ProjectKind::Still)?;
+        [(0i32, 2i32), (1, 2), (-1, 0), (2, 0), (0, -1), (1, -1), (-1, 1), (2, 1)].iter()
+            .map(|&(dx, dy)| ((p.at.0 as i32 + dx).max(0) as u16, (p.at.1 as i32 + dy).max(0) as u16))
+            .find(|&q| nav::passable(&self.map, q))
     }
 
     fn likes_drink(&self, i: usize) -> bool {
