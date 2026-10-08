@@ -30,15 +30,15 @@ pub fn save(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
     let mons = monsters();
     let n = GAME.len() + CAVE.len() + NIGHT.len() + mons.len();
     let cols = 8;
-    let mut sheet = Sheet::new(cols, (n + cols - 1) / cols, 210, 170);
+    let mut sheet = Sheet::new(cols, (n + cols - 1) / cols, 240, 190);
     sheet.title("The bestiary: game, cave life, the night's things and the beasts of the deep");
     let draw = |sheet: &mut Sheet, label: &str, look: &beasts::Look| {
         let (cx, cy) = sheet.cell(label);
         let small = beasts::px_for(look, 1.0);
-        let big = (small * 2.4).clamp(60.0, 130.0);
+        let big = (small * 1.8).clamp(80.0, 150.0);
         let mut put = sheet.put();
-        beasts::draw(&mut put, look, cx - 30.0, cy + 30.0, big, false, Pose::Walk(true), 1.0);
-        beasts::draw(&mut put, look, cx + 72.0, cy + 40.0, small, true, Pose::Stand, 1.0);
+        beasts::draw(&mut put, look, cx - 36.0, cy + 34.0, big, false, Pose::Walk(true), 1.0);
+        beasts::draw(&mut put, look, cx + 80.0, cy + 44.0, small, true, Pose::Stand, 1.0);
     };
     for name in GAME { draw(&mut sheet, name, &beasts::of_name(name)); }
     for name in CAVE { draw(&mut sheet, name, &beasts::of_name(name)); }

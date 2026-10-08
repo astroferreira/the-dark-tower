@@ -804,4 +804,4 @@ fn giant(pen: &mut Pen, l: &Look, step: f32, pose: Pose) {
 /// Whether a creature of this look is drawn bigger than its cell: its pixel size for a cell of
 /// `t` pixels, at the figures' scale (`scale`, as the settlers'), so a deer stands a little
 /// wider than a settler and a forgotten beast towers over them.
-pub fn px_for(look: &Look, scale: f32) -> f32 { (look.len * 40.0 * scale).max(16.0) }
+pub fn px_for(look: &Look, scale: f32) -> f32 { (look.len * 56.0 * scale).max(20.0) }

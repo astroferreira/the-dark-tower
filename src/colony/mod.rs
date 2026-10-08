@@ -84,8 +84,8 @@ pub const TICKS_PER_DAY: u64 = 1440;
 /// Logs a hut takes.
 pub const HUT_LOGS: u32 = 24;
 /// Hut footprint (cells, 2 m each): walls on the ring, a door on the south side.
-const HUT_W: usize = 6;
-const HUT_H: usize = 5;
+pub(crate) const HUT_W: usize = 6;
+pub(crate) const HUT_H: usize = 5;
 /// Food the settlers try to keep at the camp, per settler.
 const FOOD_PER_SETTLER: u32 = 6;
 /// Days a foraged shrub takes to bear again.

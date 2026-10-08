@@ -3,6 +3,7 @@
 
 pub mod atlas;
 pub mod beasts;
+pub mod camp_ink;
 pub mod ink;
 pub mod sprite_sheet;
 mod colony_hud;
