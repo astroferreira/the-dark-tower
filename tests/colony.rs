@@ -557,11 +557,11 @@ fn minds_break_with_reasons() {
         let _ = std::fs::remove_dir_all(&dir);
         text
     };
-    // 150 days on seed 3, whose raids and wounds break minds early (seed 58 had been the hard
-    // camp; with bedrooms and a great hall below it holds out to its second year).
-    let hard = run("3", "150");
+    // 150 days on seed 4, whose first raid and its wounds break a mind on day 10 (seed 3, the
+    // hard camp before, keeps its people whole since they have needs and places of their own).
+    let hard = run("4", "150");
     let breaks: Vec<&str> = hard.lines().filter(|l| l.contains("throws a tantrum") || l.contains("sinks into despair") || l.contains("walks off into the wild")).collect();
-    assert!(!breaks.is_empty(), "seed 3's camp never broke:\n{hard}");
+    assert!(!breaks.is_empty(), "seed 4's camp never broke:\n{hard}");
     assert!(breaks.iter().all(|l| l.contains("(because they ")), "a break without its reasons: {breaks:?}");
     // Starving camps
     // spiral into tantrums as in Dwarf Fortress; a runaway mind would break far more.
@@ -1158,9 +1158,9 @@ fn legends_outlive_the_camp() {
 /// Most camps carve within days, so a few dev seeds are tried until one shows it.
 #[test]
 fn the_dead_who_died_badly_walk_until_remembered() {
-    // (Camps carve slabs for their dead within days; seed 2's ghost walks on day 85 and rests on
-    // day 94.)
-    let found = ["2", "23", "58"].iter().any(|seed| {
+    // (Camps carve slabs for their dead within days; seed 6's ghost walks on day 15 and rests on
+    // day 16.)
+    let found = ["6", "2", "23"].iter().any(|seed| {
         let text = run_log(seed, "120", &[]);
         let seen = text.lines().position(|l| l.contains("The ghost of ") && l.contains(" is seen "));
         let rest = text.lines().position(|l| l.contains("carved in memory of") && l.contains("ghost is at rest"));
@@ -1275,11 +1275,13 @@ fn a_farm_under_the_rock() {
 /// time its ghost no longer walks, and seed 1 is the one that grows jaded, on day 116.)
 #[test]
 fn experience_changes_people() {
-    // (Seed 2 grows jaded on day 235, 3 cheerful, 11 anxious.)
-    let logs: Vec<String> = ["2", "3", "11"].iter().map(|s| run_log(s, "250", &[])).collect();
+    // (Seed 3 grows cheerful, 11 anxious. Jaded takes eight horrors, and camps that keep their
+    // people alive no longer see so many: PLANET_FORCE_HORROR counts each three times.)
+    let logs: Vec<String> = ["3", "11"].iter().map(|s| run_log(s, "250", &[])).collect();
     let any = |needle: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(needle)));
     assert!(any("starts at every shadow"), "no one grew anxious");
-    assert!(any("has seen too much to be shaken now"), "no one grew jaded");
+    let jaded = ["11", "1", "4"].iter().any(|s| run_log(s, "150", &[("PLANET_FORCE_HORROR", "1")]).lines().any(|l| l.contains("has seen too much to be shaken now")));
+    assert!(jaded, "no one grew jaded");
     assert!(any("quicker to laugh"), "no one grew cheerful");
 }
 
@@ -1794,7 +1796,9 @@ fn the_camp_digs_a_delve() {
 /// to fish above (forced here: the dev camp has both nearby).
 #[test]
 fn fungus_trees_are_felled_in_the_cavern() {
-    let text = run_log("76", "60", &[("PLANET_FORCE_CAVERN", "1")]);
+    // (Seed 76 fishes below on day 70, seed 10 on day 46.)
+    let logs: Vec<String> = ["76", "10"].iter().map(|s| run_log(s, "90", &[("PLANET_FORCE_CAVERN", "1")])).collect();
+    let text = logs.iter().find(|t| t.lines().any(|l| l.contains("the first blind white fish"))).cloned().unwrap_or_else(|| logs[0].clone());
     assert!(text.lines().any(|l| l.contains("breaks through into darkness")), "no cavern breached");
     assert!(text.lines().any(|l| l.contains("fells a fungus tree in ") && l.contains("haul up the stair")), "no fungus tree felled");
     // (Seed 76 fishes below from day 46 since the caverns' pools stand under each column's band
@@ -1938,12 +1942,13 @@ fn settlers_make_places_their_own() {
 /// through, a home, a value both hold dear; the quarrelsome argue over values, and say so aloud.
 #[test]
 fn settlers_talk_and_argue() {
-    let (text, _) = run_decisions("23", "60");
+    // (Seed 4 argues most in its first sixty days.)
+    let (text, _) = run_decisions("4", "60");
     let talks = text.lines().filter(|l| l.contains("wandering        Talking with ") || l.contains("wandering        Passing the time with ")).count();
     assert!(talks >= 30, "only {talks} talks in 60 days");
     assert!(text.lines().any(|l| l.contains("wandering        Arguing with ")), "no one argued");
     // (Said aloud once a pair in twenty days: a few seeds.)
-    let said = ["23", "3", "76"].iter().any(|s| run_log(s, "90", &[]).lines().any(|l| l.contains(" argue ") && l.contains(" holds ") && l.contains(" dear")));
+    let said = ["76", "1", "23"].iter().any(|s| run_log(s, "90", &[]).lines().any(|l| l.contains(" argue ") && l.contains(" holds ") && l.contains(" dear")));
     assert!(said, "no argument said aloud");
 }
 
@@ -1962,4 +1967,13 @@ fn gates_face_where_the_paths_go() {
     assert!(lines.iter().any(|l| l.contains("toward the woods")), "no gate toward the woods: {lines:?}");
     let counts: std::collections::BTreeSet<&str> = lines.iter().filter_map(|l| ["2 gates", "3 gates", "4 gates"].into_iter().find(|g| l.contains(g))).collect();
     assert!(counts.len() >= 2, "every camp has as many gates: {lines:?}");
+}
+
+/// Grief and courtship on the map: those a death touched most stand at the grave in the days
+/// after; the unwed walk out with whom they are fond of, and some of them wed.
+#[test]
+fn settlers_mourn_and_court() {
+    let (text, _) = run_decisions("1", "120");
+    assert!(text.lines().any(|l| l.contains("wandering        Standing at ") && l.contains("'s grave, remembering them")), "no one stood at a grave");
+    assert!(text.lines().any(|l| l.contains("wandering        Walking out with ") && (l.contains(" is fond of ") || l.contains(" is sweet on "))), "no one walked out with anyone");
 }

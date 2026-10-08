@@ -318,12 +318,18 @@ impl Colony {
             let (fire_r, alone_r) = if bold { (-1, -1) } else { (7, 4) };
             let far_from_fire = |p: Pos| (p.0 as i32 - camp.0 as i32).abs().max((p.1 as i32 - camp.1 as i32).abs()) > fire_r;
             // The prey: a living settler outdoors, far from the fire, with no one else near.
+            // (Debug: PLANET_FORCE_PET_PREY=1 also lets a keeper be taken wherever they are on the
+            // surface, alone or not, to test the pet's defence: since settlers keep their own
+            // hours no keeper was caught alone at night on sixteen seeds.)
+            let forced = std::env::var("PLANET_FORCE_PET_PREY").is_ok();
             let prey = (0..self.settlers.len()).filter(|&i| {
                 let s = &self.settlers[i];
+                let keeper = forced && self.pets.iter().any(|p| p.alive && p.keeper == i);
                 // (Never the changed one's own body.)
-                s.alive && !self.below(i) && far_from_fire(s.pos) && (bold || self.roof_over(s.pos).is_none()) && self.creatures[k].name.strip_suffix(super::curse::CHANGED) != Some(s.name.as_str())
+                s.alive && !self.below(i) && self.creatures[k].name.strip_suffix(super::curse::CHANGED) != Some(s.name.as_str())
                     && (s.pos.0 as i32 - wp.0 as i32).abs().max((s.pos.1 as i32 - wp.1 as i32).abs()) <= 40
-                    && !self.settlers.iter().enumerate().any(|(j, o)| j != i && o.alive && (o.pos.0 as i32 - s.pos.0 as i32).abs().max((o.pos.1 as i32 - s.pos.1 as i32).abs()) <= alone_r)
+                    && (keeper || (far_from_fire(s.pos) && (bold || self.roof_over(s.pos).is_none())
+                    && !self.settlers.iter().enumerate().any(|(j, o)| j != i && o.alive && (o.pos.0 as i32 - s.pos.0 as i32).abs().max((o.pos.1 as i32 - s.pos.1 as i32).abs()) <= alone_r)))
             // (Debug: PLANET_FORCE_PET_PREY=1 makes a pet's keeper the first prey among those
             // alone, for the test: a keeper caught alone at night has grown rare.)
             }).min_by_key(|&i| (std::env::var("PLANET_FORCE_PET_PREY").is_ok() && !self.pets.iter().any(|p| p.alive && p.keeper == i),

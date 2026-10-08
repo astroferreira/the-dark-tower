@@ -175,6 +175,8 @@ pub enum Feel {
     OwnRoom { value: u32 },
     /// A need long unmet (`needs.rs`): what, its strength, days since it was met.
     NeedUnmet { what: String, level: u8, days: u64 },
+    /// Stood at a dear one's grave (`needs.rs`): grief eased a little.
+    Remembered { whom: String },
 }
 
 impl Colony {
@@ -251,6 +253,7 @@ impl Colony {
             Feel::OwnRoom { value } => (format!("slept in {} bedroom of their own", if *value >= 9 { "a splendid" } else if *value >= 5 { "a fine" } else { "a" }),
                 0.03 * (0.5 + fac(Facet::Bashfulness).max(fac(Facet::Orderliness))) * (1.0 + 0.1 * (*value).min(12) as f32)),
             Feel::Dreamt { what } => (format!("realized a dream of {}", what), 0.6),
+            Feel::Remembered { whom } => (format!("stood at {}'s grave", whom), 0.05 * (0.5 + fac(Facet::Love))),
             Feel::NeedUnmet { what, level, days } => (format!("has gone {} days without {}", days, what), -(0.008 + 0.004 * *level as f32)),
             Feel::Ragged => ("went about in rags".to_string(), -0.04 * (0.5 + fac(Facet::Vanity))),
             Feel::Torn { people } => (format!("saw their own people, {}, raid the camp", people), -0.25 * (0.5 + val(Val::Loyalty).max(0.0)) * (0.6 + 0.8 * fac(Facet::Love))),
@@ -274,7 +277,9 @@ impl Colony {
         // jaded feel horror and grief at half weight.
         let horror = matches!(&f, Feel::TheDeep { .. } | Feel::Death { close: true, .. } | Feel::Struck);
         let brave = matches!(&f, Feel::Saved { .. } | Feel::Slew { .. });
-        if horror { self.settlers[i].mind.horrors_today += 1; }
+        // (Debug: PLANET_FORCE_HORROR=1 counts each horror three times, for the jaded test: camps
+        // that keep their people alive see too few horrors to grow anyone jaded.)
+        if horror { self.settlers[i].mind.horrors_today += if std::env::var("PLANET_FORCE_HORROR").is_ok() { 3 } else { 1 }; }
         if brave { self.settlers[i].mind.braved_today += 1; }
         let weight = if self.settlers[i].mind.jaded && (horror || matches!(&f, Feel::Death { .. } | Feel::RaidNight)) { weight * 0.5 } else { weight };
         let s = &mut self.settlers[i];

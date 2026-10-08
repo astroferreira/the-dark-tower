@@ -1815,3 +1815,14 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   leisure) and lies down at theirs (`bed_minute`: 20:00 .. 22:30, the immoderate and
   thrill-seeking late); `abed` replaces the clock's night for sleep only (night work rules are
   unchanged). Dev 76: the first acts of the day spread from 04:00 to 08:00.
+- Grief and courtship (`needs.rs`): `mourn_death` records who mourns whom (kin, or opinion 12+;
+  `Colony::mourning`); for twelve days after, by day, once a day, they stand at the grave
+  (`mourn_option`, 0.3 + 0.4 x love, +0.2 kin; before any other spare-hours act):
+  `Feel::Remembered` eases a little. DF's MakeRomance: `Need::Romance` (romance value, love
+  facet) walks out with an unwed settler of their people and the other sex whom they are fond of
+  (opinion 10+, and 4+ back): +2 opinion both ways, so courting couples reach the wedding's 20.
+  Eight seeds, 120 days: 2-5 weddings each, 3-19 walks.
+- `PLANET_FORCE_HORROR=1` counts each horror three times (the jaded test: camps that keep their
+  people alive no longer see eight). `PLANET_FORCE_PET_PREY=1` now lets night hunters take a
+  pet's keeper wherever they are on the surface (keepers keeping their own hours were never caught
+  alone).

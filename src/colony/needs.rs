@@ -22,9 +22,13 @@ pub enum Need {
     Socialize, Friends, Family, Pray, TakeItEasy, SeeAnimal, AdmireArt, Wander, Excitement,
     HelpSomebody, Learn, ThinkAbstractly, MakeMerry, Tradition, Martial, Craft, BeCreative,
     StayOccupied, Drink, GoodMeal,
+    /// DF's MakeRomance: walking out with someone they like.
+    Romance,
+    /// Not rolled: a visit to the grave of someone dear (`mourn_option`).
+    Remember,
 }
 
-pub const ALL: [Need; 20] = [
+pub const ALL: [Need; 21] = [Need::Romance, 
     Need::Socialize, Need::Friends, Need::Family, Need::Pray, Need::TakeItEasy, Need::SeeAnimal,
     Need::AdmireArt, Need::Wander, Need::Excitement, Need::HelpSomebody, Need::Learn,
     Need::ThinkAbstractly, Need::MakeMerry, Need::Tradition, Need::Martial, Need::Craft,
@@ -32,7 +36,7 @@ pub const ALL: [Need; 20] = [
 ];
 
 /// The first words of each spare-hours act's reason (for counting them in the decisions).
-pub const ACT_WORDS: [&str; 18] = ["Talking", "Arguing", "Passing the time", "Spending time", "Praying", "Kneeling", "Taking it easy", "Watching", "Admiring",
+pub const ACT_WORDS: [&str; 19] = ["Talking", "Arguing", "Standing", "Passing the time", "Spending time", "Praying", "Kneeling", "Taking it easy", "Watching", "Admiring",
     "Walking out", "Climbing", "Sitting", "Lending", "Reading", "Singing", "Telling", "Practising", "Whittling"];
 
 /// DF's ceiling: focus is set to this when a need is met.
@@ -49,6 +53,7 @@ impl Need {
             Need::MakeMerry => "merriment", Need::Tradition => "the old ways", Need::Martial => "arms practice",
             Need::Craft => "a craft to work at", Need::BeCreative => "something new to make", Need::StayOccupied => "work",
             Need::Drink => "a drink", Need::GoodMeal => "a good meal",
+            Need::Romance => "someone to walk out with", Need::Remember => "the dead",
         }
     }
 }
@@ -103,6 +108,8 @@ fn strength(p: &Persona, need: Need, faith: bool) -> f32 {
         // Dwarves all need drink (DF); others by their appetites.
         Need::Drink => if p.race == "dwarf" { 0.6 + 0.4 * f(Facet::Immoderation) } else { f(Facet::Immoderation) - 0.2 },
         Need::GoodMeal => f(Facet::Immoderation) * 0.8 + 0.3 * f(Facet::Greed) - 0.1,
+        Need::Romance => v(Val::Romance) * 0.8 + 0.4 * f(Facet::Love) - 0.1,
+        Need::Remember => 0.0,
     }
 }
 
@@ -399,6 +406,20 @@ impl Colony {
             Need::Tradition if evening => {
                 Some((self.near_fire(i), format!("Telling the old tales of {} people by the fire: {}", if s.persona.female { "her" } else { "his" }, since(need.word())), act(need, None, String::new(), 45)))
             }
+            Need::Romance => {
+                // Someone unwed of their people and the other sex, whom they like and who does
+                // not dislike them (DF's lovers walk out together before they wed).
+                if s.spouse.is_some() || s.past.as_ref().map_or(false, |p| p.age < 16) { return None; }
+                let j = (0..self.settlers.len()).filter(|&j| awake_near(j, 40) && self.settlers[j].spouse.is_none()
+                    && self.settlers[j].persona.race == s.persona.race && self.settlers[j].persona.female != s.persona.female
+                    && self.settlers[j].past.as_ref().map_or(true, |p| p.age >= 16) && self.settlers[j].guest_until == 0
+                    && self.opinion(i, j) >= 10 && self.opinion(j, i) >= 4).max_by_key(|&j| (self.opinion(i, j), std::cmp::Reverse(j)))?;
+                let o = &self.settlers[j];
+                let mut a = act(need, Some(j), o.name.clone(), 50);
+                a.at = o.pos;
+                let fond = if self.opinion(i, j) >= 20 { "sweet on" } else { "fond of" };
+                Some((o.pos, format!("Walking out with {} {}: {} is {} {}", o.name, self.place_word(o.pos), they, fond, if o.persona.female { "her" } else { "him" }), a))
+            }
             Need::Martial => {
                 let at = self.drill_ground();
                 Some((at, format!("Practising thrusts with a stave at the drill ground: {}", since(need.word())), act(need, None, String::new(), 40)))
@@ -427,6 +448,18 @@ impl Colony {
                     if a.need == Need::Family { self.meet(j, Need::Family, FULL); }
                 }
             }
+            Need::Romance => {
+                if let Some(j) = a.with.filter(|&j| self.settlers[j].alive && cheb(self.settlers[j].pos, self.settlers[i].pos) <= 3) {
+                    self.like(i, j, 2);
+                    self.like(j, i, 2);
+                    self.meet(j, Need::Romance, FULL);
+                }
+            }
+            Need::Remember => {
+                let day = self.clock.day();
+                if let Some(m) = self.mourning.iter_mut().find(|m| m.0 == i && m.1 == a.what) { m.4 = day; }
+                self.feel(i, super::mind::Feel::Remembered { whom: a.what.clone() });
+            }
             Need::HelpSomebody => {
                 if let Some(j) = a.with.filter(|&j| self.settlers[j].alive) {
                     self.like(j, i, 2);
@@ -446,6 +479,19 @@ impl Colony {
             }
             _ => {}
         }
+    }
+
+    /// In the days after a death, those it touched most visit the grave (by day, once a day, for
+    /// twelve days; the loving more): "Standing at Noostond's grave, remembering them".
+    pub(crate) fn mourn_option(&self, i: usize) -> Option<((f32, Job, String), NeedAct)> {
+        let day = self.clock.day();
+        let s = &self.settlers[i];
+        if self.clock.is_night() || self.drill_due(i) || s.ill_until > self.clock.tick || s.hunger >= 0.6 || self.below(i) { return None; }
+        let m = self.mourning.iter().filter(|m| m.0 == i && day <= m.3 + 12 && m.4 != day && !self.marked(m.2, true)).max_by_key(|m| m.3)?;
+        let love = s.persona.facet(Facet::Love) as f32 / 100.0;
+        let w = 0.3 + 0.4 * love + if m.5 { 0.2 } else { 0.0 };
+        let why = format!("Standing at {}'s grave, remembering them ({} died {} days ago)", m.1, m.1, day - m.3);
+        Some(((w, Job::Wander(m.2), why), NeedAct { need: Need::Remember, at: m.2, with: None, what: m.1.clone(), minutes: 30, topic: None }))
     }
 
     /// A few words for where `p` is: by a work standing there, the fire, water or trees.
