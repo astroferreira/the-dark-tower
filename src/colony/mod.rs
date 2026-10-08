@@ -76,6 +76,7 @@ pub mod needs;
 pub mod voices;
 pub mod haunts;
 pub mod talk;
+pub mod rhythm;
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -1737,16 +1738,18 @@ impl Colony {
             options.push((if s.hunger >= 0.95 { 4.0 } else { s.hunger * s.hunger * 3.0 }, Job::Eat, format!("Hungry ({:.0}%) and there is food at the camp", s.hunger * 100.0)));
         }
         // Night is for sleeping, rested or not; by day only the tired lie down.
-        let sleepy = s.fatigue * s.fatigue * 2.5 + if night { 0.3 + if s.fatigue > 0.25 { 0.5 } else { 0.0 } } else { 0.0 }
-            + if night && s.exposure > 0.3 { 0.3 } else { 0.0 };
+        // (Their own night: early risers and late sleepers, `rhythm.rs`.)
+        let abed = self.abed(i);
+        let sleepy = s.fatigue * s.fatigue * 2.5 + if abed { 0.3 + if s.fatigue > 0.25 { 0.5 } else { 0.0 } } else { 0.0 }
+            + if abed && s.exposure > 0.3 { 0.3 } else { 0.0 };
         // (At the bench by day, only the worn out lie down: see the meal above.)
-        if (s.fatigue > 0.2 && !(at_bench && !night && s.fatigue < 0.85)) || night {
+        if (s.fatigue > 0.2 && !(at_bench && !night && s.fatigue < 0.85)) || abed {
             let place = if self.bedroom_of(i).is_some() { "in a bedroom of their own under the rock" }
                 else if !self.hall_cells.is_empty() { "in the hall under the hill" }
                 else if self.second_hut_bed(i).is_some() { "in the second hut" }
                 else if self.hut.as_ref().map_or(false, |h| h.done) { if i < HUT_BEDS { "in the hut" } else { "by the fire, the hut being full" } }
                 else { "by the fire" };
-            options.push((sleepy, Job::Sleep, format!("Tired ({:.0}%){}; sleeping {}", s.fatigue * 100.0, if night { " and it is night" } else { "" }, place)));
+            options.push((sleepy, Job::Sleep, format!("Tired ({:.0}%){}; sleeping {}", s.fatigue * 100.0, if night { " and it is night" } else if abed { " and it is their hour" } else { "" }, place)));
         }
         // Hunger first: with under two meals a head stored and someone starving, the whole camp
         // looks for food (across the whole map if need be) and nobody builds.
@@ -2477,7 +2480,7 @@ impl Colony {
             if job == Job::Sleep && self.settlers[i].hunger >= 0.95 && self.food_stored() > 0 { self.settlers[i].work_left = 0; }
             // (Despair keeps them abed rested or not: ending it at once re-chose it every tick.)
             let despair = matches!(self.settlers[i].mind.broken, Some((mind::Break::Despair, _)));
-            if job == Job::Sleep && self.settlers[i].fatigue <= 0.02 && !self.clock.is_night() && (!ill || ill_but_hungry) && !despair { self.settlers[i].work_left = 0; }
+            if job == Job::Sleep && self.settlers[i].fatigue <= 0.02 && !self.abed(i) && (!ill || ill_but_hungry) && !despair { self.settlers[i].work_left = 0; }
             if self.settlers[i].work_left > 0 { return; }
         }
         self.finish(i, job);

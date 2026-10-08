@@ -1713,8 +1713,9 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   (x0.94 focused .. x1.06 distracted, `focus_pace` in `start`); a need badly unmet (-250) is a
   thought at dawn ("has gone 9 days without prayer").
 - Between jobs only (`decide`, `free`), never when the camp goes hungry, a need well past due
-  (-60) is an option (`need_option`; 0.2 + deficit x (0.3 + 0.06 x strength), +0.2 in the
-  evening, x0.4 when the store is under half its goal, x0.5 for leisure under the no-idle-hands
+  (-100) is an option (`need_option`; 0.15 + deficit x (0.2 + 0.06 x strength), +0.15 in the
+  evening: below most work until a need has gone very long unmet; at 0.2 + 0.3 it had stalled a
+  camp's building for months), x0.4 when the store is under half its goal, x0.5 for leisure under the no-idle-hands
   mandate, x0.75 with trouble foretold): a `Job::Wander` to a place with a reason, kept in
   `Settler::need_act` and met when it ends (`complete_need`): talking with the dearest awake
   settler where they are ("by the woodpile", `place_word`), time with a spouse or child, praying at
@@ -1805,3 +1806,12 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   (walks 12-25 cells, rises within 15-18, water within 20, herds within 30) and arguments rarer
   (8% + a fifth of the speaker's heat). Thirteen seeds x 120 days: 14-16 dead or gone with the
   spare-hours acts, 15 without (`PLANET_NO_NEEDS`); they had been 22 against 13.
+- Tastes and rhythm (`rhythm.rs`): `taste_of` gives each settler's pull toward each kind of work
+  from a little luck (by name) leaned by character (lovers of the wild forage and fish, the
+  patient fish, the strong fell and quarry and lovers of the wild do not, the orderly haul,
+  craftsmen and the dutiful build), set when the roster's personas are given and for every
+  newcomer (`add_settler` had cloned the first settler's tastes onto all of them). Each settler
+  rises at their own minute (`wake_minute`: 5:00 for the hard-working .. 7:30 for lovers of
+  leisure) and lies down at theirs (`bed_minute`: 20:00 .. 22:30, the immoderate and
+  thrill-seeking late); `abed` replaces the clock's night for sleep only (night work rules are
+  unchanged). Dev 76: the first acts of the day spread from 04:00 to 08:00.

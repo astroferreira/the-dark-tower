@@ -1158,7 +1158,9 @@ fn legends_outlive_the_camp() {
 /// Most camps carve within days, so a few dev seeds are tried until one shows it.
 #[test]
 fn the_dead_who_died_badly_walk_until_remembered() {
-    let found = ["23", "58", "3", "11", "5"].iter().any(|seed| {
+    // (Camps carve slabs for their dead within days; seed 2's ghost walks on day 85 and rests on
+    // day 94.)
+    let found = ["2", "23", "58"].iter().any(|seed| {
         let text = run_log(seed, "120", &[]);
         let seen = text.lines().position(|l| l.contains("The ghost of ") && l.contains(" is seen "));
         let rest = text.lines().position(|l| l.contains("carved in memory of") && l.contains("ghost is at rest"));
@@ -1273,7 +1275,8 @@ fn a_farm_under_the_rock() {
 /// time its ghost no longer walks, and seed 1 is the one that grows jaded, on day 116.)
 #[test]
 fn experience_changes_people() {
-    let logs: Vec<String> = ["58", "11", "76", "3", "1"].iter().map(|s| run_log(s, "250", &[])).collect();
+    // (Seed 2 grows jaded on day 235, 3 cheerful, 11 anxious.)
+    let logs: Vec<String> = ["2", "3", "11"].iter().map(|s| run_log(s, "250", &[])).collect();
     let any = |needle: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(needle)));
     assert!(any("starts at every shadow"), "no one grew anxious");
     assert!(any("has seen too much to be shaken now"), "no one grew jaded");
@@ -1378,11 +1381,11 @@ fn the_world_remembers_what_the_camp_did() {
 /// Armour (Dwarf Fortress's layers of material): once the militia bears spears the workshop
 /// makes armour of the best to hand (adamantine from the deep shaft, iron, copper, leather from
 /// the hunt), and in the clash it turns blows. (Leather and hide only lighten an edge; mail is
-/// forged from bars, so ore is forced: no dev seed strikes any. Blows are turned on days 69 (23)
-/// and 101 (76).)
+/// forged from bars, so ore is forced: no dev seed strikes any. Blows are turned on days 34 (2),
+/// 35 (6) and 75 (1).)
 #[test]
 fn armour_turns_blows() {
-    let logs: Vec<String> = ["23", "76"].iter().map(|s| run_log(s, "110", &[("PLANET_FORCE_ORE", "1")])).collect();
+    let logs: Vec<String> = ["2", "6", "1"].iter().map(|s| run_log(s, "110", &[("PLANET_FORCE_ORE", "1")])).collect();
     let any = |n: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(n)));
     assert!(any("the first armour in the camp"), "no armour made");
     assert!(any("does not get through") || any("took the worst of it") || any("turns it.") || any("is turned by"), "no blow turned");

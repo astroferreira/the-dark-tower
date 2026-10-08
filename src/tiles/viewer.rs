@@ -2340,6 +2340,7 @@ fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, til
             for (st, (_, past)) in colony.settlers.iter_mut().zip(roster) {
                 st.skill = crate::colony::skills_from_past(Some(&past), &st.name);
                 if let Some(p) = &past.persona { st.persona = p.clone(); }
+                st.taste = crate::colony::rhythm::taste_of(&st.persona, &st.name);
                 st.past = Some(past);
             }
             // The first arc: the world will reach this camp.

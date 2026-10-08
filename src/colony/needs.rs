@@ -224,7 +224,7 @@ impl Colony {
         if s.ill_until > self.clock.tick || s.hunger >= 0.6 || s.past.as_ref().map_or(false, |p| p.age < 12) { return None; }
         let hour = self.clock.hour();
         if self.clock.is_night() || self.drill_due(i) { return None; }
-        let mut due: Vec<&NeedState> = s.mind.needs.iter().filter(|n| n.focus < -60).collect();
+        let mut due: Vec<&NeedState> = s.mind.needs.iter().filter(|n| n.focus < -100).collect();
         due.sort_by_key(|n| (std::cmp::Reverse(n.level as i32 * -n.focus), n.need as u8));
         let evening = (18..21).contains(&hour);
         for n in due {
@@ -233,12 +233,14 @@ impl Colony {
             if let Some((target, why, act)) = self.need_act(i, n.need, evening, days) {
                 // Leisure is cut short by a mandate against idle hands and by trouble on the way.
                 let leisure = !matches!(n.need, Need::HelpSomebody | Need::Pray | Need::Martial | Need::Learn);
-                let mut w = 0.2 + deficit * (0.3 + 0.06 * n.level as f32);
+                // (Below most work: needs are met in spare time, not instead of the camp's work,
+                // until one has gone very long unmet. 0.95 at most, at full strength and deficit.)
+                let mut w = 0.15 + deficit * (0.2 + 0.06 * n.level as f32);
                 if leisure && self.mandate == Some(society::Mandate::NoIdleHands) { w *= 0.5; }
                 if self.trouble_foretold().is_some() && leisure { w *= 0.75; }
                 // A thin store keeps them at the gathering.
                 if self.food_stored() < self.food_goal() / 2 { w *= 0.4; }
-                if evening { w += 0.2; }
+                if evening { w += 0.15; }
                 return Some(((w, Job::Wander(target), why), act));
             }
         }
