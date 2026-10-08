@@ -782,6 +782,9 @@ fn ink_disc(put: &mut dyn FnMut(i64, i64, Rgb, f32), cx: f32, cy: f32, r: f32, f
 fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::Colony, i: usize, x: f32, y: f32, scale: f32, look: (Rgb, Rgb, Rgb)) -> f32 {
     use crate::colony::{ItemKind, Job};
     let s = &colony.settlers[i];
+    // Children are smaller (an infant about half a grown figure).
+    let age = s.past.as_ref().map_or(30, |p| p.age);
+    let scale = scale * match age { 0..=2 => 0.5, 3..=7 => 0.65, 8..=11 => 0.78, 12..=15 => 0.9, _ => 1.0 };
     let (skin, hair, dress) = look;
     let ill = s.ill_until > colony.clock.tick;
     let dress = if ill { mix(dress, [150.0, 150.0, 140.0], 0.5) } else { dress };

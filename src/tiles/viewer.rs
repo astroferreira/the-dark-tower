@@ -148,6 +148,13 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
             labels.push(Label { x: s.location.0 as f32 + 0.5, y: s.location.1 as f32 + 1.4, text, rank: base + (s.population / 2000).min(99), min_tile_px: min_px, color, style });
         }
     }
+    // The world's beasts, named in red above their sprites at the lair (`beasts::draw_world`).
+    if let Some(h) = history {
+        for b in super::beasts::world_beasts(h) {
+            let up = 0.6 * (1.6 + b.look.len * 0.5) + 0.2;
+            labels.push(Label { x: b.tile.0 as f32 + 0.5, y: b.tile.1 as f32 + 0.5 - up, text: b.name, rank: 650, min_tile_px: 12.0, color: 0x009A_2A1E, style: LabelStyle::Ruin });
+        }
+    }
     let _ = world;
     labels.sort_by_key(|l| std::cmp::Reverse(l.rank));
     labels
@@ -383,6 +390,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
     let gaz = build_gazetteer(world, history, world.seed());
     let landmarks = crate::lore::find_landmarks(world, &gaz);
     let labels = build_labels(world, history, &gaz, &landmarks);
+    // The world's beasts at their lairs (`beasts::world_beasts`).
+    let world_beasts = history.map(super::beasts::world_beasts).unwrap_or_default();
     let mut show_labels = true;
     // Seasons: T steps through them, C toggles an automatic year cycle.
     let mut season = crate::seasons::Season::Summer;
@@ -1259,6 +1268,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     draw_marker(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, (px_per_cell * 0.6).clamp(4.0, 10.0));
                 } else {
                     render_world(&tw, &atlas, &cam, &mut buf, w, h);
+                    super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
                     if show_labels {
                         let avoid = if show_minimap { vec![minimap_box(tw.width, tw.height, w, h)] } else { Vec::new() };
                         draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &avoid);
@@ -2762,6 +2772,7 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
     let gaz = build_gazetteer(world, history, world.seed());
     let landmarks = crate::lore::find_landmarks(world, &gaz);
     let labels = build_labels(world, history, &gaz, &landmarks);
+    let world_beasts = history.map(super::beasts::world_beasts).unwrap_or_default();
     let (cx, cy) = center.unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
     let (w, h) = (1280usize, 800usize);
     let fit = (w as f32 / tw.width as f32).min(h as f32 / tw.height as f32);
@@ -2778,6 +2789,7 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         // A plate of the 16 px view, as P makes it.
         let cam = Camera { cx: cx as f32 + 0.5, cy: clamp_cy(cy as f32 + 0.5, 16.0, h, tw.height), tile_px: 16.0 };
         render_world(&tw, atlas, &cam, &mut buf, w, h);
+        super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
         draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
         draw_notes(&crate::lore::notes::load(world.seed()), None, &cam, tw.width, &mut buf, w, h);
         let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
@@ -2792,6 +2804,7 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         for _ in 0..3 {
             let t0 = std::time::Instant::now();
             render_world(&tw, atlas, &cam, &mut buf, w, h);
+            super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
             best = best.min(t0.elapsed().as_secs_f32() * 1000.0);
         }
         println!("render {name}: {best:.1} ms");

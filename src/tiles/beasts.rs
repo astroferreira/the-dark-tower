@@ -805,3 +805,45 @@ fn giant(pen: &mut Pen, l: &Look, step: f32, pose: Pose) {
 /// `t` pixels, at the figures' scale (`scale`, as the settlers'), so a deer stands a little
 /// wider than a settler and a forgotten beast towers over them.
 pub fn px_for(look: &Look, scale: f32) -> f32 { (look.len * 56.0 * scale).max(20.0) }
+
+/// A legendary beast of the world at its lair, as the world map draws it.
+pub struct WorldBeast { pub tile: (usize, usize), pub name: String, pub look: Look }
+
+/// Every living legendary beast with a lair, drawn from what the history says it is
+/// (`monsters::of_legend`, the same monster the colony meets).
+pub fn world_beasts(h: &crate::history::world_state::WorldHistory) -> Vec<WorldBeast> {
+    let mut v: Vec<WorldBeast> = h.legendary_creatures.values().filter(|c| c.is_alive())
+        .filter_map(|c| c.lair_location.map(|tile| WorldBeast { tile, name: c.full_name(), look: of_monster(&crate::monsters::of_legend(h, c)) }))
+        .collect();
+    v.sort_by(|a, b| a.tile.cmp(&b.tile).then(a.name.cmp(&b.name)));
+    v
+}
+
+/// Draw the world's beasts at their lairs (from 6 px a tile; named from 12 px), the map's width
+/// wrapping east-west. `labels` gets the names to letter.
+pub fn draw_world(beasts: &[WorldBeast], cam: &super::render::Camera, world_w: usize, buf: &mut [u32], w: usize, h: usize, named: bool) {
+    if cam.tile_px < 6.0 { return; }
+    let mut put = |x: i64, y: i64, c: Rgb, a: f32| {
+        if x < 0 || y < 0 || x as usize >= w || y as usize >= h { return; }
+        let k = y as usize * w + x as usize;
+        let p = buf[k];
+        let old = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
+        buf[k] = super::ink::pack(mix(old, c, a.clamp(0.0, 1.0)));
+    };
+    let mut names = Vec::new();
+    for b in beasts {
+        let mut dx = b.tile.0 as f32 + 0.5 - cam.cx;
+        let ww = world_w as f32;
+        if dx > ww / 2.0 { dx -= ww; } else if dx < -ww / 2.0 { dx += ww; }
+        let (sx, sy) = (dx * cam.tile_px + w as f32 / 2.0, (b.tile.1 as f32 + 0.5 - cam.cy) * cam.tile_px + h as f32 / 2.0);
+        let px = (cam.tile_px * (1.6 + b.look.len * 0.5)).clamp(22.0, 96.0);
+        if sx < -px || sy < -px || sx > w as f32 + px || sy > h as f32 + px { continue; }
+        let left = (b.tile.0 + b.tile.1) % 2 == 0;
+        draw(&mut put, &b.look, sx, sy + px * 0.3, px, left, Pose::Stand, 1.0);
+        if named && cam.tile_px >= 12.0 { names.push((sx, sy + px * 0.3 - px * if b.look.flies { 1.3 } else { 1.0 }, b.name.clone())); }
+    }
+    for (x, y, n) in names {
+        let tw = super::fonts::width(&n, super::fonts::Face::Italic, 13.0, 0.0);
+        super::fonts::draw(buf, w, h, x - tw / 2.0, y - 16.0, &n, super::fonts::Face::Italic, 13.0, 0.0, 0x009A_2A1E, Some(0x00EE_E4CC));
+    }
+}
