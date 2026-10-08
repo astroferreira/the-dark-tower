@@ -53,6 +53,8 @@ pub struct Room {
     /// Its furniture made and set in place: a bedroom's bed, the great hall's table and benches
     /// (`furnish_option`), with what it was made of ("oak").
     pub furnished: Option<String>,
+    /// How well its furniture was made (0 ordinary .. 5 masterful).
+    pub quality: u8,
 }
 
 /// The stair spine: its column, the level it starts from (the surface or the hall's floor) and
@@ -64,7 +66,7 @@ pub struct Spine { pub at: Pos, pub top: i32, pub bottom: i32 }
 /// begins one), and the mouth where the stone dug out is carried up to.
 pub struct DelvePlan { pub cuts: Vec<DigCell>, pub rooms: Vec<Room>, pub spine: Option<Spine>, pub mouth: Pos }
 
-fn room(kind: RoomKind, z: i32, cells: Vec<Pos>, bed: Option<Pos>) -> Room { Room { kind, z, cells, owner: None, bed, day: 0, furnished: None } }
+fn room(kind: RoomKind, z: i32, cells: Vec<Pos>, bed: Option<Pos>) -> Room { Room { kind, z, cells, owner: None, bed, day: 0, furnished: None, quality: 0 } }
 
 impl Colony {
     /// The plan for a dig of this kind, if one can be made here now.
@@ -430,6 +432,14 @@ impl Colony {
         }
         let wood = if stuff == ItemKind::Log { self.land_wood() } else { format!("dressed {}", self.land_stone()) };
         self.rooms[k].furnished = Some(wood.clone());
+        // Quality as for any work: the building hand, sure hands, care, luck.
+        let q = {
+            let s = &self.settlers[i];
+            let h = crate::history::settlers::hash_pub(self.seed ^ self.clock.tick, 0xF0A1 + i as u64);
+            0.45 * s.skill[4] + 0.2 * (s.persona.attr(crate::persona::Attr::KinestheticSense) / 2000.0).min(1.0)
+                + 0.15 * s.persona.facet(crate::persona::Facet::Perfectionism) as f32 / 100.0 + 0.2 * (h % 1000) as f32 / 1000.0
+        };
+        self.rooms[k].quality = (((q - 0.35) * 9.0).floor() as i32).clamp(0, 5) as u8;
         let name = self.settlers[i].name.clone();
         match self.rooms[k].kind {
             RoomKind::GreatHall => {
@@ -546,6 +556,14 @@ impl Colony {
     /// Whether the ditch round the wall is dug.
     pub fn moat_dug(&self) -> bool { self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Moat) }
 
+    /// A room's worth (DF's room value): its furniture by quality, and each engraving on its
+    /// walls by its quality. A bare dug room is worth nothing.
+    pub fn room_value(&self, r: &Room) -> u32 {
+        let furniture = if r.furnished.is_some() { 2 + r.quality as u32 } else { 0 };
+        let carved: u32 = self.engravings.iter().filter(|e| e.z == r.z && r.cells.contains(&e.from)).map(|e| 1 + e.quality as u32).sum();
+        furniture + carved
+    }
+
     /// Picks to dig with (DF's miners each need one): two brought, two more made at the workshop,
     /// two more of metal once ore is worked or iron bought.
     pub fn picks(&self) -> usize {
@@ -565,6 +583,7 @@ impl Colony {
         let z = match job {
             Job::Sleep => if self.bedroom_of(i).map_or(false, |r| r.bed == Some(target)) { self.bedroom_of(i).map(|r| r.z) } else { in_room(&[RoomKind::Hall, RoomKind::Cellar]) },
             Job::Eat => in_room(&[RoomKind::GreatHall, RoomKind::Hall, RoomKind::Cellar]),
+            Job::Craft if why.starts_with("Engraving") => in_room(&[RoomKind::Hall, RoomKind::GreatHall, RoomKind::Bedroom, RoomKind::Tomb]),
             Job::Craft => in_room(&[RoomKind::Workshop, RoomKind::Hall, RoomKind::GreatHall]),
             // A fishing place on a cavern's floor.
             Job::Fish(t) => self.cave_fish.iter().find(|c| c.0 == t).map(|c| c.1),

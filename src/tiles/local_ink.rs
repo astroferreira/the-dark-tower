@@ -803,7 +803,7 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
     }
     // Engravings on the hall's walls: a carved panel on the face toward the floor, a little
     // figure scratched in it (`colony::engrave`).
-    for e in &colony.engravings {
+    for e in colony.engravings.iter().filter(|e| e.z == colony.hall_z && colony.hall_cells.contains(&e.from)) {
         let (wx, wy) = to_screen(e.wall.0 as f32 + 0.5, e.wall.1 as f32 + 0.5);
         let (dx, dy) = (e.from.0 as f32 - e.wall.0 as f32, e.from.1 as f32 - e.wall.1 as f32);
         let (cx, cy) = (wx + dx * t * 0.3, wy + dy * t * 0.3);
@@ -1266,6 +1266,18 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         }
     }
     let mut labels: Vec<(f32, f32, String, bool)> = Vec::new();
+    // Engravings on this level's walls: a carved panel on the face toward the floor.
+    for e in colony.engravings.iter().filter(|e| e.z == cam.z) {
+        let (wx, wy) = to_screen(e.wall.0 as f32 + 0.5, e.wall.1 as f32 + 0.5);
+        let (dx, dy) = (e.from.0 as f32 - e.wall.0 as f32, e.from.1 as f32 - e.wall.1 as f32);
+        let (cx, cy) = (wx + dx * t * 0.42, wy + dy * t * 0.42);
+        let (hw, hh) = if dx != 0.0 { ((t * 0.08).max(1.5), (t * 0.34).max(3.0)) } else { ((t * 0.34).max(3.0), (t * 0.08).max(1.5)) };
+        let fine = if e.quality >= 3 { [196.0, 160.0, 80.0] } else { [170.0, 150.0, 120.0] };
+        for yy in (cy - hh) as i64..=(cy + hh) as i64 { for xx in (cx - hw) as i64..=(cx + hw) as i64 {
+            let edge = (xx as f32 - (cx - hw)).abs() < 1.0 || (xx as f32 - (cx + hw)).abs() < 1.0 || (yy as f32 - (cy - hh)).abs() < 1.0 || (yy as f32 - (cy + hh)).abs() < 1.0;
+            put(xx, yy, if edge { INK } else { fine }, 0.95);
+        } }
+    }
     for r in colony.rooms.iter().filter(|r| r.z == cam.z) {
         match r.kind {
             RoomKind::Bedroom => {

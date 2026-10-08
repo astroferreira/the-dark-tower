@@ -18,6 +18,8 @@ pub struct Engraving {
     /// The wall cell carved, and the floor cell it faces.
     pub wall: Pos,
     pub from: Pos,
+    /// The level of the floor it faces (the hall's, a bedroom's...).
+    pub z: i32,
     /// "the death of Bornith the forgotten beast (day 52)", "the siege of Brolmdustoor".
     pub image: String,
     pub event: Option<crate::history::EventId>,
@@ -46,21 +48,36 @@ fn worth(title: &str, text: &str) -> u32 {
 }
 
 impl Colony {
-    /// Bare walls beside the hall's floor: (the floor cell to stand on, the wall).
-    fn bare_walls(&self) -> Vec<(Pos, Pos)> {
+    /// Bare walls to engrave, in order: the hall's, then the great hall's, the owned bedrooms',
+    /// the tombs' (DF engraves any smoothed wall): (the floor cell to stand on, the wall, the
+    /// level, where it is in words).
+    fn bare_walls(&self) -> Vec<(Pos, Pos, i32, String)> {
+        use super::delve::RoomKind;
+        let mut places: Vec<(Vec<Pos>, i32, String)> = Vec::new();
+        if !self.hall_cells.is_empty() { places.push((self.hall_cells.clone(), self.hall_z, "the hall's wall".into())); }
+        for r in self.rooms.iter().filter(|r| r.kind == RoomKind::GreatHall) { places.push((r.cells.clone(), r.z, "the great hall's wall".into())); }
+        for r in self.rooms.iter().filter(|r| r.kind == RoomKind::Bedroom && r.owner.is_some()) {
+            let o = r.owner.unwrap();
+            if !self.settlers[o].alive { continue; }
+            places.push((r.cells.clone(), r.z, format!("the wall of {}'s room", self.settlers[o].name)));
+        }
+        for r in self.rooms.iter().filter(|r| r.kind == RoomKind::Tomb && r.owner.is_some()) { places.push((r.cells.clone(), r.z, "a wall of the tombs".into())); }
         let mut out = Vec::new();
-        for &h in &self.hall_cells {
-            for (dx, dy) in [(0i32, -1i32), (1, 0), (0, 1), (-1, 0)] {
-                let (x, y) = (h.0 as i32 + dx, h.1 as i32 + dy);
-                if x < 0 || y < 0 || x as usize >= self.map.width || y as usize >= self.map.height { continue; }
-                let wall = (x as u16, y as u16);
-                if self.hall_cells.contains(&wall) { continue; }
-                // Rock at the hall's headroom: a wall face, not open ground.
-                let fz = self.hall_z.max(0) as usize;
-                if fz + 1 >= self.map.depth || self.map.cell(x as usize, y as usize, fz + 1).shape != Shape::Wall { continue; }
-                if self.engravings.iter().any(|e| e.wall == wall) || out.iter().any(|&(_, w)| w == wall) { continue; }
-                out.push((h, wall));
+        for (cells, z, word) in places {
+            for &h in &cells {
+                for (dx, dy) in [(0i32, -1i32), (1, 0), (0, 1), (-1, 0)] {
+                    let (x, y) = (h.0 as i32 + dx, h.1 as i32 + dy);
+                    if x < 0 || y < 0 || x as usize >= self.map.width || y as usize >= self.map.height { continue; }
+                    let wall = (x as u16, y as u16);
+                    if cells.contains(&wall) { continue; }
+                    // Rock at the room's headroom: a wall face, not open ground.
+                    let fz = z.max(0) as usize;
+                    if fz + 1 >= self.map.depth || self.map.cell(x as usize, y as usize, fz + 1).shape != Shape::Wall { continue; }
+                    if self.engravings.iter().any(|e| e.wall == wall && e.z == z) || out.iter().any(|o: &(Pos, Pos, i32, String)| o.1 == wall && o.2 == z) { continue; }
+                    out.push((h, wall, z, word.clone()));
+                }
             }
+            if !out.is_empty() { break; }
         }
         out
     }
@@ -68,15 +85,18 @@ impl Colony {
     /// The next wall to engrave, if any.
     pub(crate) fn engrave_spot(&self) -> Option<Pos> { self.bare_walls().first().map(|w| w.0) }
 
+    /// Where the next engraving goes, in words ("the hall's wall", "the wall of X's room").
+    pub(crate) fn engrave_place(&self) -> String { self.bare_walls().first().map(|w| w.3.clone()).unwrap_or_else(|| "the hall's wall".into()) }
+
     /// Spare hours carving the hall's walls, for those who want to make things.
     pub(crate) fn engrave_option(&self, i: usize) -> Option<(f32, Job, String)> {
-        if self.hall_cells.is_empty() || self.clock.is_night() { return None; }
+        if self.clock.is_night() { return None; }
         if self.settlers.iter().enumerate().any(|(j, s)| j != i && s.alive && s.job == Job::Craft && s.why.starts_with("Engraving")) { return None; }
         let wish = self.craft_wish_any(i);
         if wish < 0.3 { return None; }
         self.engrave_spot()?;
         let (image, _) = self.engraving_image(i);
-        Some((wish * 0.9, Job::Craft, format!("Engraving the hall's wall with {}", image)))
+        Some((wish * 0.9, Job::Craft, format!("Engraving {} with {}", self.engrave_place(), image)))
     }
 
     /// What settler `i` would engrave: the camp's greatest moment not yet on a wall, else a
@@ -127,7 +147,7 @@ impl Colony {
 
     /// The carving is done.
     pub(crate) fn finish_engraving(&mut self, i: usize) {
-        let Some(&(from, wall)) = self.bare_walls().first() else { return };
+        let Some((from, wall, z, place)) = self.bare_walls().first().cloned() else { return };
         let (image, event) = self.engraving_image(i);
         let s = &self.settlers[i];
         let p = &s.persona;
@@ -137,12 +157,12 @@ impl Colony {
         let quality = (((q - 0.35) * 9.0).floor() as i32).clamp(0, 5) as u8;
         let day = self.clock.day();
         let name = s.name.clone();
-        self.engravings.push(engrave::Engraving { wall, from, image: image.clone(), event, quality, maker: i, day });
+        self.engravings.push(engrave::Engraving { wall, from, z, image: image.clone(), event, quality, maker: i, day });
         let what = format!("{}image of {}", craft::QUALITY[quality as usize], image);
         self.settlers[i].made.push(format!("an engraving: {} (day {})", what, day));
         self.feel(i, mind::Feel::Made { what: format!("an engraving of {}", image), quality });
         if self.engravings.len() == 1 || quality >= 3 {
-            self.note(format!("{} engraves the hall's wall with {} {}.", name, if what.starts_with(|c: char| "aeiou".contains(c)) { "an" } else { "a" }, what));
+            self.note(format!("{} engraves {} with {} {}.", name, place, if what.starts_with(|c: char| "aeiou".contains(c)) { "an" } else { "a" }, what));
         }
         if quality >= 4 {
             for j in 0..self.settlers.len() {

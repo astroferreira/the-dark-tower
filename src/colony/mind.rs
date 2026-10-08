@@ -168,8 +168,8 @@ pub enum Feel {
     Dreamt { what: String },
     /// Ate half rations (`rations.rs`).
     Rationed,
-    /// Slept in a bedroom of their own (`delve.rs`).
-    OwnRoom,
+    /// Slept in a bedroom of their own (`delve.rs`), of this worth (`room_value`).
+    OwnRoom { value: u32 },
 }
 
 impl Colony {
@@ -241,7 +241,8 @@ impl Colony {
             Feel::Slew { what } => (format!("slew {}", what), 0.35 * (0.6 + 0.8 * fac(Facet::Pride).max(fac(Facet::Bravery))) * (1.0 + val(Val::MartialProwess).max(0.0))),
             Feel::AteWell { dish, fine } => (format!("ate {}{}", dish, if *fine { ", and it was fine" } else { "" }), (if *fine { 0.06 } else { 0.03 }) * (0.6 + 0.8 * fac(Facet::Immoderation))),
             Feel::Rationed => ("ate half rations".to_string(), Feel::rationed_weight(p)),
-            Feel::OwnRoom => ("slept in a bedroom of their own".to_string(), 0.03 * (0.5 + fac(Facet::Bashfulness).max(fac(Facet::Orderliness)))),
+            Feel::OwnRoom { value } => (format!("slept in {} bedroom of their own", if *value >= 9 { "a splendid" } else if *value >= 5 { "a fine" } else { "a" }),
+                0.03 * (0.5 + fac(Facet::Bashfulness).max(fac(Facet::Orderliness))) * (1.0 + 0.1 * (*value).min(12) as f32)),
             Feel::Dreamt { what } => (format!("realized a dream of {}", what), 0.6),
             Feel::Ragged => ("went about in rags".to_string(), -0.04 * (0.5 + fac(Facet::Vanity))),
             Feel::Torn { people } => (format!("saw their own people, {}, raid the camp", people), -0.25 * (0.5 + val(Val::Loyalty).max(0.0)) * (0.6 + 0.8 * fac(Facet::Love))),
@@ -295,7 +296,7 @@ impl Colony {
                 (s.exposure, s.hunger, s.ill_until > self.clock.tick, self.in_hut(s.pos) || self.below(i))
             };
             if exposure >= 0.5 { self.feel(i, Feel::ColdNight); } else if under_roof { self.feel(i, Feel::SleptWarm); }
-            if self.bedroom_of(i).map_or(false, |r| r.furnished.is_some()) && self.below(i) { self.feel(i, Feel::OwnRoom); }
+            if let Some(value) = self.bedroom_of(i).filter(|r| r.furnished.is_some()).map(|r| self.room_value(r)) { if self.below(i) { self.feel(i, Feel::OwnRoom { value }); } }
             if hunger >= 0.85 { self.feel(i, Feel::Hungry); }
             // A liked creature grazing within sight of the camp.
             let seen = self.creatures.iter().filter(|c| c.kind == super::creatures::CreatureKind::Game)

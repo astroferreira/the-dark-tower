@@ -1484,3 +1484,10 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   room of plots off the stair (`plan_level`), planned only when no other dig is under way; the
   harvest is as before (every eighth day, carried up to the mouth). Drawn as rows of pale caps.
   Seed 3: dug on day 31, on the same level as the workshops below.
+- Room value (DF): furniture has a quality from its maker (`Room::quality`, as for works:
+  the building hand, sure hands, care, luck), and engravers carve every dug room's walls in turn
+  (`engrave::bare_walls`: the hall's, then the great hall's, the owned bedrooms', the tombs';
+  `Engraving::z`; drawn on their level by `draw_delve`, the hall's also on the surface view).
+  `room_value` = 2 + the bed's quality once furnished, + 1 + quality for each engraving on its
+  walls; `Feel::OwnRoom { value }` grows with it ("slept in a fine / splendid bedroom of their
+  own"). Dev 76 and 3: the great hall is carved from days 221 and 154.
