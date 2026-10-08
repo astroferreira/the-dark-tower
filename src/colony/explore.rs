@@ -67,7 +67,8 @@ impl Colony {
                 let ore = p.name.split_whitespace().nth(2).filter(|w| w.chars().next().map_or(false, |c| c.is_uppercase()) && !w.starts_with("mine")).map(|w| w.to_lowercase());
                 let line = match &ore {
                     Some(o) => {
-                        if !self.ores.contains(o) { self.ores.push(o.clone()); }
+                        // (What the old miners left: six loads for the smelter, `industry.rs`.)
+                        self.add_ore(o, 6);
                         self.ore_found += 1;
                         format!("{} finds {} in the hills: {}. They bring out the {} left behind.", name, lower, p.cause, o)
                     }

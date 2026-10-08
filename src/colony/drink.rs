@@ -46,7 +46,9 @@ impl Colony {
             if let Some(k) = self.items.iter().rposition(|it| it.kind == ItemKind::Food && it.stored && !it.reserved) { self.items.remove(k); self.fix_refs_pub(k); used += 1; }
         }
         if used < 3 { return; }
-        self.drink += 5;
+        // Racked into barrels from the carpenter's (`industry.rs`), less is lost: a cup more for
+        // each barrel the still keeps (three at most: eight cups).
+        self.drink += 5 + self.industry.barrels.min(3);
         let name = self.settlers[i].name.clone();
         if self.milestones.insert("first wine") {
             let line = format!("{} draws the first berry wine from the still.", name);

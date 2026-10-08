@@ -20,7 +20,7 @@ use super::projects::ProjectKind;
 
 /// What a dug room is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RoomKind { Hall, Cellar, Bedroom, GreatHall, Corridor, Tomb, Workshop, Farm }
+pub enum RoomKind { Hall, Cellar, Bedroom, GreatHall, Corridor, Tomb, Workshop, Farm, Mason, Carpenter, Smelter, Forge, Kiln }
 
 impl RoomKind {
     pub fn word(self) -> &'static str {
@@ -33,6 +33,11 @@ impl RoomKind {
             RoomKind::Tomb => "a tomb",
             RoomKind::Workshop => "the workshops below",
             RoomKind::Farm => "the farm under the rock",
+            RoomKind::Mason => "the mason's workshop",
+            RoomKind::Carpenter => "the carpenter's workshop",
+            RoomKind::Smelter => "the smelter",
+            RoomKind::Forge => "the forge",
+            RoomKind::Kiln => "the kiln",
         }
     }
 }
@@ -132,6 +137,8 @@ impl Colony {
                 self.plan_level(kind, want)
             }
             ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Workshops | ProjectKind::CaveFarm => self.plan_level(kind, 0),
+            // The workshops of the industries (`industry.rs`): a 4x3 room each.
+            k if super::industry::shop_room(k).is_some() => self.plan_level(kind, 0),
             ProjectKind::Moat => self.plan_moat(),
             // The deep shaft (`deep.rs`): the stair on down from its foot (the cavern floor) to
             // the deepest rock, through the caverns below (a stair is let down through each).
@@ -232,6 +239,9 @@ impl Colony {
         } else if kind == ProjectKind::Workshops {
             for a in 1..=2 { layout.push((a, 0, 0)); }
             for a in 3..=7 { for b in -2..=2 { layout.push((a, b, 200)); } }
+        } else if super::industry::shop_room(kind).is_some() {
+            for a in 1..=2 { layout.push((a, 0, 0)); }
+            for a in 3..=6 { for b in -1..=1 { layout.push((a, b, 400)); } }
         } else if kind == ProjectKind::CaveFarm {
             for a in 1..=2 { layout.push((a, 0, 0)); }
             for a in 3..=8 { for b in -2..=1 { layout.push((a, b, 300)); } }
@@ -276,6 +286,8 @@ impl Colony {
                     }
                 } else if kind == ProjectKind::CaveFarm {
                     rooms.push(room(RoomKind::Farm, zb, cells.iter().filter(|c| c.1 == 300).map(|c| c.0).collect(), Some(at(5, 0))));
+                } else if let Some(rk) = super::industry::shop_room(kind) {
+                    rooms.push(room(rk, zb, cells.iter().filter(|c| c.1 == 400).map(|c| c.0).collect(), Some(at(4, 0))));
                 } else if kind == ProjectKind::Workshops {
                     rooms.push(room(RoomKind::Workshop, zb, cells.iter().filter(|c| c.1 == 200).map(|c| c.0).collect(), Some(at(5, 0))));
                 } else {
@@ -450,13 +462,27 @@ impl Colony {
             RoomKind::GreatHall => "the long table and benches for the great hall".to_string(),
             _ => format!("a bed for {}'s room", self.rooms[k].owner.map(|o| self.settlers[o].name.clone()).unwrap_or_default()),
         };
-        Some((wish * 0.95, Job::Craft, format!("Making furniture: {} at the workshop", what)))
+        let place = self.furniture_shop().map_or("the workshop", |(_, w)| w);
+        Some((wish * 0.95, Job::Craft, format!("Making furniture: {} at {}", what, place)))
     }
 
-    /// What furniture is made of: logs stored (the land's wood), else dressed stone.
+    /// What furniture is made of: the mason's dressed blocks while they last (`industry.rs`),
+    /// else logs stored (the land's wood), else rough stone dressed at the bench.
     fn furniture_stuff(&self, need: usize) -> Option<ItemKind> {
         let n = |kind: ItemKind| self.items.iter().filter(|it| it.stored && it.kind == kind).count();
-        if n(ItemKind::Log) >= need { Some(ItemKind::Log) } else if n(ItemKind::Stone) >= need { Some(ItemKind::Stone) } else { None }
+        if self.industry.blocks as usize >= need { Some(ItemKind::Stone) }
+        else if n(ItemKind::Log) >= need { Some(ItemKind::Log) } else if n(ItemKind::Stone) >= need { Some(ItemKind::Stone) } else { None }
+    }
+
+    /// Where furniture is made: the carpenter's for wood, the mason's for stone (each once dug),
+    /// with its name; None for the old workshop.
+    pub(crate) fn furniture_shop(&self) -> Option<(Pos, &'static str)> {
+        let k = self.unfurnished()?;
+        let need = if self.rooms[k].kind == RoomKind::GreatHall { 3 } else { 1 };
+        match self.furniture_stuff(need)? {
+            ItemKind::Log => self.shop(RoomKind::Carpenter).map(|p| (p, "the carpenter's")),
+            _ => self.shop(RoomKind::Mason).map(|p| (p, "the mason's")),
+        }
     }
 
     /// The furniture is made and carried down to its room.
@@ -464,12 +490,19 @@ impl Colony {
         let Some(k) = self.unfurnished() else { return };
         let need = if self.rooms[k].kind == RoomKind::GreatHall { 3 } else { 1 };
         let Some(stuff) = self.furniture_stuff(need) else { return };
-        for _ in 0..need {
-            let Some(it) = self.items.iter().position(|it| it.stored && it.kind == stuff) else { return };
-            self.items.remove(it);
-            self.fix_refs_pub(it);
+        // (Made at a proper shop, the carpenter's or the mason's: a truer piece.)
+        let shop = self.furniture_shop().is_some();
+        let blocks = stuff == ItemKind::Stone && self.industry.blocks as usize >= need;
+        if blocks {
+            self.industry.blocks -= need as u32;
+        } else {
+            for _ in 0..need {
+                let Some(it) = self.items.iter().position(|it| it.stored && it.kind == stuff) else { return };
+                self.items.remove(it);
+                self.fix_refs_pub(it);
+            }
         }
-        let wood = if stuff == ItemKind::Log { self.land_wood() } else { format!("dressed {}", self.land_stone()) };
+        let wood = if stuff == ItemKind::Log { self.land_wood() } else if blocks { format!("{} blocks", self.land_stone()) } else { format!("dressed {}", self.land_stone()) };
         self.rooms[k].furnished = Some(wood.clone());
         // Quality as for any work: the building hand, sure hands, care, luck.
         let q = {
@@ -477,6 +510,7 @@ impl Colony {
             let h = crate::history::settlers::hash_pub(self.seed ^ self.clock.tick, 0xF0A1 + i as u64);
             0.45 * s.skill[4] + 0.2 * (s.persona.attr(crate::persona::Attr::KinestheticSense) / 2000.0).min(1.0)
                 + 0.15 * s.persona.facet(crate::persona::Facet::Perfectionism) as f32 / 100.0 + 0.2 * (h % 1000) as f32 / 1000.0
+                + if shop { 0.1 } else { 0.0 }
         };
         self.rooms[k].quality = (((q - 0.35) * 9.0).floor() as i32).clamp(0, 5) as u8;
         let name = self.settlers[i].name.clone();
@@ -760,7 +794,7 @@ impl Colony {
             Job::Sleep => if self.bedroom_of(i).map_or(false, |r| r.bed == Some(target)) { self.bedroom_of(i).map(|r| r.z) } else { in_room(&[RoomKind::Hall, RoomKind::Cellar]) },
             Job::Eat => in_room(&[RoomKind::GreatHall, RoomKind::Hall, RoomKind::Cellar]),
             Job::Craft if why.starts_with("Engraving") => in_room(&[RoomKind::Hall, RoomKind::GreatHall, RoomKind::Bedroom, RoomKind::Tomb]),
-            Job::Craft => in_room(&[RoomKind::Workshop, RoomKind::Hall, RoomKind::GreatHall]),
+            Job::Craft => in_room(&[RoomKind::Workshop, RoomKind::Mason, RoomKind::Carpenter, RoomKind::Smelter, RoomKind::Forge, RoomKind::Kiln, RoomKind::Hall, RoomKind::GreatHall]),
             // A fishing place on a cavern's floor.
             Job::Fish(t) => self.cave_fish.iter().find(|c| c.0 == t).map(|c| c.1),
             // A fungus tree on the cavern floor: stand beside it down there.
@@ -897,5 +931,8 @@ impl Colony {
                 c.push((if masons { 1.3 } else { 0.7 }, ProjectKind::GreatHall, why, plan.cuts.len() as u32, self.spine.unwrap().at));
             }
         }
+        // The workshops of the industries: a smelter for ore, a forge for its bars, a mason's,
+        // a carpenter's, a kiln (`industry.rs`).
+        self.industry_candidates(c);
     }
 }

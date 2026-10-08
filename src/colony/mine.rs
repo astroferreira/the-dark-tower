@@ -90,6 +90,10 @@ impl Colony {
     /// camp's next trouble, foretold soon, and it comes up the mine.
     fn wake_the_deep(&mut self, breached: &str) {
         let Some((bname, m)) = self.map.caverns.iter().find_map(|c| c.beast.clone()) else { return };
+        // (Not a beast already slain or caged: a second breach had woken Gru again after the
+        // camp killed it.)
+        let full = format!("{} the {}", bname, m.kind_word);
+        if self.slain.iter().chain(self.caged.iter()).any(|s| *s == full || *s == bname) { return; }
         let Some(arc) = self.arc.as_mut() else { return };
         if arc.later.iter().chain(std::iter::once(&arc.threat)).any(|t| t.kind == ThreatKind::Deep) { return; }
         let size = m.size;

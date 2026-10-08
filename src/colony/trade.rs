@@ -180,6 +180,9 @@ impl Colony {
         }
         let count = self.works.iter().filter(|w| w.traded).count() as u32 - self.traded_before;
         self.traded_before += count;
+        // The stock to spare: blocks, bars, barrels (`industry.rs`).
+        let (stock_value, stock) = self.sell_stock();
+        value += stock_value;
         // Each item of news is told once, the newest first (what visitors told already is old news).
         let news = self.unheard(&p.news);
         let news_line = news.as_ref().map(|t| format!(" They bring news: {}.", Colony::news_words(t))).unwrap_or_default();
@@ -191,6 +194,11 @@ impl Colony {
             let tools = p.iron && !self.tools_bought && value >= 12;
             if tools { self.tools_bought = true; }
             let what = if count > 2 { format!("{} and {} more", sold.join(", "), count - 2) } else { sold.join(" and ") };
+            let what = match (what.is_empty(), stock.is_empty()) {
+                (_, true) => what,
+                (true, false) => crate::persona::list(&stock),
+                (false, false) => format!("{}, with {}", what, crate::persona::list(&stock)),
+            };
             self.note(format!("The traders of {} buy {} for {} meals{}.{}", p.town, what, meals, if tools { " and a set of iron tools" } else { "" }, news_line));
             // Word of the camp goes home with them: migrants follow in a few weeks.
             if self.migrant_day.is_none() && !self.migrants.is_empty() && value >= 8 {

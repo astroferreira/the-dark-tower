@@ -1836,6 +1836,19 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
         println!("  Works: {} made, {} fine or better, {} showing a world event; best: {} by {}", colony.works.len(), colony.works.iter().filter(|w| w.quality >= 2).count(),
             colony.works.iter().filter(|w| w.image.as_ref().map_or(false, |x| x.1.is_some())).count(), best.describe(), colony.settlers[best.maker].name);
     }
+    // The industries (`colony/industry.rs`): their shops and what passed through them.
+    {
+        use crate::colony::delve::RoomKind as R;
+        let ind = &colony.industry;
+        let shops: Vec<String> = colony.rooms.iter().filter(|r| matches!(r.kind, R::Mason | R::Carpenter | R::Smelter | R::Forge | R::Kiln)).map(|r| format!("{} (day {})", r.kind.word().trim_start_matches("the "), r.day)).collect();
+        if !shops.is_empty() || ind.smelted > 0 || !ind.ore.is_empty() {
+            let list = |v: &Vec<(String, u32)>| v.iter().map(|(k, n)| format!("{} {}", n, k)).collect::<Vec<_>>().join(", ");
+            println!("  Industry: shops {}; ore left {}; {} loads smelted into {} bars (left {}); {} charcoal burnt; {} stones dressed ({} blocks left); {} barrels; {} fired; {} arms and mail forged; tools {}",
+                if shops.is_empty() { "none".to_string() } else { shops.join(", ") }, if ind.ore.is_empty() { "none".to_string() } else { list(&ind.ore) }, ind.smelted, ind.bars_made,
+                if ind.bars.is_empty() { "none".to_string() } else { list(&ind.bars) }, ind.burned, ind.dressed, ind.blocks, ind.barrels_made, ind.fired, ind.forged,
+                ind.tools.as_ref().map(|(m, d)| format!("of {} (day {})", m, d)).unwrap_or_else(|| if colony.tools_bought { "bought".into() } else { "none".into() }));
+        }
+    }
     for c in &colony.map.caverns {
         println!("  Cavern: {}, {} levels down, {} cells of floor ({} fungus trees, {} under water): {}{}", c.name, c.depth_levels, c.floor_cells, c.fungus, c.water_cells, c.life.join(", "),
             c.beast.as_ref().map(|(n, m)| format!("; {} the {} sleeps there: {}", n, m.kind_word, m.description)).unwrap_or_default());

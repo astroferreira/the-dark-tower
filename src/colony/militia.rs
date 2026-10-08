@@ -62,7 +62,6 @@ impl Colony {
             .or_else(|| self.items.iter().position(|it| it.stored && it.kind == ItemKind::Stone)) else { return };
         self.items.remove(k);
         self.fix_refs_pub(k);
-        let iron = self.iron_worked();
         let stone = {
             let (x, y) = (self.camp.0 as usize, self.camp.1 as usize);
             let sz = self.map.surface_z[y * self.map.width + x].max(0) as usize;
@@ -72,15 +71,19 @@ impl Colony {
         let hand = 0.9 + 0.2 * self.settlers[i].skill[4];
         // The best head to hand: iron, copper, obsidian from the rock, bone from the hunt, the
         // land's stone (DF: the weapon's material decides its edge).
-        let metal = |m: &str| self.ores.iter().any(|o| o == m);
+        // (Metal heads take a bar of it at a forge, `industry.rs`, and the smith's hand.)
+        let metal = self.arm_metal(1);
+        let smith = self.smith_hand(i);
         let gem = |g: &str| self.gems.iter().any(|x| x.0 == g && x.1 > 0);
-        let (kind, force) = if metal("adamantine") && self.workshop_spot().is_some() { ("an adamantine-headed spear".to_string(), 2.2 * hand) }
-            else if iron && (metal("iron") || self.tools_bought) { ("an iron-headed spear".to_string(), 1.45 * hand) }
-            else if iron && metal("copper") { ("a copper-headed spear".to_string(), 1.3 * hand) }
+        let (kind, force) = if metal == Some("adamantine") { ("an adamantine-headed spear".to_string(), 2.2 * smith) }
+            else if metal == Some("iron") { ("an iron-headed spear".to_string(), 1.45 * smith) }
+            else if metal == Some("copper") { ("a copper-headed spear".to_string(), 1.3 * smith) }
             else if gem("obsidian") { ("an obsidian-tipped spear".to_string(), 1.25 * hand) }
             else if stone == "stone" && self.hunted > 0 { ("a bone-tipped spear".to_string(), 1.05 * hand) }
             else { (format!("a {}-tipped spear", stone), 1.15 * hand) };
         if kind.starts_with("an obsidian") { if let Some(g) = self.gems.iter_mut().find(|x| x.0 == "obsidian") { g.1 -= 1; } }
+        let forged = Self::metal_in(&kind).filter(|m| self.take_bars(m, 1)).is_some();
+        let kind = if forged { self.forged_kind(i, &kind) } else { kind };
         // Metal forged at the magma (`deep.rs`): a truer temper.
         let at_magma = self.magma_forge && (kind.contains("iron") || kind.contains("copper") || kind.contains("adamantine"));
         let (kind, force) = if at_magma { (super::deep::magma_forged(&kind), force * 1.12) } else { (kind, force) };
@@ -89,7 +92,8 @@ impl Colony {
         self.settlers[i].made.push(format!("{} (day {})", kind, day));
         self.arms.push(militia::Arm { kind: kind.clone(), force, maker: i, day, holder: None });
         let why = self.trouble_foretold().map(|t| format!("for fear of {}", t)).unwrap_or_else(|| "against the next trouble".into());
-        if self.arms.len() == 1 { self.note(format!("{} makes {} at the workshop, {}; the first of the camp's arms.", name, kind, why)); }
+        if self.arms.len() == 1 { self.note(format!("{} makes {} at {}, {}; the first of the camp's arms.", name, kind, if forged { "the forge" } else { "the workshop" }, why)); }
+        if forged { self.forged_arm(i, &kind); }
         self.arm_militia();
     }
 
