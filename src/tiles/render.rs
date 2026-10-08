@@ -1059,8 +1059,10 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
         let c = map.cell(tx, row, z);
         let cavern = map.cavern_at(tx, row, z as i32).is_some();
         let rgb = if c.shape == Shape::Empty {
-            // Cavern air is dark; its pools darker still.
-            if cavern { if c.water > 0 { [30, 60, 100] } else { [44, 38, 48] } }
+            // Cavern air is dark; its pools darker still. The magma sea (a liquid, so `water`
+            // is set too) glows orange, not water blue.
+            if c.material == Material::Magma { [220, 80, 20] }
+            else if cavern { if c.water > 0 { [30, 60, 100] } else { [44, 38, 48] } }
             else if c.water > 0 { [50, 110, 175] } else { [200, 222, 240] }
         } else {
             let base = match c.material {
