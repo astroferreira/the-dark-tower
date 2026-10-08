@@ -21,6 +21,7 @@ pub mod plates;
 pub mod portraits;
 pub mod render;
 pub mod start;
+pub mod status_ink;
 pub mod text;
 mod ui;
 pub mod viewer;

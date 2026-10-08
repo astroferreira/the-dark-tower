@@ -49,5 +49,62 @@ pub fn save(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
         draw(&mut sheet, &label, &beasts::of_monster(m));
     }
     sheet.save(path)?;
+    let n2 = save_people_and_things(&path.replace(".png", "_folk.png"))?;
+    Ok(n + n2)
+}
+
+/// The second page: the bubbles over settlers, strangers, furniture and fittings.
+fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    use super::status_ink::Emblem;
+    let emblems = [Emblem::Tantrum, Emblem::Despair, Emblem::Lost, Emblem::Fey, Emblem::Secretive, Emblem::Possessed, Emblem::Macabre, Emblem::Fell,
+        Emblem::Hurt, Emblem::Pray, Emblem::Talk, Emblem::Rest, Emblem::Watch, Emblem::Admire, Emblem::Walk, Emblem::Thrill, Emblem::Help, Emblem::Learn,
+        Emblem::Think, Emblem::Merry, Emblem::Tale, Emblem::Martial, Emblem::Whittle, Emblem::Busy, Emblem::Drink, Emblem::Meal, Emblem::Gloom];
+    let folk: Vec<(&str, super::folk::Folk)> = vec![
+        ("the Shadow's raider", super::folk::raider(None, "raiders of the Shadow of Skullfang", 0, None)),
+        ("the Shadow's axeman", super::folk::raider(None, "raiders of the Shadow of Skullfang", 2, None)),
+        ("a war band's spear", super::folk::raider(None, "a war band of The Git Clans", 1, None)),
+        ("a war band's axe", super::folk::raider(None, "a war band of The Git Clans", 3, None)),
+        ("an outlaw with a club", super::folk::raider(None, "a band of outlaws", 0, None)),
+        ("an outlaw with a bow", super::folk::raider(None, "a band of outlaws", 1, None)),
+        ("a trader", super::folk::trader("traders of Ripu", 0)),
+        ("a porter", super::folk::trader("traders of Ripu", 1)),
+    ];
+    let furn: [(&str, fn(&mut super::ink::Pen)); 14] = [
+        ("a bed", |p| super::furniture::bed(p, [92.0, 120.0, 82.0], false)), ("a fine bed", |p| super::furniture::bed(p, [150.0, 66.0, 52.0], true)),
+        ("a pallet", |p| super::furniture::pallet(p)), ("a coffin", |p| super::furniture::coffin(p, true)), ("a bench", |p| super::furniture::bench(p, true)),
+        ("fungus beds", |p| super::furniture::fungus_bed(p, 3)), ("the mason's", |p| super::furniture::mason(p)), ("the carpenter's", |p| super::furniture::carpenter(p)),
+        ("the smelter", |p| super::furniture::smelter(p, [190.0, 112.0, 70.0])), ("the kiln", |p| super::furniture::kiln(p)), ("the forge", |p| super::furniture::forge(p, false)),
+        ("the cellar", |p| super::furniture::cellar_stores(p, 0)), ("the hatch", |p| super::furniture::hatch(p)), ("a lair's hoard", |p| super::furniture::lair(p)),
+    ];
+    let arts = ["a figurine", "a chest", "pipes", "a drum", "a harp", "a crown", "a ring", "a goblet", "a sword", "a book", "a carved stone"];
+    let n = emblems.len() + folk.len() + furn.len() + arts.len();
+    let cols = 9;
+    let mut sheet = Sheet::new(cols, (n + cols - 1) / cols, 150, 130);
+    sheet.title("People and things: what settlers go through, strangers, furniture below, artifacts");
+    for e in emblems {
+        let (cx, cy) = sheet.cell(&format!("{:?}", e).to_lowercase());
+        let mut put = sheet.put();
+        super::status_ink::draw_bubble(&mut put, e, cx - 30.0, cy + 20.0, 2.4);
+        super::status_ink::draw_bubble(&mut put, e, cx + 40.0, cy + 20.0, 0.85);
+    }
+    for (label, f) in &folk {
+        let (cx, cy) = sheet.cell(label);
+        let mut put = sheet.put();
+        super::folk::draw(&mut put, f, cx - 25.0, cy + 10.0, 3.0, false, label.contains("axe") || label.contains("club"), 1.0);
+        super::folk::draw(&mut put, f, cx + 45.0, cy + 20.0, 1.2, true, false, 1.0);
+    }
+    for (label, f) in furn {
+        let (cx, cy) = sheet.cell(label);
+        let mut put = sheet.put();
+        let mut pen = super::ink::Pen::new(&mut put, cx - 40.0, cy - 30.0, 64.0);
+        f(&mut pen);
+    }
+    for a in arts {
+        let (cx, cy) = sheet.cell(a);
+        let mut put = sheet.put();
+        let mut pen = super::ink::Pen::new(&mut put, cx - 32.0, cy - 36.0, 128.0);
+        super::furniture::artifact(&mut pen, a);
+    }
+    sheet.save(path)?;
     Ok(n)
 }

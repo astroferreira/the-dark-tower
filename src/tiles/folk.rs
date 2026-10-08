@@ -67,7 +67,7 @@ pub fn raider(t: Option<&crate::colony::arc::Threat>, name: &str, n: u32, histor
     let hairs: [Rgb; 4] = [[40.0, 30.0, 24.0], [96.0, 62.0, 36.0], [140.0, 50.0, 30.0], [70.0, 52.0, 40.0]];
     let kind = t.map(|t| t.kind);
     let shadow = kind == Some(ThreatKind::Shadow) || name.contains("Shadow");
-    let outlaws = kind == Some(ThreatKind::Outlaws) || name.contains("band of") || name.contains("deserters");
+    let outlaws = kind == Some(ThreatKind::Outlaws) || name.starts_with("a band of") || name.contains("outlaws") || name.contains("deserters");
     let (field, metal) = band_colours(t.map(|t| t.name.as_str()).unwrap_or(name));
     if shadow {
         return Folk { skin, hair: [40.0, 34.0, 32.0], dress: [58.0, 50.0, 52.0], helm: Helm::Horned, arm: if n % 3 == 2 { Arm::Axe } else { Arm::Sword },

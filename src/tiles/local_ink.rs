@@ -807,6 +807,12 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
     }
     // The camp's builder, forager, ...: a small gold mark on the shoulder.
     if s.role.is_some() { ink_disc(put, x - sw * 0.55, base - sh * 0.55, (1.8 * scale).max(1.5), [200.0, 160.0, 60.0], INK); }
+    // A bandage, an office's headgear, a visitor's hat; and a bubble with what they are going
+    // through (`status_ink`).
+    super::status_ink::figure_marks(put, colony, i, hx, hy, hr);
+    if let Some(e) = super::status_ink::emblem_of(colony, i) {
+        super::status_ink::draw_bubble(put, e, x - sw - 2.0 * scale, hy - hr - 1.0, scale * 0.85);
+    }
     // What they are doing, beside the head.
     let watch = colony.watcher == Some(i) && colony.clock.is_night();
     let (gx, gy) = (x + sw + 2.0, hy - hr);
