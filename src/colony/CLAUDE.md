@@ -418,12 +418,12 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   names the stone dug without ore. When a dug cell (or its headroom, or a neighbour's) lies in a
   cavern (`cavern_at`) the mine breaks in (`breach_cavern`): a moment with what the lamplight
   shows, `Feel::Breach` (wonder for the curious and thrill-seeking, dread for the anxious), the
-  mine stops; hunting cavern life (spiders, crawlers, serpents...) comes up the mine at 21:00 one
-  night in three as wolf-like hunters (`cave_hunters_out`, home = the mine mouth, "set upon by a
-  giant cave spider come up from the mine"), harmless life is a line. The breach wakes the
+  mine stops; hunting cavern life (spiders, crawlers, serpents...) climbs the stair one night in
+  three (`cavelife.rs`, see "Creatures in three dimensions" at the end; "set upon by a giant cave
+  spider come up from the mine"), harmless life is a line. The breach wakes the
   forgotten beast (`wake_the_deep`): a `ThreatKind::Deep` chapter at the front of `Arc::later`
   (quiet cut to 3 days), its rumour "A sound from below" from the miners with the monster's
-  warning, its attacker spawned at the mine mouth ("Something climbs out of the mine", a moment,
+  warning, its attacker walking up the stair from its cavern ("Something climbs out of the mine", a moment,
   `Feel::TheDeep`), strength 0.85 + its attack's deadliness. Dev 45,12: mine day 19, breach day 23
   (13 levels), the sound day 26, Gru climbs out day 30 and breathes fire on a settler; 50,20's mine
   reaches 35 levels and misses the caverns. Forbidding the mouth's ground stops it (`plan_mine`
@@ -1425,8 +1425,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   `fell_cavern_tree`): once a cavern is breached by the stair, a camp needing logs with no tree
   within 30 cells of the fire fells the cavern's fungus trees (within 30 cells of the stair, on
   each column's own cavern floor, never under a surface tree): two logs carried up to the mouth
-  (the first a moment, "Wood from the dark"); the cavern's hunters set on the feller one time in
-  eight (ill a day, a dread). Fish too: at the breach `find_cave_fishing` lists floor beside the
+  (the first a moment, "Wood from the dark"); the cavern's hunters, roaming its floor, may find
+  the feller alone (`cavelife.rs`; the old one-in-eight roll is gone). Fish too: at the breach `find_cave_fishing` lists floor beside the
   cavern's water within 60 cells of the stair (`Colony::cave_fish`); with no water to fish above
   (or it is ice) and food short, fishers go below ("fishing the still water of the first cavern,
   15 levels down"; the catch carried up to the mouth; "the first blind white fish").
@@ -1494,8 +1494,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
 - The hatch (`ProjectKind::Hatch`, `delve.rs::seal_caverns`, DF's walled-off caverns): after the
   cavern's hunters have hurt someone twice (`cave_bites`: bites by those come up the mine, and
   fellers set upon in the dark), the camp sets a hatch in the stair at the first cavern's roof
-  (6 loads, urgency 2.0, a moment): `cave_hunter` is cleared and later breaches below it set no
-  new one; `Colony::hatch` (column, level), drawn as barred planks. Seeds 76, 23, 58, 3, 5 seal it
+  (6 loads, urgency 2.0, a moment): no creature's walk passes it (see "Creatures in three
+  dimensions"), and later breaches below it set no new `cave_hunter`; `Colony::hatch` (column, level), drawn as barred planks. Seeds 76, 23, 58, 3, 5 seal it
   on days 48-107; nothing comes up after. Tested (`the_caverns_are_sealed_with_a_hatch`).
 - The lord's quarters (`nobles.rs::lord_quarters`, DF's nobles' room requirements): a lord takes
   the best bedroom (its owner is moved to the lord's old one, or none, and resents it: a grievance
@@ -1534,3 +1534,41 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   if there is one), on a free cell away from the table; a stolen one leaves its place. Each adds 10
   to its room's worth; drawn on a gilded plinth with its name. Dev: Dreamlight (76, day 169),
   Rumoor (5), Shimmerglade (11).
+- Creatures in three dimensions (`creatures.rs`, `cavelife.rs`; DF: each cavern layer spawns its
+  own population, design guide ch. 11): `Creature` carries `z` (None: a surface walker on the
+  old column walk, unchanged), `path3` (followed first, `cost3` steps, x1.4 diagonal, +6 on a
+  stair), `home_z`, `out`, `rest_until`; `creature_here3` / `creature_below`. The surface view
+  draws only creatures not below; level views (`draw_delve`) draw those below on their level
+  (faint a level off), hunters and beasts named. `PLANET_FRAMES` writes `_caverN.png` at each
+  breached cavern's stair foot. New kinds `CaveHunter`, `CaveLife` (end of the enum).
+  - A breach (`populate_cavern`) sets 2 hunters and 3 harmless (the life list's walkers; fish stay
+    in the water; 15 at most) in dens on that cavern's floor 8-36 cells from the stair's foot
+    (`Colony::cavern_feet`, a walk outward over its floor, 4000 places). Hourly they amble 2-4
+    steps on their own floor (no search), back toward the den past 12 cells.
+  - Every 20 minutes a hunter at home notices (1 in 4) someone at work alone on its cavern's floor
+    within 10 cells (path3 chase, 3000 nodes; a failed chase waits an hour); adjacent: ill a day,
+    `Feel::TheDeep`, the felling or fishing dropped, "X is set upon by a pale spider while
+    fishing in the dark of the first cavern, and comes up the stair bleeding", `cave_bites` +1,
+    and that cavern's hunters keep to their dens 6 days.
+  - 20:00 one night in three (as before) the two hunters nearest the surface climb the stair to
+    the mine's mouth (20,000 nodes; the second shares the first's way), hunt the surface as
+    wolves do (lone, 8+ from the fire, unroofed, a pet may stand over its keeper; "come up from
+    the mine, alone and far from the fire"), and walk back down at 06:00 (or after a bite).
+  - The hatch is a real barrier (`nav::path3_barred`: no creature walk stands on it). It now sits
+    where the way up from the shallowest cavern first climbs the stair (`hatch_level`; dev 76's
+    first cavern lies beside the stair, and the old roof formula had put it under the second
+    cavern, level 26 instead of 40). Setting it sends any hunter up for the night home.
+  - What the deep sends (`deep_comes_up`) starts on its cavern's floor 10-20 cells from the stair
+    (the beast's own layer if breached, else the deepest breached), or for the demon at the deep
+    shaft's foot, and walks up the stair (it bursts the hatch): "Something stirs in the first
+    cavern, 15 levels down: Gru the forgotten beast is coming up the stair" at 19:00, "Something
+    climbs out of the mine" (the moment) when it reaches the surface, ~3 hours later. It clashes
+    with a settler within 2 cells and a level of it (on the stair, in a room off it) as on the
+    surface; it goes back down when the raid ends. With no way up, the old spawn at the mouth.
+  - Seeds 3/76/23 (120/365/150 days): 3/2/0 bites in the dark, 2/3/4 on the surface (seed 23: a
+    pet stands over one); hatches days 30/90/84 (base 38/88/82); seed 3 with
+    `PLANET_FORCE_CAVERN` 5 bites in the dark in 60 days. Gru (dev 45,12) climbs out at 22:05 on
+    day 29 (was spawned at the mouth 19:00). `a_slain_beast_becomes_bone_and_armour` runs 125 days
+    (Gru now falls on day 107, its bone worked from 111; seed 11's bone figurine shifted out).
+    Cavern life costs ~2% of a dev year's tick (`PLANET_DEBUG_CAVE` prints dens, climbs, the
+    ways up past the hatch and the time spent).

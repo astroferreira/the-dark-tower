@@ -1430,7 +1430,9 @@ fn old_comrades_find_each_other() {
 /// famous works showing its death, its hide armour.
 #[test]
 fn a_slain_beast_becomes_bone_and_armour() {
-    let logs: Vec<String> = ["76", "11"].iter().map(|s| run_log(s, "110", &[])).collect();
+    // (125 days: Gru now walks up the stair from its cavern and falls on day 107, its bone worked
+    // from day 111; seed 11's coat of hide is made on day 29.)
+    let logs: Vec<String> = ["76", "11"].iter().map(|s| run_log(s, "125", &[])).collect();
     let any = |n: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(n)));
     assert!(any("-bone ") && any("showing the death of "), "no work of a beast's bone");
     assert!(any("makes a coat of "), "no armour of a beast's hide");

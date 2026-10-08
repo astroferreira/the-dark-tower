@@ -53,7 +53,7 @@ impl Colony {
             let off = (k as f32 - (n as f32 - 1.0) / 2.0) * 2.0;
             let Some(p) = self.passable_near_pub(((at.0 as f32 - dy * off) as i32, (at.1 as f32 + dx * off) as i32)) else { continue };
             let id = self.new_creature_id();
-            self.creatures.push(creatures::Creature { kind: creatures::CreatureKind::Besieger, name: who.clone(), pos: p, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: p, spawned: self.clock.tick, id });
+            self.creatures.push(creatures::Creature { kind: creatures::CreatureKind::Besieger, name: who.clone(), pos: p, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: p, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
         }
         self.marks.push(ColonyMark { at, kind: MarkKind::Scorch, title: "The besiegers' camp".into(),
             text: format!("Where {} lit their fires and waited, from day {}.", who.split(", led by ").next().unwrap_or(""), day + 1), day });
