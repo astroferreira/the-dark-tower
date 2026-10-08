@@ -18,7 +18,7 @@ pub enum ProjectKind { Woodpile, DryingRack, SecondHut, Palisade, Windbreak, Smo
 pub fn feeds(k: ProjectKind) -> bool { matches!(k, ProjectKind::Field | ProjectKind::CaveFarm | ProjectKind::Pen | ProjectKind::Jetty) }
 
 /// Works that are dug, not built (no loads to lay).
-pub fn is_dig(k: ProjectKind) -> bool { matches!(k, ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops) }
+pub fn is_dig(k: ProjectKind) -> bool { matches!(k, ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::CaveFarm) }
 
 impl ProjectKind {
     pub fn word(self) -> &'static str {
@@ -222,14 +222,16 @@ impl Colony {
             }
         }
         // A farm under the rock, once a hall or cellar is dug (`cavefarm.rs`).
-        if !have(self, ProjectKind::CaveFarm) && self.can_cave_farm() {
+        // (Dug as a level of plots off the stair: one dig at a time.)
+        let farm_cuts = if !have(self, ProjectKind::CaveFarm) && self.can_cave_farm() && self.dig_plan.is_none() && !self.projects.iter().any(|p| !p.done && is_dig(p.kind)) { self.plan_dig(ProjectKind::CaveFarm).map(|p| p.cuts.len() as u32) } else { None };
+        if let Some(cuts) = farm_cuts {
             let d = self.days_to_winter();
-            let at = self.hall_cells.first().copied().unwrap_or(self.camp);
+            let at = self.spine.map(|s| s.at).unwrap_or(self.camp);
             let why = match d {
                 Some(d) => format!("{} live here and winter is {} days off; under the rock things grow in any season", self.alive(), d),
                 None => format!("{} live here, and under the rock things grow in any season", self.alive()),
             };
-            c.push((if d.map_or(false, |d| d <= 60) { 2.2 } else { 1.2 }, ProjectKind::CaveFarm, why, 8, at));
+            c.push((if d.map_or(false, |d| d <= 60) { 2.2 } else { 1.2 }, ProjectKind::CaveFarm, why, cuts, at));
         }
         // Cage traps at the gates, with the palisade up and a beast foretold or still to come
         // (`traps.rs`).

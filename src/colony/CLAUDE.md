@@ -1480,3 +1480,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   a level off the stair gets a 5x5 room with two benches (`plan_level`); `workshop_spot` then
   returns its bench, so crafts (and a mood holding the workshop) go below. Dev 76/3/11: dug on days
   40-57; seed 76 still makes 158 works in 200 days. Drawn with benches and named.
+- The farm under the rock is dug (`ProjectKind::CaveFarm` is a dig now, `RoomKind::Farm`): a 6x4
+  room of plots off the stair (`plan_level`), planned only when no other dig is under way; the
+  harvest is as before (every eighth day, carried up to the mouth). Drawn as rows of pale caps.
+  Seed 3: dug on day 31, on the same level as the workshops below.

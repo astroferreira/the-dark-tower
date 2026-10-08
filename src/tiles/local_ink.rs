@@ -1335,6 +1335,18 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                     labels.push((lx, ly, "the workshops".into(), false));
                 }
             }
+            RoomKind::Farm => {
+                // Plots in rows: pale caps of what grows in the dark.
+                for &c in &r.cells {
+                    let (x, y) = to_screen(c.0 as f32, c.1 as f32);
+                    for k in 0..3 {
+                        let (cx, cy) = (x + t * (0.25 + 0.25 * k as f32), y + t * 0.5);
+                        let rr = (t * 0.1).max(1.0);
+                        for yy in (cy - rr) as i64..=(cy + rr) as i64 { for xx in (cx - rr) as i64..=(cx + rr) as i64 { put(xx, yy, [176.0, 140.0, 170.0], 0.85); } }
+                    }
+                }
+                if let Some(c) = r.bed { let (lx, ly) = to_screen(c.0 as f32 + 0.5, c.1 as f32 - 2.6); labels.push((lx, ly, "the farm under the rock".into(), false)); }
+            }
             RoomKind::Corridor => {}
         }
     }
@@ -1396,7 +1408,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         let d = cam.z - zc;
         let mut kinds: Vec<String> = Vec::new();
         for (r, dug) in colony.rooms.iter().map(|r| (r, true)).chain(colony.dig_rooms.iter().map(|r| (r, false))).filter(|(r, _)| r.z == cam.z) {
-            let k = match r.kind { RoomKind::Bedroom => "bedrooms", RoomKind::GreatHall => "the great hall", RoomKind::Hall => "the hall in the hill", RoomKind::Cellar => "the cellar", RoomKind::Tomb => "the tombs", RoomKind::Workshop => "the workshops", RoomKind::Corridor => continue };
+            let k = match r.kind { RoomKind::Bedroom => "bedrooms", RoomKind::GreatHall => "the great hall", RoomKind::Hall => "the hall in the hill", RoomKind::Cellar => "the cellar", RoomKind::Tomb => "the tombs", RoomKind::Workshop => "the workshops", RoomKind::Farm => "the farm", RoomKind::Corridor => continue };
             let k = if dug { k.to_string() } else { format!("{} (being dug)", k) };
             if !kinds.iter().any(|x| *x == k) { kinds.push(k); }
         }

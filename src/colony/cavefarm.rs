@@ -20,6 +20,7 @@ impl Colony {
 
     /// Where the farm lies: the hall's floor, else the cellar's.
     fn farm_spot(&self) -> Option<Pos> {
+        if let Some(f) = self.rooms.iter().find(|r| r.kind == super::delve::RoomKind::Farm).and_then(|r| r.bed) { return Some(f); }
         if let Some(&h) = self.hall_cells.first() { return Some(h); }
         self.projects.iter().find(|p| p.done && p.kind == projects::ProjectKind::Cellar).map(|p| p.at)
     }

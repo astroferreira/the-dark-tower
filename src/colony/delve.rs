@@ -20,7 +20,7 @@ use super::projects::ProjectKind;
 
 /// What a dug room is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RoomKind { Hall, Cellar, Bedroom, GreatHall, Corridor, Tomb, Workshop }
+pub enum RoomKind { Hall, Cellar, Bedroom, GreatHall, Corridor, Tomb, Workshop, Farm }
 
 impl RoomKind {
     pub fn word(self) -> &'static str {
@@ -32,6 +32,7 @@ impl RoomKind {
             RoomKind::Corridor => "a passage",
             RoomKind::Tomb => "a tomb",
             RoomKind::Workshop => "the workshops below",
+            RoomKind::Farm => "the farm under the rock",
         }
     }
 }
@@ -121,7 +122,7 @@ impl Colony {
                 let want = (self.grown_without_rooms() as i32).clamp(2, 8);
                 self.plan_level(kind, want)
             }
-            ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Workshops => self.plan_level(kind, 0),
+            ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Workshops | ProjectKind::CaveFarm => self.plan_level(kind, 0),
             ProjectKind::Moat => self.plan_moat(),
             // The deep shaft (`deep.rs`): the stair on down from its foot (the cavern floor) to
             // the deepest rock, through the caverns below (a stair is let down through each).
@@ -186,6 +187,9 @@ impl Colony {
         } else if kind == ProjectKind::Workshops {
             for a in 1..=2 { layout.push((a, 0, 0)); }
             for a in 3..=7 { for b in -2..=2 { layout.push((a, b, 200)); } }
+        } else if kind == ProjectKind::CaveFarm {
+            for a in 1..=2 { layout.push((a, 0, 0)); }
+            for a in 3..=8 { for b in -2..=1 { layout.push((a, b, 300)); } }
         } else {
             for a in 1..=2 { layout.push((a, 0, 0)); }
             for a in 3..=9 { for b in -2..=2 { layout.push((a, b, 100)); } }
@@ -225,6 +229,8 @@ impl Colony {
                         let bed = beds_at.iter().find(|b| b.2 == k).map(|b| at(b.0, b.1));
                         rooms.push(room(RoomKind::Bedroom, zb, cells.iter().filter(|c| c.1 == k).map(|c| c.0).collect(), bed));
                     }
+                } else if kind == ProjectKind::CaveFarm {
+                    rooms.push(room(RoomKind::Farm, zb, cells.iter().filter(|c| c.1 == 300).map(|c| c.0).collect(), Some(at(5, 0))));
                 } else if kind == ProjectKind::Workshops {
                     rooms.push(room(RoomKind::Workshop, zb, cells.iter().filter(|c| c.1 == 200).map(|c| c.0).collect(), Some(at(5, 0))));
                 } else {
