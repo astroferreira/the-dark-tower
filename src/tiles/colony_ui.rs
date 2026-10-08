@@ -179,6 +179,8 @@ struct Pane {
     right: f32,
     hits: Vec<(f32, f32, f32, f32, Action)>,
     mouse: Option<(f32, f32)>,
+    /// The next ledger line draws no glyph (an animal's sprite is drawn instead).
+    no_glyph: bool,
 }
 
 impl Pane {
@@ -251,7 +253,7 @@ impl Pane {
         let note_lines = if note.is_empty() { Vec::new() } else { fonts::wrap(note, Face::Italic, SMALL, r - l - 34.0) };
         let hgt = 22.0 + note_lines.len() as f32 * 16.0;
         if action.is_some() && self.hover(l, top, r - l, hgt) { self.wash(l - 4.0, top - 2.0, r - l + 8.0, hgt, GOLD, 0.12); }
-        if self.on(top, 22.0) {
+        if self.on(top, 22.0) && !self.no_glyph {
             let s = self.scroll;
             glyphs::draw_u32(&mut self.buf, self.w, self.h, g, l + 10.0, top + 9.0 - s, 17.0, tint);
         }
@@ -263,6 +265,27 @@ impl Pane {
         for line in note_lines { let y = self.y; self.write(l + 26.0, y, &line, Face::Italic, SMALL, SOFT); self.y += 16.0; }
         if let Some(a) = action { self.hit(l - 4.0, top - 2.0, r - l + 8.0, hgt, a); }
         self.y += 1.0;
+    }
+
+    /// A ledger line for a living animal: its bestiary sprite (`beasts.rs`) instead of a glyph.
+    fn ledger_beast(&mut self, name: &str, label: &str, count: &str, note: &str, action: Option<Action>) {
+        let (l, top) = (self.left, self.y);
+        if self.on(top, 22.0) {
+            let s = self.scroll;
+            let look = super::beasts::of_name(name);
+            let (w, h) = (self.w, self.h);
+            let buf = &mut self.buf;
+            let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| {
+                if x < 0 || y < 0 || x as usize >= w || y as usize >= h { return; }
+                let k = y as usize * w + x as usize;
+                buf[k] = ui::mix(buf[k], super::ink::pack(c), a.clamp(0.0, 1.0));
+            };
+            super::beasts::draw(&mut put, &look, l + 10.0, top + 16.0 - s, 26.0, false, super::beasts::Pose::Stand, 1.0);
+        }
+        // The rest as any ledger line, with no glyph.
+        self.no_glyph = true;
+        self.ledger(Glyph::Work, None, label, count, note, action);
+        self.no_glyph = false;
     }
 
     /// A measure: a label, an inked bar filled to `frac`, and a word after it.
@@ -670,19 +693,19 @@ fn stocks_leaf(p: &mut Pane, colony: &Colony) {
     let sold = colony.works.len() - kept.len();
     if !kept.is_empty() || !colony.treasures.is_empty() || !colony.placed.is_empty() || colony.relic.as_ref().map_or(false, |r| r.found.is_some()) {
         p.heading(&format!("Works and treasures: {}", kept.len() + colony.treasures.len()));
-        for t in &colony.treasures { p.ledger(Glyph::Work, Some([214.0, 176.0, 70.0]), &fit(&cap(t), Face::Roman, BODY, p.width() - 60.0), "", "", None); }
+        for t in &colony.treasures { p.ledger(Glyph::of_thing(t), None, &fit(&cap(t), Face::Roman, BODY, p.width() - 60.0), "", "", None); }
         if let Some(r) = colony.relic.as_ref().filter(|r| r.found.is_some()) {
-            p.ledger(Glyph::Work, Some([214.0, 176.0, 70.0]), &format!("{}, {}", r.name, r.what), "", &format!("found by {} on day {}; {}", r.found.as_ref().unwrap().0, r.found.as_ref().unwrap().1, r.tale), None);
+            p.ledger(Glyph::of_thing(&format!("{} {}", r.what, r.name)), None, &format!("{}, {}", r.name, r.what), "", &format!("found by {} on day {}; {}", r.found.as_ref().unwrap().0, r.found.as_ref().unwrap().1, r.tale), None);
         }
         for (title, room, _) in &colony.placed {
             let where_ = colony.rooms.get(*room).map(|r| r.kind.word()).unwrap_or("a room below");
-            p.ledger(Glyph::Work, Some([214.0, 176.0, 70.0]), &cap(title), "", &format!("set in {}", where_), None);
+            p.ledger(Glyph::of_thing(title), None, &cap(title), "", &format!("set in {}", where_), None);
         }
         for w in kept.iter().rev() {
             let maker = colony.settlers.get(w.maker).map(|s| s.name.clone()).unwrap_or_default();
             let tint = if w.quality >= 4 { Some([214.0, 176.0, 70.0]) } else { None };
             let ev = w.image.as_ref().and_then(|(_, e)| *e).map(Action::Event);
-            p.ledger(Glyph::Work, tint, &cap(&w.describe()), "", &format!("made by {} on day {}", maker, w.day), ev.or(Some(Action::Sheet(w.maker))));
+            p.ledger(Glyph::of_thing(&w.kind), tint, &cap(&w.describe()), "", &format!("made by {} on day {}", maker, w.day), ev.or(Some(Action::Sheet(w.maker))));
         }
         if sold > 0 { p.para(&format!("{} sold to the caravans.", plural(sold, "work", "works")), Face::Italic, SMALL + 1.0, SOFT, 0.0, None); }
         for (t, _, d) in &colony.stolen { p.para(&format!("{}: stolen in the night of day {}.", cap(t), d), Face::Italic, SMALL + 1.0, RUBRIC, 0.0, None); }
@@ -693,19 +716,19 @@ fn stocks_leaf(p: &mut Pane, colony: &Colony) {
         let holder = |h: Option<usize>| h.and_then(|k| colony.settlers.get(k)).map(|s| if s.alive { format!("borne by {}", s.name) } else { format!("was {}'s", s.name) }).unwrap_or_else(|| "in the store".into());
         for a in &colony.arms {
             let maker = colony.settlers.get(a.maker).map(|s| s.name.clone()).unwrap_or_default();
-            p.ledger(Glyph::Spear, Some(glyphs::metal_colour(&a.material)), &cap(&a.kind), "", &format!("{}; made by {} on day {}", holder(a.holder), maker, a.day), a.holder.map(Action::Sheet));
+            p.ledger(Glyph::of_thing(&a.kind).max_spear(), Some(glyphs::metal_colour(&a.material)), &cap(&a.kind), "", &format!("{}; made by {} on day {}", holder(a.holder), maker, a.day), a.holder.map(Action::Sheet));
         }
         for a in &colony.armour {
             let tint = if a.material.contains("leather") || a.material.contains("fur") || a.material.contains("hide") { None } else { Some(glyphs::metal_colour(&a.material)) };
-            p.ledger(Glyph::Armour, tint, &cap(&a.kind), "", &holder(a.holder), a.holder.map(Action::Sheet));
+            p.ledger(match Glyph::of_thing(&a.kind) { Glyph::Work | Glyph::Block => Glyph::Armour, g => g }, tint, &cap(&a.kind), "", &holder(a.holder), a.holder.map(Action::Sheet));
         }
     }
     let pets: Vec<&crate::colony::pets::Pet> = colony.pets.iter().filter(|q| q.alive).collect();
     if colony.pen.is_some() || !pets.is_empty() || !colony.caged.is_empty() {
         p.heading("Beasts");
-        if let Some((kind, n)) = &colony.pen { p.ledger(Glyph::Meat, None, &format!("{} in the pen", cap(kind)), &n.to_string(), "kept for meat", None); }
-        for q in pets { p.ledger(Glyph::Hide, None, &format!("{}, a {}", q.name, q.kind), "", &format!("kept by {}", colony.settlers.get(q.keeper).map(|s| s.name.as_str()).unwrap_or("no one")), Some(Action::Sheet(q.keeper))); }
-        for c in &colony.caged { p.ledger(Glyph::Hide, Some([90.0, 70.0, 60.0]), &cap(c), "", "in a cage trap", None); }
+        if let Some((kind, n)) = &colony.pen { p.ledger_beast(kind, &format!("{} in the pen", cap(kind)), &n.to_string(), "kept for meat", None); }
+        for q in pets { p.ledger_beast(&q.kind, &format!("{}, a {}", q.name, q.kind), "", &format!("kept by {}", colony.settlers.get(q.keeper).map(|s| s.name.as_str()).unwrap_or("no one")), Some(Action::Sheet(q.keeper))); }
+        for c in &colony.caged { p.ledger_beast(c, &cap(c), "", "in a cage trap", None); }
     }
 }
 
@@ -955,7 +978,7 @@ pub(crate) fn draw(colony: &Colony, ui: &mut UiState, history: Option<&crate::hi
         let body = body_rect(w, h);
         let leaf = ui.leaf();
         let mut pane = Pane {
-            buf: vec![0; body.w * body.h], w: body.w, h: body.h, y: 6.0, scroll: ui.scroll[leaf], left: 12.0, right: body.w as f32 - 34.0, hits: Vec::new(),
+            buf: vec![0; body.w * body.h], w: body.w, h: body.h, y: 6.0, scroll: ui.scroll[leaf], left: 12.0, right: body.w as f32 - 34.0, hits: Vec::new(), no_glyph: false,
             mouse: body.contains(mouse.0, mouse.1).then(|| (mouse.0 - body.x as f32, mouse.1 - body.y as f32)),
         };
         for yy in 0..body.h { pane.buf[yy * body.w..(yy + 1) * body.w].copy_from_slice(&buf[(body.y + yy) * w + body.x..(body.y + yy) * w + body.x + body.w]); }

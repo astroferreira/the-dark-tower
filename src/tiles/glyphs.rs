@@ -16,9 +16,17 @@ const INK: Rgb = [56.0, 42.0, 32.0];
 pub enum Glyph {
     Log, Stone, Berries, Fish, Meat, Grain, Fungus, Provisions,
     Bars, Ore, Gem, Block, Work, Spear, Armour, Drink, Cloth, Hide, Bone, Charcoal, Barrel, Book, Herbs, Clay,
+    // Made things, by what they are.
+    Figurine, Bowl, Plaque, Post, Pipes, Drum, Harp, Horn, Chest, Crown, Ring, Cup, Sword, Axe, Mace, Bow, Shield, Helm, Mail, Tunic, Coin, Tool,
 }
 
 impl Glyph {
+    pub const ALL: [Glyph; 46] = [Glyph::Log, Glyph::Stone, Glyph::Berries, Glyph::Fish, Glyph::Meat, Glyph::Grain, Glyph::Fungus, Glyph::Provisions,
+        Glyph::Bars, Glyph::Ore, Glyph::Gem, Glyph::Block, Glyph::Work, Glyph::Spear, Glyph::Armour, Glyph::Drink, Glyph::Cloth, Glyph::Hide, Glyph::Bone,
+        Glyph::Charcoal, Glyph::Barrel, Glyph::Book, Glyph::Herbs, Glyph::Clay, Glyph::Figurine, Glyph::Bowl, Glyph::Plaque, Glyph::Post, Glyph::Pipes,
+        Glyph::Drum, Glyph::Harp, Glyph::Horn, Glyph::Chest, Glyph::Crown, Glyph::Ring, Glyph::Cup, Glyph::Sword, Glyph::Axe, Glyph::Mace, Glyph::Bow,
+        Glyph::Shield, Glyph::Helm, Glyph::Mail, Glyph::Tunic, Glyph::Coin, Glyph::Tool];
+
     /// The glyph for a load of `stuff`.
     pub fn of_stuff(s: crate::colony::Stuff) -> Glyph {
         use crate::colony::Stuff;
@@ -26,6 +34,32 @@ impl Glyph {
             Stuff::Berries => Glyph::Berries, Stuff::Fish => Glyph::Fish, Stuff::Meat => Glyph::Meat, Stuff::Grain => Glyph::Grain,
             Stuff::Fungus => Glyph::Fungus, Stuff::Provisions => Glyph::Provisions, Stuff::Timber => Glyph::Log, Stuff::Stone => Glyph::Stone,
         }
+    }
+}
+
+impl Glyph {
+    /// A weapon's glyph, a spear when its words name nothing else.
+    pub fn max_spear(self) -> Glyph { if matches!(self, Glyph::Work | Glyph::Block) { Glyph::Spear } else { self } }
+
+    /// The glyph for a made thing by its words ("a masterful granite figurine", "an iron-headed
+    /// spear", "the bramou (a drum)", "a bone helm", "The Staff of Greenburg"): its kind first,
+    /// else a work.
+    pub fn of_thing(text: &str) -> Glyph {
+        let t = text.to_lowercase();
+        let has = |k: &str| t.split(|c: char| !c.is_alphabetic()).any(|w| w == k || w == format!("{}s", k));
+        for (k, g) in [("figurine", Glyph::Figurine), ("statue", Glyph::Figurine), ("idol", Glyph::Figurine), ("bowl", Glyph::Bowl), ("plaque", Glyph::Plaque),
+            ("post", Glyph::Post), ("pipes", Glyph::Pipes), ("pipe", Glyph::Pipes), ("flute", Glyph::Pipes), ("drum", Glyph::Drum), ("harp", Glyph::Harp), ("lyre", Glyph::Harp),
+            ("lute", Glyph::Harp), ("fiddle", Glyph::Harp), ("zither", Glyph::Harp), ("horn", Glyph::Horn), ("trumpet", Glyph::Horn), ("chest", Glyph::Chest), ("box", Glyph::Chest),
+            ("coffer", Glyph::Chest), ("crown", Glyph::Crown), ("circlet", Glyph::Crown), ("ring", Glyph::Ring), ("amulet", Glyph::Ring), ("bracelet", Glyph::Ring),
+            ("necklace", Glyph::Ring), ("cup", Glyph::Cup), ("goblet", Glyph::Cup), ("chalice", Glyph::Cup), ("mug", Glyph::Cup), ("sword", Glyph::Sword), ("blade", Glyph::Sword),
+            ("dagger", Glyph::Sword), ("axe", Glyph::Axe), ("mace", Glyph::Mace), ("hammer", Glyph::Mace), ("club", Glyph::Mace), ("bow", Glyph::Bow), ("crossbow", Glyph::Bow),
+            ("shield", Glyph::Shield), ("helm", Glyph::Helm), ("helmet", Glyph::Helm), ("cap", Glyph::Helm), ("mail", Glyph::Mail), ("hauberk", Glyph::Mail),
+            ("jerkin", Glyph::Tunic), ("coat", Glyph::Tunic), ("tunic", Glyph::Tunic), ("cloak", Glyph::Tunic), ("robe", Glyph::Tunic), ("spear", Glyph::Spear),
+            ("staff", Glyph::Spear), ("pike", Glyph::Spear), ("coins", Glyph::Coin), ("coin", Glyph::Coin), ("gold", Glyph::Coin), ("tools", Glyph::Tool), ("pick", Glyph::Tool),
+            ("book", Glyph::Book), ("tome", Glyph::Book), ("scroll", Glyph::Book), ("gem", Glyph::Gem), ("stone", Glyph::Block)] {
+            if has(k) { return g; }
+        }
+        Glyph::Work
     }
 }
 
@@ -210,6 +244,121 @@ pub fn draw(put: &mut dyn FnMut(i64, i64, Rgb, f32), g: Glyph, cx: f32, cy: f32,
         Glyph::Herbs => {
             stroke(put, cx, cy, s, (0.0, 0.85), (0.0, -0.7), [80.0, 104.0, 50.0], 1.0);
             for (x, y) in [(-0.32, -0.35), (0.32, -0.05), (-0.3, 0.3), (0.28, -0.6)] { st(put, [110.0, 140.0, 70.0], &ellipse(x, y, 0.26, 0.15)); }
+        }
+        Glyph::Figurine => {
+            let c = tint.unwrap_or([186.0, 176.0, 164.0]);
+            st(put, c, &ellipse(0.0, -0.5, 0.24, 0.24));
+            st(put, c, &move |u, v| v >= -0.28 && v <= 0.62 && u.abs() <= 0.18 + (v + 0.28) * 0.3);
+            st(put, mix(c, INK, 0.2), &move |u, v| u.abs() <= 0.5 && (v - 0.72).abs() <= 0.1);
+        }
+        Glyph::Bowl => {
+            let c = tint.unwrap_or([176.0, 128.0, 84.0]);
+            st(put, c, &move |u, v| v >= -0.1 && v <= 0.5 && (u / 0.78).powi(2) + ((v + 0.1) / 0.6).powi(2) <= 1.0);
+            st(put, mix(c, INK, 0.35), &ellipse(0.0, -0.1, 0.78, 0.18));
+        }
+        Glyph::Plaque => {
+            let c = tint.unwrap_or([186.0, 178.0, 158.0]);
+            st(put, c, &move |u, v| u.abs() <= 0.66 && v.abs() <= 0.5);
+            for y in [-0.2f32, 0.05, 0.3] { stroke(put, cx, cy, s, (-0.42, y), (0.42, y), INK, 0.45); }
+        }
+        Glyph::Post => {
+            let c = tint.unwrap_or([150.0, 108.0, 70.0]);
+            st(put, c, &move |u, v| u.abs() <= 0.24 && v >= -0.6 && v <= 0.8);
+            st(put, c, &move |u, v| v <= -0.55 && v >= -0.85 && u.abs() <= 0.24 * (v + 0.85) / 0.3);
+            for y in [-0.3f32, 0.0, 0.3] { stroke(put, cx, cy, s, (-0.18, y), (0.18, y + 0.08), INK, 0.6); }
+        }
+        Glyph::Pipes => {
+            let c = tint.unwrap_or([170.0, 128.0, 80.0]);
+            for k in 0..4 { let u = -0.5 + k as f32 * 0.32; let bottom = 0.75 - k as f32 * 0.22; st(put, c, &move |a, b| (a - u).abs() <= 0.13 && b >= -0.7 && b <= bottom); }
+            stroke(put, cx, cy, s, (-0.65, -0.2), (0.6, -0.2), INK, 0.8);
+        }
+        Glyph::Drum => {
+            let c = tint.unwrap_or([160.0, 104.0, 64.0]);
+            st(put, c, &move |u, v| u.abs() <= 0.66 && v >= -0.35 && v <= 0.6);
+            st(put, [232.0, 218.0, 186.0], &ellipse(0.0, -0.35, 0.66, 0.22));
+            stroke(put, cx, cy, s, (-0.6, -0.1), (0.0, 0.55), INK, 0.6);
+            stroke(put, cx, cy, s, (0.6, -0.1), (0.0, 0.55), INK, 0.6);
+        }
+        Glyph::Harp => {
+            let c = tint.unwrap_or([170.0, 128.0, 80.0]);
+            st(put, c, &move |u, v| (u + 0.5).abs() <= 0.12 && v.abs() <= 0.8);
+            st(put, c, &move |u, v| v >= -0.8 && v <= -0.6 + 0.3 * (u + 0.5) && u >= -0.5 && u <= 0.55);
+            st(put, c, &move |u, v| (u - 0.45).abs() <= 0.1 && v >= -0.4 && v <= 0.8);
+            for k in 0..3 { let u = -0.25 + k as f32 * 0.22; stroke(put, cx, cy, s, (u, -0.6 + 0.3 * (u + 0.5)), (u, 0.75), INK, 0.6); }
+        }
+        Glyph::Horn => {
+            let c = tint.unwrap_or([226.0, 210.0, 170.0]);
+            st(put, c, &move |u, v| { let t = (u + 0.8) / 1.6; t >= 0.0 && t <= 1.0 && (v - (0.4 - 0.9 * t * t)).abs() <= 0.06 + 0.3 * t });
+        }
+        Glyph::Chest => {
+            let c = tint.unwrap_or([140.0, 96.0, 60.0]);
+            st(put, c, &move |u, v| u.abs() <= 0.72 && v >= -0.15 && v <= 0.6);
+            st(put, mix(c, [250.0, 244.0, 230.0], 0.15), &move |u, v| v < -0.1 && v >= -0.55 && (u / 0.72).powi(2) + ((v + 0.1) / 0.45).powi(2) <= 1.0);
+            st(put, [214.0, 176.0, 70.0], &move |u, v| u.abs() <= 0.12 && (v - 0.05).abs() <= 0.14);
+        }
+        Glyph::Crown => {
+            let c = tint.unwrap_or([214.0, 176.0, 70.0]);
+            st(put, c, &move |u, v| u.abs() <= 0.72 && v <= 0.45 && (v >= 0.1 || { let k = ((u + 0.72) / 0.48).fract(); v >= -0.5 + (k - 0.5).abs() * 1.2 }));
+            put(cx as i64, (cy + 0.25 * s / 2.0) as i64, [140.0, 40.0, 50.0], 1.0);
+        }
+        Glyph::Ring => {
+            let c = tint.unwrap_or([214.0, 176.0, 70.0]);
+            st(put, c, &move |u, v| { let d = (u * u + (v - 0.15).powi(2)).sqrt(); d <= 0.55 && d >= 0.33 });
+            st(put, [130.0, 80.0, 160.0], &ellipse(0.0, -0.45, 0.2, 0.18));
+        }
+        Glyph::Cup => {
+            let c = tint.unwrap_or([214.0, 176.0, 70.0]);
+            st(put, c, &move |u, v| v >= -0.7 && v <= -0.05 && u.abs() <= 0.55 - (v + 0.7) * 0.45);
+            st(put, c, &move |u, v| u.abs() <= 0.1 && v >= -0.1 && v <= 0.55);
+            st(put, c, &move |u, v| u.abs() <= 0.4 && (v - 0.65).abs() <= 0.1);
+        }
+        Glyph::Sword => {
+            let m = tint.unwrap_or([196.0, 198.0, 206.0]);
+            st(put, m, &move |u, v| { let (p, q) = ((u - v) * 0.7071, (u + v) * 0.7071); q.abs() <= 0.1 && p >= -0.35 && p <= 0.95 });
+            st(put, [214.0, 176.0, 70.0], &move |u, v| { let (p, q) = ((u - v) * 0.7071, (u + v) * 0.7071); p.abs() <= 0.08 + 0.0 && q.abs() <= 0.36 && (p + 0.38).abs() < 0.5 && (p + 0.38).abs() <= 0.08 });
+            st(put, [120.0, 84.0, 50.0], &move |u, v| { let (p, q) = ((u - v) * 0.7071, (u + v) * 0.7071); q.abs() <= 0.08 && p >= -0.85 && p <= -0.45 });
+        }
+        Glyph::Axe => {
+            stroke(put, cx, cy, s, (-0.7, 0.8), (0.4, -0.6), [120.0, 84.0, 50.0], 1.0);
+            stroke(put, cx, cy, s, (-0.65, 0.8), (0.45, -0.6), [120.0, 84.0, 50.0], 0.8);
+            let m = tint.unwrap_or([176.0, 178.0, 184.0]);
+            static P: [(f32, f32); 4] = [(0.1, -0.75), (0.75, -0.35), (0.55, 0.05), (0.2, -0.25)];
+            st(put, m, &polygon(&P));
+        }
+        Glyph::Mace => {
+            stroke(put, cx, cy, s, (-0.6, 0.8), (0.25, -0.2), [120.0, 84.0, 50.0], 1.0);
+            st(put, tint.unwrap_or([150.0, 150.0, 158.0]), &ellipse(0.35, -0.35, 0.36, 0.36));
+        }
+        Glyph::Bow => {
+            st(put, [150.0, 108.0, 66.0], &move |u, v| { let d = ((u + 0.9).powi(2) + v * v).sqrt(); (d - 1.15).abs() <= 0.1 && u > -0.1 });
+            stroke(put, cx, cy, s, (0.12, -0.72), (0.12, 0.72), [226.0, 218.0, 200.0], 0.9);
+        }
+        Glyph::Shield => {
+            let c = tint.unwrap_or([150.0, 52.0, 44.0]);
+            st(put, c, &move |u, v| u.abs() <= 0.62 && v >= -0.7 && (v <= 0.0 || (u / 0.62).powi(2) + (v / 0.8).powi(2) <= 1.0));
+            st(put, [220.0, 186.0, 90.0], &move |u, v| (u.abs() <= 0.1 && v >= -0.55 && v <= 0.6) || (v.abs() <= 0.1 && u.abs() <= 0.45));
+        }
+        Glyph::Helm => {
+            let c = tint.unwrap_or([150.0, 150.0, 156.0]);
+            st(put, c, &move |u, v| v <= 0.45 && (u / 0.66).powi(2) + ((v - 0.45) / 1.0).powi(2) <= 1.0 && !(u.abs() < 0.08 && v > 0.0 && false));
+            st(put, mix(c, INK, 0.3), &move |u, v| u.abs() <= 0.08 && v >= -0.05 && v <= 0.6);
+        }
+        Glyph::Mail => {
+            let c = tint.unwrap_or([150.0, 150.0, 156.0]);
+            st(put, c, &move |u, v| ((u.abs() <= 0.44 && v >= -0.5 && v <= 0.8) || (u.abs() <= 0.82 && v >= -0.5 && v <= 0.1)) && (u * u + (v + 0.6).powi(2)) > 0.05);
+            if s >= 10.0 { for k in 0..4 { let y = -0.3 + k as f32 * 0.28; stroke(put, cx, cy, s, (-0.38, y), (0.38, y), INK, 0.4); } }
+        }
+        Glyph::Tunic => {
+            let c = tint.unwrap_or([120.0, 100.0, 140.0]);
+            st(put, c, &move |u, v| ((u.abs() <= 0.42 + (v + 0.5) * 0.12 && v >= -0.5 && v <= 0.8) || (u.abs() <= 0.82 && v >= -0.5 && v <= -0.1)) && (u * u + (v + 0.6).powi(2)) > 0.06);
+            stroke(put, cx, cy, s, (-0.5, 0.2), (0.5, 0.2), INK, 0.6);
+        }
+        Glyph::Coin => {
+            for (x, y) in [(-0.3, 0.3), (0.3, 0.35), (0.0, -0.1)] { st(put, tint.unwrap_or([214.0, 176.0, 70.0]), &ellipse(x, y, 0.38, 0.3)); }
+        }
+        Glyph::Tool => {
+            stroke(put, cx, cy, s, (-0.6, 0.8), (0.2, -0.3), [120.0, 84.0, 50.0], 1.0);
+            st(put, tint.unwrap_or([150.0, 150.0, 158.0]), &move |u, v| { let (p, q) = (u * 0.8 + v * 0.6, -u * 0.6 + v * 0.8); (q + 0.45).abs() <= 0.1 && p.abs() <= 0.7 - (q + 0.45).abs() });
         }
         Glyph::Clay => {
             st(put, tint.unwrap_or([176.0, 112.0, 80.0]), &move |u, v| v >= -0.3 + 0.9 * u.abs() * u.abs() - 0.6 && v <= 0.6 && u.abs() <= 0.85);

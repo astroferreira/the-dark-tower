@@ -78,7 +78,8 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
         ("the cellar", |p| super::furniture::cellar_stores(p, 0)), ("the hatch", |p| super::furniture::hatch(p)), ("a lair's hoard", |p| super::furniture::lair(p)),
     ];
     let arts = ["a figurine", "a chest", "pipes", "a drum", "a harp", "a crown", "a ring", "a goblet", "a sword", "a book", "a carved stone"];
-    let n = emblems.len() + folk.len() + furn.len() + arts.len();
+    let glyph_all = super::glyphs::Glyph::ALL;
+    let n = emblems.len() + folk.len() + furn.len() + arts.len() + glyph_all.len();
     let cols = 9;
     let mut sheet = Sheet::new(cols, (n + cols - 1) / cols, 150, 130);
     sheet.title("People and things: what settlers go through, strangers, furniture below, artifacts");
@@ -105,6 +106,12 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
         let mut put = sheet.put();
         let mut pen = super::ink::Pen::new(&mut put, cx - 32.0, cy - 36.0, 128.0);
         super::furniture::artifact(&mut pen, a);
+    }
+    for g in glyph_all {
+        let (cx, cy) = sheet.cell(&format!("{:?}", g).to_lowercase());
+        let mut put = sheet.put();
+        super::glyphs::draw(&mut put, g, cx - 22.0, cy, 48.0, None);
+        super::glyphs::draw(&mut put, g, cx + 40.0, cy + 10.0, 17.0, None);
     }
     sheet.save(path)?;
     Ok(n)
