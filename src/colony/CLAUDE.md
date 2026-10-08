@@ -1113,8 +1113,9 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
 - Legends carry regard (2026-10-08): `Legend::regards` keeps each people at |10|+ with its sum
   and weightiest cause (serde default: older legend files load); `heed_legends` gives the new
   camp half of it (12 at most) as a "legend" cause ("is remembered for the camp at 45,12: it would
-  not give The Staff of Greenburg back"). `--sim-legend` prints both camps' regards; seed 76:
-  the Git Clans -15 toward the first camp, -7 toward the second. Tested
+  not give The Staff of Greenburg back"). `--sim-legend` prints both camps' regards; seed 23:
+  the Greenburg League -20 toward the first camp, -10 toward the second (seed 76's grudge over the
+  staff is cancelled since it sends its Git Clans prisoner home unharmed). Tested
   (`peoples_remember_earlier_camps`).
 - Quality pass (2026-10-08, reading seed 76's days 120-200): a sally's raid line no longer says
   the band "came in the night" (it "was met at their own fires at first light, and broke before
@@ -1719,7 +1720,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   settler where they are ("by the woodpile", `place_word`), time with a spouse or child, praying at
   the temple, the standing stone or on the highest ground near (`high_spot`), taking it easy by
   the water or under trees, watching the nearest herd or a pet, admiring an artifact in its room,
-  an engraving (on its level, `spot_level`) or the best work at the fire, walking out alone 22-45
+  an engraving (on its level, `spot_level`) or the best work at the fire, walking out alone 12-25
   cells toward the settler's own direction of the day, climbing the lookout or the high ground,
   sitting with the ill or hurt (else lending a builder a hand), reading at the library or
   watching the best hand at work (+0.01 skill), sitting with their thoughts on a rise, singing or
@@ -1789,3 +1790,18 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
 - A work set with a gem is always logged. Tests: `settlers_make_places_their_own`,
   `settlers_talk_and_argue`, `gates_face_where_the_paths_go`; moved: risings on 58/5, the pyre on
   58, the taught work on seed 3, spare bars sold on day 105.
+- Where the camp is founded (`Colony::found_by`, `Leaning`; `viewer::found_colony` passes the
+  roster's personas): within 30 cells of the embark's middle, the founders' characters weigh the
+  flat open ground: lovers of the wild want water near (`water_distance`, x2 a cell) and the
+  woods' edge (trees within 8 cells), the anxious and proud and dwarves high ground (x6 a level);
+  the founding line says what drew them ("7 settlers make camp at 91,66 ..., close to water").
+  Thirteen seeds: camps from 82,84 to 94,112 (all had been within a few cells of 96,96 where the
+  middle was open). `found` without founders is as before.
+- The woods gate faces the eighth of the land beyond the wall (to 25 cells past it) with the most
+  trees, when it holds 30+ and half again the mean (the nearest tree was usually inside the wall).
+- Duty before needs (`drill_due`): spear-bearers at the evening drill, and whoever has someone
+  to tend (`tend_option`). The healer hurt is tended by the most empathic other grown hand (a
+  healer had died of a broken leg's fever no one tended; on `main` too). Outings are shorter
+  (walks 12-25 cells, rises within 15-18, water within 20, herds within 30) and arguments rarer
+  (8% + a fifth of the speaker's heat). Thirteen seeds x 120 days: 14-16 dead or gone with the
+  spare-hours acts, 15 without (`PLANET_NO_NEEDS`); they had been 22 against 13.

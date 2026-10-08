@@ -1296,7 +1296,9 @@ fn the_tavern_draws_the_world() {
 #[test]
 fn books_are_written() {
     // (A camp laying in its winter store writes less; the chronicle comes after day 120.)
-    let logs: Vec<String> = ["23", "11"].iter().map(|s| run_log(s, "140", &[])).collect();
+    // (Seeds 76 and 1 write their chronicles on days 126 and 123 since camps are placed by their
+    // founders.)
+    let logs: Vec<String> = ["76", "1"].iter().map(|s| run_log(s, "140", &[])).collect();
     for text in &logs {
         let books = text.lines().filter(|l| l.contains(" finishes writing ")).count();
         assert!(books <= 8, "too many books in 140 days: {books}");
@@ -1435,15 +1437,18 @@ fn masters_form_a_guild() {
 /// camp, hold half that grudge against a camp founded two tiles away.
 #[test]
 fn peoples_remember_earlier_camps() {
+    // (Seed 23: the Greenburg League holds -20 against the first camp and half of it against a
+    // camp founded two tiles away. Seed 76's grudge over the staff is now cancelled by the
+    // prisoner it sent home unharmed.)
     let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--seed", "76", "--sim-legend"])
+        .args(["--dev", "--seed", "23", "--sim-legend"])
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
     let legend = text.lines().find(|l| l.starts_with("Legend: ")).unwrap_or_else(|| panic!("no legend:\n{text}"));
-    assert!(legend.contains("regards: [\"The Git Clans -"), "the grudge is not in the legend: {legend}");
+    let people = legend.split("regards: [\"").nth(1).and_then(|r| r.split(" -").next()).unwrap_or_else(|| panic!("no grudge in the legend: {legend}"));
     let second = text.lines().find(|l| l.starts_with("Second camp's regards")).unwrap_or_else(|| panic!("no second camp:\n{text}"));
-    assert!(second.contains("The Git Clans -"), "the second camp inherits nothing: {second}");
+    assert!(second.contains(&format!("{} -", people)), "the second camp inherits nothing from {people}: {second}");
 }
 
 /// A rising against the lord (Dwarf Fortress's nobles and their unhappy subjects): the lord's
@@ -1543,7 +1548,8 @@ fn a_hungry_camp_plants_first() {
 /// caught, they are the camp's prisoner (seed 11, day 169; seed 5, day 257).
 #[test]
 fn thieves_come_for_the_artifact() {
-    let logs: Vec<String> = ["11", "5"].iter().map(|s| run_log(s, "260", &[])).collect();
+    // (Seeds 1 and 2 since camps are placed by their founders: days 53 and 100.)
+    let logs: Vec<String> = ["1", "2"].iter().map(|s| run_log(s, "110", &[])).collect();
     assert!(logs.iter().any(|t| t.lines().any(|l| l.contains("catches a thief at the edge of the camp with ") || l.contains(": a thief of "))), "no thief came");
 }
 
@@ -1831,7 +1837,8 @@ fn the_caverns_are_sealed_with_a_hatch() {
 /// Stone is dressed into blocks at a mason's.
 #[test]
 fn ore_becomes_bars_tools_and_iron_spears() {
-    let text = run_log("76", "100", &[("PLANET_FORCE_ORE", "1")]);
+    // (130 days: the mason's dresses its first blocks on day 104.)
+    let text = run_log("76", "130", &[("PLANET_FORCE_ORE", "1")]);
     let at = |n: &str| text.lines().position(|l| l.contains(n)).unwrap_or_else(|| panic!("never: {n}\n{text}"));
     let seam = at("strikes a seam of Iron");
     let smelter = at("breaks through the last of a smelter below");
@@ -1839,7 +1846,8 @@ fn ore_becomes_bars_tools_and_iron_spears() {
     let bars = at("smelts the first iron at the smelter: two bars of iron");
     let forge = at("breaks through the last of a forge below");
     let tools = at("forges a set of iron tools");
-    let spear = at("forges an iron-headed spear at the forge");
+    // (The spear may carry its quality word: "forges a finely-crafted iron-headed spear".)
+    let spear = text.lines().position(|l| l.contains(" forges ") && l.contains("iron-headed spear at the forge")).unwrap_or_else(|| panic!("never: an iron-headed spear forged\n{text}"));
     assert!(seam < smelter && smelter < charcoal && charcoal < bars, "ore, smelter, fuel, bars out of order");
     assert!(forge < tools && bars < tools && tools < spear, "the forge's tools and spear came before its bars");
     // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 76 sells them to
@@ -1931,20 +1939,24 @@ fn settlers_talk_and_argue() {
     let talks = text.lines().filter(|l| l.contains("wandering        Talking with ") || l.contains("wandering        Passing the time with ")).count();
     assert!(talks >= 30, "only {talks} talks in 60 days");
     assert!(text.lines().any(|l| l.contains("wandering        Arguing with ")), "no one argued");
-    let log = run_log("23", "60", &[]);
-    assert!(log.lines().any(|l| l.contains(" argue ") && l.contains(" holds ") && l.contains(" dear")), "no argument said aloud");
+    // (Said aloud once a pair in twenty days: a few seeds.)
+    let said = ["23", "3", "76"].iter().any(|s| run_log(s, "90", &[]).lines().any(|l| l.contains(" argue ") && l.contains(" holds ") && l.contains(" dear")));
+    assert!(said, "no argument said aloud");
 }
 
 /// Gates where the paths go: the palisade's gates face the water, the woods and the road to the
 /// trading town, two for an uneasy people and up to four for a bold one.
 #[test]
 fn gates_face_where_the_paths_go() {
-    let gates = |seed: &str| {
-        // (Chosen when the palisade is begun: seed 58 begins it late.)
+    // (Chosen when the palisade is begun; several seeds, since which way each faces depends on
+    // the land and the founders.)
+    let lines: Vec<String> = ["23", "58", "76", "5", "1"].iter().map(|seed| {
         let log = run_log(seed, "90", &[]);
         log.lines().find(|l| l.contains("They will leave ") && l.contains(" in the wall")).map(|l| l.to_string()).unwrap_or_else(|| panic!("no gates chosen on seed {seed}"))
-    };
-    let (a, b) = (gates("23"), gates("58"));
-    assert!(a.contains("2 gates") && a.contains("uneasy"), "{a}");
-    assert!(b.contains("toward the woods") && b.contains("toward the road to "), "{b}");
+    }).collect();
+    assert!(lines.iter().any(|l| l.contains("2 gates") && l.contains("uneasy")), "no uneasy camp kept to two gates: {lines:?}");
+    assert!(lines.iter().any(|l| l.contains("toward the road to ")), "no gate toward a road: {lines:?}");
+    assert!(lines.iter().any(|l| l.contains("toward the woods")), "no gate toward the woods: {lines:?}");
+    let counts: std::collections::BTreeSet<&str> = lines.iter().filter_map(|l| ["2 gates", "3 gates", "4 gates"].into_iter().find(|g| l.contains(g))).collect();
+    assert!(counts.len() >= 2, "every camp has as many gates: {lines:?}");
 }

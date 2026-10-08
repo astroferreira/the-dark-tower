@@ -169,6 +169,9 @@ impl Colony {
     /// Whether settler `i` owes the drill now (a duty: their own needs wait for it).
     pub(crate) fn drill_due(&self, i: usize) -> bool {
         (17..19).contains(&self.clock.hour()) && !self.settlers[i].mind.drilled && self.trouble_foretold().is_some() && self.militia().contains(&i)
+            // (Tending is the healer's duty the same way: fever had taken four left untended while
+            // the healer walked out to a rise.)
+            || self.tend_option(i).is_some()
     }
 
     pub(crate) fn militia_ready(&self) -> (f32, usize) {

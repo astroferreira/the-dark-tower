@@ -321,7 +321,7 @@ impl Colony {
                 if let Some(sh) = self.stones.iter().find(|x| x.0 == StoneKind::Shrine).map(|x| x.1) {
                     return Some((sh, format!("Praying to {} at the standing stone: {}", god, since(need.word())), act(need, None, god, 45)));
                 }
-                let hill = self.high_spot(i, 25)?;
+                let hill = self.high_spot(i, 15)?;
                 Some((hill, format!("Kneeling on the rise at {},{} to pray to {}: {}", hill.0, hill.1, god, since(need.word())), act(need, None, god, 45)))
             }
             Need::TakeItEasy => {
@@ -330,7 +330,7 @@ impl Colony {
             }
             Need::SeeAnimal => {
                 let c = self.creatures.iter().filter(|c| matches!(c.kind, creatures::CreatureKind::Game | creatures::CreatureKind::Pet) && c.z.is_none() && !c.leaving
-                    && cheb(c.pos, self.camp) <= 45).min_by_key(|c| (cheb(c.pos, me), c.id))?;
+                    && cheb(c.pos, self.camp) <= 30).min_by_key(|c| (cheb(c.pos, me), c.id))?;
                 let name = c.name.clone();
                 let liked = fond_of(&s.persona, &name);
                 let what = if c.kind == creatures::CreatureKind::Pet { format!("{} the {}", name, "pet") } else { format!("the {}", plural(&name)) };
@@ -354,12 +354,12 @@ impl Colony {
                 Some((at, format!("Admiring {}: {}", what, since(need.word())), act(need, None, what, 30)))
             }
             Need::Wander => {
-                let to = self.far_spot(i, 22, 45)?;
+                let to = self.far_spot(i, 12, 25)?;
                 Some((to, format!("Walking out alone toward the {} for the walking's sake: {}", direction(self.camp, to), since(need.word())), act(need, None, String::new(), 40)))
             }
             Need::Excitement => {
                 if let Some((t, _)) = self.tower { return Some((t, format!("Climbing the lookout to look out over the land: {}", since(need.word())), act(need, None, "the lookout".into(), 30))); }
-                let hill = self.high_spot(i, 35)?;
+                let hill = self.high_spot(i, 18)?;
                 Some((hill, format!("Climbing the high ground at {},{}: {}", hill.0, hill.1, since(need.word())), act(need, None, "the high ground".into(), 30)))
             }
             Need::HelpSomebody => {
@@ -492,7 +492,7 @@ impl Colony {
     /// A pleasant place near the camp: by the water, else in the shade of trees.
     fn pleasant_spot(&self, i: usize) -> Option<(Pos, String)> {
         let me = self.settlers[i].pos;
-        if let Some(w) = self.fishing_spots.iter().copied().filter(|&p| cheb(p, self.camp) <= 30 && !self.marked(p, true)).min_by_key(|&p| (cheb(p, me), p)) {
+        if let Some(w) = self.fishing_spots.iter().copied().filter(|&p| cheb(p, self.camp) <= 20 && !self.marked(p, true)).min_by_key(|&p| (cheb(p, me), p)) {
             return Some((w, format!("by the water at {},{}", w.0, w.1)));
         }
         let t = self.tree_spot(i)?;
@@ -504,7 +504,7 @@ impl Colony {
         let n = self.map.width as i32;
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
         let h = crate::history::settlers::hash_pub(self.seed ^ i as u64, 0x7AEE);
-        for r in 4..25i32 {
+        for r in 4..18i32 {
             for k in 0..8u64 {
                 let a = ((h + k * 7919) % 360) as f32 * std::f32::consts::PI / 180.0;
                 let (x, y) = (cx + (a.cos() * r as f32) as i32, cy + (a.sin() * r as f32) as i32);

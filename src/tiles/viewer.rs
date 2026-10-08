@@ -2334,7 +2334,9 @@ fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, til
             let mut roster = crate::history::settlers::roster(h, tile, n + 6, seed);
             let later: Vec<(String, crate::history::settlers::Past)> = roster.split_off(n.min(roster.len()));
             let names: Vec<String> = roster.iter().map(|r| r.0.clone()).collect();
-            let mut colony = crate::colony::Colony::found(map, &names, seed);
+            // The founders choose the camp's place by who they are (`Leaning`).
+            let founders: Vec<crate::persona::Persona> = roster.iter().filter_map(|r| r.1.persona.clone()).collect();
+            let mut colony = crate::colony::Colony::found_by(map, &names, seed, &founders);
             for (st, (_, past)) in colony.settlers.iter_mut().zip(roster) {
                 st.skill = crate::colony::skills_from_past(Some(&past), &st.name);
                 if let Some(p) = &past.persona { st.persona = p.clone(); }

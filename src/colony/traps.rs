@@ -38,9 +38,19 @@ impl Colony {
         let lane = self.lane();
         want.push((snap(lane.0, lane.1), "the water".into()));
         let r = self.wall_r();
-        if let Some(t) = self.nearest_tree(self.camp).filter(|t| super::needs::cheb(*t, self.camp) > r) {
-            want.push((snap(t.0 as f32 - self.camp.0 as f32, t.1 as f32 - self.camp.1 as f32), "the woods".into()));
-        }
+        // The woods: the eighth of the land beyond the wall (out to 25 cells past it) that holds
+        // the most standing trees, when it holds a good many.
+        let mut trees = [0u32; 8];
+        let n = self.map.width as i32;
+        for dy in -(r + 25)..=(r + 25) { for dx in -(r + 25)..=(r + 25) {
+            if (dx * dx + dy * dy) as f32 <= ((r + 3) * (r + 3)) as f32 || (dx + dy) % 2 != 0 { continue; }
+            let (x, y) = (self.camp.0 as i32 + dx, self.camp.1 as i32 + dy);
+            if x < 0 || y < 0 || x >= n || y >= self.map.height as i32 { continue; }
+            if matches!(self.floor_plant_pub((x as u16, y as u16)), crate::local::Plant::Tree(_)) { trees[snap(dx as f32, dy as f32)] += 1; }
+        } }
+        let (k, &most) = trees.iter().enumerate().max_by_key(|(k, c)| (**c, std::cmp::Reverse(*k))).unwrap();
+        let mean = trees.iter().sum::<u32>() / 8;
+        if most >= 30 && most >= mean * 3 / 2 { want.push((k, "the woods".into())); }
         if let Some(p) = self.trade.as_ref() {
             let (tx, ty) = self.map.world_tile;
             let d = (p.from.0 as f32 - tx as f32, p.from.1 as f32 - ty as f32);

@@ -382,6 +382,53 @@ pub enum MarkKind { Grave, Stone, Scorch, Cage,
     /// A settler's own places (`haunts.rs`): a cairn, a bench or seat, a carved post.
     Cairn, Bench, Carving }
 
+/// What the founders want of a camp's place (0..~1 each), from their characters.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Leaning { pub water: f32, pub height: f32, pub woods: f32 }
+
+impl Leaning {
+    pub fn of(founders: &[crate::persona::Persona]) -> Leaning {
+        use crate::persona::{Facet, Val};
+        if founders.is_empty() { return Leaning::default(); }
+        let n = founders.len() as f32;
+        let mean = |f: &dyn Fn(&crate::persona::Persona) -> f32| founders.iter().map(|p| f(p)).sum::<f32>() / n;
+        let nature = mean(&|p| (p.value(Val::Nature) as f32 / 50.0).max(0.0));
+        let fear = mean(&|p| ((p.facet(Facet::Anxiety) as f32 - 50.0) / 50.0).max(0.0) + ((p.facet(Facet::Pride) as f32 - 50.0) / 100.0).max(0.0));
+        let dwarves = founders.iter().filter(|p| p.race == "dwarf").count() as f32 / n;
+        let elves = founders.iter().filter(|p| p.race == "elf").count() as f32 / n;
+        Leaning { water: (0.3 + nature).min(1.0), height: (fear * 1.5 + dwarves * 0.8).min(1.0), woods: (nature * 0.8 + elves).min(1.0) }
+    }
+    pub fn is_none(&self) -> bool { self.water == 0.0 && self.height == 0.0 && self.woods == 0.0 }
+    /// What drew them there, said at the founding.
+    pub fn why(&self) -> String {
+        if self.is_none() { return String::new(); }
+        let top = [(self.water, "close to water"), (self.height, "on high ground they can hold"), (self.woods, "at the edge of the woods")];
+        let (w, what) = top.iter().copied().max_by(|a, b| a.0.total_cmp(&b.0)).unwrap();
+        if w < 0.35 { String::new() } else { format!(", {}", what) }
+    }
+}
+
+/// Each cell's distance (in steps) to the nearest open water on the surface.
+fn water_distance(map: &LocalMap) -> Vec<u16> {
+    let n = map.width;
+    let mut d = vec![u16::MAX; n * map.height];
+    let mut q = std::collections::VecDeque::new();
+    for y in 0..map.height { for x in 0..n {
+        let z = map.surface_z[y * n + x] + 1;
+        if (z as usize) < map.depth && map.cell(x, y, z as usize).water > 0 { d[y * n + x] = 0; q.push_back((x, y)); }
+    } }
+    while let Some((x, y)) = q.pop_front() {
+        let k = d[y * n + x];
+        for (dx, dy) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+            let (xx, yy) = (x as i32 + dx, y as i32 + dy);
+            if xx < 0 || yy < 0 || xx as usize >= n || yy as usize >= map.height { continue; }
+            let j = yy as usize * n + xx as usize;
+            if d[j] == u16::MAX { d[j] = k + 1; q.push_back((xx as usize, yy as usize)); }
+        }
+    }
+    d
+}
+
 /// How far a grove stone keeps the axe away.
 pub const GROVE_RADIUS: i32 = 7;
 
@@ -723,9 +770,18 @@ pub struct Colony {
 impl Colony {
     /// Found a colony of `names` on `map`; the camp goes on the dry, open, flat ground nearest
     /// the centre.
-    pub fn found(mut map: LocalMap, names: &[String], seed: u64) -> Self {
+    pub fn found(map: LocalMap, names: &[String], seed: u64) -> Self { Self::found_by(map, names, seed, &[]) }
+
+    /// `found`, with the camp's place chosen by its founders' characters (`Leaning`): within
+    /// reach of the middle of the embark, the lovers of the wild want water near and the woods'
+    /// edge, the anxious and the proud high ground they can hold, dwarves rising rock. No
+    /// founders: the flat open ground nearest the middle, as before.
+    pub fn found_by(mut map: LocalMap, names: &[String], seed: u64, founders: &[crate::persona::Persona]) -> Self {
         let n = map.width;
         let centre = (n / 2) as i32;
+        let lean = Leaning::of(founders);
+        let water_d = if lean.water > 0.0 { water_distance(&map) } else { Vec::new() };
+        let zc = map.surface_z[(n / 2) * n + n / 2];
         let mut camp = ((n / 2) as u16, (n / 2) as u16);
         let mut best = i32::MAX;
         // The camp goes on dry ground joined to enough land to live from: a camp on an island
@@ -744,7 +800,18 @@ impl Colony {
                 let trees = (-2i32..=2).flat_map(|dy| (-2i32..=2).map(move |dx| (dx, dy)))
                     .filter(|&(dx, dy)| matches!(map.cell((x as i32 + dx) as usize, (y as i32 + dy) as usize, map.surface_z[((y as i32 + dy) as usize) * n + (x as i32 + dx) as usize] as usize).plant, Plant::Tree(_)))
                     .count() as i32;
-                let score = (x as i32 - centre).abs() + (y as i32 - centre).abs() + trees * 6;
+                let mut score = (x as i32 - centre).abs() + (y as i32 - centre).abs() + trees * 6;
+                if !lean.is_none() {
+                    let z = map.surface_z[y * n + x];
+                    let wd = water_d.get(y * n + x).copied().unwrap_or(99).min(40) as f32;
+                    // The woods' edge: trees within eight cells, none on the camp itself.
+                    let wood = if lean.woods > 0.0 { (-8i32..=8).step_by(2).flat_map(|dy| (-8i32..=8).step_by(2).map(move |dx| (dx, dy)))
+                        .filter(|&(dx, dy)| { let (xx, yy) = (x as i32 + dx, y as i32 + dy); xx >= 0 && yy >= 0 && (xx as usize) < n && (yy as usize) < n
+                            && matches!(map.cell(xx as usize, yy as usize, map.surface_z[yy as usize * n + xx as usize] as usize).plant, Plant::Tree(_)) }).count() as f32 } else { 0.0 };
+                    // (No farther than 30 cells from the middle: the embark is chosen for what lies there.)
+                    if (x as i32 - centre).abs().max((y as i32 - centre).abs()) > 30 { continue; }
+                    score += (lean.water * wd * 2.0 - lean.height * (z - zc) as f32 * 6.0 - lean.woods * wood.min(25.0) * 1.5) as i32;
+                }
                 if score < best { best = score; camp = (x as u16, y as u16); }
             }
         }
@@ -796,7 +863,7 @@ impl Colony {
         // No tree within reach: the hut goes up in stone.
         if !c.timber_near() { c.hut_material = ItemKind::Stone; }
         let site = c.hut.as_ref().map(|h| format!(" and a hut site at {},{}", h.at.0, h.at.1)).unwrap_or_default();
-        c.note(format!("{} settlers make camp at {},{}{}. They carry two days of food.", names.len(), camp.0, camp.1, site));
+        c.note(format!("{} settlers make camp at {},{}{}{}. They carry two days of food.", names.len(), camp.0, camp.1, site, lean.why()));
         c
     }
 

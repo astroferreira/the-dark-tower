@@ -44,7 +44,7 @@ impl Colony {
             _ => None,
         };
         let roll = h % 100;
-        if let Some(k) = argue.filter(|_| roll < 15 + heat / 3) {
+        if let Some(k) = argue.filter(|_| roll < 8 + heat / 5) {
             let v = value_word(k);
             return ("Arguing", format!("about {}", v), Topic::Argue { value: k });
         }
