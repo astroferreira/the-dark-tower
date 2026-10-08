@@ -87,6 +87,8 @@ const FOOD_PER_SETTLER: u32 = 6;
 const SHRUB_REGROW_DAYS: u64 = 12;
 /// How far (cells) settlers look for work.
 const WORK_RADIUS: i32 = 60;
+/// Side of the squares `nearest_ripe_shrub` files the shrubs in.
+const SHRUB_BUCKET: usize = 16;
 /// Days in a season of the colony's year (it begins in spring).
 pub const SEASON_DAYS: u64 = 30;
 /// How far a camp can live on what grows: a forager's round trip there and back is ~4 hours.
@@ -392,7 +394,7 @@ pub struct Colony {
     pub moments: Vec<Moment>,
     /// What settlers think of each other (pair, lower index first): meals shared, rescues, and the
     /// grudges their pasts carry.
-    pub opinions: crate::history::det::HashMap<(usize, usize), i32>,
+    pub opinions: crate::history::det::FastMap<(usize, usize), i32>, // (never iterated)
     grudges: crate::history::det::HashSet<(usize, usize)>,
     /// Settler-nights that ended chilled (exposure 0.5 or more at dawn).
     pub chilled_nights: u32,
@@ -633,6 +635,14 @@ pub struct Colony {
     /// Where the map's shrubs grow (listed once), and whether any is ripe today (cached per
     /// day): the ring search for berries scanned the whole reach every time none were ripe.
     pub(crate) shrubs: Vec<Pos>,
+    /// The same shrubs in `SHRUB_BUCKET`-cell squares (row-major), for `nearest_ripe_shrub`.
+    shrub_buckets: Vec<Vec<Pos>>,
+    /// Every column whose ground held a tree at founding, in the same squares, for the tree
+    /// searches (`nearest_tree_by`). No other column can ever hold one: trees grow back only
+    /// where one was felled (`regrow.rs`), and cutting the ground down never bares a planted
+    /// cell (`dig_cell` clears the new floor's plant). A felled tree stays listed and fails
+    /// `is_felling_tree` until it grows back.
+    tree_buckets: Vec<Vec<Pos>>,
     pub(crate) ripe_today: std::cell::Cell<(u64, bool)>,
     /// The day the map was last looked over for a tree to fell, and whether it held none.
     pub(crate) treeless_day: std::cell::Cell<u64>,
@@ -666,11 +676,11 @@ pub struct Colony {
     pub camp: Pos,
     pub hut: Option<Hut>,
     /// Day each foraged shrub bears again.
-    shrub_ready: crate::history::det::HashMap<Pos, u64>,
+    shrub_ready: crate::history::det::FastMap<Pos, u64>, // (never iterated)
     /// Targets someone already went for (trees, shrubs, fishing spots).
-    claimed: crate::history::det::HashSet<Pos>,
+    claimed: crate::history::det::FastSet<Pos>, // (never iterated)
     /// Unreachable targets, so nobody keeps trying them.
-    unreachable: crate::history::det::HashSet<Pos>,
+    unreachable: crate::history::det::FastSet<Pos>, // (never iterated)
     pub log: Vec<String>,
     /// Every choice a settler made, with its reason.
     pub decisions: Vec<String>,
@@ -740,9 +750,18 @@ impl Colony {
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
             log: Vec::new(), decisions: Vec::new(), rng, seed, milestones: Default::default(), basket: Default::default(),
             patron: Patron { favour: FAVOUR_MAX, marks: Vec::new(), favourite: None, dreams: Vec::new(), last_refill_day: 1 },
-            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, cave_bites: 0, placed: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log,
+            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, cave_bites: 0, placed: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), shrub_buckets: Vec::new(), tree_buckets: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log,
         };
         c.shrubs = (1..c.map.height - 1).flat_map(|y| (1..c.map.width - 1).map(move |x| (x as u16, y as u16))).filter(|&p| c.floor_plant(p) == Plant::Shrub).collect();
+        let bw = c.map.width.div_ceil(SHRUB_BUCKET);
+        c.shrub_buckets = vec![Vec::new(); bw * c.map.height.div_ceil(SHRUB_BUCKET)];
+        for &p in &c.shrubs { c.shrub_buckets[(p.1 as usize / SHRUB_BUCKET) * bw + p.0 as usize / SHRUB_BUCKET].push(p); }
+        c.tree_buckets = vec![Vec::new(); c.shrub_buckets.len()];
+        for y in 0..c.map.height {
+            for x in 0..c.map.width {
+                if matches!(c.floor_plant((x as u16, y as u16)), Plant::Tree(_)) { c.tree_buckets[(y / SHRUB_BUCKET) * bw + x / SHRUB_BUCKET].push((x as u16, y as u16)); }
+            }
+        }
         c.fishing_spots = (1..c.map.height - 1).flat_map(|y| (1..c.map.width - 1).map(move |x| (x as u16, y as u16)))
             .filter(|&p| c.fishing_ground(p)).collect();
         c.spawn_game();
@@ -1020,9 +1039,9 @@ impl Colony {
         best.map(|b| b.1)
     }
 
-    fn hut_cells(&self) -> Vec<Pos> {
-        let Some(h) = &self.hut else { return Vec::new() };
-        (0..HUT_H).flat_map(|dy| (0..HUT_W).map(move |dx| (h.at.0 + dx as u16, h.at.1 + dy as u16))).collect()
+    /// Whether `p` lies on the hut's 6x5 site.
+    fn in_hut_site(&self, p: Pos) -> bool {
+        self.hut.as_ref().map_or(false, |h| (p.0 as u32).wrapping_sub(h.at.0 as u32) < HUT_W as u32 && (p.1 as u32).wrapping_sub(h.at.1 as u32) < HUT_H as u32)
     }
 
     /// The roof over `p`, if under one: the hut's or the second hut's centre cell.
@@ -1277,8 +1296,8 @@ impl Colony {
 
     /// The closest friend of `i` (opinion 6 or more), if any.
     pub fn friend_of(&self, i: usize) -> Option<usize> {
-        (0..self.settlers.len()).filter(|&j| j != i && self.settlers[j].alive && self.opinion(i, j) >= 6)
-            .max_by_key(|&j| (self.opinion(i, j), std::cmp::Reverse(j)))
+        (0..self.settlers.len()).filter(|&j| j != i && self.settlers[j].alive).map(|j| (self.opinion(i, j), j)).filter(|&(o, _)| o >= 6)
+            .max_by_key(|&(o, j)| (o, std::cmp::Reverse(j))).map(|(_, j)| j)
     }
 
     /// Grudges from the past: one who hates a people dislikes a settler of that people. Each dawn
@@ -1531,7 +1550,7 @@ impl Colony {
             let me = self.settlers[i].pos;
             let near = self.settlers.iter().enumerate().any(|(j, o)| j != i && o.alive && (o.pos.0 as i32 - me.0 as i32).abs().max((o.pos.1 as i32 - me.1 as i32).abs()) <= 4);
             if near { self.settlers[i].mind.company += 10; }
-            for sh in self.stones.iter().filter(|s| s.0 == StoneKind::Shrine).map(|s| s.1).chain(self.temple().map(|t| t.0)).collect::<Vec<_>>() {
+            for sh in self.stones.iter().filter(|s| s.0 == StoneKind::Shrine).map(|s| s.1).chain(self.temple_at()).collect::<Vec<_>>() {
                 if matches!(self.settlers[i].job, Job::Wander(_)) && (sh.0 as i32 - me.0 as i32).abs().max((sh.1 as i32 - me.1 as i32).abs()) <= 3 { self.settlers[i].mind.prayed = true; }
             }
         }
@@ -1589,7 +1608,7 @@ impl Colony {
             if free || std::mem::discriminant(&job) != std::mem::discriminant(&self.settlers[i].job) { self.release(i); self.start(i, job, why); }
             return;
         }
-        let s = self.settlers[i].clone();
+        let s = &self.settlers[i];
         let food = self.food_stored();
         let food_goal = self.food_goal();
         let night = self.clock.is_night();
@@ -1777,9 +1796,9 @@ impl Colony {
         // Those who know the tale of a lost thing near here search for it (`relic.rs`).
         if let Some(o) = self.relic_option(i) { options.push(o); }
         // The devout pray at the temple in the evening (`society.rs`).
-        if let Some((at, god)) = self.temple() {
-            let h = self.clock.hour();
-            if (18..21).contains(&h) && s.persona.facet(crate::persona::Facet::Piety) >= 50 && !s.mind.prayed {
+        // (The hour and the settler first: the temple's god is read from its reason.)
+        if (18..21).contains(&self.clock.hour()) && s.persona.facet(crate::persona::Facet::Piety) >= 50 && !s.mind.prayed {
+            if let Some((at, god)) = self.temple() {
                 options.push((0.3 + 0.5 * s.persona.facet(crate::persona::Facet::Piety) as f32 / 100.0, Job::Wander(at), format!("Praying to {} at the temple", god)));
             }
         }
@@ -1856,7 +1875,7 @@ impl Colony {
                 }
             }
             if hut_pending && logs_about + 2 * fellers < logs_needed {
-                if let Some(t) = self.nearest(s.pos, |c, p| c.is_felling_tree(p) && fav(c, p)) {
+                if let Some(t) = self.nearest_tree_by(s.pos, |c, p| fav(c, p)) {
                     options.push((0.75 * s.taste[2] * 1.4, Job::Fell(t), format!("Felling the tree at {},{}, on the ground the patron blessed", t.0, t.1)));
                 }
             }
@@ -1942,18 +1961,24 @@ impl Colony {
 
     fn nearest_within(&self, from: Pos, radius: i32, ok: impl Fn(&Colony, Pos) -> bool) -> Option<Pos> {
         let n = self.map.width as i32;
-        // Search rings outward from the settler.
+        let (fx, fy) = (from.0 as i32, from.1 as i32);
+        // (The test itself first: it looks at the map, while the claims are hashed.)
+        let pass = |x: i32, y: i32| {
+            if x < 1 || y < 1 || x >= n - 1 || y >= n - 1 { return None; }
+            let p = (x as u16, y as u16);
+            (ok(self, p) && !self.claimed.contains(&p) && !self.unreachable.contains(&p) && !self.marked(p, true)).then_some(p)
+        };
+        // Search rings outward from the settler; in a ring the first by row, then column.
+        // (Walked in that order, the first cell that passes is the ring's choice.)
         for r in 1..=radius {
-            let mut found: Option<Pos> = None;
-            for d in -r..=r {
-                for (x, y) in [(from.0 as i32 + d, from.1 as i32 - r), (from.0 as i32 + d, from.1 as i32 + r), (from.0 as i32 - r, from.1 as i32 + d), (from.0 as i32 + r, from.1 as i32 + d)] {
-                    if x < 1 || y < 1 || x >= n - 1 || y >= n - 1 { continue; }
-                    let p = (x as u16, y as u16);
-                    if self.claimed.contains(&p) || self.unreachable.contains(&p) || self.marked(p, true) { continue; }
-                    if ok(self, p) && found.map_or(true, |f| (f.1, f.0) > (p.1, p.0)) { found = Some(p); }
-                }
+            // A ring wholly off the map: so is every one beyond it.
+            if fx - r < 1 && fy - r < 1 && fx + r >= n - 1 && fy + r >= n - 1 { break; }
+            let (x0, x1) = ((fx - r).max(1), (fx + r).min(n - 2));
+            if let Some(p) = (x0..=x1).find_map(|x| pass(x, fy - r)) { return Some(p); }
+            for y in (fy - r + 1).max(1)..=(fy + r - 1).min(n - 2) {
+                if let Some(p) = pass(fx - r, y).or_else(|| pass(fx + r, y)) { return Some(p); }
             }
-            if found.is_some() { return found; }
+            if let Some(p) = (x0..=x1).find_map(|x| pass(x, fy + r)) { return Some(p); }
         }
         None
     }
@@ -1967,13 +1992,12 @@ impl Colony {
         let day = self.clock.day();
         let (checked, none) = (self.treeless_day.get() >> 1, self.treeless_day.get() & 1 == 1);
         let none = if checked == day { none } else {
-            let w = self.map.width;
-            let none = !(0..w * self.map.height).any(|k| self.is_felling_tree(((k % w) as u16, (k / w) as u16)));
+            let none = !self.tree_buckets.iter().flatten().any(|&p| self.is_felling_tree(p));
             self.treeless_day.set(day << 1 | none as u64);
             none
         };
         if none { return None; }
-        self.nearest(from, |c, p| c.is_felling_tree(p))
+        self.nearest_tree_by(from, |_, _| true)
     }
 
     fn floor_plant(&self, p: Pos) -> Plant {
@@ -1987,15 +2011,50 @@ impl Colony {
         const NEAR: i32 = 12;
         if let Some(p) = self.nearest_within(from, radius.min(NEAR), |c, p| c.is_ripe_shrub(p)) { return Some(p); }
         if radius <= NEAR { return None; }
+        self.nearest_listed(&self.shrub_buckets, from, NEAR, radius, |c, p| c.is_ripe_shrub(p))
+    }
+
+    /// The nearest tree that may be felled and passes `ok` within the work radius: what
+    /// `nearest(from, ..)` finds (rings out from `from`, ties by row then column), looked for
+    /// only among the columns that can hold a tree (`tree_buckets`). A far tree had cost a camp
+    /// with no wood nearby (dev 50,20) a ring search of thousands of cells every decision.
+    pub(crate) fn nearest_tree_by(&self, from: Pos, ok: impl Fn(&Colony, Pos) -> bool) -> Option<Pos> {
+        self.nearest_listed(&self.tree_buckets, from, 0, WORK_RADIUS, |c, p| c.is_felling_tree(p) && ok(c, p))
+    }
+
+    /// Among the listed cells (`buckets`: `SHRUB_BUCKET` squares, row-major) at a distance over
+    /// `beyond` and up to `radius` (Chebyshev) from `from`, inside the map's rim, unclaimed,
+    /// reachable as far as known, not forbidden and passing `ok`: the one with the least
+    /// (distance, row, column), as a ring search (`nearest_within`) or a scan of the list would
+    /// find. Square by square, nearest squares first, until no square left can hold one as near.
+    fn nearest_listed(&self, buckets: &[Vec<Pos>], from: Pos, beyond: i32, radius: i32, ok: impl Fn(&Colony, Pos) -> bool) -> Option<Pos> {
         let n = self.map.width as i32;
-        self.shrubs.iter().copied().filter_map(|p| {
+        let (fx, fy) = (from.0 as i32, from.1 as i32);
+        let fits = |p: Pos| {
             let (x, y) = (p.0 as i32, p.1 as i32);
             if x < 1 || y < 1 || x >= n - 1 || y >= n - 1 { return None; }
-            let d = (x - from.0 as i32).abs().max((y - from.1 as i32).abs());
-            if d <= NEAR || d > radius { return None; }
-            if self.claimed.contains(&p) || self.unreachable.contains(&p) || self.marked(p, true) || !self.is_ripe_shrub(p) { return None; }
-            Some((d, p.1, p.0, p))
-        }).min_by_key(|t| (t.0, t.1, t.2)).map(|t| t.3)
+            let d = (x - fx).abs().max((y - fy).abs());
+            if d <= beyond || d > radius { return None; }
+            if !ok(self, p) || self.claimed.contains(&p) || self.unreachable.contains(&p) || self.marked(p, true) { return None; }
+            Some((d, p.1, p.0))
+        };
+        let b = SHRUB_BUCKET as i32;
+        let bw = (self.map.width as i32 + b - 1) / b;
+        let mut squares: Vec<(i32, usize)> = (0..buckets.len()).filter(|&k| !buckets[k].is_empty()).filter_map(|k| {
+            let (x0, y0) = ((k as i32 % bw) * b, (k as i32 / bw) * b);
+            let gap = |v: i32, lo: i32| (lo - v).max(v - (lo + b - 1)).max(0);
+            let d = gap(fx, x0).max(gap(fy, y0));
+            (d <= radius).then_some((d, k))
+        }).collect();
+        squares.sort_unstable();
+        let mut best: Option<(i32, u16, u16)> = None;
+        for (d, k) in squares {
+            if best.map_or(false, |t| d > t.0) { break; }
+            for &p in &buckets[k] {
+                if let Some(t) = fits(p) { if best.map_or(true, |b| t < b) { best = Some(t); } }
+            }
+        }
+        best.map(|t| (t.2, t.1))
     }
 
     /// Whether any shrub of the map is ripe today (cached per day).
@@ -2013,13 +2072,13 @@ impl Colony {
     /// A boulder, or bare rock, a settler can break stone from.
     fn is_quarry_stone(&self, p: Pos) -> bool {
         let (x, y) = (p.0 as usize, p.1 as usize);
-        if self.hut_cells().contains(&p) { return false; }
+        if self.in_hut_site(p) { return false; }
         let c = self.map.cell(x, y, self.map.surface_z[y * self.map.width + x].max(0) as usize);
         (c.boulder || matches!(c.material, Material::Rock(_))) && c.water == 0
     }
     fn is_felling_tree(&self, p: Pos) -> bool {
         // Not trees inside the hut site.
-        matches!(self.floor_plant(p), Plant::Tree(_)) && !self.hut_cells().contains(&p)
+        matches!(self.floor_plant(p), Plant::Tree(_)) && !self.in_hut_site(p)
             // A people who keep the wood fell nothing inside the wall's ring.
             && !(self.way.as_ref().map_or(false, |w| w.keep_trees) && (p.0 as i32 - self.camp.0 as i32).pow(2) + (p.1 as i32 - self.camp.1 as i32).pow(2) <= 13 * 13)
             && !self.stones.iter().any(|(k, at)| *k == StoneKind::Grove && (at.0 as i32 - p.0 as i32).abs().max((at.1 as i32 - p.1 as i32).abs()) <= GROVE_RADIUS)
@@ -2066,7 +2125,7 @@ impl Colony {
             Job::Forage(p) | Job::Fish(p) | Job::Wander(p) => p,
             Job::Craft if why.starts_with("Engraving") => match self.engrave_spot() { Some(p) => p, None => return },
             Job::Craft if why.starts_with("Brewing") => self.still().unwrap_or(self.camp),
-            Job::Craft if why.starts_with("Writing") => self.temple().map(|t| t.0).or_else(|| self.tavern()).or_else(|| self.hall_cells.first().copied()).unwrap_or(self.camp),
+            Job::Craft if why.starts_with("Writing") => self.temple_at().or_else(|| self.tavern()).or_else(|| self.hall_cells.first().copied()).unwrap_or(self.camp),
             Job::Craft => self.workshop_spot().unwrap_or(self.camp),
             Job::Fell(p) => match (self.floor_plant(p), self.cavern_tree_level(p)) {
                 (Plant::None, Some(f)) => match self.cavern_stand(p, f) { Some(q) => q, None => return },

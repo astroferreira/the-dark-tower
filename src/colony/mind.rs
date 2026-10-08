@@ -288,7 +288,7 @@ impl Colony {
     /// time, moods said aloud when they sink, and a mind past breaking breaks.
     pub(crate) fn reckon_minds(&mut self) {
         let day = self.clock.day();
-        let shrine = self.stones.iter().any(|s| s.0 == StoneKind::Shrine) || self.temple().is_some();
+        let shrine = self.stones.iter().any(|s| s.0 == StoneKind::Shrine) || self.temple_at().is_some();
         for i in 0..self.settlers.len() {
             if !self.settlers[i].alive { continue; }
             let (exposure, hunger, ill, under_roof) = {
