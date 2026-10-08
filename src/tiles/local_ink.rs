@@ -1599,12 +1599,11 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
             } }
         }
     }
-    // The hatch over the stair below the first cavern: planks bound with iron, barred.
-    if let Some((p, z)) = colony.hatch.filter(|h| h.1 == cam.z || h.1 == cam.z + 1) {
-        let (x, y) = to_screen(p.0 as f32, p.1 as f32);
-        rect(&mut put, x + t * 0.05, y + t * 0.05, x + t * 0.95, y + t * 0.95, [140.0, 104.0, 68.0]);
-        for k in [0.33f32, 0.66] { for xx in (x + t * 0.1) as i64..(x + t * 0.9) as i64 { put(xx, (y + t * k) as i64, [70.0, 66.0, 64.0], 0.95); } }
-        let _ = z;
+    let cells = super::camp_ink::Cells::new(cam, w, h);
+    let looks = settler_looks(colony, history);
+    // The hatch over the stair below the first cavern: planks bound with iron, an iron ring.
+    if let Some((p, _)) = colony.hatch.filter(|h| h.1 == cam.z || h.1 == cam.z + 1) {
+        super::furniture::hatch(&mut cells.pen(&mut put, p.0 as f32, p.1 as f32));
     }
     // Engravings on this level's walls: a carved panel on the face toward the floor.
     for e in colony.engravings.iter().filter(|e| e.z == cam.z) {
@@ -1642,12 +1641,12 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                 }
                 if let Some(b) = r.bed {
                     let (x, y) = to_screen(b.0 as f32, b.1 as f32);
-                    // A bed (once made at the workshop): frame, blanket, pillow; else a pallet of straw.
-                    if r.furnished.is_some() {
-                        rect(&mut put, x + t * 0.15, y + t * 0.1, x + t * 0.85, y + t * 0.9, [176.0, 120.0, 90.0]);
-                        rect(&mut put, x + t * 0.25, y + t * 0.15, x + t * 0.75, y + t * 0.35, [236.0, 228.0, 210.0]);
-                    } else {
-                        for yy in (y + t * 0.3) as i64..(y + t * 0.8) as i64 { for xx in (x + t * 0.2) as i64..(x + t * 0.8) as i64 { if (xx + yy) % 3 == 0 { put(xx, yy, [196.0, 170.0, 100.0], 0.7); } } }
+                    // A bed (once made at the workshop), its blanket in its owner's colour; else a
+                    // pallet of straw.
+                    {
+                        let mut pen = cells.pen(&mut put, b.0 as f32, b.1 as f32);
+                        if r.furnished.is_some() { super::furniture::bed(&mut pen, r.owner.map(|o| looks[o].2).unwrap_or([150.0, 130.0, 110.0]), r.quality >= 3); }
+                        else { super::furniture::pallet(&mut pen); }
                     }
                     // (Named on the bed only when its owner is not lying in it.)
                     let abed = r.owner.map_or(false, |o| colony.settlers[o].alive && colony.here3(o) == (b.0, b.1, r.z));
@@ -1659,16 +1658,19 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
             }
             RoomKind::GreatHall => {
                 if let Some(c) = r.bed.filter(|_| r.furnished.is_some()) {
-                    // The long table and its two benches.
-                    let (x, y) = to_screen(c.0 as f32 - 2.0, c.1 as f32);
-                    rect(&mut put, x + t * 0.1, y + t * 0.2, x + t * 4.9, y + t * 0.8, [160.0, 116.0, 74.0]);
-                    rect(&mut put, x + t * 0.3, y - t * 0.25, x + t * 4.7, y - t * 0.05, [140.0, 100.0, 64.0]);
-                    rect(&mut put, x + t * 0.3, y + t * 1.05, x + t * 4.7, y + t * 1.25, [140.0, 100.0, 64.0]);
+                    // The long table, its two benches, bowls and cups.
+                    super::furniture::long_table(&mut cells.pen(&mut put, c.0 as f32 - 2.0, c.1 as f32), r.quality >= 3);
                     let (lx, ly) = to_screen(c.0 as f32 + 0.5, c.1 as f32 - 1.6);
                     labels.push((lx, ly, "the great hall".into(), false));
                 }
             }
             RoomKind::Hall | RoomKind::Cellar => {
+                if r.kind == RoomKind::Cellar {
+                    // Casks, sacks and crates along it.
+                    for (k, &c) in r.cells.iter().enumerate().filter(|(k, _)| k % 3 == 1) {
+                        super::furniture::cellar_stores(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32), k / 3);
+                    }
+                }
                 let n = r.cells.len().max(1) as f32;
                 let (mx, my) = r.cells.iter().fold((0.0, 0.0), |a, c| (a.0 + c.0 as f32, a.1 + c.1 as f32));
                 let (lx, ly) = to_screen(mx / n + 0.5, my / n + 0.5);
@@ -1679,13 +1681,9 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                 // there; an empty niche is a bare ledge.
                 if let Some(&c) = r.cells.first() {
                     let (x, y) = to_screen(c.0 as f32, c.1 as f32);
+                    super::furniture::coffin(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32), r.owner.is_some());
                     if let Some(o) = r.owner {
-                        rect(&mut put, x + t * 0.2, y + t * 0.12, x + t * 0.8, y + t * 0.88, [120.0, 112.0, 104.0]);
-                        for k in 0..(t * 0.5) as i64 { put((x + t * 0.5) as i64, (y + t * 0.25) as i64 + k, INK, 0.9); }
-                        for k in 0..(t * 0.3) as i64 { put((x + t * 0.35) as i64 + k, (y + t * 0.4) as i64, INK, 0.9); }
                         if t >= 9.0 { labels.push((x + t * 0.5, y - 2.0, colony.settlers[o].name.clone(), false)); }
-                    } else {
-                        for xx in (x + t * 0.2) as i64..(x + t * 0.8) as i64 { put(xx, (y + t * 0.5) as i64, INK, 0.4); }
                     }
                 }
             }
@@ -1693,9 +1691,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                 // The benches: two heavy tables with tools on them, and the room named.
                 if let Some(c) = r.bed {
                     for (ox, oy) in [(-1.0f32, -1.0f32), (1.0, 1.0)] {
-                        let (x, y) = to_screen(c.0 as f32 + ox, c.1 as f32 + oy);
-                        rect(&mut put, x + t * 0.05, y + t * 0.25, x + t * 1.9, y + t * 0.75, [150.0, 112.0, 76.0]);
-                        for k in 0..(t * 0.4) as i64 { put((x + t * 0.6) as i64 + k, (y + t * 0.45) as i64, INK, 0.8); }
+                        super::furniture::bench(&mut cells.pen(&mut put, c.0 as f32 + ox, c.1 as f32 + oy), true);
                     }
                     let (lx, ly) = to_screen(c.0 as f32 + 0.5, c.1 as f32 - 1.8);
                     labels.push((lx, ly, "the workshops".into(), false));
@@ -1704,53 +1700,23 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
             RoomKind::Farm => {
                 // Plots in rows: pale caps of what grows in the dark.
                 for &c in &r.cells {
-                    let (x, y) = to_screen(c.0 as f32, c.1 as f32);
-                    for k in 0..3 {
-                        let (cx, cy) = (x + t * (0.25 + 0.25 * k as f32), y + t * 0.5);
-                        let rr = (t * 0.1).max(1.0);
-                        for yy in (cy - rr) as i64..=(cy + rr) as i64 { for xx in (cx - rr) as i64..=(cx + rr) as i64 { put(xx, yy, [176.0, 140.0, 170.0], 0.85); } }
-                    }
+                    let grown = 1 + ((c.0 as usize * 7 + c.1 as usize * 3 + colony.clock.day() as usize) % 3);
+                    super::furniture::fungus_bed(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32), grown);
                 }
                 if let Some(c) = r.bed { let (lx, ly) = to_screen(c.0 as f32 + 0.5, c.1 as f32 - 2.6); labels.push((lx, ly, "the farm under the rock".into(), false)); }
             }
             RoomKind::Mason | RoomKind::Carpenter | RoomKind::Smelter | RoomKind::Forge | RoomKind::Kiln => {
                 // The industries' shops (`colony/industry.rs`): each its bench or furnace, named.
                 if let Some(c) = r.bed {
-                    let (x, y) = to_screen(c.0 as f32, c.1 as f32);
-                    let glow = [222.0, 120.0, 48.0];
-                    match r.kind {
-                        RoomKind::Mason => {
-                            // A bench, and a stack of dressed blocks beside it.
-                            rect(&mut put, x - t * 0.9, y + t * 0.25, x + t * 0.9, y + t * 0.75, [150.0, 112.0, 76.0]);
-                            for (bx, by) in [(1.15f32, 0.15f32), (1.55, 0.15), (1.35, -0.25)] {
-                                rect(&mut put, x + t * bx, y + t * by, x + t * (bx + 0.36), y + t * (by + 0.36), [176.0, 170.0, 160.0]);
-                            }
-                        }
-                        RoomKind::Carpenter => {
-                            // A bench with a saw line, and a barrel.
-                            rect(&mut put, x - t * 0.9, y + t * 0.25, x + t * 0.9, y + t * 0.75, [150.0, 112.0, 76.0]);
-                            for k in 0..(t * 0.8) as i64 { put((x - t * 0.4) as i64 + k, (y + t * 0.5) as i64, INK, 0.8); }
-                            let (cx, cy, rr) = (x + t * 1.5, y + t * 0.5, t * 0.3);
-                            for yy in (cy - rr) as i64..=(cy + rr) as i64 { for xx in (cx - rr) as i64..=(cx + rr) as i64 {
-                                let d = ((xx as f32 - cx).powi(2) + (yy as f32 - cy).powi(2)).sqrt();
-                                if d <= rr { put(xx, yy, if d > rr - 1.2 || (yy as f32 - cy).abs() < 0.6 { INK } else { [160.0, 110.0, 64.0] }, 0.95); }
-                            } }
-                        }
-                        RoomKind::Smelter | RoomKind::Kiln => {
-                            // A round furnace (the kiln a dome of red clay), its mouth glowing.
-                            let body = if r.kind == RoomKind::Kiln { [176.0, 96.0, 70.0] } else { [92.0, 84.0, 80.0] };
-                            let (cx, cy, rr) = (x + t * 0.5, y + t * 0.5, t * 0.75);
-                            for yy in (cy - rr) as i64..=(cy + rr) as i64 { for xx in (cx - rr) as i64..=(cx + rr) as i64 {
-                                let d = ((xx as f32 - cx).powi(2) + (yy as f32 - cy).powi(2)).sqrt();
-                                if d <= rr { put(xx, yy, if d > rr - 1.5 { INK } else if d < rr * 0.35 { glow } else { body }, 0.97); }
-                            } }
-                        }
-                        _ => {
-                            // The forge: a hearth with its glow, and an anvil.
-                            rect(&mut put, x - t * 0.9, y + t * 0.1, x + t * 0.1, y + t * 0.9, [92.0, 84.0, 80.0]);
-                            rect(&mut put, x - t * 0.65, y + t * 0.35, x - t * 0.15, y + t * 0.65, glow);
-                            rect(&mut put, x + t * 0.6, y + t * 0.35, x + t * 1.6, y + t * 0.55, [70.0, 70.0, 76.0]);
-                            rect(&mut put, x + t * 0.95, y + t * 0.55, x + t * 1.25, y + t * 0.9, [70.0, 70.0, 76.0]);
+                    {
+                        let mut pen = cells.pen(&mut put, c.0 as f32, c.1 as f32);
+                        let metal = colony.industry.bars.first().map(|b| super::glyphs::metal_colour(&b.0)).unwrap_or([148.0, 150.0, 158.0]);
+                        match r.kind {
+                            RoomKind::Mason => super::furniture::mason(&mut pen),
+                            RoomKind::Carpenter => super::furniture::carpenter(&mut pen),
+                            RoomKind::Smelter => super::furniture::smelter(&mut pen, metal),
+                            RoomKind::Kiln => super::furniture::kiln(&mut pen),
+                            _ => super::furniture::forge(&mut pen, colony.magma_forge),
                         }
                     }
                     let name = match r.kind { RoomKind::Mason => "the mason's", RoomKind::Carpenter => "the carpenter's", RoomKind::Smelter => "the smelter", RoomKind::Forge => "the forge", _ => "the kiln" };
@@ -1770,15 +1736,9 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         let (x, y) = to_screen(c.0 as f32, c.1 as f32);
         use crate::local::places::PlaceKind;
         match pl.kind {
-            PlaceKind::Tomb => {
-                rect(&mut put, x + t * 0.1, y + t * 0.25, x + t * 0.9, y + t * 0.75, [150.0, 142.0, 130.0]);
-                for k in 0..(t * 0.6) as i64 { put((x + t * 0.2) as i64 + k, (y + t * 0.5) as i64, INK, 0.7); }
-            }
-            PlaceKind::Lair => {
-                for k in 0..7 { let (bx, by) = (x + t * (0.2 + 0.1 * k as f32), y + t * (0.3 + 0.07 * ((k * 5) % 7) as f32)); for d in 0..(t * 0.25) as i64 { put(bx as i64 + d, by as i64, [228.0, 220.0, 196.0], 0.9); } }
-                put((x + t * 0.6) as i64, (y + t * 0.6) as i64, [210.0, 170.0, 60.0], 1.0);
-            }
-            PlaceKind::OldMine => { rect(&mut put, x + t * 0.25, y + t * 0.35, x + t * 0.75, y + t * 0.7, [110.0, 90.0, 70.0]); }
+            PlaceKind::Tomb => super::furniture::coffin(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32), true),
+            PlaceKind::Lair => super::furniture::lair(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32)),
+            PlaceKind::OldMine => super::furniture::ore_cart(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32)),
             _ => {}
         }
         if t >= 9.0 { labels.push((x + t * 0.5, y - 2.0, pl.name.clone(), false)); }
@@ -1787,8 +1747,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
     for (title, k, c) in &colony.placed {
         if colony.rooms.get(*k).map_or(true, |r| r.z != cam.z) { continue; }
         let (x, y) = to_screen(c.0 as f32, c.1 as f32);
-        rect(&mut put, x + t * 0.15, y + t * 0.15, x + t * 0.85, y + t * 0.85, [200.0, 170.0, 90.0]);
-        rect(&mut put, x + t * 0.32, y + t * 0.32, x + t * 0.68, y + t * 0.68, [150.0, 110.0, 160.0]);
+        super::furniture::artifact(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32), title);
         if t >= 9.0 { labels.push((x + t * 0.5, y - 2.0, title.clone(), false)); }
     }
     // Creatures below the ground on this level (a cavern's life, a hunter on the stair, what the
@@ -1805,7 +1764,6 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         }
     }
     // Settlers on this level, and faintly those a level off.
-    let looks = settler_looks(colony, history);
     for (i, s) in colony.settlers.iter().enumerate().filter(|(_, s)| s.alive) {
         // (Those on the surface are drawn by `draw_colony` when it ran.)
         if surface_drawn && !colony.below(i) { continue; }

@@ -34,18 +34,18 @@ fn earth(pen: &mut Pen, u0: f32, v0: f32, u1: f32, v1: f32) {
 }
 
 /// A pen whose unit is one cell, with the cell (0, 0) of the map at... the map's origin.
-struct Cells { x0: f32, y0: f32, t: f32 }
+pub(crate) struct Cells { pub x0: f32, pub y0: f32, pub t: f32 }
 
 impl Cells {
-    fn new(cam: &LocalCamera, w: usize, h: usize) -> Cells {
+    pub fn new(cam: &LocalCamera, w: usize, h: usize) -> Cells {
         let t = cam.tile_px;
         Cells { x0: w as f32 / 2.0 - cam.cx * t, y0: h as f32 / 2.0 - cam.cy * t, t }
     }
     /// A pen with its origin at map cell (x, y) (the cell's top-left corner); units are cells.
-    fn pen<'a>(&self, put: &'a mut dyn FnMut(i64, i64, Rgb, f32), x: f32, y: f32) -> Pen<'a> {
+    pub fn pen<'a>(&self, put: &'a mut dyn FnMut(i64, i64, Rgb, f32), x: f32, y: f32) -> Pen<'a> {
         Pen::new(put, self.x0 + x * self.t, self.y0 + y * self.t, 2.0 * self.t)
     }
-    fn visible(&self, x: f32, y: f32, w: usize, h: usize, margin: f32) -> bool {
+    pub fn visible(&self, x: f32, y: f32, w: usize, h: usize, margin: f32) -> bool {
         let (sx, sy) = (self.x0 + x * self.t, self.y0 + y * self.t);
         sx > -margin * self.t && sy > -margin * self.t && sx < w as f32 + margin * self.t && sy < h as f32 + margin * self.t
     }

@@ -11,6 +11,7 @@ mod colony_ui;
 pub mod classify;
 pub mod folk;
 pub mod fonts;
+pub mod furniture;
 pub mod glyphs;
 pub mod heraldry;
 pub mod inspector;
