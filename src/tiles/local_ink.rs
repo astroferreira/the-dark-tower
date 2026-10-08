@@ -797,6 +797,19 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
             if e <= 1.0 { put(x as i64 + dx, base as i64 + dy, if e > 0.72 { INK } else { dress }, 0.97); }
         }
     }
+    // Armour worn: mail rings or a leather coat's seams over the dress.
+    if let Some(a) = colony.armour.iter().find(|a| a.holder == Some(i)) {
+        let leather = a.material.contains("leather") || a.material.contains("fur") || a.material.contains("hide");
+        let c = if leather { [128.0, 92.0, 60.0] } else { super::glyphs::metal_colour(&a.material) };
+        for dy in -(sh as i64) + 1..=0 {
+            for dx in -(sw as i64)..=(sw as i64) {
+                let e = (dx as f32 / sw).powi(2) + (dy as f32 / sh).powi(2);
+                if e > 0.62 { continue; }
+                let ring = if leather { dy % 3 == 0 } else { (dx + dy * 2).rem_euclid(3) == 0 };
+                put(x as i64 + dx, base as i64 + dy, if ring { mix(c, INK, 0.45) } else { c }, 0.75);
+            }
+        }
+    }
     let hr = 4.2 * scale;
     let (hx, hy) = (x, base - sh - hr * 0.7);
     let rr = hr.ceil() as i64 + 1;
@@ -825,31 +838,31 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
         for k in 0..=n { let f = k as f32 / n as f32; put((x0 + (x1 - x0) * f) as i64, (y0 + (y1 - y0) * f) as i64, c, 0.95); }
     };
     let haft: Rgb = [120.0, 84.0, 50.0];
+    let glyph = |put: &mut dyn FnMut(i64, i64, Rgb, f32), gl: super::glyphs::Glyph| super::glyphs::draw(put, gl, gx + g * 0.6, gy + g * 0.6, (g * 1.7).max(7.0), None);
+    use super::glyphs::Glyph as Gl;
     match (s.job, s.carrying) {
-        _ if watch || matches!((s.job, s.carrying), (Job::Hunt(_), None)) => { line(put, gx + g * 0.5, gy - g * 0.6, gx + g * 0.5, gy + g * 1.6, INK); line(put, gx + g * 0.2, gy - g * 0.2, gx + g * 0.5, gy - g * 0.8, INK); line(put, gx + g * 0.8, gy - g * 0.2, gx + g * 0.5, gy - g * 0.8, INK); }
+        _ if watch || matches!((s.job, s.carrying), (Job::Hunt(_), None)) => glyph(put, Gl::Spear),
         (job, Some(kind)) => {
             // What they carry, as its glyph (the load's own kind: berries, a fish, a log...).
             let stuff = match job { Job::Haul(k) => colony.items.get(k).map(|it| it.what), _ => None }.unwrap_or(crate::colony::Stuff::of(kind));
             let _: ItemKind = kind;
             super::glyphs::draw(put, super::glyphs::Glyph::of_stuff(stuff), gx + g * 0.6, gy + g * 0.9, (g * 1.5).max(6.0), None);
         }
-        (Job::Fell(_), _) => { line(put, gx, gy + g * 1.4, gx + g, gy, haft); line(put, gx + g * 0.6, gy - g * 0.2, gx + g * 1.2, gy + g * 0.4, INK); line(put, gx + g * 0.7, gy - g * 0.1, gx + g * 1.1, gy + g * 0.3, INK); }
+        (Job::Fell(_), _) => glyph(put, Gl::Axe),
         // A pick: for the quarry and the dig below.
-        (Job::Quarry(_) | Job::Dig(..), _) => { line(put, gx + g * 0.5, gy + g * 1.4, gx + g * 0.5, gy, haft); line(put, gx - g * 0.1, gy + g * 0.3, gx + g * 1.1, gy + g * 0.3, INK); }
+        (Job::Quarry(_) | Job::Dig(..), _) => glyph(put, Gl::Tool),
         // A hammer: for the builder and the crafter.
-        (Job::Build | Job::Craft, _) => { line(put, gx, gy + g * 1.4, gx + g * 0.8, gy + g * 0.2, haft); line(put, gx + g * 0.4, gy - g * 0.1, gx + g * 1.2, gy + g * 0.5, INK); line(put, gx + g * 0.5, gy - g * 0.2, gx + g * 1.3, gy + g * 0.4, INK); }
-        (Job::Forage(_), _) => {
-            for k in 0..=12 { let a = std::f32::consts::PI * k as f32 / 12.0; put((gx + g * 0.6 + g * 0.6 * a.cos()) as i64, (gy + g * 0.6 + g * 0.6 * a.sin()) as i64, INK, 0.95); }
-            line(put, gx, gy + g * 0.6, gx + g * 1.2, gy + g * 0.6, INK);
-            put((gx + g * 0.5) as i64, (gy + g * 0.4) as i64, [196.0, 64.0, 70.0], 1.0);
-        }
-        (Job::Fish(_), _) => { line(put, gx, gy + g * 1.4, gx + g * 1.1, gy - g * 0.3, haft); line(put, gx + g * 1.1, gy - g * 0.3, gx + g * 1.1, gy + g * 1.2, [60.0, 80.0, 110.0]); }
+        (Job::Build | Job::Craft, _) => glyph(put, Gl::Mace),
+        (Job::Forage(_), _) => glyph(put, Gl::Berries),
+        (Job::Fish(_), _) => { line(put, gx, gy + g * 1.4, gx + g * 1.1, gy - g * 0.3, haft); line(put, gx + g * 1.1, gy - g * 0.3, gx + g * 1.1, gy + g * 1.2, [60.0, 80.0, 110.0]); super::glyphs::draw(put, Gl::Fish, gx + g * 1.1, gy + g * 1.4, (g * 1.1).max(5.0), None); }
         (Job::Sleep, _) => {
             // A small z.
             line(put, gx, gy, gx + g, gy, INK);
             line(put, gx + g, gy, gx, gy + g, INK);
             line(put, gx, gy + g, gx + g, gy + g, INK);
         }
+        // Armed, with the attackers out or on the watch: their spear at hand.
+        _ if colony.attackers_out() && colony.arms.iter().any(|a| a.holder == Some(i)) => glyph(put, Gl::Spear),
         _ => {}
     }
     hy - hr
@@ -1101,7 +1114,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
             crate::colony::MarkKind::Cage => {
                 // A cage standing at the gate, with what it caught inside (`camp_ink::draw_cage`).
                 let held = m.title.strip_prefix("The cage of ");
-                super::camp_ink::draw_cage(&mut put, cam, w, h, m.at, held, 1.0);
+                super::camp_ink::draw_cage(&mut put, cam, w, h, m.at, held, 1.0, colony);
             }
             crate::colony::MarkKind::Scorch => {
                 let ri = (r * 1.6) as i64;
@@ -1206,32 +1219,8 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     // Buildings going up, drawn by the share of loads laid: pegs and a line (a quarter), a
     // timber frame (to three fifths), then walls rising round the ring.
     for (at, bw, bh, share) in colony.rising() {
-        let ring: Vec<(u16, u16)> = (0..bw).map(|dx| (dx, 0)).chain((1..bh).map(|dy| (bw - 1, dy))).chain((0..bw.saturating_sub(1)).rev().map(|dx| (dx, bh - 1))).chain((1..bh.saturating_sub(1)).rev().map(|dy| (0, dy))).collect();
-        let (x0, y0) = to_screen(at.0 as f32, at.1 as f32);
-        let (x1, y1) = to_screen((at.0 + bw) as f32, (at.1 + bh) as f32);
-        // The pegged line.
-        for x in x0 as i64..x1 as i64 { if (x / 3) % 2 == 0 { put(x, y0 as i64, INK, 0.6); put(x, y1 as i64 - 1, INK, 0.6); } }
-        for y in y0 as i64..y1 as i64 { if (y / 3) % 2 == 0 { put(x0 as i64, y, INK, 0.6); put(x1 as i64 - 1, y, INK, 0.6); } }
-        for (cx, cy) in [(x0, y0), (x1 - 1.0, y0), (x0, y1 - 1.0), (x1 - 1.0, y1 - 1.0)] { disc(&mut put, cx, cy, (t * 0.12).max(1.5), [120.0, 84.0, 50.0], INK); }
-        if share >= 0.25 {
-            // The frame: posts every other cell of the ring.
-            for (k, &(dx, dy)) in ring.iter().enumerate() {
-                if k % 2 != 0 { continue; }
-                let (px, py) = to_screen(at.0 as f32 + dx as f32 + 0.5, at.1 as f32 + dy as f32 + 0.5);
-                disc(&mut put, px, py, (t * 0.16).max(1.5), [150.0, 108.0, 66.0], INK);
-            }
-        }
-        if share >= 0.6 {
-            // Walls: the ring filled as far as the loads go.
-            let n = ((share - 0.6) / 0.4 * ring.len() as f32).ceil() as usize;
-            for &(dx, dy) in ring.iter().take(n) {
-                let (px, py) = to_screen(at.0 as f32 + dx as f32, at.1 as f32 + dy as f32);
-                for yy in py as i64..(py + t) as i64 { for xx in px as i64..(px + t) as i64 {
-                    let edge = xx == px as i64 || yy == py as i64 || xx == (px + t) as i64 - 1 || yy == (py + t) as i64 - 1;
-                    put(xx, yy, if edge { INK } else { [176.0, 140.0, 100.0] }, 0.9);
-                } }
-            }
-        }
+        let stone = colony.projects.iter().find(|p| p.at == at && !p.done).map_or(colony.hut_material == ItemKind::Stone, |p| p.material == ItemKind::Stone);
+        super::camp_ink::draw_rising(&mut put, cam, w, h, at, bw, bh, share, stone);
     }
     // Settlers: inked head-and-shoulders figures in their portrait's colours, with a pictogram
     // for what they are doing. Those asleep under a roof are a count on it.
@@ -1906,8 +1895,9 @@ fn draw_creature(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony
             super::beasts::draw(put, &look, x, y + 7.0 * scale, px, left, pose, a);
             if c.kind == CreatureKind::Pet {
                 // A kept animal: a red collar knot at the neck.
-                let mut pen = super::ink::Pen::new(put, x, y + 7.0 * scale - px * 0.4, px).facing_left(left).faint(a);
-                pen.ellipse_f(0.32, -0.08, 0.05, 0.05, [180.0, 40.0, 30.0], super::ink::Finish::Plain);
+                let mut pen = super::ink::Pen::new(put, x, y + 7.0 * scale - 0.8 * px / 2.0, px).facing_left(left).faint(a);
+                let (u, v) = super::beasts::neck_point(&look);
+                pen.ellipse_f(u, v, 0.05, 0.06, [180.0, 40.0, 30.0], super::ink::Finish::Plain);
             }
         }
     }

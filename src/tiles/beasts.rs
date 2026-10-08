@@ -847,3 +847,14 @@ pub fn draw_world(beasts: &[WorldBeast], cam: &super::render::Camera, world_w: u
         super::fonts::draw(buf, w, h, x - tw / 2.0, y - 16.0, &n, super::fonts::Face::Italic, 13.0, 0.0, 0x009A_2A1E, Some(0x00EE_E4CC));
     }
 }
+
+/// Where a four-legged body's neck meets its shoulders, in the sprite's unit box (for a pet's
+/// collar); other bodies: just above the middle.
+pub fn neck_point(look: &Look) -> (f32, f32) {
+    if look.base != Base::Quad { return (0.1, -0.1); }
+    let q = look.quad;
+    let by = 0.8 - q.leg - q.body_ry * 0.55;
+    let n0 = (-0.1 + q.body_rx * 0.72, by - q.body_ry * 0.25);
+    let up = q.neck_up.to_radians();
+    (n0.0 + up.cos() * q.neck * 0.45, n0.1 - up.sin() * q.neck * 0.45)
+}

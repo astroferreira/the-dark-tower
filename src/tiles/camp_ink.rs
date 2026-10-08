@@ -22,7 +22,7 @@ const STONE: Rgb = [178.0, 172.0, 160.0];
 const THATCH: Rgb = [196.0, 168.0, 108.0];
 const SMOKE: Rgb = [214.0, 210.0, 204.0];
 /// Trodden earth, painted over the wall blocks a work is stamped as before its sprite is drawn.
-const EARTH: Rgb = [178.0, 158.0, 122.0];
+const EARTH: Rgb = [158.0, 148.0, 110.0];
 
 /// Paint a cell rectangle as trodden earth with a ragged speckle (no rim).
 fn earth(pen: &mut Pen, u0: f32, v0: f32, u1: f32, v1: f32) {
@@ -293,10 +293,29 @@ pub fn draw_works(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i
                 for (cu, cv) in [(0.0, 0.0), (fw - 1.0, 0.0), (0.0, fh - 1.0), (fw - 1.0, fh - 1.0)] {
                     earth(&mut pen, cu, cv, cu + 1.0, cv + 1.0);
                 }
+                if p.kind == ProjectKind::Field { crops(&mut pen, colony, p.at); }
                 fence(&mut pen, fw, fh, p.kind != ProjectKind::Field);
                 for (cu, cv) in [(0.1, 0.1), (fw - 0.1, 0.1), (0.1, fh - 0.1), (fw - 0.1, fh - 0.1)] {
                     pen.ellipse(cu, cv, 0.2, 0.2, DARK_WOOD);
                     pen.ellipse_f(cu, cv, 0.09, 0.09, [176.0, 140.0, 90.0], Finish::Paint);
+                }
+                drop(pen);
+                if p.kind == ProjectKind::Pen {
+                    // The beasts kept in it, ambling about.
+                    if let Some((kind, n)) = colony.pen.as_ref() {
+                        let look = super::beasts::of_name(kind);
+                        let scale = (c.t / 16.0).clamp(0.55, 1.4);
+                        let px = super::beasts::px_for(&look, scale) * 0.85;
+                        for k in 0..(*n).min(6) {
+                            let ph = tick as f32 / 90.0 + k as f32 * 1.9;
+                            let u = 1.2 + (k % 3) as f32 * 1.4 + ph.sin() * 0.35;
+                            let v = 1.6 + (k / 3) as f32 * 1.6 + (ph * 0.7).cos() * 0.25;
+                            let (sx, sy) = (c.x0 + (x + u) * c.t, c.y0 + (y + v) * c.t);
+                            let walking = (tick / 30 + k as u64) % 4 == 0;
+                            let pose = if walking { super::beasts::Pose::Walk((tick / 4) % 2 == 0) } else if k % 2 == 0 { super::beasts::Pose::Graze } else { super::beasts::Pose::Stand };
+                            super::beasts::draw(put, &look, sx, sy, px, ph.cos() < 0.0, pose, 1.0);
+                        }
+                    }
                 }
             }
             ProjectKind::Well => {
@@ -408,11 +427,12 @@ fn fence(pen: &mut Pen, fw: f32, fh: f32, gate: bool) {
 
 /// A cage trap at a gate (a mark), standing up: a timber frame with bars, the trip-stone; what it
 /// holds drawn inside it.
-pub fn draw_cage(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, at: (u16, u16), held: Option<&str>, scale: f32) {
+pub fn draw_cage(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, at: (u16, u16), held: Option<&str>, scale: f32, colony: &Colony) {
     let c = Cells::new(cam, w, h);
     if !c.visible(at.0 as f32, at.1 as f32, w, h, 3.0) { return; }
     if let Some(name) = held {
-        let look = super::beasts::of_name(name);
+        // The beast as it was (if it came against the camp), else by its name.
+        let look = colony.foes_seen.iter().find(|(n, _)| name.starts_with(n.as_str()) || n.starts_with(name)).map(|(_, m)| super::beasts::of_monster(m)).unwrap_or_else(|| super::beasts::of_name(name));
         let px = (c.t * 1.5).max(14.0);
         super::beasts::draw(put, &look, c.x0 + (at.0 as f32 + 0.5) * c.t, c.y0 + (at.1 as f32 + 0.95) * c.t, px, false, super::beasts::Pose::Stand, 1.0);
     }
@@ -509,4 +529,72 @@ pub fn draw_stone_mark(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamer
     }
     if title.contains("builders") || title.contains("tribute") { draw_hall_stone(put, cam, w, h, at); return; }
     draw_standing_stone(put, cam, w, h, at, 1.3);
+}
+
+/// The field's crop on its cells (the inner 6 x 4): sprouts in spring, green stalks in summer,
+/// gold heads in autumn until it is reaped; nothing where the field lies bare.
+fn crops(pen: &mut Pen, colony: &Colony, at: (u16, u16)) {
+    use crate::seasons::Season;
+    let map = &colony.map;
+    let season = colony.season();
+    for dy in 1..5u16 { for dx in 1..7u16 {
+        let (x, y) = ((at.0 + dx) as usize, (at.1 + dy) as usize);
+        if x >= map.width || y >= map.height { continue; }
+        let sz = map.surface_z[y * map.width + x].max(0) as usize;
+        if !matches!(map.cell(x, y, sz).plant, crate::local::Plant::Crop(_)) { continue; }
+        for row in 0..2 {
+            for k in 0..3 {
+                let (u, v) = (dx as f32 + 0.2 + k as f32 * 0.3, dy as f32 + 0.45 + row as f32 * 0.45);
+                match season {
+                    Season::Spring => { pen.line((u, v), (u - 0.04, v - 0.12), [110.0, 150.0, 70.0], 1.0); pen.line((u, v), (u + 0.05, v - 0.1), [110.0, 150.0, 70.0], 1.0); }
+                    Season::Summer => { pen.line((u, v), (u, v - 0.3), [96.0, 136.0, 62.0], 1.0); pen.ellipse_f(u, v - 0.3, 0.03, 0.06, [120.0, 160.0, 76.0], Finish::Paint); }
+                    Season::Autumn => { pen.line((u, v), (u + 0.02, v - 0.32), [170.0, 140.0, 70.0], 1.0); pen.ellipse_f(u + 0.03, v - 0.34, 0.035, 0.08, [214.0, 176.0, 80.0], Finish::Plain); }
+                    Season::Winter => { pen.line((u, v), (u, v - 0.06), [150.0, 130.0, 96.0], 1.0); }
+                }
+            }
+        }
+    } }
+}
+
+/// A building going up, by the share of loads laid: pegs and a line, then a timber frame (posts
+/// every other cell of its ring with a sill between them), then walls of log courses (or stone)
+/// rising round the ring as far as the loads go.
+pub fn draw_rising(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, at: (u16, u16), bw: u16, bh: u16, share: f32, stone: bool) {
+    let c = Cells::new(cam, w, h);
+    if !c.visible(at.0 as f32, at.1 as f32, w, h, (bw.max(bh) + 2) as f32) { return; }
+    let mut pen = c.pen(put, at.0 as f32, at.1 as f32);
+    let (fw, fh) = (bw as f32, bh as f32);
+    // The pegged line.
+    for k in 0..(2.0 * (fw + fh)) as i32 * 2 {
+        if k % 2 == 1 { continue; }
+        let d = k as f32 * 0.25;
+        let (a, b) = if d < fw { ((d, 0.05), (d + 0.25, 0.05)) } else if d < fw + fh { ((fw - 0.05, d - fw), (fw - 0.05, d - fw + 0.25)) }
+            else if d < 2.0 * fw + fh { ((fw - (d - fw - fh), fh - 0.05), (fw - (d - fw - fh) - 0.25, fh - 0.05)) } else { ((0.05, fh - (d - 2.0 * fw - fh)), (0.05, fh - (d - 2.0 * fw - fh) - 0.25)) };
+        pen.line_a(a, b, INK, 1.0, 0.6);
+    }
+    for (u, v) in [(0.05, 0.05), (fw - 0.05, 0.05), (0.05, fh - 0.05), (fw - 0.05, fh - 0.05)] { pen.ellipse(u, v, 0.1, 0.1, DARK_WOOD); }
+    let ring: Vec<(f32, f32)> = (0..bw).map(|dx| (dx as f32, 0.0)).chain((1..bh).map(|dy| (fw - 1.0, dy as f32))).chain((0..bw.saturating_sub(1)).rev().map(|dx| (dx as f32, fh - 1.0))).chain((1..bh.saturating_sub(1)).rev().map(|dy| (0.0, dy as f32))).collect();
+    if share >= 0.25 {
+        // The frame: a sill all round and posts.
+        pen.rect_f(0.35, 0.35, fw - 0.35, 0.65, WOOD, Finish::Plain);
+        pen.rect_f(0.35, fh - 0.65, fw - 0.35, fh - 0.35, WOOD, Finish::Plain);
+        pen.rect_f(0.35, 0.35, 0.65, fh - 0.35, WOOD, Finish::Plain);
+        pen.rect_f(fw - 0.65, 0.35, fw - 0.35, fh - 0.35, WOOD, Finish::Plain);
+        for (k, &(u, v)) in ring.iter().enumerate() { if k % 2 == 0 { pen.ellipse(u + 0.5, v + 0.5, 0.17, 0.17, DARK_WOOD); } }
+    }
+    if share >= 0.6 {
+        let n = ((share - 0.6) / 0.4 * ring.len() as f32).ceil() as usize;
+        for &(u, v) in ring.iter().take(n) {
+            if stone {
+                pen.rect(u, v, u + 1.0, v + 1.0, STONE);
+                pen.line_a((u, v + 0.5), (u + 1.0, v + 0.5), INK, 1.0, 0.5);
+                pen.line_a((u + 0.5, v), (u + 0.5, v + 0.5), INK, 1.0, 0.5);
+            } else {
+                pen.rect(u, v, u + 1.0, v + 1.0, WOOD);
+                for k in 1..4 { let y = v + k as f32 * 0.25; pen.line_a((u, y), (u + 1.0, y), INK, 1.0, 0.45); }
+                pen.ellipse_f(u + 0.15, v + 0.37, 0.08, 0.08, [214.0, 182.0, 128.0], Finish::Plain);
+                pen.ellipse_f(u + 0.85, v + 0.62, 0.08, 0.08, [214.0, 182.0, 128.0], Finish::Plain);
+            }
+        }
+    }
 }
