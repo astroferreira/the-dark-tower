@@ -1851,6 +1851,9 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
         if moved > 0 { format!("; the camp moved {} time{}", moved, if moved == 1 { "" } else { "s" }) } else { String::new() });
     let laid_starving = colony.log.iter().filter(|l| l.contains("is starving")).filter_map(|l| l.split(',').next()).any(|d| colony.log.iter().any(|m| m.starts_with(&format!("{},", d)) && (m.contains("sets the first") || m.contains("finishes"))));
     if laid_starving { println!("  Built on a day someone starved"); }
+    // How the camp laid itself out and spends its spare hours (`projects::wall_r`, `needs.rs`).
+    let acts = colony.decisions.iter().filter(|d| crate::colony::needs::ACT_WORDS.iter().any(|w| d.contains(&format!("wandering        {}", w)))).count();
+    println!("  Layout: wall radius {}, spread {:.2}; {} spare-hours acts", colony.wall_r(), colony.camp_spread(), acts);
     for p in &colony.projects {
         println!("  Project day {}: {} ({} of {} {}{}), {}", p.day, p.kind.word(), p.used, p.needed,
             if p.material == crate::colony::ItemKind::Stone { "stones" } else { "logs" }, if p.done { ", done" } else { "" }, p.why);

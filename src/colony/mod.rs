@@ -72,6 +72,8 @@ pub mod justice;
 pub mod cavelife;
 pub mod news;
 pub mod industry;
+pub mod needs;
+pub mod voices;
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -242,6 +244,8 @@ pub struct Settler {
     pub spouse: Option<usize>,
     /// Away from the camp until this day (an expedition, `expedition.rs`); not alive meanwhile.
     pub away_until: u64,
+    /// A spare-hours act under way (`needs.rs`): met when the wander ends.
+    pub(crate) need_act: Option<needs::NeedAct>,
     /// The day of their last cup (`drink.rs`).
     pub last_drink: u64,
     /// The last day they ate the cook's supper (`kitchen.rs`).
@@ -777,7 +781,7 @@ impl Colony {
                 alive: true, stuck: 0, retry_at: 0, starving: 0, stride: 0,
                 taste: [0; 5].map(|_| 0.75 + 0.55 * rng.gen::<f32>()),
                 past: None, ill_until: 0, skill: [0.0; 5], role: None, loads_laid: 0,
-                persona: crate::persona::Persona::roll("human", None, crate::persona::seed_of(name, seed)), stride_frac: 0.0, mind: Default::default(), wounds: Vec::new(), office: None, made: Vec::new(), deeds: Vec::new(), drill: 0.0, bed_blocked_until: 0, spouse: None, away_until: 0, last_drink: 0, last_supper: 0, rationed: false, guest_until: 0, visitor: None,
+                persona: crate::persona::Persona::roll("human", None, crate::persona::seed_of(name, seed)), stride_frac: 0.0, mind: Default::default(), wounds: Vec::new(), office: None, made: Vec::new(), deeds: Vec::new(), drill: 0.0, bed_blocked_until: 0, spouse: None, away_until: 0, need_act: None, last_drink: 0, last_supper: 0, rationed: false, guest_until: 0, visitor: None,
             }
         }).collect::<Vec<_>>();
         // They arrive with two days of food.
@@ -1491,6 +1495,8 @@ impl Colony {
         if self.relic.is_some() { self.relic_tick(); }
         if self.hoard_due.is_some() { self.hoard_home(); }
         if !self.map.places.is_empty() { self.explore_tick(); }
+        // Needs fall an hour at a time (`needs.rs`).
+        if self.clock.minute() == 0 { self.needs_hour(); }
         if self.clock.hour() == 6 && self.clock.minute() == 0 && self.clock.day() > 1 && (self.clock.day() - 1) % SEASON_DAYS == 0 {
             self.season_turns();
         }
@@ -1500,7 +1506,7 @@ impl Colony {
             let camp = self.camp;
             self.chilled_nights += self.settlers.iter().filter(|s| s.alive && s.exposure >= 0.5
                 && (s.pos.0 as i32 - camp.0 as i32).abs().max((s.pos.1 as i32 - camp.1 as i32).abs()) <= 12).count() as u32;
-            self.spoil(); self.reckon_hunger_days(); self.field_season(); self.draw_water(); self.plan_projects(); self.reckon_company(); self.reckon_roles(); self.arm_militia(); self.reckon_wounds(); self.reckon_temper(); self.reckon_minds(); self.reckon_society(); self.reckon_hollow(); self.lord_arrives(); self.lord_displeased(); self.lord_demands(); self.sellsword_comes(); self.reckon_expedition(); self.vampire_dawn(); self.reckon_prisoner(); self.reckon_regard(); self.reckon_snatched(); self.reckon_siege(); self.reckon_guilds(); self.reckon_rising(); self.reckon_old_fields(); self.reckon_responses(); self.reckon_priest(); self.reckon_war_call(); self.reckon_cook(); self.reckon_clothes(); self.reckon_dreams(); self.reckon_childhood(); self.reckon_rations(); self.reckon_ice(); self.reckon_herds(); self.reckon_rooms(); self.lord_quarters(); self.place_artifacts(); self.regrow(); self.reckon_tithe(); self.reckon_justice(); self.reckon_mood(); self.reckon_pets(); self.reckon_years(); self.pen_slaughter(); self.reckon_family(); self.reckon_thirst(); self.moon_sets();
+            self.spoil(); self.reckon_hunger_days(); self.field_season(); self.draw_water(); self.plan_projects(); self.reckon_company(); self.reckon_roles(); self.arm_militia(); self.reckon_wounds(); self.reckon_temper(); self.reckon_needs(); self.reckon_minds(); self.reckon_society(); self.reckon_hollow(); self.lord_arrives(); self.lord_displeased(); self.lord_demands(); self.sellsword_comes(); self.reckon_expedition(); self.vampire_dawn(); self.reckon_prisoner(); self.reckon_regard(); self.reckon_snatched(); self.reckon_siege(); self.reckon_guilds(); self.reckon_rising(); self.reckon_old_fields(); self.reckon_responses(); self.reckon_priest(); self.reckon_war_call(); self.reckon_cook(); self.reckon_clothes(); self.reckon_dreams(); self.reckon_childhood(); self.reckon_rations(); self.reckon_ice(); self.reckon_herds(); self.reckon_rooms(); self.lord_quarters(); self.place_artifacts(); self.regrow(); self.reckon_tithe(); self.reckon_justice(); self.reckon_mood(); self.reckon_pets(); self.reckon_years(); self.pen_slaughter(); self.reckon_family(); self.reckon_thirst(); self.moon_sets();
         }
         if self.clock.minute() == 0 { self.evil_weather(); }
         if self.clock.hour() == 16 && self.clock.minute() == 0 { self.cook_supper(); }
@@ -1892,6 +1898,15 @@ impl Colony {
             options.push((wish, Job::Craft, format!("Making something at the workshop: {} {}", if p.female { "she" } else { "he" }, why)));
         }
 
+        // Spare hours of their own: a need long unmet pulls them away for a while (`needs.rs`).
+        // (Not while the camp goes hungry.)
+        // (Only between jobs: a need never breaks off work in hand; a six-hour craft broken off
+        // for a walk had left the workshop making one work in ninety days.)
+        // (Debug: PLANET_NO_NEEDS=1 turns the spare-hours acts off, to compare.)
+        let need = if hungry_camp || !free || std::env::var("PLANET_NO_NEEDS").is_ok() { None } else { self.need_option(i) };
+        let need_why = need.as_ref().map(|n| n.0 .2.clone());
+        let mut need_act = None;
+        if let Some((o, a)) = need { options.push(o); need_act = Some(a); }
         // The night's watch (the first arc): the watcher stays up at the camp's edge.
         if self.watcher == Some(i) && night {
             let threat = self.arc.as_ref().map(|a| a.threat.name.clone()).unwrap_or_default();
@@ -1972,7 +1987,14 @@ impl Colony {
             if same_kind || best_u < current_u * 1.6 { return; }
             self.release(i);
         }
+        // (The why may have gained a dream's or a mark's words on the way.)
+        let chose_need = need_why.as_deref().map_or(false, |w| why.contains(w.split_once(": ").map_or(w, |x| x.1)) && matches!(best, Job::Wander(_)));
         self.start(i, best, why);
+        // The act begun: what it meets, and how long they stay at it.
+        if let Some(a) = need_act.filter(|_| chose_need && self.settlers[i].job == best) {
+            self.settlers[i].work_left = a.minutes;
+            self.settlers[i].need_act = Some(a);
+        }
     }
 
     /// What the work at `p` is made of, as a liked thing is named ("oak", "granite"): the tree
@@ -2134,6 +2156,8 @@ impl Colony {
 
     /// The nearest free fishing spot within `radius` of `from` (from the list found at founding;
     /// a ring search over the map was most of a year's run time).
+    pub(crate) fn fishing_near(&self, from: Pos, radius: i32) -> Option<Pos> { self.nearest_fishing(from, radius) }
+
     fn nearest_fishing(&self, from: Pos, radius: i32) -> Option<Pos> {
         let day = self.clock.day();
         // In a deep freeze the water is ice: only holes cut at the jetty (`frozen`).
@@ -2159,6 +2183,7 @@ impl Colony {
     }
 
     fn start(&mut self, i: usize, job: Job, why: String) {
+        self.settlers[i].need_act = None;
         let target = match job {
             Job::Eat => self.eat_spot(i),
             Job::Build => self.camp,
@@ -2212,7 +2237,7 @@ impl Colony {
                 if !matches!(job, Job::Wander(_)) || self.settlers[i].why != why {
                     self.decisions.push(format!("{}  {:<9} {:<16} {}", self.clock.stamp(), self.settlers[i].name, job.verb(), why));
                 }
-                let mood_pace = self.mood_pace(i) * self.thirst_pace(i) * self.wound_work(i, matches!(job, Job::Fell(_) | Job::Quarry(_) | Job::Dig(..) | Job::Build | Job::Haul(_)));
+                let mood_pace = self.mood_pace(i) * self.focus_pace(i) * self.thirst_pace(i) * self.wound_work(i, matches!(job, Job::Fell(_) | Job::Quarry(_) | Job::Dig(..) | Job::Build | Job::Haul(_)));
                 let craft_minutes = industry::minutes(&why).unwrap_or(360);
                 let s = &mut self.settlers[i];
                 s.path = p.into_iter().skip(1).collect();
@@ -2414,6 +2439,7 @@ impl Colony {
                 && skill_of(o.job) == Some(k) && (o.pos.0 as i32 - me.0 as i32).abs().max((o.pos.1 as i32 - me.1 as i32).abs()) <= 4);
             let gain = 0.025 * (1.0 - mine) * if teacher { 2.0 } else { 1.0 } * self.settlers[i].persona.learning() * self.guild_learning(i, k);
             self.settlers[i].mind.made += 1;
+            self.meet(i, needs::Need::StayOccupied, 120);
             // Feelings about the work itself: a liked material, a tree felled by one who loves the wild.
             if let Job::Fell(p) | Job::Quarry(p) | Job::Dig(p, _) = job {
                 let z = if let Job::Dig(_, z) = job { Some(z + 1) } else { None };
@@ -2453,6 +2479,7 @@ impl Colony {
                 for j in others { self.warm(i, j); }
             }
             Job::Sleep => {}
+            Job::Wander(_) if self.settlers[i].need_act.is_some() => { if let Some(a) = self.settlers[i].need_act.take() { self.complete_need(i, a); } }
             Job::Wander(_) if self.settlers[i].why.starts_with("Tending") => self.tend(i),
             Job::Dig(p, z) => { self.finish_dig(i, p, z); }
             Job::Hunt(id) => { if self.finish_hunt(i, id) { let n = self.eat_catch(i, 6); if self.carry_home(i, n) { return; } } }

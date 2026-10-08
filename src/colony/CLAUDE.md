@@ -1052,7 +1052,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   seeds (76 adamantine day 73; leather on 11, 5, 23); seed 23's adamantine mail turns a spear on
   day 148. A relic found by chance now makes its tale known (`find_relic`), so its seeker comes.
   Tested (`armour_turns_blows`; since the industries mail is forged from bars and leather or
-  hide only lightens an edge, so the test forces ore: seeds 5 and 3 turn blows on days 66 and 93;
+  hide only lightens an edge, so the test forces ore: seeds 23 and 76 turn blows on days 69 and 101 (since needs);
   unforced, no blow was turned on six dev seeds in 300 days).
 - Snatchers (`snatch.rs`, DF's baby-snatchers): `found_colony` notes the peoples among the
   troubles whose race steals children (goblins, orcs; `Colony::snatchers`); the Shadow's raiders
@@ -1695,3 +1695,64 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   armour turned 5 blows (was 4). The log has fewer "bruises" (stakes now cut) and broken bones
   on raiders where a strong drilled hand drives the spear home. `cargo test materials -- --nocapture`
   prints the whole table.
+
+## Minds that steer what happens (2026-10-08, DF's personality needs)
+- The complaint: every embark did the same thing and built the same things in the same places
+  (six dev seeds: palisade, second hut, woodpile, traps, field, rack, well, storehouse, workshop,
+  mine, in nearly that order, inside the same octagon of radius 11 with four gates on the axes).
+- Needs (`needs.rs`, DF's `personality_needst`: 30 needs, focus to 400 when met, falling by
+  need_level): each settler rolls up to 20 needs from facets and values (company from
+  gregariousness, prayer from piety with a faith, the sight of beasts from nature, beautiful
+  things from artwork, a walk alone from curiosity and independence, excitement, helping someone
+  from altruism, something new to learn, time to think, merriment, the old ways, arms practice, a
+  craft, something new to make, work, a drink (every dwarf), a good meal), strength 1-10. Focus
+  falls by the strength each hour (`needs_hour`); things felt meet needs wherever they happen
+  (`needs_from_feel`: a festival, prayer, a cup, the cook's supper, a song, a work made, a friend,
+  a pet, a hunt, news...); work meets "work". `focus_of` (DF's current_focus) sets the work pace
+  (x0.94 focused .. x1.06 distracted, `focus_pace` in `start`); a need badly unmet (-250) is a
+  thought at dawn ("has gone 9 days without prayer").
+- Between jobs only (`decide`, `free`), never when the camp goes hungry, a need well past due
+  (-60) is an option (`need_option`; 0.2 + deficit x (0.3 + 0.06 x strength), +0.2 in the
+  evening, x0.4 when the store is under half its goal, x0.5 for leisure under the no-idle-hands
+  mandate, x0.75 with trouble foretold): a `Job::Wander` to a place with a reason, kept in
+  `Settler::need_act` and met when it ends (`complete_need`): talking with the dearest awake
+  settler where they are ("by the woodpile", `place_word`), time with a spouse or child, praying at
+  the temple, the standing stone or on the highest ground near (`high_spot`), taking it easy by
+  the water or under trees, watching the nearest herd or a pet, admiring an artifact in its room,
+  an engraving (on its level, `spot_level`) or the best work at the fire, walking out alone 22-45
+  cells toward the settler's own direction of the day, climbing the lookout or the high ground,
+  sitting with the ill or hurt (else lending a builder a hand), reading at the library or
+  watching the best hand at work (+0.01 skill), sitting with their thoughts on a rise, singing or
+  telling their people's tales at the fire in the evening, practising at the drill ground,
+  whittling by the fire where there is no workshop. Six dev seeds, 120 days: 120-460 acts a camp,
+  each camp its own mix (23 drills and climbs, 3 sings, tells tales and prays, 11 watches beasts
+  and kneels on rises). The settler page (`Colony::about`) says "Needs prayer (unmet 4 days),
+  company...; distracted". `PLANET_NO_NEEDS=1` turns the acts off to compare.
+- Voices (`voices.rs`): each grown settler's voice for a work kind (`voice`: the unmet needs it
+  would meet, or a trait: the anxious for the wall, traps, ditch and lookout, the greedy and
+  curious for the mine, the orderly for the storehouse, the bashful for bedrooms, the
+  family-minded for food works); the camp's support is the mean, the speaker's twice. Candidates
+  rise with it (x1 unheard .. x1.75, `weigh_voices`; nothing is lowered: a field nobody loves
+  still feeds them) and the loudest voice (0.55+) is named in the plan ("Nawyth presses for it:
+  he cannot sleep for fear of what comes"). A strongly pressed temple, tavern, workshop, library
+  or pen comes before its usual time (`pressed_candidates`): seed 11's drinkers build a tavern on
+  day 35 (was 106). `PLANET_NO_VOICES=1` plans as before.
+- Places by purpose (`projects.rs`: `find_site_for`, `purpose_cost`, `near_things`): the temple
+  and the lookout seek high ground, the workshop the timber, the smokehouse and the rack the
+  fishing, the store, kitchen, still and second hut the hut, the field deep soil, the pen the herd,
+  the library quiet, the tavern the fire. Lots keep off the wall's ring (wholly within 1.5 inside
+  it, or wholly 4.5 beyond it, past the ditch; a hut on the ring had left a gap in it); fields and
+  pens always lie outside the wall. The camp's own shape (`camp_spread`, `wall_r`): the founders'
+  mean gregariousness and orderliness (about 50-65 on the dev seeds, centred at 57) scale the
+  distance from the fire (x0.6 .. x1.4) and set the palisade's radius, 9 (close, orderly) to 13
+  (independent); the gates, cages, ditch (`wall_r + 2`), drawbridges and siege bounds follow it.
+  Dev seeds: radii 9 (11, 23), 10 (3), 11 (76), 12 (58), 13 (5). `--sim-projects` prints
+  "Layout: wall radius N, spread X; M spare-hours acts".
+- The ditch's trap (found on the way): a stretch of ditch closed at both ends by cells left
+  uncut (by a building, wet or forbidden ground) had trapped its digger, who starved with 50
+  meals in the store (seed 23). Every ditch cell beside an uncut one is now dug only one level
+  deep, a step out, like those at the gates (`plan_moat`).
+- Nine camps x 120 days: 14 deaths (16 before). Tests: `settlers_spend_spare_hours_by_their_needs`,
+  `the_camp_presses_for_what_its_people_want`, `camps_lay_themselves_out_differently`. Moved:
+  the bard may come "to the tavern"; Gru may meet someone on the stair (the raid "out of the
+  mine"); gems at 120 days; news on seed 3; jaded, tombs on seed 1; suppers on 5, 1, 23.

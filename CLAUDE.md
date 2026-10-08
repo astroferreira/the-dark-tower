@@ -120,6 +120,9 @@ density, hardness, edge, capability flags; weapon shapes; tissue layers and armo
 Each has its notes in `src/colony/CLAUDE.md` (knowledge in `src/history/CLAUDE.md`). Debug forcing: `PLANET_FORCE_WERE`, `PLANET_FORCE_SEEKER`,
 `PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`, `PLANET_FORCE_PET_PREY`, `PLANET_FORCE_ORE`. Board cards `df-*`; progress log in the Claude Doc
 "Dwarf Fortress systems: progress log".
+Minds that steer: DF's personality needs drive what settlers do between jobs (`colony/needs.rs`), their
+needs and character voice the camp's next work (`voices.rs`), and lots and the wall's size follow
+purpose and the founders (`projects.rs`); notes in `src/colony/CLAUDE.md`.
 Legends mode as linked HTML pages: `--legends DIR` (`lore/legends.rs`; notes in `src/history/CLAUDE.md`).
 
 ### Rejecting worlds (`--require`)
