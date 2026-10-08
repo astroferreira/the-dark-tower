@@ -29,7 +29,7 @@ impl Colony {
         let at = self.marks[k].at;
         let Some(p) = self.passable_near_pub((at.0 as i32, at.1 as i32)) else { return };
         let id = self.new_creature_id();
-        self.creatures.push(Creature { kind: CreatureKind::Wolf, name: name.clone(), pos: p, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: p, spawned: self.clock.tick, id });
+        self.creatures.push(Creature { kind: CreatureKind::Wolf, name: name.clone(), pos: p, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: p, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
         *self.risings.entry(at).or_insert(0) += 1;
         let shadow = self.shadow_name.clone().unwrap_or_else(|| "the Shadow".into());
         let line = format!("Under {}'s darkness, {} rises from the grave at {},{}.", shadow, if who.starts_with("An old") { "something".to_string() } else { who.clone() }, at.0, at.1);

@@ -406,7 +406,7 @@ impl Colony {
     }
 
     /// A fungus tree felled in the cavern: two logs of its pale wood to carry up the stair; the
-    /// cavern's hunters may find the feller in the dark (one time in eight).
+    /// cavern's hunters may find the feller in the dark as they roam (`cavelife.rs`).
     pub(crate) fn fell_cavern_tree(&mut self, i: usize, t: Pos, f: i32) -> bool {
         let k = self.map.idx(t.0 as usize, t.1 as usize, f as usize);
         if self.map.cells[k].plant != crate::local::Plant::Tree(crate::local::TreeKind::Fungus) { return false; }
@@ -421,14 +421,7 @@ impl Colony {
             self.note(line.clone());
             self.moment("Wood from the dark".into(), line, "because the stair reaches the cavern's floor, and timber is short above".into(), t);
         }
-        if let Some(h) = self.cave_hunter.clone() {
-            if crate::history::settlers::hash_pub(self.seed ^ self.clock.tick, 0xCA7E) % 8 == 0 {
-                self.settlers[i].ill_until = self.clock.tick + TICKS_PER_DAY;
-                self.note(format!("{} is set upon by {} while felling in the dark of {}, and comes up the stair bleeding.", name, h.trim_end_matches('s'), cavern));
-                self.cave_bites += 1;
-                self.feel(i, mind::Feel::TheDeep { what: format!("the {} in the dark", h) });
-            }
-        }
+        // (The cavern's hunters find a feller alone in the dark as they roam: `cavelife.rs`.)
         true
     }
 
@@ -618,9 +611,15 @@ impl Colony {
         let Some(sp) = self.spine else { return };
         let k = sp.at.1 as usize * self.map.width + sp.at.0 as usize;
         // The level of the first cavern's roof on the stair (or the stair's foot).
-        let z = self.breached.iter().filter_map(|&l| self.map.cavern_z.get(k).map(|c| c[l as usize].1)).filter(|&t| t >= 0).map(|t| t as i32 + 1).max().unwrap_or(sp.bottom + 1);
+        // (Where the way up from the shallowest cavern climbs the stair, when there is one: the
+        // first cavern can lie beside the stair rather than under it.)
+        let z = self.hatch_level().unwrap_or_else(|| self.breached.iter().filter_map(|&l| self.map.cavern_z.get(k).map(|c| c[l as usize].1)).filter(|&t| t >= 0).map(|t| t as i32 + 1).max().unwrap_or(sp.bottom + 1));
         self.hatch = Some((sp.at, z));
-        let what = self.cave_hunter.take().unwrap_or_else(|| "the things of the dark".into());
+        // (The hatch is a barrier in the stair for every creature's walk: `cavelife.rs`; any
+        // hunters up for the night are shut out below, back in their dens.)
+        let what = self.cave_hunter.clone().unwrap_or_else(|| "the things of the dark".into());
+        self.cave_hunters_home();
+        self.debug_cave_ways("hatch set");
         let line = format!("They set a hatch of {} in the stair where it comes through the cavern's roof, and bar it at dusk: {} will not come up the mine again.", if self.projects.iter().any(|p| p.kind == ProjectKind::Hatch && p.material == ItemKind::Stone) { "dressed stone" } else { "heavy timber" }, what);
         self.note(line.clone());
         self.moment("The hatch".into(), line, format!("because {} times the cavern's hunters had found someone in the dark", self.cave_bites), sp.at);
@@ -831,7 +830,7 @@ impl Colony {
         let farm_first = self.can_cave_farm() && !self.projects.iter().any(|p| p.kind == ProjectKind::CaveFarm);
         if farm_first {
             if self.cave_hunter.is_some() && self.cave_bites >= 2 && !self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) {
-                let why = format!("{} times {} have come up the mine and hurt someone; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
+                let why = format!("{} times {} have found someone alone in the dark or come up the mine; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
                 c.push((2.0, ProjectKind::Hatch, why, 6, self.spine.unwrap().at));
             }
             return;
@@ -858,7 +857,7 @@ impl Colony {
         }
         // A hatch over the stair below, once the cavern's hunters have hurt them twice.
         if self.cave_hunter.is_some() && self.cave_bites >= 2 && !self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) {
-            let why = format!("{} times {} have come up the mine and hurt someone; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
+            let why = format!("{} times {} have found someone alone in the dark or come up the mine; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
             c.push((2.0, ProjectKind::Hatch, why, 6, self.spine.unwrap().at));
         }
         // Drawbridges, once the ditch is dug and a siege has come (or two chapters of trouble).

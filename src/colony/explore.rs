@@ -146,7 +146,7 @@ impl Colony {
         let Some(m) = self.map.places[k].mouth else { return };
         let Some(at) = self.passable_near_pub((m.0 as i32, m.1 as i32)) else { return };
         let id = self.new_creature_id();
-        self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}, risen", dead), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.1, home: at, spawned: self.clock.tick, id });
+        self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}, risen", dead), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.1, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
         let line = format!("At nightfall something walks out of the robbed tomb: {}, risen, comes for the arms taken from it.", dead);
         self.note(line.clone());
         self.moment(format!("{} rises", dead), line, "because the tomb was robbed".into(), at);

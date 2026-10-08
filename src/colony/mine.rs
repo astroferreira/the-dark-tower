@@ -13,13 +13,9 @@
 
 use super::*;
 use super::arc::{Threat, ThreatKind};
-use super::creatures::{Creature, CreatureKind};
 use super::projects::ProjectKind;
 
-/// Cavern life that hunts (the rest is harmless: bats, crickets, fish).
-fn hunter(name: &str) -> bool {
-    ["spider", "crawler", "horror", "hunt", "serpent", "eel", "mole", "grub", "toad", "lizard"].iter().any(|k| name.contains(k))
-}
+use super::cavelife::hunter;
 
 impl Colony {
     /// Where the mine opens (the cell before its first row), once there is a mine.
@@ -59,6 +55,9 @@ impl Colony {
             self.projects[k].used = self.projects[k].needed;
             self.dig_plan = None;
         }
+        // Its own creatures, roaming its floor (`cavelife.rs`).
+        self.populate_cavern(layer, p, z);
+        self.debug_cave_ways("breach");
         // What hunts there comes up at night from now on.
         // (Below a hatch nothing comes up: `delve.rs::seal_caverns`.)
         if self.hatch.is_some() { }
@@ -104,21 +103,5 @@ impl Colony {
         // It does not wait out the quiet: it comes within days.
         let day = self.clock.day();
         if arc.stage == 3 { arc.quiet_until = Some(day + 3); }
-    }
-
-    /// Cave hunters come up the mine at dusk (as wolves come out of a den) and go back at dawn.
-    pub(crate) fn cave_hunters_out(&mut self) {
-        let Some(name) = self.cave_hunter.clone() else { return };
-        if self.creatures.iter().any(|c| c.kind == CreatureKind::Wolf) { return; }
-        let Some(mouth) = self.mine_mouth() else { return };
-        // Not every night: one in three, hashed by the day.
-        if (self.clock.day().wrapping_mul(0x9E37_79B9) ^ self.seed) % 3 != 0 { return; }
-        let one = name.trim_end_matches('s').to_string();
-        for k in 0..2u16 {
-            let Some(at) = self.passable_near_pub((mouth.0 as i32 - k as i32, mouth.1 as i32)) else { continue };
-            let id = self.new_creature_id();
-            self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("a {}", one), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id });
-        }
-        self.once("cave hunters", format!("Something comes up the mine after dark: {}, hunting.", name));
     }
 }

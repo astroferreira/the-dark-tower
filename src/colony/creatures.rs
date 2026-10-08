@@ -8,12 +8,23 @@
 //! round to a gate, since they path like anyone else. Where the embark has a predator's den,
 //! two wolves come out at dusk and hunt a settler alone and far from the fire; they fear it
 //! and go home at dawn.
+//!
+//! Creatures walk in three dimensions where they must (`Creature::z`, `path3`): what lives in a
+//! breached cavern roams its floor, its hunters climb the stair at night (`cavelife.rs`), and what
+//! comes from the deep starts in its cavern and walks up the stair to the camp. Those that keep
+//! to the surface walk the old column walk (`nav::path`).
 
 use super::{nav, Colony, Pos, TICKS_PER_DAY};
+use super::nav::P3;
 use crate::local::wildlife::Feature;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CreatureKind { Beast, Raider, Wolf, Game, Trader, Pet, Besieger }
+pub enum CreatureKind { Beast, Raider, Wolf, Game, Trader, Pet, Besieger,
+    /// A hunter of a breached cavern (`cavelife.rs`): it roams the cavern floor, takes those who
+    /// work alone in the dark, and climbs the stair on some nights.
+    CaveHunter,
+    /// Harmless cavern life (bats, crickets, crabs...) roaming its floor.
+    CaveLife }
 
 #[derive(Clone, Debug)]
 pub struct Creature {
@@ -30,7 +41,21 @@ pub struct Creature {
     pub spawned: u64,
     /// Unique among the colony's creatures (a hunter follows one).
     pub id: u32,
+    /// The level it stands on when it walks in three dimensions (a cavern's floor, the stair);
+    /// None for those that keep to the surface (they stand on their column's ground).
+    pub z: Option<i32>,
+    /// A walk in three dimensions, followed before `path`.
+    pub path3: Vec<P3>,
+    /// The level of its home (a cavern's floor) for those that live below.
+    pub home_z: i32,
+    /// Out of its cavern: a cave hunter up the stair for the night, a beast come up.
+    pub out: bool,
+    /// Resting until this tick (a cave hunter after a kill).
+    pub rest_until: u64,
 }
+
+/// Time spent on cavern life's roaming and hunting (`PLANET_DEBUG_CAVE` prints it).
+pub static CAVE_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Cells from the camp at which the attackers enter (they walk a settler's pace from dusk and
 /// reach the camp in the small hours).
@@ -47,6 +72,29 @@ fn compass(dx: f32, dy: f32) -> &'static str {
 }
 
 impl Colony {
+    /// Where creature `c` stands, with its level (its column's ground for a surface walker).
+    pub fn creature_here3(&self, c: &Creature) -> P3 {
+        let sz = self.map.surface_z[c.pos.1 as usize * self.map.width + c.pos.0 as usize];
+        (c.pos.0, c.pos.1, c.z.unwrap_or(sz))
+    }
+
+    /// Whether creature `c` is below the ground (in a cavern, on the stair): the surface view
+    /// does not draw it, and only those below meet it.
+    pub fn creature_below(&self, c: &Creature) -> bool {
+        c.z.map_or(false, |z| z < self.map.surface_z[c.pos.1 as usize * self.map.width + c.pos.0 as usize])
+    }
+
+    /// The hatch in the stair (`delve.rs::seal_caverns`) as the place no creature's walk may
+    /// stand: nothing passes it up or down.
+    pub(crate) fn hatch_bar(&self) -> Option<P3> { self.hatch.map(|(p, z)| (p.0, p.1, z)) }
+
+    /// A walk in three dimensions for a creature (the hatch barred unless `burst`), without the
+    /// first cell.
+    pub(crate) fn creature_path3(&self, from: P3, to: P3, budget: usize, burst: bool) -> Option<Vec<P3>> {
+        let bar = if burst { None } else { self.hatch_bar() };
+        nav::path3_barred(&self.map, None, from, to, budget, bar).map(|p| p.into_iter().skip(1).collect())
+    }
+
     /// The direction (unit vector on the map) the arc's threat comes from, and its compass word.
     pub(crate) fn threat_side_pub(&self) -> ((f32, f32), &'static str) { self.threat_side() }
 
@@ -97,14 +145,17 @@ impl Colony {
             // A band grows with the camp it comes for (DF's sieges grow with the fortress).
             _ => (CreatureKind::Raider, self.band_size(), arc.threat.name.clone(), 1.0),
         };
-        // What comes from the deep comes up the mine.
+        // What comes from the deep starts in its cavern (or at the shaft's foot, out of the
+        // hollow) and walks up the stair (`cavelife.rs`); with no way up, it comes out of the
+        // mine's mouth as before.
         if arc.threat.kind == super::arc::ThreatKind::Deep {
             let short = arc.threat.monster.as_ref().map(|m| m.short.clone()).unwrap_or_default();
             let why = arc.threat.why.clone();
+            if self.deep_comes_up(&name, size) { return; }
             if let Some(at) = self.mine_mouth().and_then(|m| self.passable_near((m.0 as i32, m.1 as i32))) {
                 let path = nav::path(&self.map, at, self.camp, super::PATH_BUDGET).map(|p| p.into_iter().skip(1).collect()).unwrap_or_default();
                 let id = self.new_creature_id();
-                self.creatures.push(Creature { kind: CreatureKind::Beast, name: name.clone(), pos: at, path, stride: 0, leaving: false, size, home: at, spawned: self.clock.tick, id });
+                self.creatures.push(Creature { kind: CreatureKind::Beast, name: name.clone(), pos: at, path, stride: 0, leaving: false, size, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
                 self.raid_side = "the mine".into();
                 let line = format!("Something climbs out of the mine: {}.", name);
                 self.note(line.clone());
@@ -124,7 +175,7 @@ impl Colony {
             let Some(at) = self.passable_near(p) else { continue };
             let path = nav::path(&self.map, at, self.camp, super::PATH_BUDGET).map(|p| p.into_iter().skip(1).collect()).unwrap_or_default();
             let id = self.new_creature_id();
-            self.creatures.push(Creature { kind, name: name.clone(), pos: at, path, stride: 0, leaving: false, size, home: at, spawned: self.clock.tick, id });
+            self.creatures.push(Creature { kind, name: name.clone(), pos: at, path, stride: 0, leaving: false, size, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
         }
         if let Some(first) = self.creatures.iter().find(|c| matches!(c.kind, CreatureKind::Beast | CreatureKind::Raider)).map(|c| c.pos) {
             self.raid_side = side.to_string();
@@ -141,8 +192,13 @@ impl Colony {
     /// settler, or at the end of their path (the fire).
     pub(crate) fn attackers_clash(&self) -> Option<Pos> {
         for c in self.creatures.iter().filter(|c| matches!(c.kind, CreatureKind::Beast | CreatureKind::Raider) && !c.leaving) {
-            if (0..self.settlers.len()).any(|j| { let s = &self.settlers[j]; s.alive && !self.below(j) && (s.pos.0 as i32 - c.pos.0 as i32).abs().max((s.pos.1 as i32 - c.pos.1 as i32).abs()) <= 2 }) { return Some(c.pos); }
-            if c.path.is_empty() { return Some(c.pos); }
+            // On the surface it meets those on the surface; below (coming up the stair from the
+            // deep), those within a level of it.
+            let low = self.creature_below(c);
+            let cz = self.creature_here3(c).2;
+            if (0..self.settlers.len()).any(|j| { let s = &self.settlers[j]; s.alive && (s.pos.0 as i32 - c.pos.0 as i32).abs().max((s.pos.1 as i32 - c.pos.1 as i32).abs()) <= 2
+                && if low || self.below(j) { (self.here3(j).2 - cz).abs() <= 1 } else { true } }) { return Some(c.pos); }
+            if c.path.is_empty() && c.path3.is_empty() { return Some(c.pos); }
         }
         None
     }
@@ -152,6 +208,16 @@ impl Colony {
         for k in 0..self.creatures.len() {
             if !matches!(self.creatures[k].kind, CreatureKind::Beast | CreatureKind::Raider) { continue; }
             let (from, home) = (self.creatures[k].pos, self.creatures[k].home);
+            // What came up from the deep goes back down the stair.
+            if self.creatures[k].z.is_some() {
+                let (from3, home3) = (self.creature_here3(&self.creatures[k]), (home.0, home.1, self.creatures[k].home_z));
+                let path3 = self.creature_path3(from3, home3, super::PATH_BUDGET, true).unwrap_or_default();
+                let c = &mut self.creatures[k];
+                c.leaving = true;
+                c.path.clear();
+                c.path3 = path3;
+                continue;
+            }
             let path = nav::path(&self.map, from, home, super::PATH_BUDGET).map(|p| p.into_iter().skip(1).collect()).unwrap_or_default();
             let c = &mut self.creatures[k];
             c.leaving = true;
@@ -163,12 +229,20 @@ impl Colony {
     /// dusk where there is a den and go home at dawn.
     pub(crate) fn step_creatures(&mut self) {
         let (hour, minute) = (self.clock.hour(), self.clock.minute());
-        if hour == 21 && minute == 0 { self.moon_rises(); self.dead_rise(); self.tomb_dead_rise(); self.wolves_out(); self.cave_hunters_out(); }
+        if hour == 21 && minute == 0 { self.moon_rises(); self.dead_rise(); self.tomb_dead_rise(); self.wolves_out(); }
+        // The cavern's hunters set out up the stair after dusk, and go back down at dawn.
+        if hour == 20 && minute == 0 { self.cave_hunters_out(); }
         if hour == 6 && minute == 0 {
             for k in 0..self.creatures.len() {
                 if self.creatures[k].kind == CreatureKind::Wolf && !self.creatures[k].leaving { self.wolf_home(k); }
             }
+            self.cave_hunters_home();
         }
+        // Cavern life roams its floor; its hunters stalk whoever is alone in the dark.
+        let t0 = std::time::Instant::now();
+        if self.clock.tick % 60 == 30 { self.cave_life_roams(); }
+        if self.clock.tick % 20 == 10 { self.cave_hunt(); }
+        CAVE_NS.fetch_add(t0.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
         // Wolves hunt a settler alone and far from the fire.
         if self.clock.tick % 20 == 0 { self.wolves_hunt(); }
         // Game grazes: an amble every hour; a herd thinned by hunting comes back in time.
@@ -176,7 +250,26 @@ impl Colony {
         if self.clock.tick % 15 == 0 && !self.pets.is_empty() { self.pets_follow(); }
         if self.clock.hour() == 5 && minute == 0 && self.clock.day() % 4 == 0 && !self.hard_winter() { self.game_returns(); }
         for k in 0..self.creatures.len() {
-            let speed = if self.creatures[k].kind == CreatureKind::Wolf { 2 } else { 1 };
+            let speed = if matches!(self.creatures[k].kind, CreatureKind::Wolf | CreatureKind::CaveHunter) { 2 } else { 1 };
+            // A walk in three dimensions (under the ground, up and down the stair).
+            if !self.creatures[k].path3.is_empty() {
+                self.creatures[k].stride += speed;
+                let was_below = self.creature_below(&self.creatures[k]);
+                loop {
+                    let Some(&next) = self.creatures[k].path3.first() else { self.creatures[k].stride = 0; break };
+                    let here = self.creatures[k].pos;
+                    let c = nav::cost3(&self.map, next.0 as usize, next.1 as usize, next.2).map_or(30, |c| c as i32);
+                    let c = if here == (next.0, next.1) { c + 6 } else if here.0 != next.0 && here.1 != next.1 { c * 14 / 10 } else { c };
+                    let cost = c * if self.creatures[k].kind == CreatureKind::Beast { CREEP } else { 1 } / 2;
+                    if self.creatures[k].stride < cost { break; }
+                    self.creatures[k].stride -= cost;
+                    self.creatures[k].pos = (next.0, next.1);
+                    self.creatures[k].z = Some(next.2);
+                    self.creatures[k].path3.remove(0);
+                }
+                if was_below && !self.creature_below(&self.creatures[k]) { self.creature_comes_up(k); }
+                continue;
+            }
             self.creatures[k].stride += speed;
             loop {
                 let Some(&next) = self.creatures[k].path.first() else { self.creatures[k].stride = 0; break };
@@ -187,7 +280,7 @@ impl Colony {
                 self.creatures[k].path.remove(0);
             }
         }
-        self.creatures.retain(|c| !(c.leaving && c.path.is_empty()));
+        self.creatures.retain(|c| !(c.leaving && c.path.is_empty() && c.path3.is_empty()));
     }
 
     fn dens(&self) -> Vec<Pos> {
@@ -204,7 +297,7 @@ impl Colony {
         for k in 0..2u16 {
             let Some(at) = self.passable_near((den.0 as i32 + k as i32, den.1 as i32)) else { continue };
             let id = self.new_creature_id();
-            self.creatures.push(Creature { kind: CreatureKind::Wolf, name: "a wolf".into(), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id });
+            self.creatures.push(Creature { kind: CreatureKind::Wolf, name: "a wolf".into(), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
         }
     }
 
@@ -283,7 +376,7 @@ impl Colony {
                 let p = ((self.camp.0 as f32 + a.cos() * r) as i32, (self.camp.1 as f32 + a.sin() * r) as i32);
                 if let Some(at) = self.passable_near(p) {
                     let id = self.new_creature_id();
-                    self.creatures.push(Creature { kind: CreatureKind::Game, name: name.clone(), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id });
+                    self.creatures.push(Creature { kind: CreatureKind::Game, name: name.clone(), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
                 }
             }
         }
@@ -315,7 +408,7 @@ impl Colony {
                 let home = self.creatures.iter().find(|c| c.name == name).map(|c| c.home).unwrap_or((self.camp.0.saturating_add(40), self.camp.1));
                 if let Some(at) = self.passable_near((home.0 as i32, home.1 as i32)) {
                     let id = self.new_creature_id();
-                    self.creatures.push(Creature { kind: CreatureKind::Game, name: name.clone(), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id });
+                    self.creatures.push(Creature { kind: CreatureKind::Game, name: name.clone(), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
                 }
             }
         }

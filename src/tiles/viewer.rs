@@ -1863,6 +1863,16 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
             save_rgb_png(&name, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
             names.push(format!("{} (level {})", name, z));
         }
+        // Each breached cavern at the stair's foot, with its life (`colony/cavelife.rs`).
+        for &(layer, foot) in colony.cavern_feet_pub() {
+            let cam = LocalCamera { cx: foot.0 as f32 + 0.5, cy: foot.1 as f32 + 0.5, tile_px: 20.0, z: foot.2, surface_view: false };
+            let mut buf = vec![0u32; w * h];
+            super::local_ink::render_level_ink(&colony.map, &cam, &mut buf, w, h);
+            super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history);
+            let name = format!("{prefix}_cavern{}.png", layer + 1);
+            save_rgb_png(&name, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+            names.push(format!("{} (level {})", name, foot.2));
+        }
         let cam = LocalCamera { cx: (at.0 as f32 + colony.camp.0 as f32) / 2.0, cy: (at.1 as f32 + colony.camp.1 as f32) / 2.0, tile_px: 12.0, z: 0, surface_view: true };
         let mut buf = vec![0u32; w * h];
         super::local_ink::render_local_ink(&colony.map, &cam, &mut buf, w, h);
@@ -1905,6 +1915,7 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
     let days: Vec<u64> = colony.log.iter().filter_map(|l| l.strip_prefix("Day ").and_then(|r| r.split(',').next()).and_then(|d| d.parse().ok())).collect();
     let gap = days.windows(2).map(|w| w[1] - w[0]).max().unwrap_or(0).max(days.last().map_or(0, |&d| colony.clock.day().saturating_sub(d)));
     println!("  Longest quiet: {} days without a log line", gap);
+    if std::env::var("PLANET_DEBUG_CAVE").is_ok() { println!("  Cavern life: {:.1} ms roaming and hunting", crate::colony::creatures::CAVE_NS.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1e6); }
     for l in colony.log.iter().filter(|l| l.contains("Winter comes") || l.contains("Autumn comes") || l.contains("envoy") || l.contains("tribute")) { println!("  {l}"); }
     let ill = colony.log.iter().filter(|l| l.contains("falls ill")).count();
     if ill > 0 { println!("  {} fell ill from the cold", ill); }

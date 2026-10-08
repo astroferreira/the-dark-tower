@@ -173,9 +173,13 @@ pub fn steps3(map: &LocalMap, p: P3, out: &mut Vec<(P3, u32)>) {
 /// `max_nodes` expansions. Surface cells use dense arrays; cells off the surface (halls, stairs,
 /// caverns, upper floors) are numbered as they are met. Worn ground (`steps`) is cheaper on the
 /// surface, as in `path_worn`.
-pub fn path3(map: &LocalMap, steps: Option<&[u16]>, from: P3, to: P3, max_nodes: usize) -> Option<Vec<P3>> {
+pub fn path3(map: &LocalMap, steps: Option<&[u16]>, from: P3, to: P3, max_nodes: usize) -> Option<Vec<P3>> { path3_barred(map, steps, from, to, max_nodes, None) }
+
+/// As `path3`, with one place barred (`bar`: a hatch in a stair, which creatures cannot pass):
+/// no walk stands there, so nothing goes up or down the stair through it.
+pub fn path3_barred(map: &LocalMap, steps: Option<&[u16]>, from: P3, to: P3, max_nodes: usize, bar: Option<P3>) -> Option<Vec<P3>> {
     if from == to { return Some(vec![from]); }
-    if !standable(map, to.0 as usize, to.1 as usize, to.2) { return None; }
+    if !standable(map, to.0 as usize, to.1 as usize, to.2) || bar == Some(to) { return None; }
     let (w, h) = (map.width, map.height);
     let n = w * h;
     let mut extra: crate::history::det::HashMap<P3, u32> = Default::default();
@@ -213,6 +217,7 @@ pub fn path3(map: &LocalMap, steps: Option<&[u16]>, from: P3, to: P3, max_nodes:
         if expanded > max_nodes { return None; }
         steps3(map, p, &mut nb);
         for &(q, c) in nb.iter() {
+            if bar == Some(q) { continue; }
             let c = match steps {
                 Some(st) if st.len() == n && map.surface_z[q.1 as usize * w + q.0 as usize] == q.2 => c * (100 - (st[q.1 as usize * w + q.0 as usize] as u32 / 2).min(35)) / 100,
                 _ => c,

@@ -160,7 +160,7 @@ impl Colony {
             let Some(at) = self.passable_near_pub(at) else { continue };
             let path = nav::path(&self.map, at, self.camp, PATH_BUDGET).map(|p| p.into_iter().skip(1).collect()).unwrap_or_default();
             let id = self.new_creature_id();
-            self.creatures.push(Creature { kind: CreatureKind::Trader, name: format!("traders of {}", p.town), pos: at, path, stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id });
+            self.creatures.push(Creature { kind: CreatureKind::Trader, name: format!("traders of {}", p.town), pos: at, path, stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
             spawned += 1;
         }
         if spawned > 0 {

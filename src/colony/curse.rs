@@ -27,7 +27,7 @@ impl Colony {
             let p = ((self.camp.0 as f32 + a.cos() * 30.0) as i32, (self.camp.1 as f32 + a.sin() * 30.0) as i32);
             if let Some(at) = self.passable_near_pub(p) {
                 let id = self.new_creature_id();
-                self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}{}", beast, MOON), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.4, home: at, spawned: self.clock.tick, id });
+                self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}{}", beast, MOON), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.4, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
                 self.note(format!("The full moon rises, and something howls in the hills: {} is abroad.", beast));
                 said = true;
             }
@@ -44,7 +44,7 @@ impl Colony {
             let away = ((self.camp.0 as f32 + a.cos() * 45.0) as i32, (self.camp.1 as f32 + a.sin() * 45.0) as i32);
             if let Some(far) = self.passable_near_pub(away) { self.start(i, Job::Wander(far), "Gone out into the night under the full moon".into()); }
             let id = self.new_creature_id();
-            self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}{}", name, CHANGED), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id });
+            self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}{}", name, CHANGED), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
             if !said { self.note("The full moon rises.".into()); said = true; }
         }
     }
