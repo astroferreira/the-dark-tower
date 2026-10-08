@@ -21,6 +21,7 @@ pub mod wildlife;
 pub mod site;
 pub mod places;
 pub mod caverns;
+pub mod audit;
 
 use noise::{NoiseFn, Perlin};
 
@@ -196,6 +197,14 @@ impl LocalMap {
     }
     pub fn cell(&self, x: usize, y: usize, z: usize) -> &Cell {
         &self.cells[self.idx(x, y, z)]
+    }
+    /// The level of the ground itself in a column: `surface_z`, except under ice or water, where
+    /// `surface_z` is the ice (a frozen lake's top) and the ground is the bed beneath, the level
+    /// above the highest solid cell.
+    pub fn ground_z(&self, x: usize, y: usize) -> i32 {
+        let sz = self.surface_z[y * self.width + x];
+        if sz < 1 || self.cell(x, y, (sz - 1) as usize).shape == Shape::Wall { return sz; }
+        (0..sz).rev().find(|&z| self.cell(x, y, z as usize).shape == Shape::Wall).map(|z| z + 1).unwrap_or(sz)
     }
     /// Elevation (m) of the bottom of z-level `z`.
     pub fn z_elevation(&self, z: i32) -> f32 {
@@ -800,7 +809,8 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
                     let (x, y) = (px + dx, py + dy);
                     if x < 2 || y < 2 || x as usize + 2 >= map.width || y as usize + 2 >= map.height { continue; }
                     let (x, y) = (x as usize, y as usize);
-                    let sz = map.surface_z[y * map.width + x];
+                    // The ground itself: under a frozen lake `surface_z` is the ice, not the bed.
+                    let sz = map.ground_z(x, y);
                     for z in top + 1..sz - 2 { if map.cavern_at(x, y, z).is_none() { molten(&mut map, x, y, z); } }
                 } }
                 map.magma_pipe = Some((px.max(0) as u16, py.max(0) as u16));
@@ -892,6 +902,8 @@ mod tests {
         let region = crate::region::zoom::generate_zoom(&world, &params);
         let map = generate_local(&world, &region, None, region.width as f64 / 2.0, region.height as f64 / 2.0);
         assert_eq!(map.cells.len(), LOCAL_SIZE * LOCAL_SIZE * map.depth);
+        let issues = map.audit();
+        assert!(issues.is_empty(), "embark audit: {issues:?}");
         // Places carved under the ground (caves, lairs, tombs: `places.rs`) are open below it.
         let carved: std::collections::HashSet<(u16, u16)> = map.places.iter().flat_map(|p| p.cells.iter().map(|c| c.0)).collect();
         assert!(!map.caverns.is_empty(), "no cavern under the test embark");

@@ -2688,6 +2688,10 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
     println!("Playable area: {}x{} tiles x {} z-levels, biome {:?}, generated in {:.2}s", map.width, map.height, map.depth, map.biome, t0.elapsed().as_secs_f32());
     let site = crate::local::site::report(&map);
     println!("Site ({} kinds): {}", site.len(), site.join(", "));
+    if std::env::var("PLANET_LOCAL_AUDIT").is_ok() {
+        let issues = map.audit();
+        if issues.is_empty() { println!("Audit: clean"); } else { for i in &issues { println!("Audit: {i}"); } }
+    }
     let n = map.width;
     let cz = map.surface_z[(n / 2) * n + n / 2];
     let (w, h) = (n * 6, n * 6);
@@ -2711,6 +2715,14 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
     save(&format!("z{}", cz - 4), &buf)?;
     render_local(&map, atlas, &cam(cz - 12, false), &mut buf, w, h);
     save(&format!("z{}", cz - 12), &buf)?;
+    // PLANET_LOCAL_Z="1,2,3": more level slices at those absolute z-levels (the bottom of the
+    // map is the magma sea at 1-3), written to `<prefix>_lvl<z>.png`.
+    if let Ok(list) = std::env::var("PLANET_LOCAL_Z") {
+        for z in list.split(',').filter_map(|s| s.trim().parse::<i32>().ok()) {
+            render_local(&map, atlas, &cam(z.clamp(0, map.depth as i32 - 1), false), &mut buf, w, h);
+            save(&format!("lvl{z}"), &buf)?;
+        }
+    }
     // A close-up at the viewer's real scale (16 px per tile), at the centre or at the cell
     // given by PLANET_LOCAL_CLOSE="x,y" (for checking a particular spot).
     let (cw, ch) = (1024usize, 640usize);

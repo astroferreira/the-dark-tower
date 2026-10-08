@@ -152,3 +152,9 @@ the zoomed region around a point.
   from it to three levels under the surface, 40-70 cells from the middle (`magma_pipe`). Drawn
   glowing orange in level views and sections; the section reaches down to it once the colony's
   stair comes near. `--sim-projects` prints a `Magma:` line.
+- Testing aids (2026-10-08): `LocalMap::audit()` (`local/audit.rs`) lists violated invariants (magma only
+  in the sea and pipe and never within 2 levels of the ground, no floating water, no hollow under the
+  ground that is no cavern/place/water, loose ground under rock...); `PLANET_LOCAL_AUDIT=1` prints it
+  with `--local-snapshot`, and the unit test asserts it is empty. `PLANET_LOCAL_Z="1,2,3"` writes
+  extra level slices (`_lvl<z>.png`). `LocalMap::ground_z` is the ground under ice or water
+  (`surface_z` is the ice over a frozen lake): the magma pipe stops 3 levels under it, not under the ice.
