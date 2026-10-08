@@ -245,7 +245,7 @@ impl Colony {
             // Given back: a gift in return.
             let gift = if r.owners_iron && !self.tools_bought { self.tools_bought = true; "iron tools".to_string() } else {
                 let n = 2 * self.alive() as u32;
-                for _ in 0..n { self.items.push(Item { kind: ItemKind::Food, at: self.camp, stored: true, reserved: false }); }
+                for _ in 0..n { self.items.push(Item::food(Stuff::Provisions, self.camp, true)); }
                 format!("{} meals", n)
             };
             let line = format!("{} gives {} back to the envoy of {}, because {}. In thanks they leave {}.", jn, r.name, r.owners_name, why, gift);

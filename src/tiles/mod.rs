@@ -3,8 +3,10 @@
 
 pub mod atlas;
 mod colony_hud;
+mod colony_ui;
 pub mod classify;
 pub mod fonts;
+pub mod glyphs;
 pub mod heraldry;
 pub mod inspector;
 pub mod local_ink;

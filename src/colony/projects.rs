@@ -641,7 +641,7 @@ impl Colony {
                     self.map.cells[k].plant = Plant::None;
                     // Seed grain from the caravan gives half again (`liaison.rs`).
                     let n = if self.seed_grain { 3 } else { 2 };
-                    for _ in 0..n { self.items.push(super::Item { kind: ItemKind::Food, at: (x as u16, y as u16), stored: false, reserved: false }); }
+                    for _ in 0..n { self.items.push(super::Item::food(super::Stuff::Grain, (x as u16, y as u16), false)); }
                     reaped += n;
                 }
             } }

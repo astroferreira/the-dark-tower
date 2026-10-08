@@ -306,3 +306,29 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   (was sky). `PLANET_FRAMES` also writes `_foot.png` (stair's foot) and `_magma.png` (the pipe)
   and prints best-of-three frame times (~12-13 ms each at 1280x800, 16 px, unloaded M4 Pro).
   Not done: `--local-snapshot`'s `_section.png` is still the old pixel cross-section.
+
+### The colony's ledger and things on the ground (2026-10-08, half-done)
+- `colony_ui.rs`: a parchment panel on the right (40% of the window, 400-600 px) with five tabs
+  (Settlers C, Stocks I, Works O, Annals L, Camp T) and a settler sheet; a button bar along the
+  bottom for the patron's verbs, stones, names and the clock. Leaves scroll in their own buffer
+  (`Pane`), every click is an `Action` hit for the viewer to carry out. `--sim-snapshot` writes
+  `<prefix>_ui_settlers/_stocks/_works/_annals/_camp/_sheet.png` and `_ui_store.png` (the store
+  close up with the hover chip and every glyph in a strip) and prints "UI leaf: N things to
+  click"; `tests/colony.rs::the_ledger_leaves_render`.
+- NOT WIRED INTO THE WINDOW YET: `viewer.rs` still draws the old key bar (`HudState::bar`) and
+  has no tab keys, clicks, wheel scrolling, tools or sheet pause. To do: keep a `UiState`, call
+  `colony_ui::draw` after the HUD (pass `right: reserve_right`, `selected`, `hide_chip` when
+  `over_ui`, `bar: false`), map `Action`s onto the existing calls (`mark_place`,
+  `place_stone`, `favour_settler`, `send_dream` via `dream_for`, `ring_bell`, `name_input`,
+  `answer_refugees`, the Space/1-3/4 code), arm `Tool`s for map clicks, wheel over
+  `body_rect` -> `scroll_by`, no drag from the UI, Esc order (inspector, tool, sheet, panel,
+  card, leave), pause on opening a sheet (`paused_by_sheet`), click a settler -> `Sheet`,
+  `dream_buttons` / `choice_buttons` on the cards. `Tool::NamePlace` needs `name_place` to be
+  recorded in `interventions` (and `apply_intervention`) first: it is not today.
+- Items: `colony::Item` carries `what: Stuff` (berries, fish, meat, grain, cave fungus,
+  provisions, timber, stone; set where the load is made, kept through hauling; the simulation
+  never reads it: the colony hash is unchanged). `glyphs.rs` draws 24 ink glyphs (one stamp:
+  wash, ink rim, lit side pale, far side hatched from 9 px). The map shows loose things as their
+  glyph (piled per cell, a count past 3) and the store as one heap per kind round the fire
+  (`local_ink::store_heaps`, fixed slots; counts lettered from 10 px); carriers show the load's
+  glyph; the hover chip names a heap or a thing on the ground.

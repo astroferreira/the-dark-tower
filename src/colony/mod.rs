@@ -119,7 +119,31 @@ impl Clock {
 pub enum ItemKind { Log, Food, Stone }
 
 #[derive(Clone, Debug)]
-pub struct Item { pub kind: ItemKind, pub at: Pos, pub stored: bool, pub reserved: bool }
+pub struct Item { pub kind: ItemKind, pub at: Pos, pub stored: bool, pub reserved: bool, /** What it is, for the eye. */ pub what: Stuff }
+
+/// What a load is, for the eye: the store and the map tell berries from fish and meat. The
+/// simulation reads only `ItemKind`; this is set where the thing is made and carried with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stuff { Berries, Fish, Meat, Grain, Fungus, Provisions, Timber, Stone }
+
+impl Stuff {
+    pub fn of(kind: ItemKind) -> Stuff { match kind { ItemKind::Log => Stuff::Timber, ItemKind::Stone => Stuff::Stone, ItemKind::Food => Stuff::Provisions } }
+    /// "berries", "fish", "logs": what a heap of them is called.
+    pub fn plural(self) -> &'static str {
+        match self { Stuff::Berries => "berries", Stuff::Fish => "fish", Stuff::Meat => "meat", Stuff::Grain => "grain", Stuff::Fungus => "cave fungus", Stuff::Provisions => "provisions", Stuff::Timber => "logs", Stuff::Stone => "stone" }
+    }
+    /// One of them: "a basket of berries", "a log".
+    pub fn one(self) -> &'static str {
+        match self { Stuff::Berries => "a basket of berries", Stuff::Fish => "a fish", Stuff::Meat => "a joint of meat", Stuff::Grain => "a sheaf of grain", Stuff::Fungus => "a basket of cave fungus", Stuff::Provisions => "a sack of provisions", Stuff::Timber => "a log", Stuff::Stone => "a stone" }
+    }
+    pub const ALL: [Stuff; 8] = [Stuff::Berries, Stuff::Fish, Stuff::Meat, Stuff::Grain, Stuff::Fungus, Stuff::Provisions, Stuff::Timber, Stuff::Stone];
+}
+
+impl Item {
+    pub fn new(kind: ItemKind, at: Pos, stored: bool) -> Item { Item { kind, at, stored, reserved: false, what: Stuff::of(kind) } }
+    /// A meal's worth of food of a kind.
+    pub fn food(what: Stuff, at: Pos, stored: bool) -> Item { Item { kind: ItemKind::Food, at, stored, reserved: false, what } }
+}
 
 /// What a settler is doing.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -757,7 +781,7 @@ impl Colony {
             }
         }).collect::<Vec<_>>();
         // They arrive with two days of food.
-        let items = (0..names.len() * 2).map(|_| Item { kind: ItemKind::Food, at: camp, stored: true, reserved: false }).collect();
+        let items = (0..names.len() * 2).map(|_| Item::food(Stuff::Provisions, camp, true)).collect();
         let mut c = Colony {
             map, clock: Clock { tick: 6 * 60 }, settlers, items, camp, hut: None,
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
@@ -2234,9 +2258,9 @@ impl Colony {
                 if let Some(kind) = self.settlers[i].carrying.take() {
                     // Put it (and the rest of the basket) down where they stand.
                     let at = self.settlers[i].pos;
-                    self.items[k] = Item { kind, at, stored: at == self.camp, reserved: false };
+                    self.items[k] = Item { kind, at, stored: at == self.camp, reserved: false, what: self.items[k].what };
                     for e in self.basket.remove(&k).unwrap_or_default() {
-                        if e < self.items.len() { self.items[e] = Item { kind: self.items[e].kind, at, stored: at == self.camp, reserved: false }; }
+                        if e < self.items.len() { self.items[e] = Item { kind: self.items[e].kind, at, stored: at == self.camp, reserved: false, what: self.items[e].what }; }
                     }
                 } else if k < self.items.len() { self.items[k].reserved = false; }
             }
@@ -2437,7 +2461,7 @@ impl Colony {
                 self.claimed.remove(&t);
                 self.shrub_ready.insert(t, day + SHRUB_REGROW_DAYS);
                 let n = 3 + self.rng.gen_range(0..3);
-                for _ in 0..n { self.items.push(Item { kind: ItemKind::Food, at: self.settlers[i].pos, stored: false, reserved: false }); }
+                for _ in 0..n { self.items.push(Item::food(Stuff::Berries, self.settlers[i].pos, false)); }
                 self.once("forage", format!("{} brings in the first berries from the shrubs at {},{}.", name, t.0, t.1));
                 // Carry the basket home (what doesn't fit is left for others to fetch).
                 let n = self.eat_catch(i, n);
@@ -2448,7 +2472,7 @@ impl Colony {
                 let caught = self.rng.gen_range(1..4);
                 // (Carried up to the mouth from below.)
                 let at = if self.below(i) { self.delve_mouth.unwrap_or(self.camp) } else { self.settlers[i].pos };
-                for _ in 0..caught { self.items.push(Item { kind: ItemKind::Food, at, stored: false, reserved: false }); }
+                for _ in 0..caught { self.items.push(Item::food(Stuff::Fish, at, false)); }
                 if self.below(i) { self.once("cave fish", format!("{} brings up the first blind white fish from the still water of the cavern: they taste of nothing, and they keep the camp.", name)); }
                 else { self.once("fish", format!("{} catches the first fish from the river at {},{}.", name, t.0, t.1)); }
                 // A spot fished out for a while (not the jetty's, which reaches deep water).
@@ -2475,7 +2499,7 @@ impl Colony {
                     self.felled.push((t, kind, self.clock.day()));
                     // A stump marks where it stood.
                     self.map.features[y * self.map.width + x] = crate::local::wildlife::Feature::Stump;
-                    for _ in 0..2 { self.items.push(Item { kind: ItemKind::Log, at: t, stored: false, reserved: false }); }
+                    for _ in 0..2 { self.items.push(Item::new(ItemKind::Log, t, false)); }
                     let for_hut = if self.hut.as_ref().map_or(false, |h| !h.done && self.hut_material == ItemKind::Log) { " for the hut" } else { "" };
                     self.once("fell", format!("{} fells the first tree, at {},{}: two logs{}.", name, t.0, t.1, for_hut));
                     // They drag both logs home themselves (walking costs time now).
@@ -2489,7 +2513,7 @@ impl Colony {
                 if self.map.cells[k].boulder || matches!(self.map.cells[k].material, Material::Rock(_)) {
                     // A boulder is carried off; bare rock is broken down to gravel.
                     if self.map.cells[k].boulder { self.map.cells[k].boulder = false; } else { self.map.cells[k].material = Material::Gravel; }
-                    for _ in 0..2 { self.items.push(Item { kind: ItemKind::Stone, at: t, stored: false, reserved: false }); }
+                    for _ in 0..2 { self.items.push(Item::new(ItemKind::Stone, t, false)); }
                     self.once("quarry", format!("{} breaks the first stone, at {},{}: there is no timber to be had, so they will build in stone.", name, t.0, t.1));
                     if self.carry_home(i, 2) { return; }
                 }
@@ -2511,7 +2535,7 @@ impl Colony {
                 } else {
                     let kind = self.settlers[i].carrying.take().unwrap();
                     if k < self.items.len() {
-                        self.items[k] = Item { kind, at: self.camp, stored: true, reserved: false };
+                        self.items[k] = Item { kind, at: self.camp, stored: true, reserved: false, what: self.items[k].what };
                     }
                     for e in self.basket.remove(&k).unwrap_or_default() {
                         if e < self.items.len() { self.items[e].stored = true; self.items[e].reserved = false; self.items[e].at = self.camp; }

@@ -1837,3 +1837,20 @@ fn ore_becomes_bars_tools_and_iron_spears() {
     assert!(spare.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron")), "no bars sold");
     assert!(text.lines().any(|l| l.contains("dresses the first blocks of")), "no blocks at the mason's");
 }
+
+#[test]
+fn the_ledger_leaves_render() {
+    // `--sim-snapshot` renders each leaf of the colony's ledger (`tiles/colony_ui.rs`) to PNG.
+    let dir = std::env::temp_dir().join(format!("colony_ui_test_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (out, _) = run(&dir);
+    for leaf in ["ui_settlers", "ui_stocks", "ui_works", "ui_annals", "ui_camp", "ui_sheet", "ui_store"] {
+        assert!(dir.join(format!("colony_{leaf}.png")).exists(), "no {leaf} render:\n{out}");
+    }
+    for leaf in ["ui_settlers", "ui_stocks", "ui_works", "ui_camp", "ui_sheet"] {
+        let line = out.lines().find(|l| l.starts_with(&format!("UI {leaf}:"))).unwrap_or_else(|| panic!("no UI {leaf} line:\n{out}"));
+        let n: usize = line.split(':').nth(1).and_then(|r| r.split_whitespace().next()).and_then(|x| x.parse().ok()).unwrap_or(0);
+        assert!(n >= 10, "the {leaf} leaf has too little to click: {line}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

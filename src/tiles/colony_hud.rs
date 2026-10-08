@@ -15,6 +15,14 @@ pub(crate) struct HudState<'a> {
     /// The answer to the player's last act ("The patron favours X; the others notice.").
     pub status: &'a str,
     pub mouse: (f32, f32),
+    /// Pixels taken on the right by the open ledger (`colony_ui`): the log stays clear of it.
+    pub right: usize,
+    /// The settler chosen in the ledger: an ink ring round them.
+    pub selected: Option<usize>,
+    /// No chip at the mouse (it is over the interface).
+    pub hide_chip: bool,
+    /// Draw the old key bar (the window, until `colony_ui`'s button bar is wired in).
+    pub bar: bool,
 }
 
 /// A clickable log line and the settler it names.
@@ -95,6 +103,10 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
             let c = to_screen_f(lcam, w, h, p);
             ring(buf, w, h, c, (lcam.tile_px * 0.9).max(7.0), GOLD, 1.6);
         }
+        if let Some(i) = st.selected.filter(|&i| colony.settlers.get(i).map_or(false, |s| s.alive) && !colony.below(i)) {
+            let c = to_screen_f(lcam, w, h, colony.draw_pos(i));
+            ring(buf, w, h, c, (lcam.tile_px * 1.1).max(9.0), RUBRIC, 1.2);
+        }
         for &(i, _, until) in &colony.patron.dreams {
             if until <= colony.clock.tick || !colony.settlers[i].alive { continue; }
             let c = to_screen_f(lcam, w, h, colony.draw_pos(i));
@@ -146,14 +158,14 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     // Bottom: the keys. The patron's verbs fade while there is no favour.
     let bar_h = 26usize;
     let bar = Rect { x: 10, y: h - bar_h - 8, w: w - 20, h: bar_h };
-    ui::card(buf, w, bar);
+    if st.bar { ui::card(buf, w, bar); }
     let spent = colony.patron.favour == 0;
     let keys: [(&str, bool); 16] = [
         ("F bless", true), ("X forbid", true), ("G favour", true), ("R dream", true), ("B bell", true),
         ("H/J/K stones", false), ("N name", false), ("Space pause", false), ("1/2/3 speed", false), ("4 skip", false), ("M stops", false), ("U section", false), ("</> levels", false), ("[/] delve", false), ("click to read", false), ("Esc leave", false),
     ];
     let mut x = 22.0;
-    for (text, costs) in keys {
+    for (text, costs) in keys.into_iter().filter(|_| st.bar) {
         let color = if costs && spent { ui::mix(INK_FADED, ui::PAPER, 0.5) } else if costs { INK } else { INK_FADED };
         let tw = fonts::width(text, Face::Roman, SMALL, 0.0);
         if x + tw > (bar.x + bar.w) as f32 - 12.0 { break; }
@@ -162,7 +174,7 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     }
 
     // Bottom left: the last six moments, newest darkest.
-    let log_w = 560usize.min(w.saturating_sub(40 + super::inspector::panel_rect(w, h).w.min(w / 3)));
+    let log_w = 560usize.min(w.saturating_sub(40 + super::inspector::panel_rect(w, h).w.min(w / 3).max(st.right)));
     let n = colony.log.len().min(6);
     if n > 0 && log_w > 200 {
         let line_h = 18usize;
@@ -186,11 +198,20 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     }
 
     // At the mouse: who this is, what they are doing and why.
-    if lcam.surface_view {
+    if lcam.surface_view && !st.hide_chip {
         let (hx, hy) = (lcam.cx + (st.mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (st.mouse.1 - h as f32 / 2.0) / lcam.tile_px);
         let reach = (0.8f32).max(8.0 / lcam.tile_px);
         let building = if hx >= 0.0 && hy >= 0.0 { colony.building_at((hx as u16, hy as u16)) } else { None };
         let under = colony.settler_at(hx, hy, reach, if lcam.surface_view { None } else { Some(lcam.z) });
+        // A thing on the ground or a heap of the store: what it is and how many.
+        let cell = (hx.floor() as i64, hy.floor() as i64);
+        let thing = if under.is_none() && cell.0 >= 0 && cell.1 >= 0 {
+            super::local_ink::store_heaps(colony).into_iter().find(|hp| hp.cell.0 as i64 == cell.0 && hp.cell.1 as i64 == cell.1)
+                .map(|hp| format!("The store: {} {}", hp.count, hp.stuff.plural()))
+                .or_else(|| super::local_ink::loose_piles(colony).into_iter().find(|p| p.0 .0 as i64 == cell.0 && p.0 .1 as i64 == cell.1)
+                    .map(|(_, s, n)| if n == 1 { format!("{}, lying here to be carried in", super::colony_ui::cap_pub(s.one())) } else { format!("{} {}, lying here to be carried in", n, s.plural()) }))
+        } else { None };
+        let building = thing.or(building);
         if let (Some(b), None) = (&building, under) {
             let chip_w = 320.0f32.min(w as f32 - 20.0);
             let lines = wrap_px(b, Face::Italic, SMALL, chip_w - 24.0);

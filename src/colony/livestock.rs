@@ -65,7 +65,7 @@ impl Colony {
         if n < 3 || self.food_stored() * 2 >= self.food_goal() || (!starving && self.slaughter_day > 0 && self.clock.day() < self.slaughter_day + 7) { return; }
         self.slaughter_day = self.clock.day();
         let at = self.pen_at().unwrap_or(self.camp);
-        for _ in 0..8 { self.items.push(Item { kind: ItemKind::Food, at, stored: false, reserved: false }); }
+        for _ in 0..8 { self.items.push(Item::food(Stuff::Meat, at, false)); }
         self.pen = Some((kind.clone(), n - 1));
         self.hunted += 1;
         self.note(format!("With the store low they slaughter one of the {} in the pen: eight meals, and the hide and bone.", kind));

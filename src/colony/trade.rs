@@ -190,7 +190,7 @@ impl Colony {
             self.note(format!("The traders of {} find nothing they want; they share the fire and move on.{}", p.town, news_line));
         } else {
             let meals = (value * 2).min(48);
-            for _ in 0..meals { self.items.push(Item { kind: ItemKind::Food, at: camp, stored: true, reserved: false }); }
+            for _ in 0..meals { self.items.push(Item::food(Stuff::Provisions, camp, true)); }
             let tools = p.iron && !self.tools_bought && value >= 12;
             if tools { self.tools_bought = true; }
             let what = if count > 2 { format!("{} and {} more", sold.join(", "), count - 2) } else { sold.join(" and ") };

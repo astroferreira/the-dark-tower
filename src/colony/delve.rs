@@ -424,7 +424,7 @@ impl Colony {
         if self.map.cells[k].plant != crate::local::Plant::Tree(crate::local::TreeKind::Fungus) { return false; }
         self.map.cells[k].plant = crate::local::Plant::None;
         let at = self.delve_mouth.unwrap_or(self.camp);
-        for _ in 0..2 { self.items.push(Item { kind: ItemKind::Log, at, stored: false, reserved: false }); }
+        for _ in 0..2 { self.items.push(Item::new(ItemKind::Log, at, false)); }
         let name = self.settlers[i].name.clone();
         let cavern = self.map.caverns.iter().find(|c| Some(c.layer as usize) == self.map.cavern_at(t.0 as usize, t.1 as usize, f + 1)).map(|c| c.name.clone()).unwrap_or_else(|| "the cavern".into());
         let first = self.milestones.insert("cavern wood");

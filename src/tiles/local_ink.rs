@@ -818,9 +818,11 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
     let haft: Rgb = [120.0, 84.0, 50.0];
     match (s.job, s.carrying) {
         _ if watch || matches!((s.job, s.carrying), (Job::Hunt(_), None)) => { line(put, gx + g * 0.5, gy - g * 0.6, gx + g * 0.5, gy + g * 1.6, INK); line(put, gx + g * 0.2, gy - g * 0.2, gx + g * 0.5, gy - g * 0.8, INK); line(put, gx + g * 0.8, gy - g * 0.2, gx + g * 0.5, gy - g * 0.8, INK); }
-        (_, Some(kind)) => {
-            let col = match kind { ItemKind::Log => [150.0, 104.0, 64.0], ItemKind::Stone => [168.0, 166.0, 158.0], ItemKind::Food => [196.0, 64.0, 70.0] };
-            ink_disc(put, gx + g * 0.5, gy + g * 0.9, g * 0.55, col, INK);
+        (job, Some(kind)) => {
+            // What they carry, as its glyph (the load's own kind: berries, a fish, a log...).
+            let stuff = match job { Job::Haul(k) => colony.items.get(k).map(|it| it.what), _ => None }.unwrap_or(crate::colony::Stuff::of(kind));
+            let _: ItemKind = kind;
+            super::glyphs::draw(put, super::glyphs::Glyph::of_stuff(stuff), gx + g * 0.6, gy + g * 0.9, (g * 1.5).max(6.0), None);
         }
         (Job::Fell(_), _) => { line(put, gx, gy + g * 1.4, gx + g, gy, haft); line(put, gx + g * 0.6, gy - g * 0.2, gx + g * 1.2, gy + g * 0.4, INK); line(put, gx + g * 0.7, gy - g * 0.1, gx + g * 1.1, gy + g * 0.3, INK); }
         // A pick: for the quarry and the dig below.
@@ -842,6 +844,42 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
         _ => {}
     }
     hy - hr
+}
+
+/// One of the store's heaps by the fire: where it lies (in cells), what, and how many.
+pub(crate) struct Heap { pub cell: (f32, f32), pub stuff: crate::colony::Stuff, pub count: usize }
+
+/// The store's heaps: one a kind of thing, each kind in its own place round the fire (timber and
+/// stone east of it, the kinds of food west), so a heap does not wander as others come and go.
+pub(crate) fn store_heaps(colony: &crate::colony::Colony) -> Vec<Heap> {
+    use crate::colony::Stuff;
+    let slot = |s: Stuff| -> (f32, f32) {
+        match s {
+            Stuff::Timber => (2.0, 0.0), Stuff::Stone => (2.0, 1.0), Stuff::Berries => (-2.0, 0.0), Stuff::Fish => (-2.0, 1.0),
+            Stuff::Meat => (-3.0, 0.0), Stuff::Grain => (-3.0, 1.0), Stuff::Fungus => (-1.0, 1.0), Stuff::Provisions => (-1.0, -1.0),
+        }
+    };
+    let mut out = Vec::new();
+    for s in Stuff::ALL {
+        let n = colony.items.iter().filter(|it| it.stored && it.what == s).count();
+        if n == 0 { continue; }
+        let (dx, dy) = slot(s);
+        out.push(Heap { cell: (colony.camp.0 as f32 + dx, colony.camp.1 as f32 + dy), stuff: s, count: n });
+    }
+    out
+}
+
+/// Things lying about (not in the store, not in someone's arms): (cell, what, how many), one
+/// entry per cell and kind.
+pub(crate) fn loose_piles(colony: &crate::colony::Colony) -> Vec<((u16, u16), crate::colony::Stuff, usize)> {
+    let carried: Vec<usize> = colony.settlers.iter().filter(|s| s.alive && s.carrying.is_some()).filter_map(|s| if let crate::colony::Job::Haul(k) = s.job { Some(k) } else { None }).collect();
+    let mut out: Vec<((u16, u16), crate::colony::Stuff, usize)> = Vec::new();
+    for (k, it) in colony.items.iter().enumerate() {
+        // Stored, carried, or riding in a basket on its way home.
+        if it.stored || carried.contains(&k) || (it.reserved && it.at == colony.camp) { continue; }
+        match out.iter_mut().find(|e| e.0 == it.at && e.1 == it.what) { Some(e) => e.2 += 1, None => out.push((it.at, it.what, 1)) }
+    }
+    out
 }
 
 pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, history: Option<&crate::history::world_state::WorldHistory>) {
@@ -958,21 +996,21 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     let (fx, fy) = to_screen(colony.camp.0 as f32 + 0.5, colony.camp.1 as f32 + 0.5);
     disc(&mut put, fx, fy, (t * 0.45).max(3.0), [214.0, 120.0, 60.0], INK);
     disc(&mut put, fx, fy, (t * 0.18).max(1.5), [240.0, 200.0, 110.0], [214.0, 120.0, 60.0]);
-    // Things lying about (stored ones are drawn as a heap at the camp).
-    let (mut logs, mut food) = (0, 0);
-    for it in &colony.items {
-        if it.stored { match it.kind { ItemKind::Log | ItemKind::Stone => logs += 1, ItemKind::Food => food += 1 }; continue; }
-        let (x, y) = to_screen(it.at.0 as f32 + 0.5, it.at.1 as f32 + 0.5);
-        let col = match it.kind { ItemKind::Log => [150.0, 104.0, 64.0], ItemKind::Stone => [168.0, 166.0, 158.0], ItemKind::Food => [196.0, 64.0, 70.0] };
-        disc(&mut put, x, y, (t * 0.18).max(1.5), col, INK);
+    // Things lying about, each as its own ink glyph (a log, a stone, berries, a fish...), piled
+    // where several lie on one cell; the store's heaps by the fire, one heap a kind.
+    let mut count_at: Vec<(f32, f32, String)> = Vec::new();
+    for (cell, stuff, n) in loose_piles(colony) {
+        let (x, y) = to_screen(cell.0 as f32 + 0.5, cell.1 as f32 + 0.5);
+        if x < -t || y < -t || x > w as f32 + t || y > h as f32 + t { continue; }
+        let g = super::glyphs::Glyph::of_stuff(stuff);
+        if n == 1 { super::glyphs::draw(&mut put, g, x, y, (t * 0.7).clamp(6.0, 18.0), None); }
+        else { super::glyphs::heap(&mut put, g, n.min(3), x, y, t.max(9.0), None); }
+        if n > 3 && t >= 12.0 { count_at.push((x + t * 0.4, y - t * 0.55, n.to_string())); }
     }
-    for k in 0..logs.min(12) {
-        let (x, y) = to_screen(colony.camp.0 as f32 + 1.6 + (k % 4) as f32 * 0.22, colony.camp.1 as f32 + 0.2 + (k / 4) as f32 * 0.22);
-        disc(&mut put, x, y, (t * 0.12).max(1.2), [150.0, 104.0, 64.0], INK);
-    }
-    for k in 0..food.min(16) {
-        let (x, y) = to_screen(colony.camp.0 as f32 - 0.8 + (k % 4) as f32 * 0.2, colony.camp.1 as f32 + 0.2 + (k / 4) as f32 * 0.2);
-        disc(&mut put, x, y, (t * 0.1).max(1.0), [196.0, 64.0, 70.0], INK);
+    for heap in store_heaps(colony) {
+        let (x, y) = to_screen(heap.cell.0 + 0.5, heap.cell.1 + 0.5);
+        super::glyphs::heap(&mut put, super::glyphs::Glyph::of_stuff(heap.stuff), heap.count, x, y, t.max(9.0), None);
+        if heap.count > 1 && t >= 10.0 { count_at.push((x + t * 0.42, y - t * 0.6, heap.count.to_string())); }
     }
     // The patron's marks: a dashed ring, gold for blessed ground, red and hatched for forbidden.
     for m in &colony.patron.marks {
@@ -1234,6 +1272,12 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     if let (Some(m), true) = (colony.delve_mouth, below > 0) {
         let (x, y) = to_screen(m.0 as f32 + 0.5, m.1 as f32 + 1.6);
         letter(buf, w, h, placed, x, y, &format!("{} below", below), Face::Italic, 13.0, 0.0, 0x0030_1E14);
+    }
+    // How many lie in each heap: a small number at its shoulder.
+    for (x, y, n) in count_at {
+        let tw = super::fonts::width(&n, Face::Roman, 11.0, 0.0);
+        placed.push((x - 1.0, y, tw + 2.0, 12.0));
+        super::fonts::draw(buf, w, h, x, y, &n, Face::Roman, 11.0, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
     }
     // Names in the map's hand, stepping aside (above, below, right, left), or left out when
     // there is no room (hover shows them).

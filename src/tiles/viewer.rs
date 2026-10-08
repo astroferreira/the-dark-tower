@@ -1223,7 +1223,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         if lcam.surface_view { super::local_ink::draw_colony(colony, lcam, &mut buf, w, h, history); }
                         else { super::local_ink::draw_level(colony, lcam, &mut buf, w, h, history); }
                     }
-                    log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: &status, mouse }, &mut buf, w, h);
+                    log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: &status, mouse, right: 0, selected: None, hide_chip: false, bar: true }, &mut buf, w, h);
                     if let Some(m) = &moment_card { super::colony_hud::draw_moment(m, &mut buf, w, h); }
                     let prompt = if leave_asked {
                         Some((format!("Leave {}?", colony.name.clone().unwrap_or_else(|| "the camp".into())), "Enter to leave (the patron's acts are saved). Esc to stay.".to_string()))
@@ -2528,7 +2528,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         let mouse = ((st.pos.0 as f32 + 0.5 - cam.cx) * cam.tile_px + w as f32 / 2.0, (st.pos.1 as f32 + 0.5 - cam.cy) * cam.tile_px + h as f32 / 2.0);
         let last = colony.log.iter().rev().find(|l| l.contains("(your doing)")).cloned().unwrap_or_default();
         let status = last.split_once("  ").map(|x| x.1.to_string()).unwrap_or_default();
-        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 1, status: &status, mouse }, &mut buf, w, h);
+        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 1, status: &status, mouse, right: 0, selected: None, hide_chip: false, bar: true }, &mut buf, w, h);
         let path = format!("{prefix}_hud.png");
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
         written.push(path);
@@ -2541,7 +2541,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         let cam = LocalCamera { cx: m.at.0 as f32 + 0.5, cy: m.at.1 as f32 + 0.5, tile_px: 16.0, z: 0, surface_view: true };
         render_local(&colony.map, atlas, &cam, &mut buf, w, h);
         draw_colony(&colony, &cam, &mut buf, w, h, history);
-        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 0, status: "", mouse: (-100.0, -100.0) }, &mut buf, w, h);
+        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 0, status: "", mouse: (-100.0, -100.0), right: 0, selected: None, hide_chip: false, bar: true }, &mut buf, w, h);
         super::colony_hud::draw_moment(m, &mut buf, w, h);
         let path = format!("{prefix}_moment.png");
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
@@ -2561,6 +2561,8 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
         written.push(path);
     }
+    // The ledger's leaves and a sheet, as the window will show them (`colony_ui`).
+    written.extend(super::colony_ui::save_ui_snapshots(&colony, history, atlas, prefix));
     let path = format!("{prefix}_log.txt");
     std::fs::write(&path, colony.log.join("\n") + "\n")?;
     written.push(path);

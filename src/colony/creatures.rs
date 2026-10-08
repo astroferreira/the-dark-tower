@@ -434,7 +434,7 @@ impl Colony {
         self.creatures.remove(k);
         // One who loves the creature is sorry to have killed it.
         if super::fond_of(&self.settlers[i].persona, &name) { let w = name.clone(); self.feel(i, super::mind::Feel::KilledLiked { what: w }); }
-        for _ in 0..6 { self.items.push(super::Item { kind: super::ItemKind::Food, at: me, stored: false, reserved: false }); }
+        for _ in 0..6 { self.items.push(super::Item::food(super::Stuff::Meat, me, false)); }
         let who = self.settlers[i].name.clone();
         self.once("hunt", format!("{} brings down the first {} at {},{}: meat for six meals.", who, name, me.0, me.1));
         self.hunted += 1;
