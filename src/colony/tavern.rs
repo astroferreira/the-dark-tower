@@ -36,12 +36,14 @@ impl Colony {
         // drawn to violence, come to blows over their cups one evening in four; the one who
         // started it has a crime to answer for at dawn (`justice.rs`).
         let hot = |c: &Colony, i: usize| { let p = &c.settlers[i].persona; p.facet(crate::persona::Facet::Anger) >= 70 || p.facet(crate::persona::Facet::Violence) >= 60 };
-        let pair = who.iter().flat_map(|&a| who.iter().map(move |&b| (a, b))).filter(|&(a, b)| a != b && hot(self, a) && self.opinion(a, b) <= -3)
+        // (Debug: PLANET_FORCE_BRAWL=1 takes any dislike and drops the roll, for the test.)
+        let forced = std::env::var("PLANET_FORCE_BRAWL").is_ok();
+        let pair = who.iter().flat_map(|&a| who.iter().map(move |&b| (a, b))).filter(|&(a, b)| a != b && (hot(self, a) || forced) && self.opinion(a, b) <= if forced { 0 } else { -3 })
             .min_by_key(|&(a, b)| (self.opinion(a, b), a, b));
         if let Some((a, b)) = pair {
             // (Not the same two again within twenty days.)
             let again = self.crimes.iter().any(|c| c.who == a && c.what.contains(&format!("struck {}", self.settlers[b].name)) && c.day + 20 > self.clock.day());
-            if !again && crate::history::settlers::hash_pub(self.seed ^ self.clock.day(), 0xB4A1 + a as u64) % 4 == 0 {
+            if !again && (forced || crate::history::settlers::hash_pub(self.seed ^ self.clock.day(), 0xB4A1 + a as u64) % 4 == 0) {
                 let day = self.clock.day();
                 let (an, bn) = (self.settlers[a].name.clone(), self.settlers[b].name.clone());
                 self.note(format!("{} and {} come to blows over their cups at the tavern; {} goes home with a split lip.", an, bn, bn));

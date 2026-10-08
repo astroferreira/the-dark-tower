@@ -61,6 +61,8 @@ impl Colony {
             arc_capital(&who), if who.contains(", led by ") { ", does" } else if who.starts_with("a ") { " does" } else { " do" }, side);
         self.note(line.clone());
         self.moment("The siege".into(), line, "because the palisade is closed and they came too many to be driven off in a night".into(), at);
+        // Up go the bridges over the ditch (`delve.rs`).
+        self.set_bridges(true);
         for j in 0..self.settlers.len() { if self.settlers[j].alive { self.feel(j, mind::Feel::News { what: "the camp is besieged".into(), good: false }); } }
         true
     }
@@ -72,7 +74,9 @@ impl Colony {
 
     /// Dawn: the days and meals counted; a sally, the fires gone cold, or the assault.
     pub(crate) fn reckon_siege(&mut self) {
-        let Some(s) = self.siege.clone() else { return };
+        let Some(s) = self.siege.clone() else { if self.bridges_up { self.set_bridges(false); } return };
+        // (Bridges not yet up while someone was outside: try again.)
+        self.set_bridges(true);
         let day = self.clock.day();
         if day < s.since || self.alive() == 0 { return; }
         if self.arc.as_ref().map_or(true, |a| a.stage != 2) { self.creatures.retain(|c| c.kind != creatures::CreatureKind::Besieger); self.siege = None; return; }
@@ -88,6 +92,7 @@ impl Colony {
             self.note(line.clone());
             self.moment("The sally".into(), line, format!("because {} would not wait to be starved", self.settlers[k].name), s.at);
             if let Some(x) = self.siege.as_mut() { x.sally = true; }
+            self.set_bridges(false);
             self.creatures.retain(|c| c.kind != creatures::CreatureKind::Besieger);
             self.raid_at(Some(s.at));
             self.siege = None;
@@ -102,7 +107,8 @@ impl Colony {
         }
         if day + 1 == s.until {
             let (ready, _, _) = self.readiness();
-            if ready >= 0.85 {
+            // (An island behind raised bridges wears a siege out sooner.)
+            if ready >= if self.bridges_up { 0.75 } else { 0.85 } {
                 let line = format!("In the night the besiegers' fires went cold: seeing the walls manned and the spears ready, {} have gone.", s.who.split(", led by ").next().unwrap_or(""));
                 self.note(line.clone());
                 self.moment("The siege lifts".into(), line, format!("because the camp held out {} days and was ready for them", day - s.since + 1), s.at);

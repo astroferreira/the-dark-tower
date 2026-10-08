@@ -1519,3 +1519,13 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   furnished; a moment), and engravers carve its walls. A great hall is eaten in only when it is no
   farther than the fire plus 10 cells (`eat_spot`). Seed 3 camped on tile 27,9
   (`PLANET_FORCE_CAMP=1`) takes the halls of Slitash on day 11.
+- Drawbridges (`ProjectKind::Drawbridges`, `delve.rs::build_drawbridges`/`set_bridges`, DF's
+  raising bridges): with the ditch dug and a siege come (or three chapters of trouble), the four
+  crossings are cut down two levels and spanned by a timber deck at the ground's level
+  (`Colony::bridges`: cell and deck level). A siege raises them (deck taken away, the column's
+  ground drops to the pit: walkers and raiders alike cannot cross) once nobody is outside the
+  ring, its end or a sally lowers them. Raised: readiness +0.12 ("ditched and its bridges
+  raised"), and the siege lifts at readiness 0.75 instead of 0.85. Six dev seeds build them on
+  days 59-214; seeds 3 and 58 raise them in a siege (58's lifts).
+- `PLANET_FORCE_BRAWL=1` lets any dislike at the tavern come to blows without the roll (the test:
+  hot-tempered drinkers who dislike someone have grown rare in the camps).

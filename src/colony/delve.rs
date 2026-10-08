@@ -662,6 +662,61 @@ impl Colony {
         self.moment(format!("The halls of {} reclaimed", town), line, format!("because the halls of {} lay empty within sight of the fire", town), m);
     }
 
+    /// Drawbridges over the ditch (DF's raising bridges): the four crossings are cut down two
+    /// levels like the rest of the ditch and spanned by a timber deck at the ground's level; a
+    /// raised bridge takes the deck away, and the camp inside the ditch is an island.
+    pub(crate) fn build_drawbridges(&mut self) {
+        use crate::local::{Material, Shape};
+        let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
+        let r = 13i32;
+        let w = self.map.width;
+        let mut bridges = Vec::new();
+        for (ax, ay) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+            for k in -1i32..=1 {
+                let (x, y) = (cx + ax * r + ay.abs() * k, cy + ay * r + ax.abs() * k);
+                if x < 3 || y < 3 || x as usize + 3 >= w || y as usize + 3 >= self.map.height { continue; }
+                let (ux, uy) = (x as usize, y as usize);
+                let sz = self.map.surface_z[uy * w + ux];
+                if sz < 5 || self.map.cell(ux, uy, (sz + 1) as usize).shape == Shape::Wall { continue; }
+                // The pit under the deck, and the deck.
+                let k1 = self.map.idx(ux, uy, (sz - 1) as usize);
+                self.map.cells[k1].shape = Shape::Empty; self.map.cells[k1].material = Material::Air;
+                let k2 = self.map.idx(ux, uy, (sz - 2) as usize);
+                if self.map.cells[k2].shape == Shape::Wall { self.map.cells[k2].shape = Shape::Floor; }
+                let kd = self.map.idx(ux, uy, sz as usize);
+                self.map.cells[kd].shape = Shape::Floor; self.map.cells[kd].material = Material::Wood;
+                self.map.cells[kd].plant = crate::local::Plant::None; self.map.cells[kd].boulder = false;
+                bridges.push(((x as u16, y as u16), sz));
+            }
+        }
+        self.bridges = bridges;
+        self.bridges_up = false;
+        self.note("They cut the crossings through and lay a timber bridge over each, on chains: at need the camp can raise them, and be an island.".into());
+    }
+
+    /// Raise or lower the drawbridges (a siege raises them; its end lowers them).
+    pub(crate) fn set_bridges(&mut self, up: bool) {
+        use crate::local::{Material, Shape};
+        if self.bridges.is_empty() || self.bridges_up == up { return; }
+        // (Not with anyone still outside: they would be shut out. Tried again at dawn.)
+        if up && (0..self.settlers.len()).any(|i| self.settlers[i].alive && self.settlers[i].away_until == 0 && !self.below(i)
+            && (self.settlers[i].pos.0 as i32 - self.camp.0 as i32).abs().max((self.settlers[i].pos.1 as i32 - self.camp.1 as i32).abs()) >= 13) { return; }
+        let w = self.map.width;
+        for &(p, z) in &self.bridges.clone() {
+            let (x, y) = (p.0 as usize, p.1 as usize);
+            let kd = self.map.idx(x, y, z as usize);
+            if up {
+                self.map.cells[kd].shape = Shape::Empty; self.map.cells[kd].material = Material::Air;
+                self.map.surface_z[y * w + x] = z - 2;
+            } else {
+                self.map.cells[kd].shape = Shape::Floor; self.map.cells[kd].material = Material::Wood;
+                self.map.surface_z[y * w + x] = z;
+            }
+        }
+        self.bridges_up = up;
+        self.note(if up { "The chains run out and the bridges come up: the ditch rings the camp, and no way crosses it.".into() } else { "The bridges are let down over the ditch again.".into() });
+    }
+
     /// Picks to dig with (DF's miners each need one): two brought, two more made at the workshop,
     /// two more of metal once ore is worked or iron bought.
     pub fn picks(&self) -> usize {
@@ -781,6 +836,16 @@ impl Colony {
         if self.cave_hunter.is_some() && self.cave_bites >= 2 && !self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) {
             let why = format!("{} times {} have come up the mine and hurt someone; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
             c.push((2.0, ProjectKind::Hatch, why, 6, self.spine.unwrap().at));
+        }
+        // Drawbridges, once the ditch is dug and a siege has come (or two chapters of trouble).
+        let sieged = self.moments.iter().any(|m| m.title == "The siege");
+        if self.moat_dug() && (sieged || self.arc.as_ref().map_or(0, |a| a.chapter) >= 3) && !self.projects.iter().any(|p| p.kind == ProjectKind::Drawbridges) {
+            let raids = self.arc.as_ref().map_or(0, |a| a.events.iter().filter(|e| e.title == "The raid").count());
+            let why = match self.moments.iter().find(|m| m.title == "The siege") {
+                Some(m) => format!("the camp was besieged on day {}; bridges over the ditch that could be raised would make it an island", m.tick / super::TICKS_PER_DAY + 1),
+                None => format!("{} raids have come to the gates; bridges over the ditch that could be raised would make the camp an island", raids),
+            };
+            c.push((1.0, ProjectKind::Drawbridges, why, 8, self.camp));
         }
         // A ditch round the wall, once the palisade stands and trouble keeps coming.
         let walled = self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Palisade);

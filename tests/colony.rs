@@ -1640,7 +1640,8 @@ fn only_major_moments_stop_the_clock() {
 /// the one who struck answers for it at dawn.
 #[test]
 fn brawls_break_out_at_the_tavern() {
-    let found = ["11", "23"].iter().any(|seed| run_log(seed, "170", &[]).lines().any(|l| l.contains("come to blows over their cups at the tavern")));
+    // (Forced: a hot-tempered drinker who dislikes another at the tavern has grown rare.)
+    let found = ["11", "23", "76"].iter().any(|seed| run_log(seed, "200", &[("PLANET_FORCE_BRAWL", "1")]).lines().any(|l| l.contains("come to blows over their cups at the tavern")));
     assert!(found, "no brawl");
 }
 

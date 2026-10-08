@@ -12,7 +12,7 @@ use super::{Colony, ItemKind, Pos, HUT_H, HUT_W};
 use crate::local::{Material, Plant, Shape};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProjectKind { Woodpile, DryingRack, SecondHut, Palisade, Windbreak, Smokehouse, Woodshed, Lookout, Fence, Mending, Storehouse, Workshop, Field, Jetty, Well, DugHall, Cellar, Mine, Temple, Lining, Still, Traps, LordsHall, CaveFarm, Tavern, Pen, DeepShaft, GuildHall, Kitchen, Library, Bedrooms, GreatHall, Tombs, Moat, Workshops, Hatch }
+pub enum ProjectKind { Woodpile, DryingRack, SecondHut, Palisade, Windbreak, Smokehouse, Woodshed, Lookout, Fence, Mending, Storehouse, Workshop, Field, Jetty, Well, DugHall, Cellar, Mine, Temple, Lining, Still, Traps, LordsHall, CaveFarm, Tavern, Pen, DeepShaft, GuildHall, Kitchen, Library, Bedrooms, GreatHall, Tombs, Moat, Workshops, Hatch, Drawbridges }
 
 /// Works that feed the camp: built even while it goes hungry.
 pub fn feeds(k: ProjectKind) -> bool { matches!(k, ProjectKind::Field | ProjectKind::CaveFarm | ProjectKind::Pen | ProjectKind::Jetty) }
@@ -29,7 +29,7 @@ impl ProjectKind {
             ProjectKind::Mending => "the mending of the palisade",
             ProjectKind::Storehouse => "a storehouse", ProjectKind::Temple => "a temple", ProjectKind::Workshop => "a workshop", ProjectKind::Field => "a fenced field",
             ProjectKind::Jetty => "a jetty", ProjectKind::Well => "a well",
-            ProjectKind::DugHall => "a hall in the hill", ProjectKind::Cellar => "a cellar", ProjectKind::Mine => "a mine", ProjectKind::Lining => "the lining of the wet shaft", ProjectKind::Still => "a still", ProjectKind::Traps => "cage traps at the gates", ProjectKind::LordsHall => "a hall for the lord", ProjectKind::CaveFarm => "a farm under the rock", ProjectKind::Tavern => "a tavern", ProjectKind::Pen => "a pen for beasts", ProjectKind::DeepShaft => "the deep shaft", ProjectKind::GuildHall => "a guildhall", ProjectKind::Kitchen => "a kitchen", ProjectKind::Library => "a library", ProjectKind::Bedrooms => "bedrooms under the rock", ProjectKind::GreatHall => "a great hall below", ProjectKind::Tombs => "tombs under the rock", ProjectKind::Moat => "a ditch round the wall", ProjectKind::Workshops => "workshops below", ProjectKind::Hatch => "a hatch over the stair below",
+            ProjectKind::DugHall => "a hall in the hill", ProjectKind::Cellar => "a cellar", ProjectKind::Mine => "a mine", ProjectKind::Lining => "the lining of the wet shaft", ProjectKind::Still => "a still", ProjectKind::Traps => "cage traps at the gates", ProjectKind::LordsHall => "a hall for the lord", ProjectKind::CaveFarm => "a farm under the rock", ProjectKind::Tavern => "a tavern", ProjectKind::Pen => "a pen for beasts", ProjectKind::DeepShaft => "the deep shaft", ProjectKind::GuildHall => "a guildhall", ProjectKind::Kitchen => "a kitchen", ProjectKind::Library => "a library", ProjectKind::Bedrooms => "bedrooms under the rock", ProjectKind::GreatHall => "a great hall below", ProjectKind::Tombs => "tombs under the rock", ProjectKind::Moat => "a ditch round the wall", ProjectKind::Workshops => "workshops below", ProjectKind::Hatch => "a hatch over the stair below", ProjectKind::Drawbridges => "drawbridges over the ditch",
         }
     }
 }
@@ -346,7 +346,7 @@ impl Colony {
         if kind == ProjectKind::Woodpile && !self.timber_near() { return; }
         let stuff = if material == ItemKind::Stone { "stone" } else { "timber" };
         self.plan_line = format!("Next: {}. {}.", kind.word().trim_start_matches("the "), super::arc::capital_word(&why));
-        if is_dig(kind) || matches!(kind, ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::Hatch) { self.note(format!("They set to work on {}: {}.", kind.word(), why)); }
+        if is_dig(kind) || matches!(kind, ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::Hatch | ProjectKind::Drawbridges) { self.note(format!("They set to work on {}: {}.", kind.word(), why)); }
         else { self.note(format!("They set to work on {} of {}: {}.", kind.word(), stuff, why)); }
         if is_dig(kind) {
             match self.plan_dig(kind) { Some(plan) => self.begin_dig(plan), None => return }
@@ -451,6 +451,7 @@ impl Colony {
                 ProjectKind::LordsHall => self.raise_building_at(at, 5, 4, material == ItemKind::Stone, true),
                 ProjectKind::CaveFarm => {}
                 ProjectKind::Hatch => self.seal_caverns(),
+                ProjectKind::Drawbridges => self.build_drawbridges(),
                 ProjectKind::Tavern => self.raise_building_at(at, 5, 4, material == ItemKind::Stone, true),
                 ProjectKind::Pen => { self.stamp_posts(at, 6, 5); self.fill_pen(); }
                 ProjectKind::GuildHall => self.raise_building_at(at, 4, 3, material == ItemKind::Stone, true),
@@ -647,7 +648,7 @@ impl Colony {
             ProjectKind::SecondHut => (HUT_W as u16, HUT_H as u16), ProjectKind::Storehouse => (4, 3), ProjectKind::Workshop | ProjectKind::LordsHall | ProjectKind::Tavern => (5, 4), ProjectKind::Temple => (4, 4), ProjectKind::GuildHall => (4, 3), ProjectKind::Kitchen => (3, 3), ProjectKind::Library => (4, 3),
             ProjectKind::Field => (8, 6), ProjectKind::Pen => (6, 5), ProjectKind::Smokehouse => (3, 3), ProjectKind::Woodpile => (3, 1), ProjectKind::Windbreak => (HUT_W as u16, 1),
             ProjectKind::DryingRack | ProjectKind::Lookout | ProjectKind::Still => (2, 2), ProjectKind::Fence => (4, 4), ProjectKind::Well | ProjectKind::Jetty => (1, 1),
-            ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft => return None,
+            ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft => return None,
         })
     }
 
@@ -673,7 +674,7 @@ impl Colony {
                 ProjectKind::SecondHut => (HUT_W as u16, HUT_H as u16), ProjectKind::Storehouse => (4, 3), ProjectKind::Workshop | ProjectKind::LordsHall | ProjectKind::Tavern => (5, 4), ProjectKind::Temple => (4, 4), ProjectKind::GuildHall => (4, 3), ProjectKind::Kitchen => (3, 3), ProjectKind::Library => (4, 3),
                 ProjectKind::Field => (8, 6), ProjectKind::Pen => (6, 5), ProjectKind::Smokehouse => (3, 3), ProjectKind::Woodpile => (3, 1), ProjectKind::Windbreak => (HUT_W as u16, 1),
                 ProjectKind::DryingRack | ProjectKind::Lookout | ProjectKind::Still => (2, 2), ProjectKind::Fence => (4, 4), ProjectKind::Well | ProjectKind::Jetty => (1, 1),
-                ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft => continue,
+                ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft => continue,
             };
             let pad = if matches!(q.kind, ProjectKind::Well | ProjectKind::Jetty) { 1 } else { 0 };
             if p.0 + pad >= q.at.0 && p.0 < q.at.0 + w + pad && p.1 + pad >= q.at.1 && p.1 < q.at.1 + h + pad {
