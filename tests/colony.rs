@@ -1807,8 +1807,10 @@ fn the_deep_shaft_reaches_the_magma_sea() {
 /// up after.
 #[test]
 fn the_caverns_are_sealed_with_a_hatch() {
-    let text = run_log("3", "120", &[]);
-    let at = text.lines().position(|l| l.contains("They set a hatch of")).unwrap_or_else(|| panic!("no hatch on seed 3"));
+    // (Seed 5 seals it on day 47; seed 3's mine has missed the caverns since they line up across
+    // embarks.)
+    let text = run_log("5", "120", &[]);
+    let at = text.lines().position(|l| l.contains("They set a hatch of")).unwrap_or_else(|| panic!("no hatch on seed 5"));
     assert!(!text.lines().skip(at).any(|l| l.contains("come up from the mine, alone")), "something came up after the hatch");
 }
 

@@ -963,9 +963,6 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
 - Materials (DF: the material decides what a thing is): `Colony::ores` records each kind of ore
   struck ("iron", "copper", "gold"...). `iron_worked` now needs iron or copper ore (or bought
   tools) (since the industries: forged or bought tools, and metal heads take bars); a mood that wants a metal needs that metal's own ore (iron also when bought). Spearheads
-  are the best to hand (`finish_arm`): iron 1.45, copper 1.3, obsidian from a gem cluster 1.25
-  (uses one), the land's stone 1.15, bone 1.05 where the land has no named stone. No dev seed
-  tools); a mood that wants a metal needs that metal's own ore (iron also when bought). Spearheads
   are the best to hand (`finish_arm`): adamantine, iron, copper, obsidian from a gem cluster
   (uses one), bone where the land has no named stone, the land's stone (their old flat forces are
   gone: what a head does is its material's, "Materials and blows" at the end). No dev seed
@@ -1054,7 +1051,9 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   defenders after the hunters, saviour and watcher (`fight.rs`). Dev 300 days: armour on four
   seeds (76 adamantine day 73; leather on 11, 5, 23); seed 23's adamantine mail turns a spear on
   day 148. A relic found by chance now makes its tale known (`find_relic`), so its seeker comes.
-  Tested (`armour_turns_blows`).
+  Tested (`armour_turns_blows`; since the industries mail is forged from bars and leather or
+  hide only lightens an edge, so the test forces ore: seeds 5 and 3 turn blows on days 66 and 93;
+  unforced, no blow was turned on six dev seeds in 300 days).
 - Snatchers (`snatch.rs`, DF's baby-snatchers): `found_colony` notes the peoples among the
   troubles whose race steals children (goblins, orcs; `Colony::snatchers`); the Shadow's raiders
   steal them too. On their raid night (`snatch_in_the_raid`, end of `raid_at`) one time in two a
@@ -1517,7 +1516,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   cavern's hunters have hurt someone twice (`cave_bites`: bites by those come up the mine, and
   fellers set upon in the dark), the camp sets a hatch in the stair at the first cavern's roof
   (6 loads, urgency 2.0, a moment): no creature's walk passes it (see "Creatures in three
-  dimensions"), and later breaches below it set no new `cave_hunter`; `Colony::hatch` (column, level), drawn as barred planks. Seeds 76, 23, 58, 3, 5 seal it
+  dimensions"), and later breaches below it set no new `cave_hunter`; `Colony::hatch` (column, level), drawn as barred planks. Seeds 76, 23, 58, 3, 5 sealed it (since caverns line up across embarks: 5 on day 47, 23 day 88, 76 day 101; seed 3 misses the caverns)
   on days 48-107; nothing comes up after. Tested (`the_caverns_are_sealed_with_a_hatch`).
 - The lord's quarters (`nobles.rs::lord_quarters`, DF's nobles' room requirements): a lord takes
   the best bedroom (its owner is moved to the lord's old one, or none, and resents it: a grievance
@@ -1577,7 +1576,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   hand at first, +4% of the rest a piece) whose hand sets the head's force (0.9 + 0.2 x skill)
   and quality word ("a superior iron-headed spear"); the still brews a cup more per barrel
   (three at most); caravans buy blocks past 6, bars past 4 (4 each; never adamantine), barrels
-  past 3. `--sim-projects` prints "Industry: ...". `PLANET_FORCE_ORE=1` makes the first eight
+  past 3. `--sim-projects` prints "Industry: ...". `PLANET_FORCE_ORE=1` (`=N`: the first N; eight all go into spears and mail, so the sale is checked with 30) makes the first eight
   rock loads dug iron (no dev seed strikes ore): dev 76 strikes it day 12, smelter day 17, first
   bars day 25, forge and iron tools day 26, an iron spear day 30, bars sold day 45. Unforced, six
   dev years: mason's on all six (days 47-237), carpenter's on five, kiln on four (pots and green
