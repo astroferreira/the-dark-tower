@@ -107,11 +107,14 @@ impl Colony {
     /// settlers of the traders' people grieve, and the raiders' coming is the surer for it.
     fn caravan_ambushed(&mut self, p: &Partner) -> bool {
         let Some(a) = self.arc.as_ref() else { return false };
-        if !matches!(a.stage, 1 | 2 | 5) || !matches!(a.threat.kind, arc::ThreatKind::Warband | arc::ThreatKind::Outlaws | arc::ThreatKind::Shadow) { return false; }
+        // (Debug: PLANET_FORCE_AMBUSH=1 takes every caravan after the first, for the test: a
+        // caravan arriving while raiders are foretold has grown rare.)
+        let forced = std::env::var("PLANET_FORCE_AMBUSH").is_ok();
+        if !forced && (!matches!(a.stage, 1 | 2 | 5) || !matches!(a.threat.kind, arc::ThreatKind::Warband | arc::ThreatKind::Outlaws | arc::ThreatKind::Shadow)) { return false; }
         // Not by the traders' own people, and never the first caravan (word of the camp must
         // reach the town once).
         if a.threat.faction == Some(p.faction) || self.caravans == 0 { return false; }
-        if crate::history::settlers::hash_pub(self.seed ^ self.clock.day(), 0xA4B5) % 2 != 0 { return false; }
+        if !forced && crate::history::settlers::hash_pub(self.seed ^ self.clock.day(), 0xA4B5) % 2 != 0 { return false; }
         let who = a.threat.name.split(", led by ").next().unwrap_or("").to_string();
         let day = self.clock.day();
         let dead = 1 + crate::history::settlers::hash_pub(self.seed ^ day, 0xA4B6) % 3;

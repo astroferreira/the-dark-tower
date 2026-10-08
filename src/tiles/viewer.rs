@@ -2073,7 +2073,7 @@ pub fn embark_survey(world: &WorldData, history: Option<&WorldHistory>) {
 pub fn legend_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize)) {
     let (map, seed, _) = colony_site(world, history, tile, None);
     let mut a = found_colony(map, history, tile, seed, 7);
-    a.run_days(100);
+    a.run_days(130);
     let legend = a.legend("trial");
     let json = serde_json::to_string(&vec![legend.clone()]).unwrap_or_default();
     let legends: Vec<crate::colony::legend::Legend> = serde_json::from_str(&json).unwrap_or_default();

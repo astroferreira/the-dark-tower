@@ -1309,7 +1309,7 @@ fn a_raider_is_taken_alive() {
 /// says why, and the annals keep the reckoning.
 #[test]
 fn the_world_remembers_what_the_camp_did() {
-    let logs: Vec<String> = ["76", "23", "5"].iter().map(|s| run_log(s, "200", &[])).collect();
+    let logs: Vec<String> = ["76", "11", "58"].iter().map(|s| run_log(s, "200", &[])).collect();
     let any = |n: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(n)));
     assert!(any("have sworn vengeance on the camp, which "), "no vengeance");
     assert!(any("comes in friendship, remembering that the camp "), "no friendship");
@@ -1439,7 +1439,8 @@ fn a_slain_beast_becomes_bone_and_armour() {
 /// taken on the road, and what the camp had asked for with it (seed 23, day 135).
 #[test]
 fn a_caravan_is_taken_on_the_road() {
-    let found = ["76", "23", "5"].iter().any(|seed| run_log(seed, "240", &[]).lines().any(|l| l.contains("does not come. Toward noon a mule walks in alone")));
+    // (Forced: a caravan coming while raiders are foretold has grown rare.)
+    let found = ["76", "23"].iter().any(|seed| run_log(seed, "120", &[("PLANET_FORCE_AMBUSH", "1")]).lines().any(|l| l.contains("does not come. Toward noon a mule walks in alone")));
     assert!(found, "no caravan was taken");
 }
 

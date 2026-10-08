@@ -1296,7 +1296,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   revived, not a second one.
 - Tests that wait on chance events try more seeds or longer (places on 58/11/5, friendship on
   76/23/5, the chronicle on 23/11, the relic and its seeker 110 days, the pet 260, seed 58's
-  breaks up to 20; `--sim-legend` lives 100 days).
+  breaks up to 20; `--sim-legend` lives 130 days; `PLANET_FORCE_AMBUSH=1` takes every caravan after the first).
 - Dreams of a lifetime (`dreams.rs`, DF's life goals; `LifeDream`, not the patron's `Dream`): a
   grown settler's dearest value at 15+ that has a dream gives it (`life_dream`): family or romance
   a child; craftsmanship or artwork a masterwork; martial prowess a foe slain by their hand;
