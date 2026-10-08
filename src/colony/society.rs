@@ -128,6 +128,11 @@ impl Colony {
     }
 
     /// The temple's floor, and the god it was raised to, once one stands.
+    /// Where the temple's devout stand (`temple`'s place, without its god).
+    pub(crate) fn temple_at(&self) -> Option<Pos> {
+        self.projects.iter().find(|p| p.done && p.kind == super::projects::ProjectKind::Temple).map(|p| (p.at.0 + 1, p.at.1 + 2))
+    }
+
     pub fn temple(&self) -> Option<(Pos, String)> {
         let p = self.projects.iter().find(|p| p.done && p.kind == super::projects::ProjectKind::Temple)?;
         let god = p.why.split(" pray to ").nth(1).and_then(|r| r.split(", with no roof").next()).unwrap_or("their god").to_string();

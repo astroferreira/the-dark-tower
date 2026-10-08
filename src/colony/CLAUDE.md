@@ -1626,3 +1626,20 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
     (Gru now falls on day 107, its bone worked from 111; seed 11's bone figurine shifted out).
     Cavern life costs ~2% of a dev year's tick (`PLANET_DEBUG_CAVE` prints dens, climbs, the
     ways up past the hatch and the time spent).
+- Speed, same results (2026-10-08; the colony log is byte-identical on dev 76, 11, 3 and 50,20 at
+  300 days). User time of `--sim-projects` (world and history included, ~1.2 s): seed 76 300 days
+  8.2 -> 5.8 s, a year 10.7 -> 6.8 s, 11 9.4 -> 7.2 s, 3 9.3 -> 6.5 s, 50,20 150 days
+  16.2 -> 4.3 s, 300 days 26.7 -> 7.5 s (instructions 152G -> 92G, 525G -> 114G). How:
+  trees are looked for only among the columns that held one at founding (`tree_buckets`,
+  `nearest_tree_by`, `nearest_listed`: 16-cell squares, nearest first, same least
+  (distance, row, column) as the rings; nothing else can ever grow a tree, see the field's doc);
+  shrubs beyond 12 cells likewise (`shrub_buckets`); the ring search walks each ring in row order
+  and stops at the first cell that passes, testing the map before the hashed claims;
+  `claimed`/`unreachable`/`shrub_ready`/`opinions` use `det::FastMap`/`FastSet` (FxHash; only for
+  maps never iterated); the A* (`nav.rs`) keeps its arrays between searches (generation marks),
+  remembers each cell's standable/cost within a search (`Memo`: dense on the surface, a small
+  table below it), asks each side once per node, and pops from buckets by estimate (`Open`, the
+  same (f, k) order as the heap); `decide` borrows the settler instead of cloning it;
+  `find_site_within` marks taken cells once per call; engravings phrase only moments that could
+  win; `temple_at` skips reading the god. Still most of the time: the A* itself (~45%, ~300
+  expansions a search underground), then `decide`'s options.

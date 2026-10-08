@@ -919,7 +919,7 @@ impl Colony {
         let graves = self.marks.iter().filter(|m| m.kind == MarkKind::Grave && m.title.starts_with("The grave of ")).count();
         if day >= 40 && graves >= 2 && !has(RoomKind::Tomb) {
             if let Some(plan) = self.plan_dig(ProjectKind::Tombs) {
-                let pious = self.temple().is_some();
+                let pious = self.temple_at().is_some();
                 let why = format!("{} of the camp lie in graves at its edge, under the rain{}; ten niches cut in the rock would keep the dead", graves,
                     if self.darkness >= 0.2 { " and the Shadow" } else { "" });
                 c.push((if masons { 1.2 } else { 0.7 } + if pious { 0.4 } else { 0.0 } + if self.darkness >= 0.2 { 0.4 } else { 0.0 }, ProjectKind::Tombs, why, plan.cuts.len() as u32, self.spine.unwrap().at));

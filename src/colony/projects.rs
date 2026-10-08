@@ -98,7 +98,7 @@ impl Colony {
 
     /// Whether a tree stands within working reach of the camp (else they build in stone).
     pub(crate) fn timber_near(&self) -> bool {
-        self.nearest(self.camp, |c, p| c.is_felling_tree(p)).is_some()
+        self.nearest_tree_by(self.camp, |_, _| true).is_some()
     }
 
     /// A work under way whose material has run out within reach (dev 50,20 waited thirty days to
@@ -379,23 +379,42 @@ impl Colony {
     fn find_site_within(&self, w: u16, h: u16, slope: i32, radius: i32) -> Option<Pos> {
         let n = self.map.width as i32;
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
-        let taken = |x: i32, y: i32| {
-            let in_rect = |at: Pos, rw: u16, rh: u16| x >= at.0 as i32 - 1 && x <= at.0 as i32 + rw as i32 && y >= at.1 as i32 - 1 && y <= at.1 as i32 + rh as i32;
-            self.hut.as_ref().map_or(false, |hh| in_rect(hh.at, HUT_W as u16, HUT_H as u16))
-                || self.projects.iter().any(|p| p.kind != ProjectKind::Palisade && in_rect(p.at, HUT_W as u16, HUT_H as u16))
-                || (x - cx).abs() <= 2 && (y - cy).abs() <= 2
-                // Nor over a dig (a hut raised over a cellar's ramp trapped whoever was inside).
-                || self.dig_plan.iter().flatten().filter(|c| c.z + 3 >= self.map.surface_z[c.p.1 as usize * self.map.width + c.p.0 as usize]).map(|c| c.p)
-                    .chain(self.hall_cells.iter().copied()).chain(self.delve_mouth).chain(self.spine.map(|s| s.at)).any(|q| (q.0 as i32 - x).abs() <= 1 && (q.1 as i32 - y).abs() <= 1)
+        let (xs, xe) = ((cx - radius).max(2), (cx + radius).min(n - w as i32 - 2));
+        let (ys, ye) = ((cy - radius).max(2), (cy + radius).min(n - h as i32 - 2));
+        if xs >= xe || ys >= ye { return None; }
+        // The cells the lots cover, each marked once: taken (on or beside the hut or a work, by
+        // the fire, over a dig) or impassable. (Asked per lot and cell, the list of works and
+        // dug cells was most of the camp's planning.)
+        let (bw, bh) = (xe - xs + w as i32 - 1, ye - ys + h as i32 - 1);
+        let mut blocked = vec![false; (bw * bh) as usize];
+        let mut block = |x0: i32, y0: i32, x1: i32, y1: i32| {
+            for y in y0.max(ys)..=y1.min(ys + bh - 1) {
+                for x in x0.max(xs)..=x1.min(xs + bw - 1) { blocked[((y - ys) * bw + x - xs) as usize] = true; }
+            }
         };
+        let rect = |at: Pos| (at.0 as i32 - 1, at.1 as i32 - 1, at.0 as i32 + HUT_W as i32, at.1 as i32 + HUT_H as i32);
+        if let Some(hh) = self.hut.as_ref() { let (a, b, c, d) = rect(hh.at); block(a, b, c, d); }
+        for p in self.projects.iter().filter(|p| p.kind != ProjectKind::Palisade) { let (a, b, c, d) = rect(p.at); block(a, b, c, d); }
+        block(cx - 2, cy - 2, cx + 2, cy + 2);
+        // Nor over a dig (a hut raised over a cellar's ramp trapped whoever was inside).
+        for q in self.dig_plan.iter().flatten().filter(|c| c.z + 3 >= self.map.surface_z[c.p.1 as usize * self.map.width + c.p.0 as usize]).map(|c| c.p)
+            .chain(self.hall_cells.iter().copied()).chain(self.delve_mouth).chain(self.spine.map(|s| s.at)) {
+            block(q.0 as i32 - 1, q.1 as i32 - 1, q.0 as i32 + 1, q.1 as i32 + 1);
+        }
+        for y in ys..ys + bh {
+            for x in xs..xs + bw {
+                let k = ((y - ys) * bw + x - xs) as usize;
+                if !blocked[k] && !super::nav::passable(&self.map, (x as u16, y as u16)) { blocked[k] = true; }
+            }
+        }
         let mut best: Option<(i32, Pos)> = None;
         let lane = self.lane();
-        for y in (cy - radius).max(2)..(cy + radius).min(n - h as i32 - 2) {
-            for x in (cx - radius).max(2)..(cx + radius).min(n - w as i32 - 2) {
+        for y in ys..ye {
+            for x in xs..xe {
                 let z0 = self.map.surface_z[(y * n + x) as usize];
                 let ok = (0..h as i32).all(|dy| (0..w as i32).all(|dx| {
                     let (xx, yy) = (x + dx, y + dy);
-                    !taken(xx, yy) && (self.map.surface_z[(yy * n + xx) as usize] - z0).abs() <= slope && super::nav::passable(&self.map, (xx as u16, yy as u16))
+                    !blocked[((yy - ys) * bw + xx - xs) as usize] && (self.map.surface_z[(yy * n + xx) as usize] - z0).abs() <= slope
                 }));
                 if !ok { continue; }
                 // Never on forbidden ground.

@@ -95,22 +95,33 @@ impl Colony {
         if self.clock.is_night() { return None; }
         if self.settlers.iter().enumerate().any(|(j, s)| j != i && s.alive && s.job == Job::Craft && s.why.starts_with("Engraving")) { return None; }
         let wish = self.craft_wish_any(i);
+        let builder = self.settlers[i].role == Some(4);
+        if wish < 0.3 && !builder { return None; }
+        // (The walls are listed once here: `engrave_place` and `engrave_spot` list them each.)
+        let walls = self.bare_walls();
+        let place = walls.first().map(|w| w.3.clone()).unwrap_or_else(|| "the hall's wall".into());
         // The lord's order: the camp's builder carves the lord's walls, taste or none (`nobles.rs`).
-        let ordered = self.settlers[i].role == Some(4) && self.engrave_place() == "the walls of the lord's room";
+        let ordered = builder && place == "the walls of the lord's room";
         let wish = if ordered { wish.max(0.6) } else { wish };
         if wish < 0.3 { return None; }
-        self.engrave_spot()?;
+        walls.first()?;
         let (image, _) = self.engraving_image(i);
-        Some((wish * 0.9, Job::Craft, format!("Engraving {} with {}", self.engrave_place(), image)))
+        Some((wish * 0.9, Job::Craft, format!("Engraving {} with {}", place, image)))
     }
 
     /// What settler `i` would engrave: the camp's greatest moment not yet on a wall, else a
     /// scene of their own past.
     fn engraving_image(&self, i: usize) -> (String, Option<crate::history::EventId>) {
-        let done = |s: &str| self.engravings.iter().any(|e| e.image == s);
-        let best = self.moments.iter().filter_map(|m| {
+        let carved: crate::history::det::FastSet<&str> = self.engravings.iter().map(|e| e.image.as_str()).collect();
+        let done = |s: &str| carved.contains(s);
+        // The greatest moment not yet carved, the earliest of equals (`max_by_key` over
+        // (worth, Reverse(tick)) keeps the last of equal maxima): a moment that cannot beat the
+        // best so far is not phrased at all.
+        let mut best: Option<(u32, u64, String)> = None;
+        for m in &self.moments {
             let w = worth(&m.title, &m.text);
-            if w == 0 { return None; }
+            if w == 0 { continue; }
+            if best.as_ref().map_or(false, |b| (w, std::cmp::Reverse(m.tick)) < (b.0, std::cmp::Reverse(b.1))) { continue; }
             let t = &m.title;
             let day = m.tick / TICKS_PER_DAY + 1;
             let scene = if t == "The raid" { format!("the raid of day {}", day) }
@@ -133,8 +144,8 @@ impl Colony {
                 else if let Some(x) = t.strip_prefix("The ") { format!("the {}", x) }
                 else { t.clone() };
             let phrase = if t == "The raid" || m.text.contains("has made an artifact") { scene } else { format!("{} (day {})", scene, day) };
-            (!done(&phrase)).then_some((w, m.tick, phrase))
-        }).max_by_key(|(w, t, _)| (*w, std::cmp::Reverse(*t)));
+            if !done(&phrase) { best = Some((w, m.tick, phrase)); }
+        }
         if let Some((_, _, p)) = best { return (p, None); }
         let images = self.settlers[i].past.as_ref().map(|p| p.images.clone()).unwrap_or_default();
         let fresh: Vec<_> = images.into_iter().filter(|(t, _)| !done(t)).collect();

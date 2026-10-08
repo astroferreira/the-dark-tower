@@ -50,7 +50,7 @@ impl Colony {
             if friend != i { return None; }
             let name = self.settlers[r.who].name.clone();
             let me = self.settlers[i].pos;
-            if let Some(t) = self.nearest(me, |c, p| c.is_felling_tree(p)) { return Some((0.9, Job::Fell(t), format!("Felling a tree for a post in memory of {}", name))); }
+            if let Some(t) = self.nearest_tree_by(me, |_, _| true) { return Some((0.9, Job::Fell(t), format!("Felling a tree for a post in memory of {}", name))); }
             if let Some(t) = self.nearest(me, |c, p| c.is_quarry_stone(p)) { return Some((0.9, Job::Quarry(t), format!("Breaking stone for a slab in memory of {}", name))); }
             return None;
         }

@@ -18,7 +18,7 @@ const TRADES: [&str; 5] = ["Gathering", "Fishing", "Felling", "Carrying Loads", 
 
 impl Colony {
     fn quiet_place(&self) -> Option<Pos> {
-        self.temple().map(|t| t.0).or_else(|| self.tavern()).or_else(|| self.hall_cells.first().copied())
+        self.temple_at().or_else(|| self.tavern()).or_else(|| self.hall_cells.first().copied())
             .or_else(|| self.projects.iter().find(|p| p.done && p.kind == projects::ProjectKind::LordsHall).map(|p| (p.at.0 + 2, p.at.1 + 2)))
     }
 
