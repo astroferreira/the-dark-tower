@@ -250,6 +250,10 @@ struct Args {
     /// Print each living people's arts: instruments, poems, music and dances, and who made them
     #[arg(long)]
     arts: bool,
+    /// Print what each living people's seat knows (`history::knowledge`): how much of the last
+    /// 50 years' news reached it, its latest news as it tells it, and differing accounts
+    #[arg(long)]
+    rumours: bool,
     /// Reject worlds that miss these targets and try the next seed (Dwarf Fortress style), e.g.
     /// "rivers=4,lakes=2,ranges=3,forests=2,deserts=1,islands=1"; up to 40 tries
     #[arg(long)]
@@ -1814,6 +1818,31 @@ fn main() {
             let a = history::arts::of_people(h, f.id);
             println!("== {}: {}", f.name, a.instruments.iter().map(|i| i.describe()).collect::<Vec<_>>().join("; "));
             for l in a.lines(h) { println!("  {}", l); }
+        }
+    }
+    if let (true, Some(h)) = (args.rumours, history.as_ref()) {
+        let k = history::knowledge::Knowledge::new(h);
+        let now = h.current_date.year;
+        let recent: Vec<_> = h.chronicle.events.iter().filter(|e| e.date.year + 50 >= now && history::knowledge::fame(e) >= history::knowledge::Fame::Notable).collect();
+        println!("Knowledge: town spacing {:.1} tiles; {} notable events in the last 50 years", k.spacing, recent.len());
+        let mut peoples: Vec<_> = h.factions.values().filter(|f| f.is_active()).collect();
+        peoples.sort_by_key(|f| f.id);
+        for f in peoples {
+            let Some(seat) = f.capital.and_then(|c| h.settlements.get(&c)) else { continue };
+            let knows = recent.iter().filter(|e| k.town_knows(seat.id, e)).count();
+            println!("== {} (seat {}): knows {} of {} ({:.0}%)", f.name, seat.name, knows, recent.len(), 100.0 * knows as f32 / recent.len().max(1) as f32);
+            for t in k.news_of_town(seat.id, 30, 3) { println!("  news: {}{}", t.line(), if t.as_told().is_empty() { String::new() } else { format!(" ({})", t.as_told()) }); }
+        }
+        println!("== Differing accounts");
+        let mut shown = 0;
+        for e in h.chronicle.events.iter().rev() {
+            let t = history::knowledge::account(h, e, None);
+            if t.others.len() < 2 { continue; }
+            let (n, m) = k.known_in(e);
+            println!("{} (known in {} of {} towns)", t.line(), n, m);
+            for (_, name, g) in &t.others { println!("  as {} {} it: {}", name, history::knowledge::tell_verb(name), g); }
+            shown += 1;
+            if shown >= 6 { break; }
         }
     }
     if let (true, Some(h)) = (args.bestiary, history.as_ref()) {

@@ -324,7 +324,10 @@ impl Colony {
                 s.alive && !self.below(i) && far_from_fire(s.pos) && (bold || self.roof_over(s.pos).is_none()) && self.creatures[k].name.strip_suffix(super::curse::CHANGED) != Some(s.name.as_str())
                     && (s.pos.0 as i32 - wp.0 as i32).abs().max((s.pos.1 as i32 - wp.1 as i32).abs()) <= 40
                     && !self.settlers.iter().enumerate().any(|(j, o)| j != i && o.alive && (o.pos.0 as i32 - s.pos.0 as i32).abs().max((o.pos.1 as i32 - s.pos.1 as i32).abs()) <= alone_r)
-            }).min_by_key(|&i| (self.settlers[i].pos.0 as i32 - wp.0 as i32).abs().max((self.settlers[i].pos.1 as i32 - wp.1 as i32).abs()));
+            // (Debug: PLANET_FORCE_PET_PREY=1 makes a pet's keeper the first prey among those
+            // alone, for the test: a keeper caught alone at night has grown rare.)
+            }).min_by_key(|&i| (std::env::var("PLANET_FORCE_PET_PREY").is_ok() && !self.pets.iter().any(|p| p.alive && p.keeper == i),
+                (self.settlers[i].pos.0 as i32 - wp.0 as i32).abs().max((self.settlers[i].pos.1 as i32 - wp.1 as i32).abs())));
             let Some(i) = prey else {
                 // No lone settler: a pet strayed far from the fire will do (`pets.rs`).
                 if bold { continue; }

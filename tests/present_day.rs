@@ -194,3 +194,26 @@ fn worlds_that_miss_their_targets_are_rejected() {
     assert!(text.contains("World rejected: seed 1 has "), "seed 1 was not rejected:\n{text}");
     assert!(text.lines().any(|l| l.starts_with("World accepted: seed ")), "no world accepted:\n{text}");
 }
+
+/// Per-people knowledge (`history::knowledge`, DF's `local_known_events`): each people's seat
+/// knows part of the last 50 years' news, not all of it and not the same part, and peoples who
+/// took part in an event tell it differently (a victory against treachery, a just conquest
+/// against a betrayal). The layer is derived: the journal stays byte-identical (above).
+#[test]
+fn peoples_know_and_tell_their_own_news() {
+    let out = run_dev(&["--rumours"]);
+    let shares: Vec<usize> = out.lines().filter(|l| l.starts_with("== ") && l.contains(": knows "))
+        .map(|l| l.split(": knows ").nth(1).unwrap().split(' ').next().unwrap().parse().unwrap()).collect();
+    let total: usize = out.lines().find(|l| l.starts_with("Knowledge: ")).and_then(|l| l.split("; ").nth(1)).and_then(|s| s.split(' ').next()).and_then(|n| n.parse().ok()).expect("knowledge line");
+    assert!(shares.len() >= 4, "too few peoples: {out}");
+    for k in &shares { assert!(*k * 10 >= total * 2 && *k * 10 <= total * 9, "a seat knows {k} of {total}: all or nothing"); }
+    let mut distinct = shares.clone();
+    distinct.sort();
+    distinct.dedup();
+    assert!(distinct.len() >= 3, "seats know the same: {shares:?}");
+    // Differing accounts: events told two ways by the peoples they touched.
+    let accounts = out.split("== Differing accounts").nth(1).unwrap_or("");
+    let two_ways = accounts.lines().filter(|l| l.starts_with("  as ")).count();
+    assert!(two_ways >= 8, "few differing accounts:\n{accounts}");
+    assert!(out.lines().any(|l| l.contains(" (as the ") && l.contains("news: ")), "no news told with a slant:\n{out}");
+}

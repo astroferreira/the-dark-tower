@@ -462,8 +462,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   rarer (seed 58: days 117 and 145 in 150 days); `minds_break_with_reasons` runs 150 days.
 - Caravans (`trade.rs`, DF's seasonal caravans): at founding `trade::partner` picks the nearest
   living town of the first settler's people (else the nearest living town), its days' walk
-  (25 km a day), whether its people hold iron or copper, and its news (the latest 6 major
-  chronicle events within 8 tiles). The first caravan comes on day 15 + min(walk, 30), then each
+  (25 km a day), whether its people hold iron or copper, and its news (what the town has heard,
+  as its people tell it: "News as it is told" below). The first caravan comes on day 15 + min(walk, 30), then each
   season at 08:00: three `CreatureKind::Trader` (drawn in brown with an ochre pack, labelled)
   walk in from the town's side; at the fire (`caravan_arrives`) they buy every unsold work but
   the masterworks, worth (1 + quality)^2 x 2, for twice that in meals (48 at most) and, once,
@@ -531,12 +531,26 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   every minute: seed 3, 90 days, 50 s -> 22 s); a decide with no option at all waits 30 minutes;
   under the NoIdleHands mandate a faint "looking for work" wander stays as the last resort; the
   workshop spot is by its open front. A dev year (seed 76) runs in 3.6 s.
-- News that matters (DF's per-entity knowledge, small): a caravan's news is the last 30 years'
-  great events near its town, distinct headlines, each told once. `Past::towns` holds the towns a
-  settler's past names; news touching their people or one of those towns, good (founded,
-  liberated, held, peace, a beast slain, a crowning, "rises again") or bad (burned, fallen,
-  besieged, massacre, plague, war), is `Feel::News`, logged ("Gaunauth, Thoo-mam and 6 others take
-  heart at the news: it is their people's, or their own town's.").
+- News as it is told (`news.rs`, over `history::knowledge`; DF's per-entity knowledge): a
+  caravan brings what its town has heard (`Knowledge::news_of_town`, 30 years, 6 items, the first
+  not yet heard each time) told its people's way ("They bring news: Primalspire razed by the Ashpit
+  Horde (450), a massacre, Primalspire burned with its children inside (as the Kingdom of Titankeep
+  tells it)."); visitors bring one item their home knows when they come (`Visitor::news`,
+  `news_of_figure`: "Aephre the Wanderer brings word from the world: ..."), migrants one their
+  people know (`Colony::migrant_news`, "brings word from home"), and a bard, after each night's
+  work, sings one of their people's slanted deeds (`Visitor::songs`, `sung_by`, not one they told
+  on arrival: "Then Tathralt sings of the failed assassination of Mefley (448), as the Git Clans
+  tell it: a slander: no agent of theirs was ever there."). `hear` keeps each in `Colony::heard`
+  and moves listeners by their past: +-2 their people's stake, +-1 each town of `Past::towns`,
+  +-2 the stake of whom their feeling names (inverted for "hates" / "has not forgiven"): one
+  `Feel::News` ("heard of ..."), lines grouped by why ("take heart / grieve at the news: it is
+  their people's, or their own town's", "are glad of the news: it is ill news for those they
+  hate", "... touches someone dear to them"). A listener whose people tell it otherwise "will not
+  hear it told so: the Republic of Moonvale calls it a plot foiled, as the gods meant it to be" (a
+  bad `Feel::News`), or adds their account when it was told plainly. The annals' "News from the
+  World" lists each item, its teller and the other peoples' accounts. Dev 76, 200 days: 3
+  caravan items, 7 visitors' and migrants' words, 5 songs, 11 lines of listeners moved, 2
+  refusals to hear. Tested (`news_comes_as_its_teller_tells_it`).
 - Under the full moon (`curse.rs`, DF's werebeasts): `found_colony` takes the nearest living
   legendary beast with Shapeshifting (its own or its species') laired within 8 tiles as `were`
   (`PLANET_FORCE_WERE=<name>` forces one; `--bestiary` marks shapeshifters). Every 28th day
@@ -1136,7 +1150,10 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   running: a big beast (elk, bison, boar, bear, aurochs, caribou...) drives them off two times in
   three, a small one one in three (`Feel::SavedBy`); failing, one time in three it is dragged down
   in the keeper's place (grieved as a close friend); else the bite. Seed 58: Tha the caribou dies
-  for Kurng on day 227. Tested (`a_pet_stands_by_its_keeper`).
+  for Kurng on day 227. Tested (`a_pet_stands_by_its_keeper`); after news-as-told moved the
+  timelines no keeper was caught alone at night on 12 dev seeds in 300 days, so the test sets
+  `PLANET_FORCE_PET_PREY=1` (night hunters take a pet's keeper first among those alone; seed 1:
+  Nash'fai the red deer stands over Ife on day 22).
 - Old comrades and old enemies (`recognize.rs`, DF's per-figure knowledge of events): at dawn
   two settlers (guests too) whose `Past::lines` cite the same battle or siege event recognise
   each other once (`Colony::recognized`): of one people, comrades (+6, `Feel::Friend`, "find they

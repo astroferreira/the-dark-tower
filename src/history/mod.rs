@@ -16,6 +16,7 @@ pub mod collections;
 pub mod director;
 pub mod ecology;
 pub mod entities;
+pub mod knowledge;
 pub mod events;
 pub mod legends;
 pub mod naming;

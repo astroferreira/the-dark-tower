@@ -148,6 +148,8 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             let ev = recent(h, |e| e.primary_participants.contains(&EntityId::Settlement(id)) || e.location == Some(s.location));
             if ev.is_empty() { lines.push(Line::faded("Nothing recorded")); }
             lines.extend(ev.into_iter().map(event_line));
+            // What word has reached it, as its people tell it (`history::knowledge`).
+            if s.destroyed.is_none() { lines.extend(knowledge_lines(h, Subject::Settlement(id))); }
             Page { title: s.name.clone(), lines, emblem: None, portrait: None }
         }
         Subject::Faction(f) => {
@@ -248,6 +250,8 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
                 l.text = format!("{}{}", "  ".repeat(k), l.text);
                 lines.push(l);
             }
+            // How far word of it went, and how each people it touched tells it (`history::knowledge`).
+            lines.extend(knowledge_lines(h, Subject::Event(id)));
             // The tale it belongs to, if a reader would retell it (lore::sifting).
             for t in crate::lore::sifting::sift(h).into_iter().filter(|t| t.events.contains(&id)).take(1) {
                 lines.push(Line::section(format!("A tale worth telling ({})", t.kind.label().to_lowercase())));
@@ -307,6 +311,43 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             Page { title: m.name.clone(), lines, emblem: None, portrait: None }
         }
     }
+}
+
+thread_local! {
+    /// The last knowledge section built, by history and subject: pages are rebuilt every frame
+    /// and these read the whole recent chronicle against every town.
+    static KNOWN: std::cell::RefCell<Option<((usize, usize), Subject, Vec<Line>)>> = std::cell::RefCell::new(None);
+}
+
+/// What a town has heard ("Word heard here"), or how far word of an event went and how each
+/// people it touched tells it ("How it is told"), from `history::knowledge`.
+fn knowledge_lines(h: &WorldHistory, subject: Subject) -> Vec<Line> {
+    use crate::history::knowledge::{account, tell_verb, Knowledge};
+    let key = (h as *const WorldHistory as usize, h.chronicle.events.len());
+    if let Some(l) = KNOWN.with(|c| c.borrow().as_ref().filter(|x| x.0 == key && x.1 == subject).map(|x| x.2.clone())) { return l; }
+    let mut lines = Vec::new();
+    match subject {
+        Subject::Settlement(id) => {
+            let news = Knowledge::new(h).news_of_town(id, 30, 5);
+            if !news.is_empty() {
+                lines.push(Line::section("Word heard here"));
+                for t in news { lines.push(Line::link(capitalize(&t.line()), Subject::Event(t.event))); }
+            }
+        }
+        Subject::Event(id) => if let Some(e) = h.chronicle.get(id) {
+            let told = account(h, e, None);
+            let (n, m) = Knowledge::new(h).known_in(e);
+            lines.push(Line::section("How it is told"));
+            lines.push(Line::faded(format!("Known in {} of {} living towns", n, m)));
+            if let Some(g) = &told.gloss { lines.push(Line::plain(format!("Plainly: {}", g))); }
+            for (f, name, g) in &told.others {
+                lines.push(Line::link(format!("As {} {} it: {}", name, tell_verb(name), g), Subject::Faction(*f)));
+            }
+        },
+        _ => {}
+    }
+    KNOWN.with(|c| *c.borrow_mut() = Some((key, subject, lines.clone())));
+    lines
 }
 
 /// A settler's page: who they are, what they are doing and why, their past (each line opens its

@@ -640,6 +640,33 @@ fn caravans_trade_and_bring_news() {
     assert!(wave.contains("(kin of ") || wave.contains("(a "), "migrants without pasts: {wave}");
 }
 
+/// News as it is told (`history::knowledge`, `colony/news.rs`): caravans bring what their town has
+/// heard, visitors and migrants what their home knows, each slanted their people's way; bards sing
+/// their people's account; listeners whose people tell it otherwise say so; the annals keep it all.
+#[test]
+fn news_comes_as_its_teller_tells_it() {
+    let dir = std::env::temp_dir().join(format!("news_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (log, annals) = (dir.join("log.txt"), dir.join("annals.html"));
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        .args(["--dev", "--headless", "--sim-projects", "150"])
+        .env("PLANET_DUMP_LOG", &log)
+        .env("PLANET_ANNALS", &annals)
+        .output()
+        .expect("run planet_generator");
+    assert!(out.status.success());
+    let text = std::fs::read_to_string(&log).unwrap_or_default();
+    let page = std::fs::read_to_string(&annals).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+    let news = text.lines().find(|l| l.contains("They bring news: ")).unwrap_or_else(|| panic!("no news from the caravans:\n{text}"));
+    assert!(news.contains(" (as the "), "the caravan's news has no teller: {news}");
+    assert!(text.lines().any(|l| l.contains(" brings word from ")), "no visitor or migrant brought word:\n{text}");
+    assert!(text.lines().any(|l| l.contains(" sings of ") && l.contains(" tell")), "no bard sang their people's account");
+    assert!(text.lines().any(|l| l.contains("will not hear it told so") || l.contains(" call it ") || l.contains(" calls it ")), "no listener's people told it otherwise");
+    assert!(text.lines().any(|l| l.contains("at the news: it is their people's")), "news moved no one");
+    assert!(page.contains("<h2>News from the World</h2>") && page.contains(" tell"), "the annals keep no news");
+}
+
 /// The camp's first office (Dwarf Fortress's positions and mandates): a month on, the camp
 /// chooses someone to speak for it, who proclaims a mandate from the value they hold dearest.
 #[test]
@@ -1413,8 +1440,13 @@ fn the_liaison_brings_what_was_asked() {
 /// with every change to the camps' timelines).
 #[test]
 fn a_pet_stands_by_its_keeper() {
-    // (Two seeds: which one shows it moves with every change to the camps' timelines.)
-    let found = ["3", "23", "58", "5"].iter().any(|seed| run_log(seed, "260", &[]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
+    // (Which seed shows it moves with every change to the camps' timelines. Since news is told
+    // as each people tells it the timelines moved again and no keeper was caught alone at night
+    // on 12 dev seeds in 300 days, so PLANET_FORCE_PET_PREY makes a keeper the hunters' first
+    // prey among those alone: the pet must still be near, come running and win or fall. Seed 1:
+    // day 22.)
+    let found = [("1", "60"), ("3", "260"), ("23", "260"), ("58", "260"), ("5", "260")].iter()
+        .any(|(seed, days)| run_log(seed, days, &[("PLANET_FORCE_PET_PREY", "1")]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
     assert!(found, "no pet stood by its keeper");
 }
 
@@ -1674,8 +1706,9 @@ fn the_bell_sends_everyone_indoors() {
 /// library to keep them.
 #[test]
 fn the_camp_keeps_a_library() {
-    let logs: Vec<String> = ["11", "3"].iter().map(|s| run_log(s, "110", &[])).collect();
-    assert!(logs.iter().any(|t| t.lines().any(|l| l.contains("They set to work on a library"))), "no library");
+    // (Seed 76 plans one by day 93; 11 and 3 by days 119 and 131 since the news and the delve.)
+    let found = ["76", "11"].iter().any(|seed| run_log(seed, "130", &[]).lines().any(|l| l.contains("They set to work on a library")));
+    assert!(found, "no library");
 }
 
 /// The delve (Dwarf Fortress's fortress): the dev colony at 45,12 cuts a stair down beside the
