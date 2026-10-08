@@ -282,3 +282,7 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   ground deeper than that is cut; `<` / `>` or V from the surface view start from the ground's
   level under the view's centre (they had started from the map centre's). `PLANET_FRAMES` also
   writes `_camp_level.png` and `_camp_surface.png` to compare the two.
+- `[` / `]` in the embark (2026-10-08): up or down to the next level worth looking at
+  (`Colony::delve_levels`: the tower's platform, the camp's ground, levels with rooms or rooms
+  being dug, the cavern the stair reaches, the stair's foot); `[` past the top returns to the
+  surface view. "[/] delve" in the key bar.

@@ -785,6 +785,19 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     lcam.surface_view = false;
                     dirty = true;
                 }
+                // [ and ]: up or down to the next level with something dug or built on it.
+                let (jump_up, jump_dn) = (pressed(Key::LeftBracket), pressed(Key::RightBracket));
+                if jump_up || jump_dn {
+                    let levels = colony.delve_levels();
+                    let cur = if lcam.surface_view { map.surface_z[colony.camp.1 as usize * map.width + colony.camp.0 as usize] } else { lcam.z };
+                    let next = if jump_dn { levels.iter().copied().find(|&z| z < cur) } else { levels.iter().rev().copied().find(|&z| z > cur) };
+                    match next {
+                        Some(z) => { lcam.z = z; lcam.surface_view = false; }
+                        None if jump_up => { lcam.surface_view = true; }
+                        None => {}
+                    }
+                    dirty = true;
+                }
                 if pressed(Key::V) {
                     // Into the level view at the ground's level under the view's centre.
                     if lcam.surface_view {

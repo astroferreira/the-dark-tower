@@ -148,9 +148,9 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     let bar = Rect { x: 10, y: h - bar_h - 8, w: w - 20, h: bar_h };
     ui::card(buf, w, bar);
     let spent = colony.patron.favour == 0;
-    let keys: [(&str, bool); 15] = [
+    let keys: [(&str, bool); 16] = [
         ("F bless", true), ("X forbid", true), ("G favour", true), ("R dream", true), ("B bell", true),
-        ("H/J/K stones", false), ("N name", false), ("Space pause", false), ("1/2/3 speed", false), ("4 skip", false), ("M stops", false), ("U section", false), ("</> levels", false), ("click to read", false), ("Esc leave", false),
+        ("H/J/K stones", false), ("N name", false), ("Space pause", false), ("1/2/3 speed", false), ("4 skip", false), ("M stops", false), ("U section", false), ("</> levels", false), ("[/] delve", false), ("click to read", false), ("Esc leave", false),
     ];
     let mut x = 22.0;
     for (text, costs) in keys {

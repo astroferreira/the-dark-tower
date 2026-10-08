@@ -625,6 +625,21 @@ impl Colony {
         self.moment("The hatch".into(), line, format!("because {} times the cavern's hunters had found someone in the dark", self.cave_bites), sp.at);
     }
 
+    /// The levels worth looking at, highest first: the tower's platform, the camp's ground, each
+    /// level with rooms, the cavern the stair reaches, the stair's foot (window keys `[` / `]`).
+    pub fn delve_levels(&self) -> Vec<i32> {
+        let mut v: Vec<i32> = Vec::new();
+        if let Some((_, z)) = self.tower { v.push(z); }
+        v.push(self.map.surface_z[self.camp.1 as usize * self.map.width + self.camp.0 as usize]);
+        v.extend(self.rooms.iter().map(|r| r.z));
+        v.extend(self.dig_rooms.iter().map(|r| r.z));
+        if let Some(c) = self.cavern_level() { v.push(c); }
+        if let Some(sp) = self.spine { v.push(sp.bottom); }
+        v.sort_unstable_by(|a, b| b.cmp(a));
+        v.dedup();
+        v
+    }
+
     /// Picks to dig with (DF's miners each need one): two brought, two more made at the workshop,
     /// two more of metal once ore is worked or iron bought.
     pub fn picks(&self) -> usize {
