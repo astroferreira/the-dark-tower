@@ -984,6 +984,8 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
             *p = pack(mix(old, snow, a * lum.powf(0.7)));
         }
     }
+    // Evil weather over the camp, snow in a deep freeze (`fx_ink`).
+    super::fx_ink::draw_weather(colony, buf, w, h, mask);
     // Night: the map washes toward sea-ink blue, but for a warm glow round the fire and the watch.
     let dark = colony.darkness();
     if dark > 0.0 {
@@ -1196,6 +1198,8 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     // racks and fences, chimneys, bell-cote, banners and signboards.
     super::camp_ink::draw_palisade(colony, cam, &mut put, w, h);
     super::camp_ink::draw_works(colony, cam, &mut put, w, h);
+    super::fx_ink::draw_siege(colony, cam, &mut put, w, h);
+    super::fx_ink::draw_clash(colony, cam, &mut put, w, h);
     // Buildings going up, drawn by the share of loads laid: pegs and a line (a quarter), a
     // timber frame (to three fifths), then walls rising round the ring.
     for (at, bw, bh, share) in colony.rising() {
@@ -1256,6 +1260,13 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
         let (x, y) = to_screen(c.pos.0 as f32 + 0.5, c.pos.1 as f32 + 0.5);
         draw_creature(&mut put, colony, history, c, x, y, scale, 1.0);
     }
+    // Blows where attackers meet settlers, the restless dead walking, the patron's bell.
+    masking.set(false);
+    super::fx_ink::draw_fights(colony, cam, &mut put, w, h);
+    let mut ghost_names = Vec::new();
+    super::fx_ink::draw_ghosts(colony, cam, &mut put, w, h, scale, &mut ghost_names);
+    super::fx_ink::draw_bell(colony, cam, &mut put, w, h);
+    masking.set(true);
     // Labels that must show come first (the attackers' band, the patron's names, a roof's count,
     // the delve's); settlers' names then step aside from them and from each other.
     use super::fonts::Face;
@@ -1269,6 +1280,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
         } else { y - 16.0 * scale };
         letter(buf, w, h, placed, x, top - 16.0, &c.name, Face::Italic, 14.0, 0.0, 0x009A_2A1E);
     }
+    for (x, y, n) in ghost_names { letter(buf, w, h, placed, x, y - 12.0, &n, Face::Italic, 12.0, 0.0, 0x0060_7068); }
     // The patron's names: the settlement at its camp, named places where they lie.
     let mut names: Vec<(f32, f32, String, f32)> = colony.place_names.iter().map(|(p, n)| (p.0 as f32 + 0.5, p.1 as f32 + 0.5, n.clone(), 15.0)).collect();
     if let Some(n) = &colony.name { names.push((colony.camp.0 as f32 + 0.5, colony.camp.1 as f32 - 2.5, n.clone(), 22.0)); }

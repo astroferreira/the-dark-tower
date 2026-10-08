@@ -2699,6 +2699,23 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
                 save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
                 written.push(path);
             }
+            // The clash: an attacker at a settler, blows drawn.
+            let at_one = |c: &crate::colony::Colony| c.creatures.iter().filter(|k| matches!(k.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider) && !k.leaving)
+                .find_map(|k| c.settlers.iter().filter(|s| s.alive).find(|s| (s.pos.0 as i32 - k.pos.0 as i32).abs() <= 1 && (s.pos.1 as i32 - k.pos.1 as i32).abs() <= 1).map(|_| k.pos));
+            let mut guard = 0;
+            while at_one(&c2).is_none() && c2.attackers_out() && guard < 3000 { c2.tick(); guard += 1; }
+            // (The clash is fought in one moment where they meet the camp: show the melee there.)
+            for _ in 0..10 { c2.tick(); }
+            if let Some(a) = at_one(&c2).or(c2.clash_at) {
+                let (w, h) = (1024usize, 640usize);
+                let cam = LocalCamera { cx: a.0 as f32 + 0.5, cy: a.1 as f32 + 0.5, tile_px: 24.0, z: 0, surface_view: true };
+                let mut buf = vec![0u32; w * h];
+                render_local(&c2.map, atlas, &cam, &mut buf, w, h);
+                draw_colony(&c2, &cam, &mut buf, w, h, history);
+                let path = format!("{prefix}_clash.png");
+                save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+                written.push(path);
+            }
         }
     }
     // The wild: the game nearest the camp, close up.

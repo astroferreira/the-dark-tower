@@ -35,6 +35,18 @@ impl Colony {
             .any(|q| Colony::footprint(q.kind).map_or(false, |(w, h)| d(q.at, w, h) <= 4))
     }
 
+    /// The evil weather over the camp now, for the map (the hour it comes and the one after):
+    /// 0 red rain, 1 black mist, 2 grey ash, 3 black hail. Read only; mirrors `evil_weather`.
+    pub fn evil_weather_over(&self) -> Option<usize> {
+        if self.darkness < 0.35 { return None; }
+        let day = self.clock.day();
+        let h = crate::history::settlers::hash_pub(self.seed ^ 0xE71C, day / 12);
+        let start = 10 + h / 12 % 8;
+        if day % 12 != h % 12 || day < 20 || self.clock.hour() < start || self.clock.hour() > start + 1 { return None; }
+        if self.darkness < 0.5 && (day / 12) % 2 == 1 { return None; }
+        Some((h / 96 % KINDS.len() as u64) as usize)
+    }
+
     /// Each hour: an evil cloud may come over.
     pub(crate) fn evil_weather(&mut self) {
         if self.darkness < 0.35 || self.alive() == 0 || self.clock.minute() != 0 { return; }
