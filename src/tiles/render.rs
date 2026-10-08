@@ -836,6 +836,7 @@ fn tree_kind(t: TreeKind) -> TileKind {
         TreeKind::Palm => TileKind::Palm,
         TreeKind::Acacia => TileKind::Acacia,
         TreeKind::Dead => TileKind::DeadTree,
+        TreeKind::Fungus => TileKind::BigBroadleaf,
     }
 }
 
@@ -1056,8 +1057,11 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
     image::RgbImage::from_fn((w * px) as u32, (d * px) as u32, |x, y| {
         let (tx, z) = (x as usize / px, d - 1 - y as usize / px);
         let c = map.cell(tx, row, z);
+        let cavern = map.cavern_at(tx, row, z as i32).is_some();
         let rgb = if c.shape == Shape::Empty {
-            if c.water > 0 { [50, 110, 175] } else { [200, 222, 240] }
+            // Cavern air is dark; its pools darker still.
+            if cavern { if c.water > 0 { [30, 60, 100] } else { [44, 38, 48] } }
+            else if c.water > 0 { [50, 110, 175] } else { [200, 222, 240] }
         } else {
             let base = match c.material {
                 Material::Soil => [120, 86, 52],
@@ -1080,7 +1084,9 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
                 ((base[0] as f32 * f).min(255.0) as u8, (base[1] as f32 * f).min(255.0) as u8, (base[2] as f32 * f).min(255.0) as u8)
             };
             match c.plant {
+                Plant::Tree(crate::local::TreeKind::Fungus) => [150, 110, 140],
                 Plant::Tree(_) if c.shape != Shape::Wall => [40, 100, 40],
+                Plant::Grass if cavern => [84, 104, 70],
                 Plant::Grass => [90, 150, 60],
                 _ => [r, g, b],
             }

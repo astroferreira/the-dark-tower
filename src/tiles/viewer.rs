@@ -273,6 +273,9 @@ pub fn set_start_zoom(px: f32) { let _ = START_ZOOM.set(px.clamp(1.0, 64.0)); }
 
 /// The global cell a colony is to be made at (from a world code "...@X,Y:CX,CY").
 static START_CELL: std::sync::OnceLock<(u64, u64)> = std::sync::OnceLock::new();
+/// Embark positions ("cells") are kept in 1/64ths of a region cell, so a camp can be placed on a
+/// river's bank (a region cell is kilometres across on small worlds).
+pub const CELL_FRAC: f64 = 64.0;
 pub fn set_start_cell(c: (u64, u64)) { let _ = START_CELL.set(c); }
 
 /// A colony to open at a day: the patron's acts to replay and the day.
@@ -292,11 +295,36 @@ fn code_file(code: &str) -> String { code.chars().map(|c| if c.is_ascii_alphanum
 /// The playable area and seed for a colony at a world tile's centre, or at a global cell.
 fn colony_site(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), cell: Option<(u64, u64)>) -> (crate::local::LocalMap, u64, (f64, f64)) {
     let s = cells_per_tile() as f64;
-    let player = match cell { Some((x, y)) => (x as f64, y as f64), None => (tile.0 as f64 * s + s / 2.0, tile.1 as f64 * s + s / 2.0) };
+    let player = match cell { Some((x, y)) => (x as f64 / CELL_FRAC, y as f64 / CELL_FRAC), None => (tile.0 as f64 * s + s / 2.0, tile.1 as f64 * s + s / 2.0) };
     let zs = load_region(world, history, tile, world.seed());
     let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), player.0 - zs.origin.0 as f64, player.1 - zs.origin.1 as f64);
     let seed = match cell { Some((x, y)) => world.seed() ^ (x << 20) ^ y, None => world.seed() ^ ((tile.0 as u64) << 20) ^ tile.1 as u64 };
     (map, seed, player)
+}
+
+/// Where to embark in `tile` to have its river beside the camp: the river cell (a channel 3 m wide
+/// or more) nearest the tile's centre, then 50 m toward the centre, so the embark holds the river
+/// and the camp dry ground. None where the tile has no river.
+pub fn river_bank(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize)) -> Option<(u64, u64)> {
+    let s = cells_per_tile() as i64;
+    let zs = load_region(world, history, tile, world.seed());
+    let r = &zs.region;
+    let (w, h) = (r.width as i64, r.height as i64);
+    let (x0, y0) = (tile.0 as i64 * s - zs.origin.0, tile.1 as i64 * s - zs.origin.1);
+    let (cx, cy) = (x0 as f64 + s as f64 / 2.0, y0 as f64 + s as f64 / 2.0);
+    let mut best: Option<(f64, i64, i64)> = None;
+    for y in y0.max(1)..(y0 + s).min(h - 1) {
+        for x in x0.max(1)..(x0 + s).min(w - 1) {
+            let k = (y * w + x) as usize;
+            if crate::local::channel_width(r, k) < 2.0 { continue; }
+            let d = (x as f64 - cx).hypot(y as f64 - cy);
+            if best.map_or(true, |b| d < b.0) { best = Some((d, x, y)); }
+        }
+    }
+    let (_, x, y) = best?;
+    // A point on its bank, found the way the embark draws the channel (it meanders).
+    let (px, py) = crate::local::bank_near(r, x as f64 + 0.5, y as f64 + 0.5)?;
+    Some((((px + zs.origin.0 as f64) * CELL_FRAC).max(0.0) as u64, ((py + zs.origin.1 as f64) * CELL_FRAC).max(0.0) as u64))
 }
 
 /// Write the saga for each milestone the colony has reached and not yet written: numbered
@@ -380,6 +408,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             let (mcx, mcy) = (map.width as f32 / 2.0, map.height as f32 / 2.0);
             let mut colony = found_colony(map, history, tile, colony_seed, 7);
             colony.cell = cell;
+            // A fresh camp heeds the world's legends; a replay to a day does not.
+            if RESUME.get().is_none() { colony.heed_legends(&crate::colony::legend::load(world.seed())); }
             // Opened at a day (--code ... --interventions FILE --day N): the patron's acts replayed.
             let resumed = RESUME.get().map(|(script, day)| { colony.run_days_scripted(day.saturating_sub(1), script); *day });
             local = Some((colony, LocalCamera { cx: mcx, cy: mcy, tile_px: 16.0, z: cz, surface_view: true }));
@@ -418,10 +448,14 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         // Colonies left behind (Esc, Enter): kept as they were, marked on the map, resumed by
         // Enter on their ground.
         let mut left: Vec<(crate::colony::Colony, LocalCamera)> = Vec::new();
+        // The legends of camps made in this world before (`colony::legend`).
+        let mut legends = crate::colony::legend::load(world.seed());
         let mut stash = false;
         // The colony's own prompts: its name being typed, a dream being chosen, leaving asked.
         let mut name_input: Option<String> = None;
         let mut dream_for: Option<usize> = None;
+        // U: the camp cut open from the side (a section through the row at the view's centre).
+        let mut section_view = false;
         let mut leave_asked = false;
         let mut press_at: Option<(f32, f32)> = None;
         let mut was_down = false;
@@ -586,9 +620,17 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     tick_debt -= n as f64;
                     for _ in 0..n {
                         colony.tick();
-                        if pause_on_moments && colony.moments.len() > seen_moments { tick_debt = 0.0; break; }
+                        // Only a major moment stops the clock (`Moment::major`).
+                        if pause_on_moments && colony.moments[seen_moments.min(colony.moments.len())..].iter().any(|m| m.major()) { tick_debt = 0.0; break; }
                     }
                     if n > 0 { dirty = true; }
+                }
+                // Minor moments go to the status line without stopping the clock.
+                while moment_card.is_none() && colony.moments.len() > seen_moments && !colony.moments[seen_moments].major() {
+                    let m = &colony.moments[seen_moments];
+                    status = format!("{}: {}", m.title, m.text);
+                    seen_moments += 1;
+                    dirty = true;
                 }
                 if moment_card.is_none() && colony.moments.len() > seen_moments {
                     let m = colony.moments[seen_moments].clone();
@@ -637,6 +679,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let _ = std::fs::create_dir_all("colonies");
                     let path = format!("colonies/{}.txt", code_file(&code));
                     let body = format!("# code {}\n# day {}\n{}\n", code, colony.clock.day(), colony.interventions.join("\n"));
+                    // Its legend joins the world's (`colony::legend`).
+                    let _ = crate::colony::legend::save(world.seed(), &mut legends, colony.legend(&code));
                     status = match std::fs::write(&path, body) {
                         Ok(()) => format!("Left on day {}; saved {path} (Enter on its ground to return)", colony.clock.day()),
                         Err(e) => format!("could not save {path}: {e}"),
@@ -681,6 +725,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         else if pressed(Key::F) { Some(colony.mark_place(at, 6, false)) }
                         else if pressed(Key::X) { Some(colony.mark_place(at, 6, true)) }
                         else if pressed(Key::G) { Some(who.map(|i| colony.favour_settler(i)).unwrap_or_else(|| Err("G favours the settler under the mouse; there is no one there".into()))) }
+                        // The bell: everyone under a roof until dawn (`Colony::ring_bell`).
+                        else if pressed(Key::B) { Some(colony.ring_bell()) }
                         else if pressed(Key::R) {
                             match who {
                                 Some(_) if colony.patron.favour == 0 => Some(Err("no favour left today; it returns at dawn".into())),
@@ -730,11 +776,25 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 let up = window.is_key_pressed(Key::Comma, KeyRepeat::Yes) || window.is_key_pressed(Key::PageUp, KeyRepeat::Yes);
                 let dn = window.is_key_pressed(Key::Period, KeyRepeat::Yes) || window.is_key_pressed(Key::PageDown, KeyRepeat::Yes);
                 if up || dn {
+                    // From the surface view, start from the ground's level under the view's centre.
+                    if lcam.surface_view {
+                        let (gx, gy) = ((lcam.cx as usize).min(map.width - 1), (lcam.cy as usize).min(map.height - 1));
+                        lcam.z = map.surface_z[gy * map.width + gx];
+                    }
                     lcam.z = (lcam.z + up as i32 - dn as i32).clamp(0, map.depth as i32 - 1);
                     lcam.surface_view = false;
                     dirty = true;
                 }
-                if pressed(Key::V) { lcam.surface_view = !lcam.surface_view; dirty = true; }
+                if pressed(Key::V) {
+                    // Into the level view at the ground's level under the view's centre.
+                    if lcam.surface_view {
+                        let (gx, gy) = ((lcam.cx as usize).min(map.width - 1), (lcam.cy as usize).min(map.height - 1));
+                        lcam.z = map.surface_z[gy * map.width + gx];
+                    }
+                    lcam.surface_view = !lcam.surface_view;
+                    dirty = true;
+                }
+                if pressed(Key::U) { section_view = !section_view; dirty = true; }
                 // Hover: describe the tile under the mouse at the viewed level.
                 let (hx, hy) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
                 let info = if hx >= 0.0 && hy >= 0.0 && (hx as usize) < map.width && (hy as usize) < map.height {
@@ -753,6 +813,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                             };
                             format!("{:?} {}{}{}", c.material, if c.shape == Shape::Ramp { "ramp" } else { "floor" }, plant, if c.boulder { ", boulder" } else { "" })
                         }
+                        Shape::Stair => format!("a stair cut in the {:?}", c.material),
                         Shape::Empty if c.water > 0 => format!("water {}/7", c.water),
                         Shape::Empty => "open space".to_string(),
                     };
@@ -773,6 +834,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     .map(|s| format!("{}: {} - {} | ", s.name, s.job.verb(), s.why))
                     .or_else(|| colony.marks.iter().find(|m| (m.at.0 as f32 + 0.5 - hx).abs() < 0.8 && (m.at.1 as f32 + 0.5 - hy).abs() < 0.8)
                         .map(|m| format!("{} (click to read) | ", m.title)))
+                    .or_else(|| (hx >= 0.0 && hy >= 0.0).then(|| colony.building_at((hx as u16, hy as u16))).flatten().map(|b| format!("{} | ", b)))
                     .unwrap_or_default();
                 let clock = format!("{} {}", colony.clock.stamp(), if speed == 0 { "(paused)".to_string() } else { format!("{}x", speed) });
                 // The clock, favour, the hovered settler's why, the keys and the last act's answer
@@ -841,7 +903,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
 
                 // Enter on a colony left behind: back to it as it was.
                 let back = left.iter().position(|(c, _)| match c.cell {
-                    Some((x, y)) => (x as f64 - player.0).abs().max((y as f64 - player.1).abs()) <= 24.0,
+                    Some((x, y)) => (x as f64 / CELL_FRAC - player.0).abs().max((y as f64 / CELL_FRAC - player.1).abs()) <= 24.0,
                     None => c.map.world_tile == ((player.0 / s as f64) as usize % world.width, ((player.1 / s as f64) as usize).min(world.height - 1)),
                 });
                 if pressed(Key::Enter) && back.is_some() {
@@ -857,7 +919,12 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     // Embark: the playable area is centred on the walker.
                     window.set_title("Generating playable area...");
                     let t0 = std::time::Instant::now();
-                    let map = generate_local(world, &z.region, z.lore.as_ref(), player.0 - z.origin.0 as f64, player.1 - z.origin.1 as f64);
+                    // At the walker's position, kept to the precision a world code records, so the
+                    // code rebuilds exactly this camp.
+                    let cell = ((player.0 * CELL_FRAC).max(0.0) as u64, (player.1 * CELL_FRAC).max(0.0) as u64);
+                    let here = ((player.0 / s as f64) as usize % world.width, ((player.1 / s as f64) as usize).min(world.height - 1));
+                    let (map, colony_seed, _) = colony_site(world, history, here, Some(cell));
+                    let _ = &z;
                     let cz = map.surface_z[(map.height / 2) * map.width + map.width / 2];
                     let lcam = LocalCamera { cx: map.width as f32 / 2.0, cy: map.height as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: true };
                     status = format!("embarked in {:.2}s", t0.elapsed().as_secs_f32());
@@ -870,10 +937,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         status = format!("no camp here: {why}; walk on");
                         continue;
                     }
-                    let colony_seed = seed ^ (player.0 as u64) << 20 ^ player.1 as u64;
-                    let here = ((player.0 / s as f64) as usize % world.width, ((player.1 / s as f64) as usize).min(world.height - 1));
                     let mut colony = found_colony(map, history, here, colony_seed, 7);
-                    colony.cell = Some((player.0 as u64, player.1 as u64));
+                    colony.cell = Some(cell);
+                    colony.heed_legends(&legends);
                     local = Some((colony, lcam));
                     fresh_colony = true;
                     local_active = true;
@@ -1084,6 +1150,11 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     dirty = true;
                 }
                 let place = describe_tile(world, history, &gaz, &landmarks, &tw, tile.0, tile.1);
+                // A camp's legend on this tile (`colony::legend`).
+                let place = match legends.iter().rev().find(|l| l.tile == tile) {
+                    Some(l) => format!("{} | {} ({}, day {}): {}", place, l.name, l.fate, l.day, l.deeds.last().map(|d| d.as_str()).unwrap_or("nothing yet sung of it")),
+                    None => place,
+                };
                 let shown = if overlay == Overlay::None { String::new() } else { format!("{}: {} | ", overlay.name(), overlays::describe(world, overlay, tile.0, tile.1)) };
                 let title = format!(
                     "{}({},{}) {} | {:.0} m | {} {}°C | O overlays, T season, C auto{}, L labels, R resources | {}",
@@ -1097,8 +1168,15 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             if dirty {
                 if local_active {
                     let (colony, lcam) = local.as_ref().unwrap();
-                    render_local(&colony.map, &atlas, lcam, &mut buf, w, h);
-                    if lcam.surface_view { super::local_ink::draw_colony(colony, lcam, &mut buf, w, h, history); }
+                    if section_view {
+                        let half = ((w as f32 / 14.0) as usize / 2).max(8);
+                        let cx = lcam.cx as usize;
+                        super::local_ink::render_section_ink(colony, lcam.cy as usize, cx.saturating_sub(half), (cx + half).min(colony.map.width), &mut buf, w, h);
+                    } else {
+                        render_local(&colony.map, &atlas, lcam, &mut buf, w, h);
+                        if lcam.surface_view { super::local_ink::draw_colony(colony, lcam, &mut buf, w, h, history); }
+                        else { super::local_ink::draw_level(colony, lcam, &mut buf, w, h, history); }
+                    }
                     log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: &status, mouse }, &mut buf, w, h);
                     if let Some(m) = &moment_card { super::colony_hud::draw_moment(m, &mut buf, w, h); }
                     let prompt = if leave_asked {
@@ -1114,7 +1192,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     inspect_hits.clear();
                     if let Some(&subject) = inspect.last() {
                         let page = match subject {
-                            super::inspector::Subject::Settler(i) => colony.settlers.get(i).map(|st| super::inspector::settler_page_with(history, st, wounded_in(colony, &st.name))),
+                            super::inspector::Subject::Settler(i) => colony.settlers.get(i).map(|st| super::inspector::settler_page_with(history, st, wounded_in(colony, &st.name), &colony.about(i))),
                             super::inspector::Subject::ColonyMark(i) => colony.marks.get(i).map(super::inspector::mark_page),
                             other => history.map(|hist| super::inspector::page(world, hist, other)),
                         };
@@ -1153,6 +1231,19 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         }
                         let name = c.name.clone().unwrap_or_else(|| format!("The camp, day {}", c.clock.day()));
                         super::fonts::draw(&mut buf, w, h, sx + 10.0, sy - 8.0, &name, super::fonts::Face::Italic, 14.0, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
+                    }
+                    // Camps of earlier sessions, from the legends: a fainter dashed ring.
+                    for l in legends.iter().filter(|l| !left.iter().any(|(c, _)| c.map.world_tile == l.tile)) {
+                        let (tx, ty) = l.tile;
+                        let (sx, sy) = ((tx as f32 + 0.5 - cam.cx) * cam.tile_px + w as f32 / 2.0, (ty as f32 + 0.5 - cam.cy) * cam.tile_px + h as f32 / 2.0);
+                        if sx < 0.0 || sy < 0.0 || sx >= w as f32 || sy >= h as f32 { continue; }
+                        for k in 0..48 {
+                            if k % 4 >= 2 { continue; }
+                            let a = k as f32 / 48.0 * std::f32::consts::TAU;
+                            let r = (cam.tile_px * 0.6).max(6.0);
+                            super::ui::blend_px(&mut buf, w, h, (sx + r * a.cos()) as i64, (sy + r * a.sin()) as i64, super::ui::GOLD, 0.8);
+                        }
+                        super::fonts::draw(&mut buf, w, h, sx + 10.0, sy - 8.0, &super::colony_hud::capitalize_pub(&l.name), super::fonts::Face::Italic, 14.0, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
                     }
                     // How to begin, on the map itself.
                     if let Some((_, t, t0, _)) = &surveying {
@@ -1615,21 +1706,26 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
         cy += 44.0;
         if cy > 820.0 { break; }
     }
-    // The timeline: milestones and the arc, by day.
+    // The timeline: the camp's moments (each with its weight), and the founding, by day.
     let mut moments: Vec<(u64, String)> = Vec::new();
-    for l in &colony.log {
-        let Some(rest) = l.strip_prefix("Day ") else { continue };
-        let day: u64 = rest.split(',').next().and_then(|d| d.parse().ok()).unwrap_or(0);
-        let text = l.splitn(2, "  ").nth(1).unwrap_or("").to_string();
-        let key = ["make camp", "first", "finishes the hut", "rumour", "Refugees", "raid", "bury", "died", "favours", "dreamt", "called"].iter().any(|k| text.contains(k));
-        if key && !text.contains("keeps watch") { moments.push((day, text)); }
+    if let Some(first) = colony.log.first() { moments.push((1, first.splitn(2, "  ").nth(1).unwrap_or("").to_string())); }
+    let mut weights: Vec<u8> = vec![2];
+    for m in &colony.moments {
+        let t = m.title.as_str();
+        // Deaths, raids and slayings first; then works of note, hunts, relics; then the life of
+        // the camp (weddings, births, guests, ghosts); then the rest.
+        let w = if t.starts_with("The death of") || t == "The raid" || t.ends_with(" is killed") || t.contains("cast out") || t == "The siege" || t.ends_with(" is deposed") || t.ends_with(" swear vengeance") { 0 }
+            else if t.contains("artifact") || m.text.contains("has made an artifact") || t.starts_with("The hunt for") || t.ends_with(" is found") || t.starts_with("They break into") || t.contains("goes mad") || t.ends_with(" is born")
+                || t.ends_with(" is taken") || t.ends_with(" comes home") || t == "The sally" || t == "The siege lifts" || t == "The armour holds" || t.contains(" rises against ") || t == "Old enemies at the fire" { 1 }
+            else if t.starts_with("The wedding") || t.ends_with(" comes") || t.starts_with("The ghost of") || t == "Migrants" || t.ends_with(" stays") || t.starts_with("Water in the rock")
+                || t.starts_with("The friendship of") || t.starts_with("A hall for") || t.ends_with(" is founded") || t.ends_with(" among the raiders") || t.ends_with("'s dream") || t.ends_with("'s vow") { 2 }
+            else { 3 };
+        moments.push((m.tick / crate::colony::TICKS_PER_DAY + 1, m.text.clone()));
+        weights.push(w);
     }
-    // The most telling ten (the arc, deaths, the hut, the camp, then firsts), in day order.
-    let weight = |t: &str| if ["rumour", "Refugees", "raid"].iter().any(|k| t.contains(k)) { 0 }
-        else if t.contains("bury") || t.contains("died") { 1 } else if t.contains("hut") || t.contains("make camp") { 2 }
-        else if t.contains("called") || t.contains("favours") || t.contains("dreamt") { 3 } else { 4 };
+    let weight_of: Vec<u8> = weights;
     let mut ranked: Vec<(usize, &(u64, String))> = moments.iter().enumerate().collect();
-    ranked.sort_by_key(|(i, m)| (weight(&m.1), *i));
+    ranked.sort_by_key(|(i, _)| (weight_of[*i], *i));
     ranked.truncate(10);
     ranked.sort_by_key(|(i, _)| *i);
     let chosen: Vec<&(u64, String)> = ranked.into_iter().map(|(_, m)| m).collect();
@@ -1650,7 +1746,10 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
             if !short.is_empty() { short.push(' '); }
             short.push_str(word);
         }
-        fonts::draw(&mut buf, w, h, x - 6.0, if up { ty - 26.0 } else { ty + 32.0 }, &short, Face::Italic, 13.0, 0.0, 0x0038_2A20, None);
+        // Kept inside the page at the right edge.
+        let tw = fonts::width(&short, Face::Italic, 13.0, 0.0);
+        let lx = (x - 6.0).min(w as f32 - 12.0 - tw).max(8.0);
+        fonts::draw(&mut buf, w, h, lx, if up { ty - 26.0 } else { ty + 32.0 }, &short, Face::Italic, 13.0, 0.0, 0x0038_2A20, None);
     }
     save_rgb_png(path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
     Ok(())
@@ -1671,17 +1770,24 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
     // PLANET_FORCE_CAMP=1 makes camp anyway (to watch what the settlers do about it).
     if sv.verdict().is_err() && std::env::var("PLANET_FORCE_CAMP").is_err() { return; }
     let mut colony = found_colony(map, history, tile, seed, 7);
-    colony.run_days(days);
-    // The cold, with and without a woodpile, and how idle the colony is.
+    if std::env::var("PLANET_HALL_SCAN").is_ok() { println!("  Hall at founding: {}", if colony.plan_hall().is_some() { "a hillside to dig" } else { "flat" }); }
+    // PLANET_SCRIPT=FILE: the patron's interventions ("tick verb args") replayed on the way.
+    match std::env::var("PLANET_SCRIPT").ok().and_then(|f| std::fs::read_to_string(f).ok()) {
+        Some(text) => { let script: Vec<String> = text.lines().map(String::from).collect(); colony.run_days_scripted(days, &script); }
+        None => colony.run_days(days),
+    }
+    // The cold, with and without a woodpile (runs of 30 days or more), and how idle the colony is.
+    if days >= 30 {
     let (with, without) = crate::colony::Colony::cold_trial(found_colony(crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey), history, tile, seed, 7),
         found_colony(crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), ex, ey), history, tile, seed, 7));
     println!("Cold: {} nights ended chilled in 120 days (a winter) with a woodpile, {} with its ground forbidden", with, without);
+    }
     let idle = colony.decisions.iter().filter(|d| d.contains("Nothing needs doing")).count();
     println!("Idle: {:.0}% of {} decisions were 'Nothing needs doing'", 100.0 * idle as f32 / colony.decisions.len().max(1) as f32, colony.decisions.len());
     let hut = colony.hut.as_ref().map(|h| format!("{} hut {}", if colony.hut_material == crate::colony::ItemKind::Stone { "stone" } else { "timber" }, if h.done { "built" } else { "unfinished" })).unwrap_or_else(|| "no hut site".into());
     let gone = colony.departed.map(|d| format!("; they left on day {}", d)).unwrap_or_default();
     let moved = colony.log.iter().filter(|l| l.contains("strike camp")).count();
-    println!("Projects at {},{} after {} days: {}; {} of {} alive{}{}", tile.0, tile.1, days, hut, colony.alive(), colony.settlers.len(), gone,
+    println!("Projects at {},{} after {} days: {}; {} of {} alive{}{}", tile.0, tile.1, days, hut, colony.alive(), colony.company(), gone,
         if moved > 0 { format!("; the camp moved {} time{}", moved, if moved == 1 { "" } else { "s" }) } else { String::new() });
     let laid_starving = colony.log.iter().filter(|l| l.contains("is starving")).filter_map(|l| l.split(',').next()).any(|d| colony.log.iter().any(|m| m.starts_with(&format!("{},", d)) && (m.contains("sets the first") || m.contains("finishes"))));
     if laid_starving { println!("  Built on a day someone starved"); }
@@ -1689,8 +1795,90 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
         println!("  Project day {}: {} ({} of {} {}{}), {}", p.day, p.kind.word(), p.used, p.needed,
             if p.material == crate::colony::ItemKind::Stone { "stones" } else { "logs" }, if p.done { ", done" } else { "" }, p.why);
     }
+    if std::env::var("PLANET_HALL_SCAN").is_ok() { println!("  Hall: {}", if colony.plan_hall().is_some() { "a hillside to dig" } else { "flat" }); }
+    for p in &colony.map.places {
+        // Can someone walk in from the mouth to the far end?
+        let walk = p.mouth.zip(p.cells.last()).map_or(false, |(m, c)| crate::colony::nav::path3(&colony.map, None, crate::colony::nav::surface3(&colony.map, m), (c.0 .0, c.0 .1, c.1), 40000).is_some());
+        let levels = p.cells.iter().map(|c| c.1).max().unwrap_or(0) - p.cells.iter().map(|c| c.1).min().unwrap_or(0) + 1;
+        println!("  Place: {} ({:?}): {}; because {}; {} cells on {} levels, mouth {:?}, {}", p.name, p.kind, p.contents.join("; "), p.cause, p.cells.len(), levels, p.mouth, if walk { "walkable from the surface" } else { "not reached from the surface" });
+    }
+    if let Some(w) = &colony.were { println!("  Werebeast: {} (full moons every 28 days); {} cursed; {} cast out", w, colony.cursed.len(), colony.log.iter().filter(|l| l.contains(" casts ") || l.contains("casts ") && l.contains(" out")).count()); }
+    if colony.darkness > 0.0 { println!("  Darkness: {:.2} under {}; {} graves; the dead rose {} times", colony.darkness, colony.shadow_name.clone().unwrap_or_default(), colony.marks.iter().filter(|m| m.kind == crate::colony::MarkKind::Grave).count(), colony.log.iter().filter(|l| l.contains("rises from the grave")).count()); }
+    if let Some(p) = &colony.trade { println!("  Trade: {} caravans from {} ({} days' walk){}", colony.caravans, p.town, p.days, if colony.tools_bought { "; iron tools bought" } else { "" }); }
+    if !colony.works.is_empty() {
+        let best = colony.works.iter().max_by_key(|w| (w.quality, std::cmp::Reverse(w.day))).unwrap();
+        println!("  Works: {} made, {} fine or better, {} showing a world event; best: {} by {}", colony.works.len(), colony.works.iter().filter(|w| w.quality >= 2).count(),
+            colony.works.iter().filter(|w| w.image.as_ref().map_or(false, |x| x.1.is_some())).count(), best.describe(), colony.settlers[best.maker].name);
+    }
+    for c in &colony.map.caverns {
+        println!("  Cavern: {}, {} levels down, {} cells of floor ({} fungus trees, {} under water): {}{}", c.name, c.depth_levels, c.floor_cells, c.fungus, c.water_cells, c.life.join(", "),
+            c.beast.as_ref().map(|(n, m)| format!("; {} the {} sleeps there: {}", n, m.kind_word, m.description)).unwrap_or_default());
+    }
+    let game: Vec<String> = colony.map.game.iter().map(|(n, h)| format!("{} {}", h, n)).collect();
+    println!("  Game: {} on the land; {} brought down", if game.is_empty() { "none".to_string() } else { game.join(", ") }, colony.hunted);
+    if colony.stone_dug > 0 || colony.dug_cells() > 0 {
+        println!("  Dug: {} cells under rock, {} stone loads dug out, {} seams struck; {} sleep in the hall; aquifer {}", colony.dug_cells(), colony.stone_dug, colony.ore_found, if colony.hall_cells.is_empty() { 0 } else { colony.alive() },
+            match (colony.map.aquifer, colony.aquifer_struck) { (None, _) => "none".to_string(), (Some((lo, hi)), None) => format!("at levels {}-{}, untouched", lo, hi), (Some((lo, hi)), Some(d)) => format!("at levels {}-{}, struck on day {}{}", lo, hi, d, if colony.aquifer_lined { ", lined" } else { "" }) });
+    }
     // PLANET_DUMP_LOG=FILE writes the whole log (for reading a long run).
     if let Ok(path) = std::env::var("PLANET_DUMP_LOG") { let _ = std::fs::write(path, colony.log.join("\n") + "\n"); }
+    if let Ok(path) = std::env::var("PLANET_ANNALS") { let _ = std::fs::write(path, colony.annals(history)); }
+    if let Ok(path) = std::env::var("PLANET_DUMP_DECISIONS") { let _ = std::fs::write(path, colony.decisions.join("\n") + "\n"); }
+    // PLANET_FRAMES=PREFIX: the camp seen below: a section through the delve's stair (or the
+    // dig, or the camp), each level with rooms on it, and the surface above.
+    if let Ok(prefix) = std::env::var("PLANET_FRAMES") {
+        let w0 = colony.map.width;
+        let at = colony.spine.map(|s| s.at).or(colony.hall_cells.first().copied()).unwrap_or(colony.camp);
+        let (w, h) = (1280usize, 800usize);
+        let mut buf = vec![0u32; w * h];
+        let (x0, x1) = ((at.0 as usize).min(colony.camp.0 as usize).saturating_sub(14), ((at.0 as usize).max(colony.camp.0 as usize) + 14).min(w0));
+        super::local_ink::render_section_ink(&colony, at.1 as usize, x0, x1, &mut buf, w, h);
+        save_rgb_png(&format!("{prefix}_section.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        let mut levels: Vec<i32> = colony.rooms.iter().map(|r| r.z).chain(colony.tower.map(|t| t.1)).collect();
+        levels.sort_unstable_by(|a, b| b.cmp(a));
+        levels.dedup();
+        if levels.is_empty() { levels.push(colony.map.surface_z[at.1 as usize * w0 + at.0 as usize]); }
+        let mut names = Vec::new();
+        for (n, &z) in levels.iter().enumerate() {
+            let cells: Vec<crate::colony::nav::Pos> = colony.rooms.iter().filter(|r| r.z == z).flat_map(|r| r.cells.iter().copied()).chain(colony.tower.filter(|t| t.1 == z).map(|t| t.0)).collect();
+            let (mx, my) = if cells.is_empty() { (at.0 as f32, at.1 as f32) } else { let k = cells.len() as f32; cells.iter().fold((0.0, 0.0), |a, c| (a.0 + c.0 as f32 / k, a.1 + c.1 as f32 / k)) };
+            let cam = LocalCamera { cx: mx + 0.5, cy: my + 0.5, tile_px: 24.0, z, surface_view: false };
+            let mut buf = vec![0u32; w * h];
+            super::local_ink::render_level_ink(&colony.map, &cam, &mut buf, w, h);
+            super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history);
+            let name = if n == 0 { format!("{prefix}_below.png") } else { format!("{prefix}_below{}.png", n + 1) };
+            save_rgb_png(&name, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+            names.push(format!("{} (level {})", name, z));
+        }
+        let cam = LocalCamera { cx: (at.0 as f32 + colony.camp.0 as f32) / 2.0, cy: (at.1 as f32 + colony.camp.1 as f32) / 2.0, tile_px: 12.0, z: 0, surface_view: true };
+        let mut buf = vec![0u32; w * h];
+        super::local_ink::render_local_ink(&colony.map, &cam, &mut buf, w, h);
+        super::local_ink::draw_colony(&colony, &cam, &mut buf, w, h, history);
+        save_rgb_png(&format!("{prefix}_above.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        // Each place in the hills at its deepest level (`local/places.rs`).
+        for (k, pl) in colony.map.places.iter().enumerate().filter(|(_, p)| p.mouth.is_some()) {
+            let Some(&(c, z)) = pl.cells.iter().min_by_key(|c| c.1) else { continue };
+            let cam = LocalCamera { cx: c.0 as f32 + 0.5, cy: c.1 as f32 + 0.5, tile_px: 20.0, z, surface_view: false };
+            let mut buf = vec![0u32; w * h];
+            super::local_ink::render_level_ink(&colony.map, &cam, &mut buf, w, h);
+            super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history);
+            save_rgb_png(&format!("{prefix}_place{}.png", k + 1), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        }
+        // The camp at its own ground level, as the level view draws it, beside the surface view
+        // (to compare the two).
+        let zc = colony.map.surface_z[colony.camp.1 as usize * w0 + colony.camp.0 as usize];
+        let cam = LocalCamera { cx: colony.camp.0 as f32 + 0.5, cy: colony.camp.1 as f32 + 0.5, tile_px: 16.0, z: zc, surface_view: false };
+        let mut buf = vec![0u32; w * h];
+        super::local_ink::render_level_ink(&colony.map, &cam, &mut buf, w, h);
+        super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history);
+        save_rgb_png(&format!("{prefix}_camp_level.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        let cam = LocalCamera { surface_view: true, ..cam };
+        let mut buf = vec![0u32; w * h];
+        super::local_ink::render_local_ink(&colony.map, &cam, &mut buf, w, h);
+        super::local_ink::draw_colony(&colony, &cam, &mut buf, w, h, history);
+        save_rgb_png(&format!("{prefix}_camp_surface.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("Frames: {prefix}_section.png, {}, {prefix}_above.png, {prefix}_camp_level.png, {prefix}_camp_surface.png", names.join(", "));
+    }
     let deaths: Vec<String> = colony.log.iter().filter(|l| l.contains("died of") || l.contains("was killed") || l.contains("was the last")).map(|l| l.split("  ").next().unwrap_or("").to_string() + ": " + if l.contains("hunger") { "hunger" } else if l.contains("killed") { "raid" } else { "other" }).collect();
     if !deaths.is_empty() { println!("  Deaths: {}", deaths.join("; ")); }
     // The story after the first raid: arc beats since, and the longest stretch without a log line.
@@ -1738,7 +1926,9 @@ pub fn move_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (usiz
     let mut colony = found_colony(map, history, tile, seed, 7);
     colony.strip_berries(45);
     colony.run_days(days);
-    println!("Move at {},{} after {} days: {} of {} alive; the camp at {},{}{}", tile.0, tile.1, days, colony.alive(), colony.settlers.len(), colony.camp.0, colony.camp.1,
+    if let Ok(path) = std::env::var("PLANET_DUMP_LOG") { let _ = std::fs::write(path, colony.log.join("\n") + "\n"); }
+    if let Ok(path) = std::env::var("PLANET_DUMP_DECISIONS") { let _ = std::fs::write(path, colony.decisions.join("\n") + "\n"); }
+    println!("Move at {},{} after {} days: {} of {} alive; the camp at {},{}{}", tile.0, tile.1, days, colony.alive(), colony.company(), colony.camp.0, colony.camp.1,
         colony.departed.map(|d| format!("; they left on day {}", d)).unwrap_or_default());
     for l in colony.log.iter().filter(|l| l.contains("strike camp") || l.contains("starving") || l.contains("died") || l.contains("leave on day")) { println!("  {l}"); }
     for m in colony.moments.iter().filter(|m| m.title == "They move the camp") { println!("  Moment: {} ({})", m.title, m.because); }
@@ -1775,7 +1965,8 @@ pub fn refugee_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (u
 /// A place to settle, offered at the end of the history: where, who the settlers would be, the
 /// trouble nearest, and what the land gives and lacks.
 #[derive(Clone, Debug)]
-pub struct SiteOffer { pub tile: (usize, usize), pub name: String, pub who: String, pub trouble: String, pub land: String }
+pub struct SiteOffer { pub tile: (usize, usize), pub name: String, pub who: String, pub trouble: String, pub land: String, /// Where in the tile to embark (beside its river), if not its centre.
+    pub cell: Option<(u64, u64)> }
 
 /// The site the player chose on the watcher's closing card (the viewer embarks there).
 static CHOSEN_SITE: std::sync::OnceLock<(usize, usize)> = std::sync::OnceLock::new();
@@ -1825,7 +2016,12 @@ pub fn three_sites(world: &WorldData, history: &WorldHistory) -> Vec<SiteOffer> 
         let roster = crate::history::settlers::roster(history, tile, 7, seed);
         let people = roster.first().and_then(|r| r.1.people);
         if picked.iter().any(|(_, k, p)| *k == arc.threat.kind && *p == people) { continue; }
-        let (map, _, _) = colony_site(world, Some(history), tile, None);
+        // Embark beside the tile's river where it has one (Dwarf Fortress: the world's river runs
+        // through the embark tiles it crosses).
+        let cell = river_bank(world, Some(history), tile);
+        // The first pass offers only sites beside water.
+        if pass == 0 && cell.is_none() { continue; }
+        let (map, _, _) = colony_site(world, Some(history), tile, cell);
         if !crate::colony::habitable(&map) || crate::colony::survey(&map).verdict().is_err() { continue; }
         let (gift, lack) = crate::local::site::gift_and_lack(&map);
         let callings: Vec<String> = { let mut v: Vec<String> = roster.iter().map(|r| r.1.calling.clone()).collect(); v.dedup(); v.into_iter().take(2).collect() };
@@ -1835,6 +2031,7 @@ pub fn three_sites(world: &WorldData, history: &WorldHistory) -> Vec<SiteOffer> 
             who: format!("Seven of {}: {}", fname(people), callings.join("; ")),
             trouble: format!("{}: {}", crate::colony::arc::capital_word(&arc.threat.name), arc.threat.why),
             land: format!("Gives {}; lacks {}{}", gift, lack, if map.furnished.is_empty() { String::new() } else { format!(" (made livable: {})", map.furnished.join(", ")) }),
+            cell,
         };
         picked.push((offer, arc.threat.kind, people));
     }
@@ -1868,20 +2065,210 @@ pub fn embark_survey(world: &WorldData, history: Option<&WorldHistory>) {
     }
 }
 
+/// Roles under strain (`--sim-roles`): 30 days, then the camp's builder dies of a fever; 30 more.
+/// Prints the minutes a load took before and after, who took up the hammer, and how a
+/// woodcutter's felling quickened.
+/// A camp's legend heeded by the next (`--sim-legend`): the dev camp lives 100 days; its legend
+/// goes through JSON as the window keeps it; a second camp founded two tiles away heeds it.
+pub fn legend_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize)) {
+    let (map, seed, _) = colony_site(world, history, tile, None);
+    let mut a = found_colony(map, history, tile, seed, 7);
+    a.run_days(100);
+    let legend = a.legend("trial");
+    let json = serde_json::to_string(&vec![legend.clone()]).unwrap_or_default();
+    let legends: Vec<crate::colony::legend::Legend> = serde_json::from_str(&json).unwrap_or_default();
+    println!("Legend: {} ({}, day {}): {} deeds; slain: {:?}; relic: {:?}; regards: {:?}", legend.name, legend.fate, legend.day, legend.deeds.len(), legend.slain, legend.relic,
+        legend.regards.iter().map(|r| format!("{} {:+}", r.1, r.2)).collect::<Vec<_>>());
+    let near = ((tile.0 + 2).min(world.width - 1), tile.1);
+    let (map, seed2, _) = colony_site(world, history, near, None);
+    let mut b = found_colony(map, history, near, seed2, 7);
+    let threats = |c: &crate::colony::Colony| c.arc.as_ref().map(|x| std::iter::once(x.threat.name.clone()).chain(x.later.iter().map(|t| t.name.clone())).chain(x.reserve.iter().map(|t| t.name.clone())).collect::<Vec<_>>()).unwrap_or_default();
+    let before = threats(&b);
+    b.heed_legends(&legends);
+    let after = threats(&b);
+    println!("Second camp at {},{}: threats before {:?}; after {:?}", near.0, near.1, before, after);
+    println!("  {}", b.log.last().cloned().unwrap_or_default());
+    println!("Second camp's regards: {:?}", b.regards.iter().map(|r| format!("{} {:+}", r.people, r.total())).collect::<Vec<_>>());
+}
+
+pub fn roles_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize)) {
+    let (map, seed, _) = colony_site(world, history, tile, None);
+    let mut colony = found_colony(map, history, tile, seed, 7);
+    let first_fell = 1.3 - 0.6 * colony.settlers.iter().map(|s| s.skill[2]).fold(0.0f32, f32::max);
+    colony.run_days(30);
+    let loads = |c: &crate::colony::Colony| c.settlers.iter().map(|s| s.loads_laid).sum::<u32>();
+    let (l0, t0) = (loads(&colony), colony.clock.tick);
+    colony.run_days(10);
+    let before = (colony.clock.tick - t0) as f32 / (loads(&colony) - l0).max(1) as f32;
+    let Some(_) = colony.settlers.iter().position(|s| s.alive && s.role == Some(4)) else { println!("Roles: no builder by day 40"); return };
+    // The camp's quickest builder dies (named the builder first, if the role had not passed to
+    // them yet): the trial is of losing the best hand.
+    let pace = |s: &crate::colony::Settler| (1.3 - 0.6 * s.skill[4]) * s.persona.work_time(4);
+    let b = (0..colony.settlers.len()).filter(|&i| colony.settlers[i].alive && colony.settlers[i].skill[4] >= 0.45)
+        .min_by(|&x, &y| pace(&colony.settlers[x]).total_cmp(&pace(&colony.settlers[y])).then(x.cmp(&y))).unwrap();
+    for s in colony.settlers.iter_mut() { if s.role == Some(4) { s.role = None; } }
+    colony.settlers[b].role = Some(4);
+    let name = colony.settlers[b].name.clone();
+    // Minutes a load takes their hands: skill and body (`Persona::work_time`).
+    let old_hand = 60.0 * (1.3 - 0.6 * colony.settlers[b].skill[4]) * colony.settlers[b].persona.work_time(4);
+    // The next best hand at that moment (before ten days' practice change it).
+    let next_hand = (0..colony.settlers.len()).filter(|&i| i != b && colony.settlers[i].alive && colony.settlers[i].skill[4] >= 0.45)
+        .map(|i| 60.0 * pace(&colony.settlers[i])).fold(f32::MAX, f32::min);
+    colony.bury(b, "of a fever");
+    let (l1, t1) = (loads(&colony), colony.clock.tick);
+    colony.run_days(10);
+    let after = (colony.clock.tick - t1) as f32 / (loads(&colony) - l1).max(1) as f32;
+    let took = colony.log.iter().find(|l| l.contains("takes up the hammer")).cloned().unwrap_or_else(|| "no one took up the hammer".into());
+    let wc = colony.settlers.iter().filter(|s| s.alive).map(|s| s.skill[2]).fold(0.0f32, f32::max);
+    let new_hand = if next_hand < f32::MAX { next_hand } else { 78.0 };
+    let _ = (before, after);
+    println!("Roles trial: the builder {} died on day 40; a load took {:.1} min of their work, {:.1} of the new builder's", name, old_hand, new_hand);
+    println!("  {}", took);
+    println!("  Felling: the best woodcutter now takes {:.2}x the base time (the greenest start took {:.2}x)", 1.3 - 0.6 * wc, first_fell.max(1.3 - 0.6 * 0.0));
+}
+
+/// The plan follows the patron (`--sim-plan`): one colony blesses a meadow west of the camp on
+/// day 3, another forbids everything east of the fire; 40 days each. Prints where the works stood.
+pub fn plan_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize)) {
+    for variant in ["bless", "forbid"] {
+        let (map, seed, _) = colony_site(world, history, tile, None);
+        let mut c = found_colony(map, history, tile, seed, 7);
+        c.run_days(2);
+        let camp = c.camp;
+        let mark = if variant == "bless" { (camp.0.saturating_sub(12), camp.1 + 6) } else { (camp.0 + 16, camp.1) };
+        c.patron.favour = 3;
+        let _ = c.mark_place(mark, if variant == "bless" { 6 } else { 13 }, variant == "forbid");
+        let before = c.projects.len();
+        c.run_days(40);
+        let inside = |p: (u16, u16)| (p.0 as i32 - mark.0 as i32).abs().max((p.1 as i32 - mark.1 as i32).abs()) <= if variant == "bless" { 7 } else { 13 };
+        let new: Vec<_> = c.projects.iter().skip(before).filter(|p| crate::colony::Colony::footprint(p.kind).is_some()).collect();
+        let n_in = new.iter().filter(|p| inside(p.at)).count();
+        let firsts: Vec<String> = new.iter().take(3).map(|p| format!("{} at {},{}{}", p.kind.word(), p.at.0, p.at.1, if inside(p.at) { " (on the mark)" } else { "" })).collect();
+        println!("Plan {}: {} of {} new buildings on the marked ground; first: {}", variant, n_in, new.len(), firsts.join("; "));
+    }
+}
+
+/// One site, peoples' ways (`--sim-ways`): the dev colony lived 60 days as dwarves, elves, orcs
+/// and humans; prints each order of works and how far the camp frames differ.
+pub fn ways_trial(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize)) {
+    let mut frames: Vec<(String, Vec<u32>)> = Vec::new();
+    for people in ["dwarf", "elf", "orc", "human"] {
+        let (map, seed, _) = colony_site(world, history, tile, None);
+        let mut c = found_colony(map, history, tile, seed, 7);
+        if let Some(way) = crate::colony::projects::build_way(people) { c.adopt_way(way); }
+        c.run_days(60);
+        let order: Vec<String> = c.projects.iter().filter(|p| p.kind != crate::colony::projects::ProjectKind::Mending).take(6).map(|p| p.kind.word().trim_start_matches("a ").to_string()).collect();
+        let felled_inside = (0..c.map.height).flat_map(|y| (0..c.map.width).map(move |x| (x, y))).filter(|&(x, y)| {
+            ((x as i32 - c.camp.0 as i32).pow(2) + (y as i32 - c.camp.1 as i32).pow(2)) <= 13 * 13 && c.map.features[y * c.map.width + x] == crate::local::wildlife::Feature::Stump
+        }).count();
+        let plural = match people { "dwarf" => "dwarves", "elf" => "elves", other => other };
+        println!("Way of the {}: hut in {}; works: {}; stumps inside the wall: {}", if plural == people { format!("{}s", people) } else { plural.to_string() }, if c.hut_material == crate::colony::ItemKind::Stone { "stone" } else { "timber" }, order.join(", "), felled_inside);
+        let (w, h) = (640usize, 640usize);
+        let cam = LocalCamera { cx: c.camp.0 as f32 + 0.5, cy: c.camp.1 as f32 + 0.5, tile_px: 12.0, z: 0, surface_view: true };
+        let mut buf = vec![0u32; w * h];
+        render_local(&c.map, atlas, &cam, &mut buf, w, h);
+        super::local_ink::draw_colony(&c, &cam, &mut buf, w, h, history);
+        frames.push((people.to_string(), buf));
+    }
+    for a in 0..frames.len() { for b in a + 1..frames.len() {
+        let d = frames[a].1.iter().zip(&frames[b].1).filter(|(x, y)| x != y).count() as f32 / frames[a].1.len() as f32;
+        println!("  {} vs {}: camp frames differ in {:.0}% of pixels", frames[a].0, frames[b].0, d * 100.0);
+    } }
+}
+
 /// Found the colony on an embark at world `tile`: with a history, the settlers come out of it
 /// (`history::settlers::roster`: survivors, veterans, kin); without one they are nameless
 /// wanderers with stock names.
 fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, tile: (usize, usize), seed: u64, n: usize) -> crate::colony::Colony {
     match history {
         Some(h) => {
-            let roster = crate::history::settlers::roster(h, tile, n, seed);
+            // Those who may come later as migrants are the same roster drawn further.
+            let mut roster = crate::history::settlers::roster(h, tile, n + 6, seed);
+            let later: Vec<(String, crate::history::settlers::Past)> = roster.split_off(n.min(roster.len()));
             let names: Vec<String> = roster.iter().map(|r| r.0.clone()).collect();
             let mut colony = crate::colony::Colony::found(map, &names, seed);
-            for (st, (_, past)) in colony.settlers.iter_mut().zip(roster) { st.past = Some(past); }
+            for (st, (_, past)) in colony.settlers.iter_mut().zip(roster) {
+                st.skill = crate::colony::skills_from_past(Some(&past), &st.name);
+                if let Some(p) = &past.persona { st.persona = p.clone(); }
+                st.past = Some(past);
+            }
             // The first arc: the world will reach this camp.
             colony.arc = Some(crate::colony::arc::plan(h, tile, seed));
+            // The camp's own people do not come as its first raiders: those who do are deserters,
+            // outlaws of that people whom everyone will fight.
+            {
+                let mut count: Vec<(crate::history::FactionId, usize)> = Vec::new();
+                for st in &colony.settlers { if let Some(f) = st.past.as_ref().and_then(|p| p.people) { match count.iter_mut().find(|c| c.0 == f) { Some(c) => c.1 += 1, None => count.push((f, 1)) } } }
+                let most = count.iter().max_by_key(|c| (c.1, std::cmp::Reverse(c.0))).map(|c| c.0);
+                if let Some(a) = colony.arc.as_mut() {
+                    let own = |t: &crate::colony::arc::Threat| matches!(t.kind, crate::colony::arc::ThreatKind::Warband | crate::colony::arc::ThreatKind::Envoy) && t.faction.is_some() && t.faction == most;
+                    let desert = |t: &mut crate::colony::arc::Threat| {
+                        let people = t.name.trim_start_matches("a war band of ").trim_start_matches("an envoy of ").split(", led by ").next().unwrap_or("").to_string();
+                        t.kind = crate::colony::arc::ThreatKind::Outlaws;
+                        t.name = format!("deserters of {}", people);
+                        t.why = format!("they left the war bands of {} and live by raiding now", people);
+                        t.faction = None;
+                    };
+                    if own(&a.threat) { desert(&mut a.threat); }
+                    for t in a.later.iter_mut().chain(a.reserve.iter_mut()) { if own(t) { desert(t); } }
+                }
+            }
+            // Their people's way of building (data/defaults/building_ways.json).
+            let race = colony.settlers.first().and_then(|s| s.past.as_ref()).and_then(|p| p.people).and_then(|f| h.factions.get(&f))
+                .and_then(|f| h.races.get(&f.race_id)).map(|r| format!("{:?}", r.base_type).to_lowercase());
+            if let Some(way) = race.as_deref().and_then(crate::colony::projects::build_way) { colony.adopt_way(way); }
             // The graves already on this ground become the colony's marks (hover and click).
             colony.adopt_graves();
+            // The town of their people that will send caravans (`trade.rs`).
+            colony.trade = crate::colony::trade::partner(h, tile, colony.settlers.first().and_then(|s| s.past.as_ref()).and_then(|p| p.people));
+            colony.migrants = later;
+            colony.world_width = h.tile_history.width.max(1);
+            // Peoples among the troubles who steal children: goblins and orcs (`snatch.rs`).
+            if let Some(a) = colony.arc.as_ref() {
+                let mut v: Vec<crate::history::FactionId> = std::iter::once(&a.threat).chain(a.later.iter()).chain(a.reserve.iter()).filter_map(|t| t.faction)
+                    .filter(|f| h.factions.get(f).and_then(|x| h.races.get(&x.race_id)).map_or(false, |r| matches!(format!("{:?}", r.base_type).to_lowercase().as_str(), "goblin" | "orc")))
+                    .collect();
+                v.sort(); v.dedup();
+                colony.snatchers = v;
+            }
+            // The war their people fight, which may call for the camp's spears (`warcall.rs`).
+            colony.war_call = crate::colony::warcall::plan(h, colony.settlers.first().and_then(|s| s.past.as_ref()).and_then(|p| p.people));
+            // The lord their people will send when the camp has grown (`nobles.rs`).
+            colony.lord = crate::colony::nobles::plan_lord(h, colony.settlers.first().and_then(|s| s.past.as_ref()).and_then(|p| p.people));
+            // A shapeshifter laired within eight tiles is a werebeast under the moon (`curse.rs`).
+            {
+                use crate::history::creatures::anatomy::MagicAbility;
+                let w = h.tile_history.width.max(1);
+                colony.were = h.legendary_creatures.values().filter(|c| c.is_alive())
+                    .filter(|c| c.unique_abilities.contains(&MagicAbility::Shapeshifting) || h.creature_species.get(&c.species_id).map_or(false, |sp| sp.magical_abilities.contains(&MagicAbility::Shapeshifting)))
+                    .filter_map(|c| c.lair_location.map(|l| { let dx = l.0.abs_diff(tile.0); (dx.min(w - dx) + l.1.abs_diff(tile.1), c) }))
+                    .filter(|(d, _)| *d <= 8).min_by_key(|(d, c)| (*d, c.id)).map(|(_, c)| c.full_name());
+                // PLANET_FORCE_WERE=<name>: a werebeast near any camp (for trying the curse).
+                if let Ok(name) = std::env::var("PLANET_FORCE_WERE") { colony.were = Some(name); }
+            }
+            // Figures of the world who may visit: hunters of its beasts, bards (`visitors.rs`).
+            if let Some(a) = colony.arc.as_ref() {
+                let beasts: Vec<String> = std::iter::once(&a.threat).chain(a.later.iter()).chain(a.reserve.iter())
+                    .filter(|t| t.kind == crate::colony::arc::ThreatKind::Beast).map(|t| t.name.clone()).collect();
+                let home = colony.settlers.first().and_then(|s| s.past.as_ref()).and_then(|p| p.people);
+                let relic = crate::colony::relic::lost_near(h, tile);
+                let rid = relic.as_ref().map(|r| (r.artifact, r.holder));
+                // A lost artifact of the history near here (`relic.rs`).
+                if let Some(r) = relic { colony.place_relic(r); }
+                colony.visitors = crate::colony::visitors::plan(h, tile, &beasts, rid, home, seed);
+                // PLANET_FORCE_SEEKER=<name>: a seeker for the relic (for trying the flow).
+                if let (Ok(name), Some(r)) = (std::env::var("PLANET_FORCE_SEEKER"), colony.relic.as_ref()) {
+                    if !colony.visitors.iter().any(|v| matches!(v.kind, crate::colony::visitors::VisitKind::Seeker { .. })) {
+                        let v = crate::colony::visitors::forced_seeker(&name, &r.name, r.owners, seed);
+                        colony.visitors.push(v);
+                    }
+                }
+            }
+            // How deep the Shadow lies here (`dead.rs`).
+            if let Some(sh) = h.shadow.as_ref().filter(|s| !s.is_broken()) {
+                colony.darkness = sh.at(tile.0, tile.1);
+                colony.shadow_name = Some(sh.name.clone());
+            }
             colony
         }
         None => crate::colony::Colony::found(map, &settler_names(seed, n), seed),
@@ -1951,6 +2338,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         for e in &evs { *seen.entry(*e).or_default() += 1; }
         lines.push(format!("{}, {}, {}{}", st.name, p.age, p.calling, p.feeling.as_ref().map(|f| format!("; {}", f.0)).unwrap_or_default()));
         for (l, _) in &p.lines { lines.push(format!("    {}", l)); }
+        for para in st.persona.describe(&st.name, p.age) { lines.push(format!("  * {}", para)); }
     }
     let shared = seen.values().filter(|n| **n >= 2).count();
     std::fs::write(format!("{prefix}_settlers.txt"), lines.join("\n") + "\n")?;
@@ -1997,7 +2385,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         written.push(path);
     }
     // The raid's moment as the window stops for it: the camera on its place, the card up.
-    println!("Moments: {} ({})", colony.moments.len(), colony.moments.iter().map(|m| format!("day {} {}", m.tick / crate::colony::TICKS_PER_DAY + 1, m.title)).collect::<Vec<_>>().join(", "));
+    println!("Moments: {}, {} major ({})", colony.moments.len(), colony.moments.iter().filter(|m| m.major()).count(), colony.moments.iter().map(|m| format!("day {} {}", m.tick / crate::colony::TICKS_PER_DAY + 1, m.title)).collect::<Vec<_>>().join(", "));
     if let Some(m) = colony.moments.iter().find(|m| m.title == "The raid").or(colony.moments.last()) {
         let (w, h) = (1280usize, 800usize);
         let mut buf = vec![0u32; w * h];
@@ -2018,7 +2406,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         let cam = LocalCamera { cx: st.pos.0 as f32 + 0.5, cy: st.pos.1 as f32 + 0.5, tile_px: 16.0, z: 0, surface_view: true };
         render_local(&colony.map, atlas, &cam, &mut buf, w, h);
         draw_colony(&colony, &cam, &mut buf, w, h, history);
-        let page = super::inspector::settler_page_with(history, st, wounded_in(&colony, &st.name));
+        let page = super::inspector::settler_page_with(history, st, wounded_in(&colony, &st.name), &colony.about(0));
         super::inspector::draw(&page, &mut buf, w, h, 1);
         let path = format!("{prefix}_settler.png");
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
@@ -2046,7 +2434,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
             println!("    {row}");
         }
     }
-    println!("Colony after 30 days: {} of {} alive, {} times a settler found no way to a target, {} log lines", colony.alive(), colony.settlers.len(), stuck, colony.log.len());
+    println!("Colony after 30 days: {} of {} alive, {} times a settler found no way to a target, {} log lines", colony.alive(), colony.company(), stuck, colony.log.len());
     {
         let path = format!("{prefix}_saga.png");
         saga_plate(world, history, atlas, &colony, &path)?;
@@ -2077,6 +2465,12 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         written.push(path);
         println!("Faces: {} settlers; the two most alike differ in {:.0}% of their 48 px pixels", n, least * 100.0);
     }
+    {
+        // The camp's annals: every moment, its works and its people (`colony/annals.rs`).
+        let path = format!("{prefix}_annals.html");
+        std::fs::write(&path, colony.annals(history))?;
+        written.push(path);
+    }
     if colony.arc.is_some() {
         let path = format!("{prefix}_tale.html");
         std::fs::write(&path, colony.tale(history))?;
@@ -2089,6 +2483,19 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
     }
     let bites = colony.log.iter().filter(|l| l.contains("bitten by wolves")).count();
     if bites > 0 { println!("Wolves: {} bites", bites); }
+    // Worn ground: cells walked often.
+    {
+        let worn = |k: u16| colony.steps.iter().filter(|&&n| n >= k).count();
+        println!("Paths: {} cells worn to a track (15+ steps), {} to a lane (120+); most walked {}", worn(15), worn(120), colony.steps.iter().max().copied().unwrap_or(0));
+    }
+    // Roles: who the camp knows for what, and the builder's share of the loads.
+    {
+        let roles: Vec<String> = colony.settlers.iter().filter_map(|s| s.role.map(|k| format!("{} the {}", s.name, crate::colony::ROLES[k]))).collect();
+        let total: u32 = colony.settlers.iter().map(|s| s.loads_laid).sum();
+        let builder = colony.settlers.iter().find(|s| s.role == Some(4)).map(|s| s.loads_laid).unwrap_or(0);
+        let _ = (builder, total);
+        println!("Roles: {} ({}); since one was named the builder laid {} of {} loads", roles.len(), roles.join(", "), colony.builder_share.0, colony.builder_share.1);
+    }
     // Pasts that act: watches kept by veterans vs the others, and log lines that give a past as the reason.
     {
         let vets: Vec<String> = colony.settlers.iter().filter(|s| s.past.as_ref().map_or(false, |p| p.calling.starts_with("a veteran"))).map(|s| s.name.clone()).collect();
@@ -2113,7 +2520,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         let limit = 40 * crate::colony::TICKS_PER_DAY;
         while !c2.attackers_out() && c2.clock.tick < limit { c2.tick(); }
         for _ in 0..240 { c2.tick(); }
-        if let Some(a) = c2.creatures.iter().find(|c| c.kind != crate::colony::creatures::CreatureKind::Wolf).map(|c| c.pos) {
+        if let Some(a) = c2.creatures.iter().find(|c| matches!(c.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider)).map(|c| c.pos) {
             let (w, h) = (1280usize, 800usize);
             let mid = ((a.0 as f32 + c2.camp.0 as f32) / 2.0, (a.1 as f32 + c2.camp.1 as f32) / 2.0);
             let cam = LocalCamera { cx: mid.0, cy: mid.1, tile_px: 8.0, z: 0, surface_view: true };

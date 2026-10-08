@@ -450,6 +450,27 @@ fn check(shadow: &mut Shadow, history: &mut WorldHistory) {
     let mut members: Vec<String> = free.iter().map(|x| history.factions[&x.1].name.clone()).collect();
     let last = members.pop().unwrap_or_default();
     let hosts = if members.is_empty() { last } else { format!("{} and {}", members.join(", "), last) };
+
+    // The shape of the check, from the state of the world (not a roll): how many the free
+    // peoples are against the Shadow's realm, how they feel about each other, how strong it is,
+    // and how the champion's people feel about the Shadow's.
+    let pop = |f: FactionId| history.factions.get(&f).map_or(0, |x| x.total_population) as f32;
+    let (shadow_pop, allied_pop) = (pop(fid), free.iter().map(|x| pop(x.1)).sum::<f32>());
+    let opinion = |a: FactionId, b: FactionId| history.factions.get(&a).and_then(|f| f.relations.get(&b)).map_or(0, |r| r.opinion);
+    let discord = free.iter().flat_map(|a| free.iter().filter(move |b| b.1 != a.1).map(move |b| (a.1, b.1))).map(|(a, b)| opinion(a, b)).min().unwrap_or(0);
+    // Thresholds from dev seeds (median discord -78, allies 2-40x the Shadow's realm).
+    let shape = if allied_pop < shadow_pop * 1.2 { CheckShape::ShadowWins }
+        else if opinion(leader, fid) >= 0 { CheckShape::ChampionTurns }
+        else if discord <= -95 { CheckShape::AllianceBreaks }
+        else if shadow.strength >= 1.5 && allied_pop < shadow_pop * 3.0 { CheckShape::Tribute }
+        else { CheckShape::Victory };
+    if std::env::var("PLANET_DEBUG_CHECK").is_ok() {
+        eprintln!("CHECK shadow_pop {:.0} allied {:.0} ratio {:.2} discord {} strength {:.2} leader->shadow {} => {:?}", shadow_pop, allied_pop, allied_pop / shadow_pop.max(1.0), discord, shadow.strength, opinion(leader, fid), shape);
+    }
+    if shape != CheckShape::Victory {
+        other_shape(shadow, history, shape, (fid, seat, seat_name, seat_loc, lord, leader, champion), &hosts, &free);
+        return;
+    }
     let form = BANE_FORMS[(roll(shadow.seed, shadow.seasons, 0xBA4E) * BANE_FORMS.len() as f32) as usize % BANE_FORMS.len()];
     let bane_name = format!("the {} of {}", form, champ_name);
 
@@ -698,3 +719,89 @@ fn capitalize(s: &str) -> String {
         None => String::new(),
     }
 }
+
+/// The shapes the free peoples' check can take (only a victory leaves a bane).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckShape { Victory, AllianceBreaks, Tribute, ChampionTurns, ShadowWins }
+
+impl CheckShape {
+    /// The shape's name, as `--present` gives it.
+    pub fn word(self) -> &'static str {
+        match self {
+            CheckShape::Victory => "the Last Alliance won", CheckShape::AllianceBreaks => "the alliance broke before the gate",
+            CheckShape::Tribute => "peace was bought with tribute", CheckShape::ChampionTurns => "the champion took the dark crown",
+            CheckShape::ShadowWins => "the Shadow won",
+        }
+    }
+    /// The shape of a recorded check, read from its title.
+    pub fn of_title(t: &str) -> CheckShape {
+        if t.contains(" breaks before ") { CheckShape::AllianceBreaks }
+        else if t.contains(" buys peace ") { CheckShape::Tribute }
+        else if t.contains(" takes the crown ") { CheckShape::ChampionTurns }
+        else if t.contains(" is destroyed before ") { CheckShape::ShadowWins }
+        else { CheckShape::Victory }
+    }
+}
+
+type CheckCast = (FactionId, SettlementId, String, (usize, usize), crate::history::FigureId, FactionId, crate::history::FigureId);
+
+/// The check's other shapes: recorded as the same chronicle kind (`ShadowAlliance`), each with
+/// its consequence for the present the game inherits.
+fn other_shape(shadow: &mut Shadow, history: &mut WorldHistory, shape: CheckShape, cast: CheckCast, hosts: &str, free: &[(i64, FactionId)]) {
+    use crate::history::entities::traits::DeathCause;
+    let (fid, seat, seat_name, seat_loc, lord, leader, champion) = cast;
+    let date = history.current_date;
+    let name_of = |f: crate::history::FigureId| history.figures.get(&f).map(|x| x.full_name()).unwrap_or_default();
+    let (champ_full, lord_full) = (name_of(champion), format!("{}, {}", history.figures[&lord].name, shadow.archetype.lord_title()));
+    let leader_name = history.factions[&leader].name.clone();
+    let (title, text) = match shape {
+        CheckShape::ShadowWins => {
+            if let Some(x) = history.figures.get_mut(&champion) { x.kill(date, DeathCause::Battle); }
+            shadow.strength = (shadow.strength + 0.3).min(MAX_STRENGTH);
+            (format!("The Last Alliance is destroyed before {}", seat_name),
+             format!("{} marched on {} under {}, too few against the hosts of {}; at the gates of {} the alliance was destroyed and {} fell. The Shadow's grip on the land tightened.", hosts, shadow.name, champ_full, lord_full, seat_name, champ_full))
+        }
+        CheckShape::AllianceBreaks => {
+            // Old hatreds: the allies turn on each other and the grudge deepens.
+            for a in free { for b in free {
+                if a.1 == b.1 { continue; }
+                if let Some(r) = history.factions.get_mut(&a.1).and_then(|f| f.relations.get_mut(&b.1)) { r.opinion -= 20; }
+            } }
+            shadow.strength = (shadow.strength + 0.15).min(MAX_STRENGTH);
+            (format!("The Last Alliance breaks before {}", seat_name),
+             format!("{} gathered against {}, but old hatreds broke the alliance before the gates of {}; the hosts went home quarrelling, each blaming the others, and {} laughed.", hosts, shadow.name, seat_name, lord_full))
+        }
+        CheckShape::Tribute => {
+            shadow.strength = (shadow.strength + 0.1).min(MAX_STRENGTH);
+            (format!("{} buys peace from {}", leader_name, shadow.name),
+             format!("No alliance would march. {} sent tribute to {} at {} and bought a peace that holds by fear; the other peoples call it shame.", leader_name, lord_full, seat_name))
+        }
+        CheckShape::ChampionTurns => {
+            // The champion strikes down the lord and puts on the dark crown: the Shadow does not
+            // break, it changes hands.
+            if let Some(x) = history.figures.get_mut(&lord) { x.kill(date, DeathCause::Battle); }
+            if let Some(f) = history.factions.get_mut(&fid) { f.remove_settlement(seat); }
+            if let Some(f) = history.factions.get_mut(&leader) { f.add_settlement(seat); f.current_leader = Some(champion); }
+            if let Some(t) = history.settlements.get_mut(&seat) { t.faction = leader; }
+            history.tile_history.set_owner(seat_loc.0, seat_loc.1, leader, date);
+            shadow.faction = leader;
+            (format!("{} takes the crown of {}", champ_full, shadow.name),
+             format!("{} led {} against {} and struck down {} at the gates of {}; but in the throne room the champion put on the dark crown, and {} serves a new lord.", champ_full, hosts, shadow.name, lord_full, seat_name, shadow.name))
+        }
+        CheckShape::Victory => unreachable!(),
+    };
+    let id = history.id_generators.next_event();
+    let mut event = Event::new(id, EventType::ShadowAlliance, date, title, text)
+        .at_location(seat_loc.0, seat_loc.1)
+        .with_faction(leader)
+        .with_participant(EntityId::Figure(champion))
+        .with_participant(EntityId::Figure(lord))
+        .with_participant(EntityId::Settlement(seat))
+        .caused_by(shadow.last_deed);
+    for x in free { if x.1 != leader { event = event.with_faction(x.1); } }
+    event = event.with_faction(fid);
+    history.tile_history.record_event(seat_loc.0, seat_loc.1, id);
+    history.chronicle.record(event);
+    shadow.last_deed = id;
+}
+

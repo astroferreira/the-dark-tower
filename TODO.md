@@ -15,7 +15,7 @@ anomalies, E adventurer). A and C are done.
 - [ ] Ecology does not feed back into settlements yet (scarce game / felled forests don't change growth or timber).
 - [ ] Old `history/creatures/populations.rs` (legendary-led monster populations) is separate from the ecology species; merge or retire it.
 - [ ] Only some anomaly biomes have causes; the rest of `is_caused_biome` (void scars, ley nexus, spore wastes, ...) never appear with a history. No deities die, so "dead gods leave titan bones" uses slain giant beasts instead.
-- [ ] Seasonal migration (herds moving between summer and winter ranges) and per-species map markers.
+- [ ] Seasonal migration on the world map and per-species map markers (on the embark the herds now leave for the hard winter and come back in spring: `colony::reckon_herds`).
 
 ## Phase B: living world (superseded)
 The generated history is the past; time only passes in the game (unpaused) after embarking,
@@ -45,7 +45,7 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [ ] Draw roofs in the surface view (currently walls + floors only, like a floor plan).
 - [ ] Organic street layouts (bends, plazas at junctions, market squares) instead of a warped grid; follow the approach-road angle.
 - [ ] Fix L-shaped houses where the street warp crosses a lot.
-- [ ] Seasons in zoomed regions and embarks (currently annual colours; world map only).
+- [ ] Seasons in zoomed regions and embarks (annual colours; a colony's hard winter now pales its embark toward snow in `draw_colony`).
 - [ ] Neighbouring embarks should join: verify and test that two adjacent 192x192 areas match along the shared edge; walk out of one into the next.
 - [ ] Settlement variety by culture: more architecture styles than stone / timber / earth (bone, crystal, living, woven, carved).
 

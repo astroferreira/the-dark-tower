@@ -27,6 +27,8 @@ pub enum Subject {
     Settler(usize),
     /// A mark left on the colony (a grave, a raised stone), by index (`mark_page`).
     ColonyMark(usize),
+    /// A person of the history: life, kin, who they are, deeds.
+    Figure(FigureId),
 }
 
 /// One line on a page; `link` makes it clickable.
@@ -156,8 +158,10 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             match fac.dissolved {
                 Some(d) => lines.push(Line::plain(format!("Gone since year {}", d.year))),
                 None => {
-                    let ruler = fac.current_leader.and_then(|l| h.figures.get(&l)).map(|r| r.full_name()).unwrap_or_else(|| "no one".into());
-                    lines.push(Line::plain(format!("Ruled by {}", ruler)));
+                    match fac.current_leader.and_then(|l| h.figures.get(&l)) {
+                        Some(r) => lines.push(Line::link(format!("Ruled by {}", r.full_name()), Subject::Figure(r.id))),
+                        None => lines.push(Line::plain("Ruled by no one")),
+                    }
                     lines.push(Line::plain(format!("{} towns, {} souls", fac.settlements.len(), fac.total_population)));
                     if let Some(cap) = fac.capital.and_then(|c| h.settlements.get(&c)) {
                         lines.push(Line::link(format!("Seat: {}", cap.name), Subject::Settlement(cap.id)));
@@ -175,10 +179,21 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
                     lines.push(line);
                 }
             }
+            // Their arts (`arts.rs`): instruments, then each work and who made it.
+            let arts = crate::history::arts::of_people(h, f);
+            if !arts.forms.is_empty() {
+                lines.push(Line::section("Arts"));
+                for i in &arts.instruments { lines.push(Line::faded(capitalize(&i.describe()))); }
+                for (form, text) in arts.forms.iter().zip(arts.lines(h)) {
+                    let text = capitalize(&text);
+                    lines.push(match form.author { Some(a) => Line::link(text, Subject::Figure(a)), None => Line::plain(text) });
+                }
+            }
             lines.push(Line::section("Lately"));
             lines.extend(recent(h, |e| e.factions_involved.first() == Some(&f)).into_iter().map(event_line));
             Page { title: fac.name.clone(), lines, emblem: Some(super::heraldry::arms_of(world, h, f)), portrait: None }
         }
+        Subject::Figure(id) => figure_page(h, id),
         Subject::Beast(c) => {
             let Some(b) = h.legendary_creatures.get(&c) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
             let mut lines = Vec::new();
@@ -187,6 +202,11 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
                 None => "Alive".to_string(),
             }));
             if let Some((x, y)) = b.lair_location { lines.push(Line::link(format!("Lair at {},{}", x, y), Subject::Tile(x, y))); }
+            // What it is (`monsters.rs`): its body and its danger, in words its making owns.
+            let m = crate::monsters::of_legend(h, b);
+            lines.push(Line::section("What it is"));
+            lines.push(Line::plain(m.description.clone()));
+            lines.push(Line::faded(format!("Its blood is {}{}.", m.blood, if m.flies { "; it flies" } else { "" })));
             lines.push(Line::section("Deeds"));
             lines.extend(recent(h, |e| e.primary_participants.contains(&EntityId::LegendaryCreature(c))).into_iter().map(event_line));
             Page { title: b.full_name(), lines, emblem: None, portrait: None }
@@ -194,12 +214,18 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
         Subject::Event(id) => {
             let Some(e) = h.chronicle.get(id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
             let mut lines = vec![Line::faded(format!("Year {}, {:?}", e.date.year, e.date.season))];
+            // Where it belongs: its age, its war, its battle (`collections.rs`).
+            for (what, opened) in crate::history::collections::context(h, e) {
+                let text = format!("Part of {}", what.replacen("The ", "the ", 1));
+                lines.push(match opened.filter(|o| *o != e.id) { Some(o) => Line::link(text, Subject::Event(o)), None => Line::faded(text) });
+            }
             lines.push(Line::plain(e.description.clone()));
             for p in &e.primary_participants {
                 match p {
                     EntityId::Settlement(s) => if let Some(t) = h.settlements.get(s) { lines.push(Line::link(format!("Place: {}", t.name), Subject::Settlement(*s))); },
                     EntityId::LegendaryCreature(c) => if let Some(b) = h.legendary_creatures.get(c) { lines.push(Line::link(format!("Beast: {}", b.full_name()), Subject::Beast(*c))); },
                     EntityId::Artifact(a) => if let Some(x) = h.artifacts.get(a) { lines.push(Line::link(format!("Treasure: {}", x.name), Subject::Artifact(*a))); },
+                    EntityId::Figure(f) => if let Some(x) = h.figures.get(f) { lines.push(Line::link(format!("Person: {}", x.full_name()), Subject::Figure(*f))); },
                     _ => {}
                 }
             }
@@ -286,19 +312,101 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
 /// A settler's page: who they are, what they are doing and why, their past (each line opens its
 /// event) and how they feel.
 pub fn settler_page(h: Option<&WorldHistory>, s: &crate::colony::Settler) -> Page {
-    settler_page_with(h, s, None)
+    settler_page_with(h, s, None, &[])
+}
+
+/// A person of the history: born and died, people and home, kin (each a link), who they are
+/// (their persona, consistent with the personality the history acted on) and their deeds.
+pub fn figure_page(h: &WorldHistory, id: FigureId) -> Page {
+    let Some(f) = h.figures.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
+    let mut lines = Vec::new();
+    let age = match f.death_date { Some(d) => f.age_at(&d), None => f.age_at(&h.current_date) };
+    lines.push(Line::faded(match (f.death_date, &f.cause_of_death) {
+        (Some(d), Some(c)) => format!("Born {}, died {} aged {} ({})", f.birth_date.year, d.year, age, format!("{:?}", c).to_lowercase()),
+        (Some(d), None) => format!("Born {}, died {} aged {}", f.birth_date.year, d.year, age),
+        _ => format!("Born {}, aged {}", f.birth_date.year, age),
+    }));
+    if !f.titles.is_empty() { lines.push(Line::plain(f.titles.join(", "))); }
+    if let Some(r) = h.people.as_ref().and_then(|p| p.role.get(&id)) { lines.push(Line::plain(format!("The {}", r.word()))); }
+    if let Some(fac) = f.faction { lines.push(Line::link(format!("Of {}", faction_name(h, fac)), Subject::Faction(fac))); }
+    if let Some(t) = h.people.as_ref().and_then(|p| p.home.get(&id)).and_then(|t| h.settlements.get(t)) { lines.push(Line::link(format!("Lives at {}", t.name), Subject::Settlement(t.id))); }
+    // Kin: never deleted, so a dead spouse is still a spouse.
+    let kin: Vec<(String, FigureId)> = [f.parents.0, f.parents.1].iter().flatten().map(|p| ("Parent", *p))
+        .chain(f.spouse.map(|s| ("Spouse", s)))
+        .chain(f.children.iter().map(|c| ("Child", *c)))
+        .chain(f.mentors.iter().map(|m| ("Mentor", *m)))
+        .chain(f.enemies.iter().map(|m| ("Enemy", *m)))
+        .filter_map(|(w, k)| h.figures.get(&k).map(|x| (format!("{}: {}{}", w, x.full_name(), if x.is_alive() { "" } else { " (dead)" }), k)))
+        .collect();
+    if !kin.is_empty() {
+        lines.push(Line::section("Kin and others"));
+        for (t, k) in kin.into_iter().take(10) { lines.push(Line::link(t, Subject::Figure(k))); }
+    }
+    lines.push(Line::section("Who"));
+    for para in crate::persona::Persona::of_figure(h, f).describe(&f.name, age) { lines.push(Line::plain(para)); }
+    let mut deeds: Vec<&Event> = f.events.iter().filter_map(|e| h.chronicle.get(*e)).collect();
+    deeds.sort_by_key(|e| (e.date, e.id));
+    if !deeds.is_empty() {
+        lines.push(Line::section("Deeds"));
+        lines.extend(deeds.into_iter().rev().take(8).map(event_line));
+    }
+    Page { title: f.full_name(), lines, emblem: None, portrait: None }
 }
 
 /// `settler_page` with the night they were wounded, if they were.
-pub fn settler_page_with(h: Option<&WorldHistory>, s: &crate::colony::Settler, wounded: Option<(String, u64)>) -> Page {
+pub fn settler_page_with(h: Option<&WorldHistory>, s: &crate::colony::Settler, wounded: Option<(String, u64)>, about: &[String]) -> Page {
     let face = super::portraits::of_settler(s, h, wounded);
     let mut lines = Vec::new();
     match &s.past {
         Some(p) => lines.push(Line::faded(format!("{}, {}", p.age, p.calling))),
         None => lines.push(Line::faded("A wanderer with no past anyone remembers")),
     }
-    if !s.alive { lines.push(Line::plain("Dead")); }
+    if let Some(k) = s.role { lines.push(Line::plain(format!("The camp's {}", crate::colony::ROLES[k]))); }
+    if let Some(o) = &s.office { lines.push(Line::plain(o.clone())); }
+    // What the camp knows of them besides: family, pet, arms, guest (`Colony::about`).
+    for a in about { lines.push(Line::plain(a.clone())); }
+    if s.drill >= 0.05 { lines.push(Line::plain(format!("Drilled with the spear ({})", if s.drill >= 0.4 { "a seasoned hand" } else if s.drill >= 0.2 { "steady" } else { "green" }))); }
+    if let Some((rel, god)) = s.past.as_ref().and_then(|p| p.faith.clone()) {
+        let devout = s.persona.facet(crate::persona::Facet::Piety) >= 60;
+        lines.push(Line::faded(format!("{} {} ({})", if devout { "Worships" } else { "Of the faith of" }, god, rel)));
+    }
+    // Who they are: looks, gifts, character, values, likes (`persona.rs`).
+    let age = s.past.as_ref().map_or(30, |p| p.age);
+    let who = s.persona.describe(&s.name, age);
+    {
+        let best = (0..5).max_by(|&a, &b| s.skill[a].total_cmp(&s.skill[b])).unwrap_or(0);
+        lines.push(Line::faded(format!("Best at {} ({:.0}% of a master's hand); {} loads laid", ["foraging", "fishing", "felling", "carrying", "building"][best], s.skill[best] * 100.0, s.loads_laid)));
+    }
+    if !s.alive && !s.mind.left { lines.push(Line::plain("Dead")); }
     else { lines.push(Line::plain(format!("Now: {} - {}", s.job.verb(), s.why))); }
+    if s.alive {
+        // How they feel, and why (Dwarf Fortress's thoughts): the mood, then the latest thoughts.
+        lines.push(Line::section(format!("Feels {}", crate::colony::mind::mood(s.mind.stress))));
+        if let Some((b, _)) = s.mind.broken { lines.push(Line::plain(format!("In the grip of {}", b.word()))); }
+        for t in s.mind.thoughts.iter().rev().take(4) {
+            let line = format!("Day {}: {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text);
+            lines.push(if t.weight < 0.0 { Line::plain(line) } else { Line::faded(line) });
+        }
+    } else if s.mind.left {
+        lines.push(Line::plain("Left the camp for good"));
+    }
+    let _ = &s.mind;
+    if !s.deeds.is_empty() {
+        lines.push(Line::section("Deeds"));
+        for d in &s.deeds { lines.push(Line::plain(capitalize(d))); }
+    }
+    if !s.made.is_empty() {
+        lines.push(Line::section("Made"));
+        for m in s.made.iter().rev().take(4) { lines.push(Line::faded(capitalize(m))); }
+    }
+    if !s.wounds.is_empty() {
+        lines.push(Line::section("Wounds"));
+        for w in &s.wounds { lines.push(Line::plain(format!("{} from {}", capitalize(&w.word()), w.from))); }
+    }
+    if !s.persona.race.is_empty() {
+        lines.push(Line::section("Who"));
+        for para in who { lines.push(Line::plain(para)); }
+    }
     if let Some(p) = &s.past {
         if !p.lines.is_empty() {
             lines.push(Line::section("Before"));
@@ -332,7 +440,7 @@ pub fn settler_page_with(h: Option<&WorldHistory>, s: &crate::colony::Settler, w
 
 /// A colony mark's page: what it is, the day, and the words on it.
 pub fn mark_page(m: &crate::colony::ColonyMark) -> Page {
-    let kind = match m.kind { crate::colony::MarkKind::Grave => "A grave", crate::colony::MarkKind::Stone => "A raised stone", crate::colony::MarkKind::Scorch => "Scorched ground" };
+    let kind = match m.kind { crate::colony::MarkKind::Grave => "A grave", crate::colony::MarkKind::Stone => "A raised stone", crate::colony::MarkKind::Scorch => "Scorched ground", crate::colony::MarkKind::Cage => "A cage trap" };
     Page { title: m.title.clone(), lines: vec![
         Line::faded(format!("{}, day {}, at {},{}", kind, m.day, m.at.0, m.at.1)),
         Line::section("The words on it"),

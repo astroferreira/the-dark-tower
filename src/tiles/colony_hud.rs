@@ -106,12 +106,14 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     let name = colony.name.clone().unwrap_or_else(|| format!("The camp at {},{}", colony.map.world_tile.0, colony.map.world_tile.1));
     let clock = format!("{}   {}", colony.clock.stamp(), if st.speed == 0 { "paused".to_string() } else { format!("{}x", st.speed) });
     let alive = colony.alive();
-    let people = format!("{} of {} alive", alive, colony.settlers.len());
+    let people = format!("{} of {} alive", alive, colony.company());
     let card_w = 300usize.min(w - 20);
     // The camp's plan, else the answer to the last act.
     let said = if !st.status.is_empty() { st.status } else { colony.plan_line.as_str() };
     let status = if said.is_empty() { Vec::new() } else { wrap_px(said, Face::Italic, SMALL, card_w as f32 - 28.0) };
-    let card_h = 92 + status.len().min(3) * 16;
+    // How the camp stands: speaker and mandate, temple, mood, the moon, the stocks.
+    let standing: Vec<String> = colony.standing().into_iter().take(4).map(|l| fit(&l, Face::Roman, SMALL, card_w as f32 - 28.0)).collect();
+    let card_h = 92 + status.len().min(3) * 16 + if standing.is_empty() { 0 } else { 8 + standing.len() * 16 };
     let r = Rect { x: 10, y: 10, w: card_w, h: card_h };
     ui::card(buf, w, r);
     fonts::draw(buf, w, h, 22.0, 18.0, &fit(&name, Face::SmallCaps, 18.0, card_w as f32 - 30.0), Face::SmallCaps, 18.0, 0.5, RUBRIC, None);
@@ -134,15 +136,21 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     for (k, line) in status.iter().take(3).enumerate() {
         fonts::draw(buf, w, h, 22.0, 84.0 + k as f32 * 16.0, line, Face::Italic, SMALL, 0.0, INK, None);
     }
+    let sy = 92.0 + status.len().min(3) as f32 * 16.0;
+    for (k, line) in standing.iter().enumerate() {
+        // The first line is the most pressing: in rubric when it is a mood, the moon or a fit.
+        let urgent = k == 0 && (line.contains("mood") || line.contains("moon is up") || line.contains("fit"));
+        fonts::draw(buf, w, h, 22.0, sy + k as f32 * 16.0, line, Face::Roman, SMALL, 0.0, if urgent { RUBRIC } else { INK_FADED }, None);
+    }
 
     // Bottom: the keys. The patron's verbs fade while there is no favour.
     let bar_h = 26usize;
     let bar = Rect { x: 10, y: h - bar_h - 8, w: w - 20, h: bar_h };
     ui::card(buf, w, bar);
     let spent = colony.patron.favour == 0;
-    let keys: [(&str, bool); 12] = [
-        ("F bless", true), ("X forbid", true), ("G favour", true), ("R dream", true),
-        ("H/J/K stones", false), ("N name", false), ("Space pause", false), ("1/2/3 speed", false), ("4 skip", false), ("M stops", false), ("click to read", false), ("Esc leave", false),
+    let keys: [(&str, bool); 15] = [
+        ("F bless", true), ("X forbid", true), ("G favour", true), ("R dream", true), ("B bell", true),
+        ("H/J/K stones", false), ("N name", false), ("Space pause", false), ("1/2/3 speed", false), ("4 skip", false), ("M stops", false), ("U section", false), ("</> levels", false), ("click to read", false), ("Esc leave", false),
     ];
     let mut x = 22.0;
     for (text, costs) in keys {
@@ -181,18 +189,32 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     if lcam.surface_view {
         let (hx, hy) = (lcam.cx + (st.mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (st.mouse.1 - h as f32 / 2.0) / lcam.tile_px);
         let reach = (0.8f32).max(8.0 / lcam.tile_px);
+        let building = if hx >= 0.0 && hy >= 0.0 { colony.building_at((hx as u16, hy as u16)) } else { None };
+        if let (Some(b), None) = (&building, colony.settlers.iter().filter(|s| s.alive).find(|s| (s.pos.0 as f32 + 0.5 - hx).abs() < reach && (s.pos.1 as f32 + 0.5 - hy).abs() < reach)) {
+            let chip_w = 320.0f32.min(w as f32 - 20.0);
+            let lines = wrap_px(b, Face::Italic, SMALL, chip_w - 24.0);
+            let chip_h = 16 + lines.len().min(5) * 16;
+            let x = (st.mouse.0 + 18.0).min(w as f32 - chip_w - 10.0).max(10.0) as usize;
+            let y = (st.mouse.1 + 18.0).min((h - chip_h - 10) as f32).max(10.0) as usize;
+            ui::card(buf, w, Rect { x, y, w: chip_w as usize, h: chip_h });
+            for (k, l) in lines.iter().take(5).enumerate() {
+                fonts::draw(buf, w, h, (x + 12) as f32, (y + 8 + k * 16) as f32, l, Face::Italic, SMALL, 0.0, INK, None);
+            }
+        }
         if let Some(s) = colony.settlers.iter().filter(|s| s.alive).find(|s| (s.pos.0 as f32 + 0.5 - hx).abs() < reach && (s.pos.1 as f32 + 0.5 - hy).abs() < reach) {
             let chip_w = 300.0f32.min(w as f32 - 20.0);
             let why = wrap_px(&s.why, Face::Italic, SMALL, chip_w - 24.0);
             let mut head = s.name.clone();
+            if let Some(o) = &s.office { head.push_str(&format!(", {}", o.to_lowercase())); }
             if colony.patron.favourite.map_or(false, |f| colony.settlers[f].name == s.name) { head.push_str(", the patron's favourite"); }
+            let feels = match s.mind.broken { Some((b, _)) => format!("{}  -  {}{}", s.job.verb(), if b.word().starts_with("wander") { "" } else { "in " }, b.word()), None => format!("{}  -  {}", s.job.verb(), crate::colony::mind::mood(s.mind.stress)) };
             let chip_h = 48 + why.len().min(4) * 16;
             let x = (st.mouse.0 + 18.0).min(w as f32 - chip_w - 10.0).max(10.0) as usize;
             let y = (st.mouse.1 + 18.0).min((h - chip_h - 10) as f32).max(10.0) as usize;
             let r = Rect { x, y, w: chip_w as usize, h: chip_h };
             ui::card(buf, w, r);
             fonts::draw(buf, w, h, (x + 12) as f32, (y + 8) as f32, &fit(&head, Face::SmallCaps, BODY, chip_w - 24.0), Face::SmallCaps, BODY, 0.3, RUBRIC, None);
-            fonts::draw(buf, w, h, (x + 12) as f32, (y + 27) as f32, s.job.verb(), Face::Roman, SMALL, 0.0, INK, None);
+            fonts::draw(buf, w, h, (x + 12) as f32, (y + 27) as f32, &fit(&feels, Face::Roman, SMALL, chip_w - 24.0), Face::Roman, SMALL, 0.0, INK, None);
             for (k, line) in why.iter().take(4).enumerate() {
                 fonts::draw(buf, w, h, (x + 12) as f32, (y + 44 + k * 16) as f32, line, Face::Italic, SMALL, 0.0, INK_FADED, None);
             }
@@ -239,3 +261,6 @@ pub(crate) fn draw_hint(text: &str, buf: &mut [u32], w: usize, h: usize) {
     ui::card(buf, w, r);
     fonts::draw(buf, w, h, (r.x + 18) as f32, (r.y + 6) as f32, text, Face::Italic, BODY, 0.0, INK, None);
 }
+
+/// First letter up ("the camp at 45,12" -> "The camp at 45,12").
+pub(crate) fn capitalize_pub(s: &str) -> String { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }

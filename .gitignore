@@ -20,3 +20,6 @@ lore_*.md
 # Local render output and exported legends
 /renders
 /world_*_legend.txt
+
+# Played colonies and their legends (local data)
+/colonies

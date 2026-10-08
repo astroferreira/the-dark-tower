@@ -61,26 +61,55 @@ pub fn of_settler(s: &crate::colony::Settler, h: Option<&crate::history::world_s
     let scar = wounded_in.map(|(w, _)| (w, None)).or(battle);
     let lost_home = s.past.as_ref().map_or(false, |p| p.calling.starts_with("a survivor") || p.calling.starts_with("a refugee"));
     let undead = matches!(race, RaceType::Undead);
-    let mut hair = if undead { [[200.0, 200.0, 196.0], [120.0, 110.0, 100.0], [60.0, 56.0, 54.0]][(k % 3) as usize] } else { hairs[(k % 6) as usize] };
-    let grey = age >= 50 || (lost_home && age >= 35);
-    if grey { hair = [176.0, 172.0, 166.0]; }
-    let beard = match race {
-        RaceType::Dwarf => 2 + pick(3, 2),
-        RaceType::Elf | RaceType::Fey | RaceType::Undead => 0,
-        _ => if age >= 18 { pick(3, 4) } else { 0 },
+    // The persona's colours, so the picture shows what the page says (`persona.rs`).
+    let pc = &s.persona;
+    let hair_named = crate::persona::colour(&pc.hair);
+    let mut hair = hair_named.unwrap_or(if undead { [[200.0, 200.0, 196.0], [120.0, 110.0, 100.0], [60.0, 56.0, 54.0]][(k % 3) as usize] } else { hairs[(k % 6) as usize] });
+    let greying = pc.hair_at(age);
+    let grey = if hair_named.is_some() { greying != pc.hair } else { age >= 50 } || (lost_home && age >= 35);
+    if grey { hair = if greying == "white" { [222.0, 220.0, 212.0] } else { [176.0, 172.0, 166.0] }; }
+    let beard = if hair_named.is_some() {
+        if pc.beard && age >= 16 { if matches!(race, RaceType::Dwarf) { 2 + pick(3, 2) } else { 1 + pick(3, 3) } } else { 0 }
+    } else {
+        match race {
+            RaceType::Dwarf => 2 + pick(3, 2),
+            RaceType::Elf | RaceType::Fey | RaceType::Undead => 0,
+            _ => if age >= 18 { pick(3, 4) } else { 0 },
+        }
     };
+    let skin = crate::persona::colour(&pc.skin).unwrap_or(skins[(k >> 8) as usize % skins.len()]);
+    let hair_style = match pc.hairstyle.as_str() {
+        "" => pick(1, 5),
+        h if h.contains("braid") => 4,
+        h if h.contains("topknot") => 2,
+        h if h.contains("shaved") || h == "none" => 3,
+        "cropped" => 0,
+        h if h.contains("loose") || h.contains("long") || h.contains("woven") || h.contains("wild") => 1,
+        _ => if pc.looks.iter().any(|l| l.0 == "hair_length" && l.1 >= 4) { 1 } else { 0 },
+    };
+    // Eyes in their colour once the face is big enough to tell (the ink still outlines them).
+    let eyes = crate::persona::colour(&pc.eyes).map(|c| mix(c, INK, 0.35)).unwrap_or(INK);
     Portrait {
-        skin: skins[(k >> 8) as usize % skins.len()], hair, dress: dresses[(k >> 16) as usize % 6],
-        hair_style: pick(1, 5),
+        skin, hair, dress: dresses[(k >> 16) as usize % 6],
+        hair_style,
         beard,
         ears_pointed: matches!(race, RaceType::Elf | RaceType::Fey | RaceType::Goblin),
         tusks: matches!(race, RaceType::Orc),
         old: age >= 55, grey,
         eye_patch: scar.is_some() && pick(7, 3) == 0,
         scar,
-        head: pick(5, 3),
+        // The face's shape follows the persona: a square or jutting chin, a slight build.
+        head: {
+            let gap = |n: &str| pc.looks.iter().find(|l| l.0 == n).map(|l| l.1);
+            match (gap("chin"), gap("build")) {
+                (Some(c), _) if c >= 4 => 1,
+                (_, Some(b)) if b <= 1 => 2,
+                (Some(c), _) if c == 0 => 2,
+                _ => pick(5, 3),
+            }
+        },
         headgear: match pick(9, 7) { 0 | 1 | 2 => 0, 3 => 1, 4 => 2, 5 => 3, _ => 4 },
-        eyes: if undead { [120.0, 200.0, 220.0] } else { INK },
+        eyes: if undead { [120.0, 200.0, 220.0] } else { eyes },
     }
 }
 

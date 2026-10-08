@@ -21,7 +21,75 @@ pub struct Past {
     pub lines: Vec<(String, Option<EventId>)>,
     /// One feeling toward a real people or person: ("hates The Ashpit Horde, who took Ripu", whom).
     pub feeling: Option<(String, EntityId)>,
+    /// Who they are (`persona.rs`): rolled from their people's template and culture.
+    pub persona: Option<crate::persona::Persona>,
+    /// Their people's songs, poems and dances (`arts.rs`): (name, what it is, kind word).
+    pub arts: Vec<(String, String, &'static str)>,
+    /// Their people's first instrument ("the dulmgar (a set of pipes)").
+    pub instrument: Option<String>,
+    /// What they could show in a carving: the events of their past, as phrases ("the siege of
+    /// Ripu"), with the event (`colony::craft`).
+    pub images: Vec<(String, EventId)>,
+    /// The towns their past names (for news that touches them, `colony::trade`).
+    pub towns: Vec<SettlementId>,
+    /// Their people's faith: (the religion, its chief god as named: "Xilnar the Stormmother").
+    pub faith: Option<(String, String)>,
 }
+
+/// What a settler can make and show: their people's instrument and the events of their past.
+pub fn fill_craft(h: &WorldHistory, past: &mut Past) {
+    past.instrument = past.people.and_then(|f| crate::history::arts::of_people(h, f).instruments.into_iter().next()).map(|i| format!("{} ({})", i.name, i.a_kind()));
+    past.images = past.lines.iter().filter_map(|(_, e)| e.and_then(|e| h.chronicle.get(e))).map(|e| (phrase(h, e), e.id)).collect();
+    past.images.dedup_by(|a, b| a.1 == b.1);
+    past.towns = past.lines.iter().filter_map(|(_, e)| e.and_then(|e| h.chronicle.get(e))).flat_map(|e| e.primary_participants.iter().filter_map(|p| if let EntityId::Settlement(s) = p { Some(*s) } else { None }).collect::<Vec<_>>()).collect();
+    past.towns.sort();
+    past.towns.dedup();
+    past.faith = past.people.and_then(|f| h.factions.get(&f)).and_then(|f| f.state_religion).and_then(|r| h.religions.get(&r))
+        .and_then(|r| r.deities.first().and_then(|d| h.deities.get(d)).map(|d| {
+            let domains: Vec<String> = d.domains.iter().map(|x| format!("{:?}", x).to_lowercase()).collect();
+            let named = match (d.epithets.first(), domains.is_empty()) {
+                (Some(e), _) => format!("{} {}", d.name, e),
+                (None, false) => format!("{}, the god of {}", d.name, crate::persona::list(&domains)),
+                (None, true) => d.name.clone(),
+            };
+            (r.name.clone(), named)
+        }));
+}
+
+/// The forms a settler of `people` knows (`arts.rs`).
+pub fn arts_of(h: &WorldHistory, people: Option<FactionId>) -> Vec<(String, String, &'static str)> {
+    people.map(|f| crate::history::arts::of_people(h, f).forms.into_iter().map(|x| (x.name, x.what, x.kind.word())).collect()).unwrap_or_default()
+}
+
+/// A settler's persona: their people's race and culture, rolled from their name and the
+/// colony's seed. Kin of a living figure take after them: about half their character and
+/// often their hair (Dwarf Fortress has children inherit from parents; here the line runs to
+/// the figure the settler misses).
+pub fn persona_for(h: &WorldHistory, name: &str, past: &Past, seed: u64) -> crate::persona::Persona {
+    use crate::persona::Persona;
+    let race = past.people.and_then(|f| h.factions.get(&f)).and_then(|f| h.races.get(&f.race_id));
+    let tag = race.map(|r| format!("{:?}", r.base_type).to_lowercase()).unwrap_or_else(|| "human".into());
+    let culture = race.and_then(|r| h.cultures.get(&r.culture_id)).map(|c| &c.values);
+    let mut p = Persona::roll(&tag, culture, crate::persona::seed_of(name, seed));
+    if let Some((_, EntityId::Figure(f))) = &past.feeling {
+        if let Some(fig) = h.figures.get(f) {
+            let elder = Persona::of_figure(h, fig);
+            if elder.race == p.race {
+                for i in 0..p.facets.len().min(elder.facets.len()) {
+                    if hash(seed ^ crate::persona::seed_of(name, 1), i as u64) % 2 == 0 {
+                        let jitter = (hash(seed, 100 + i as u64) % 21) as i32 - 10;
+                        p.facets[i] = (elder.facets[i] as i32 + jitter).clamp(0, 100) as u8;
+                    }
+                }
+                if hash(seed, 0xA1) % 3 != 0 { p.hair = elder.hair.clone(); }
+            }
+        }
+    }
+    p
+}
+
+/// The module's hash, for callers that need the same mixing.
+pub fn hash_pub(seed: u64, salt: u64) -> u64 { hash(seed, salt) }
 
 fn hash(seed: u64, salt: u64) -> u64 {
     let mut x = seed ^ salt.wrapping_mul(0x9E37_79B9_7F4A_7C15);
@@ -101,7 +169,7 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
                 _ => {}
             }
             let feeling = taker.map(|f| (format!("hates {}, who took {}", fname(f), t.name), EntityId::Faction(f)));
-            out.push(Past { age, people: old_people, calling: format!("a survivor of {}", t.name), lines, feeling });
+            out.push(Past { age, people: old_people, calling: format!("a survivor of {}", t.name), lines, feeling, persona: None, arts: Vec::new(), instrument: None, images: Vec::new(), towns: Vec::new(), faith: None });
         }
     }
 
@@ -135,7 +203,7 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
                 } else {
                     enemy.map(|f| (format!("has not forgiven {}", fname(f)), EntityId::Faction(f)))
                 };
-                out.push(Past { age, people: Some(p), calling: format!("a veteran of {}", war.map(|w| w.name.replacen("The ", "the ", 1)).unwrap_or_else(|| "the wars".into())), lines, feeling });
+                out.push(Past { age, people: Some(p), calling: format!("a veteran of {}", war.map(|w| w.name.replacen("The ", "the ", 1)).unwrap_or_else(|| "the wars".into())), lines, feeling, persona: None, arts: Vec::new(), instrument: None, images: Vec::new(), towns: Vec::new(), faith: None });
             }
         }
     }
@@ -167,7 +235,7 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
             lines.push((format!("Left {} after {} ({}).", tname(s), phrase(h, ev), ev.date.year), Some(ev.id)));
         }
         let age = age.min(70);
-        out.push(Past { age, people, calling: format!("kin of {}", fig.name), lines, feeling: Some((format!("misses {}", fig.full_name()), EntityId::Figure(f))) });
+        out.push(Past { age, people, calling: format!("kin of {}", fig.name), lines, feeling: Some((format!("misses {}", fig.full_name()), EntityId::Figure(f))), persona: None, arts: Vec::new(), instrument: None, images: Vec::new(), towns: Vec::new(), faith: None });
         k += 1;
         if k > 64 { break; }
     }
@@ -186,6 +254,10 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
         let mut tries = 0;
         while names.contains(&name) && tries < 20 { name = NameGenerator::personal_name(&style, &mut rng); tries += 1; }
         names.push(name.clone());
+        let mut past = past;
+        past.persona = Some(persona_for(h, &name, &past, seed));
+        past.arts = arts_of(h, past.people);
+        fill_craft(h, &mut past);
         (name, past)
     }).collect()
 }

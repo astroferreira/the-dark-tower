@@ -19,6 +19,8 @@
 pub mod structures;
 pub mod wildlife;
 pub mod site;
+pub mod places;
+pub mod caverns;
 
 use noise::{NoiseFn, Perlin};
 
@@ -34,7 +36,7 @@ pub const TILE_M: f32 = 2.0;
 /// Vertical size of a z-level (m).
 pub const Z_STEP_M: f32 = 2.0;
 /// Solid z-levels kept below the lowest surface point.
-const DEPTH_BELOW: i32 = 30;
+const DEPTH_BELOW: i32 = 52;
 /// Empty z-levels kept above the highest surface point.
 const AIR_ABOVE: i32 = 8;
 /// Share of a world tile's area a catchment needs to carry a creek at person scale (a quarter
@@ -73,6 +75,9 @@ pub enum Shape {
     Ramp,
     /// Solid ground.
     Wall,
+    /// A stair cut in the rock (DF's up/down stair): stood on like a floor, and open to the
+    /// stair above and below it, so walkers climb from level to level (`colony::nav::path3`).
+    Stair,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -83,6 +88,8 @@ pub enum TreeKind {
     Palm,
     Acacia,
     Dead,
+    /// A fungus tree of the caverns (a tower of cap and stalk).
+    Fungus,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -141,6 +148,16 @@ pub struct LocalMap {
     pub found: [usize; 4],
     /// What furnishing added so the site is livable ("a spring", "a grove", ...).
     pub furnished: Vec<String>,
+    /// Game that grazes here, from the tile's ecology: (species, head).
+    pub game: Vec<(String, u32)>,
+    /// Places in the rock (lairs, tombs, old mines, caves, a deep cavern), each with its cause.
+    pub places: Vec<places::UnderPlace>,
+    /// Each column's cavern layers (`caverns.rs`): (floor z, top open z), (-1, -1) where none.
+    pub cavern_z: Vec<[(i16, i16); caverns::LAYERS]>,
+    /// The cavern layers under this embark, with what lives there.
+    pub caverns: Vec<caverns::Cavern>,
+    /// Levels (absolute z, inclusive) of wet permeable rock: an aquifer (`is_aquifer`).
+    pub aquifer: Option<(i32, i32)>,
 }
 
 /// A house's roof seen from above, in cell units: a pitched roof whose ridge runs along the
@@ -158,6 +175,15 @@ pub struct RoofPlan {
 }
 
 impl LocalMap {
+    /// A cell of the aquifer: within its levels, of rock or ground that lets water through
+    /// (sandstone, limestone, loose sediment, sand, gravel, soil).
+    pub fn is_aquifer(&self, x: usize, y: usize, z: usize) -> bool {
+        let Some((lo, hi)) = self.aquifer else { return false };
+        if (z as i32) < lo || z as i32 > hi || x >= self.width || y >= self.height || z >= self.depth { return false; }
+        use crate::erosion::materials::RockType as R;
+        matches!(self.cell(x, y, z).material, Material::Rock(R::Sandstone | R::Limestone | R::Sediment) | Material::Sand | Material::Gravel | Material::Soil)
+    }
+
     #[inline]
     pub fn idx(&self, x: usize, y: usize, z: usize) -> usize {
         (z * self.height + y) * self.width + x
@@ -297,20 +323,59 @@ struct RiverSeg {
 /// River segments (in region cell coordinates) near a point: each river cell links to its
 /// steepest-descent wet neighbour (river, lake or sea). Sources (no river flowing in) start at
 /// zero width so streams taper in instead of appearing at full width.
-fn river_segments(region: &ZoomRegion, cx: f64, cy: f64, radius: i64) -> Vec<RiverSeg> {
-    let (w, h) = (region.width as i64, region.height as i64);
-    // At person scale, rivers continue upstream as creeks: any cell with a quarter of the
-    // region's river catchment carries water, with width from hydraulic geometry.
+/// The width (m) of the channel an embark draws through region cell `k`, 0 where none: at
+/// person scale rivers continue upstream as creeks, so any cell with a quarter of the region's
+/// river catchment carries water, its width from hydraulic geometry.
+pub fn channel_width(region: &ZoomRegion, k: usize) -> f32 {
     let s = (region.params.cells_per_tile.max(8) & !1) as f32;
     let cell_km2 = (region.cell_m / 1000.0).powi(2);
-    let channel_width = |k: usize| -> f32 {
-        let threshold = CREEK_AREA_FRACTION * s * s / (0.25 + region.moisture[k]);
-        if region.elevation_m[k] <= 0.0 || region.lake_depth_m[k] > 0.0 || region.drainage_cells[k] < threshold {
-            0.0
-        } else {
-            region.river_width_m[k].max(0.8 * (region.drainage_cells[k] * cell_km2).sqrt())
+    let threshold = CREEK_AREA_FRACTION * s * s / (0.25 + region.moisture[k]);
+    if region.elevation_m[k] <= 0.0 || region.lake_depth_m[k] > 0.0 || region.drainage_cells[k] < threshold {
+        0.0
+    } else {
+        region.river_width_m[k].max(0.8 * (region.drainage_cells[k] * cell_km2).sqrt())
+    }
+}
+
+/// A point on a river's bank near the region point (x, y): candidates on a 25 m grid within 0.6
+/// region cells are tested the way `generate_local` draws channels (meander warp, then the
+/// distance to each segment less half its width), and the one 20-60 m from the water's edge
+/// nearest (x, y) wins. None where no channel runs near.
+pub fn bank_near(region: &ZoomRegion, x: f64, y: f64) -> Option<(f64, f64)> {
+    let segs = river_segments(region, x, y, 2);
+    if segs.is_empty() { return None; }
+    let seed = region.params.seed as u32;
+    let meander = Perlin::new(seed.wrapping_add(703));
+    let s = (region.params.cells_per_tile.max(8) & !1) as i64;
+    let cell_m = region.cell_m as f64;
+    let (ox_m, oy_m) = ((region.world_x0 * s) as f64 * cell_m, (region.world_y0 * s) as f64 * cell_m);
+    let step = 25.0 / cell_m;
+    let n = (0.6 / step).ceil() as i64;
+    let mut best: Option<(f64, (f64, f64))> = None;
+    for j in -n..=n {
+        for i in -n..=n {
+            let (zx, zy) = (x + i as f64 * step, y + j as f64 * step);
+            let (mx, my) = (ox_m + zx * cell_m, oy_m + zy * cell_m);
+            let wx = zx + 0.30 * fbm(&meander, mx / 700.0, my / 700.0, 3) as f64;
+            let wy = zy + 0.30 * fbm(&meander, mx / 700.0 + 19.0, my / 700.0, 3) as f64;
+            let mut edge = f64::MAX;
+            for seg in &segs {
+                let (d, t) = seg_dist(wx, wy, seg.a, seg.b);
+                let width = (seg.wa + (seg.wb - seg.wa) * t as f32) as f64;
+                if width < TILE_M as f64 { continue; }
+                edge = edge.min(d * cell_m - width * 0.5);
+            }
+            if !(20.0..=60.0).contains(&edge) { continue; }
+            let dd = (zx - x).hypot(zy - y);
+            if best.map_or(true, |b| dd < b.0) { best = Some((dd, (zx, zy))); }
         }
-    };
+    }
+    best.map(|b| b.1)
+}
+
+fn river_segments(region: &ZoomRegion, cx: f64, cy: f64, radius: i64) -> Vec<RiverSeg> {
+    let (w, h) = (region.width as i64, region.height as i64);
+    let channel_width = |k: usize| -> f32 { channel_width(region, k) };
     let wet = |x: i64, y: i64| {
         let k = (y * w + x) as usize;
         channel_width(k) > 0.0 || region.lake_depth_m[k] > 0.0 || region.elevation_m[k] <= 0.0
@@ -424,11 +489,37 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
 
     let segments = river_segments(region, cx, cy, 3);
 
+    // Mountains at human scale: on a high or rugged tile, terraced relief (ledges and faces
+    // several levels high, a slope across the embark), its height from the tile's ruggedness.
+    let mountain_amp = {
+        let (tx, ty) = world_tile;
+        let mut lo = f32::MAX; let mut hi = f32::MIN;
+        for dy in -1i64..=1 { for dx in -1i64..=1 {
+            let (x, y) = ((tx as i64 + dx).rem_euclid(world.width as i64) as usize, (ty as i64 + dy).clamp(0, world.height as i64 - 1) as usize);
+            let e = *world.heightmap.get(x, y);
+            lo = lo.min(e); hi = hi.max(e);
+        } }
+        let here = *world.heightmap.get(tx, ty);
+        let rugged = (hi - lo).max(0.0);
+        if here > 600.0 || rugged > 500.0 { (rugged / 40.0 + (here - 600.0).max(0.0) / 120.0).clamp(10.0, 60.0) } else if here > 150.0 && rugged > 150.0 { (rugged / 25.0).clamp(6.0, 20.0) } else { 0.0 }
+    };
+    let mountain_noise = Perlin::new(seed.wrapping_add(706));
+    let terrace = |m: f32, mx: f64, my: f64| -> f32 {
+        if m <= 0.0 { return 0.0; }
+        // A broad hillside (large-scale noise plus a tilt), cut into terraces: most of each step
+        // a ledge, its last fifth a face.
+        let f = (0.5 + 0.5 * fbm(&mountain_noise, mx / 420.0, my / 420.0, 4) as f32 + 0.25 * ((mx / 384.0) as f32).sin()).clamp(0.0, 1.0);
+        let k = 7.0;
+        let step = (f * k).floor();
+        let frac = f * k - step;
+        (step + smoothstep(0.78, 1.0, frac)) / k * m
+    };
+
     // Ore deposits within a couple of world tiles feed veins in the rock below.
     let veins = vein_sources(world, world_tile, &region.params);
 
     // Per-column surface, water level and climate.
-    struct Col { e: f32, water_level: Option<f32>, temp: f32, moist: f32, slope: f32, river_d: f32, river_hw: f32, sea: bool }
+    struct Col { e: f32, base: f32, water_level: Option<f32>, temp: f32, moist: f32, slope: f32, river_d: f32, river_hw: f32, sea: bool }
     let mut cols: Vec<Col> = Vec::with_capacity(n * n);
     for j in 0..n {
         for i in 0..n {
@@ -463,6 +554,9 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let ridges = 1.0 - (fbm(&ridge_noise, mx / 140.0, my / 140.0, 4) * 2.0).abs();
             let steep = smoothstep(0.15, 0.6, slope);
             let mut e = base + amp * ((1.0 - steep) * rough + steep * (ridges - 0.5) * 2.0);
+            // The mountain's own relief (calm by rivers).
+            let calm = if river_w > 0.0 { smoothstep(hw, hw + 40.0, river_d) } else { 1.0 };
+            e += terrace(mountain_amp, mx, my) * calm;
 
             let mut water_level = None;
             let bank = (hw * 0.8).max(2.0);
@@ -491,7 +585,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             if sea {
                 water_level = Some(0.0);
             }
-            cols.push(Col { e, water_level, temp, moist, slope, river_d, river_hw: if river_w > 0.0 { hw } else { 0.0 }, sea });
+            cols.push(Col { e, base, water_level, temp, moist, slope, river_d, river_hw: if river_w > 0.0 { hw } else { 0.0 }, sea });
         }
     }
 
@@ -523,6 +617,11 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         },
         found: [0; 4],
         furnished: Vec::new(),
+        game: Vec::new(),
+        places: Vec::new(),
+        cavern_z: Vec::new(),
+        caverns: Vec::new(),
+        aquifer: None,
     };
 
     for j in 0..n {
@@ -659,6 +758,21 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         }
     }
 
+    // The caverns, from coarse fields and absolute-position noise (they meet across embarks).
+    {
+        let refs: Vec<f32> = cols.iter().map(|c| c.base).collect();
+        let abs = |i: usize, j: usize| (ox_m + (cx + (i as f64 + 0.5 - n as f64 / 2.0) * tile_cells) * cell_m, oy_m + (cy + (j as f64 + 0.5 - n as f64 / 2.0) * tile_cells) * cell_m);
+        map.caverns = caverns::carve(&mut map, &refs, &hs, &abs, seed, world_tile);
+        // An aquifer (DF): where the land holds water (the tile's water table 0.45+), a band of
+        // wet permeable rock five levels thick, four levels under the usual ground.
+        if hs.water_table >= 0.45 {
+            let mut zs: Vec<i32> = map.surface_z.clone();
+            zs.sort_unstable();
+            let med = zs[zs.len() / 2];
+            if med > 12 { map.aquifer = Some((med - 8, med - 4)); }
+        }
+    }
+
     // What history left here: settlements, ruins, fields and roads.
     if let Some(lore) = lore {
         structures::apply(&mut map, region, lore, cx, cy);
@@ -671,7 +785,36 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     }
     // What a first camp needs within reach: water, wood, stone, berries, something to look at.
     let battles = lore.and_then(|l| l.battles.get(&map.world_tile).cloned()).unwrap_or_default();
+    // Rock faces show bare rock (no snow or soil holds on them), and scree gathers at their foot.
+    if mountain_amp > 0.0 {
+        let rock = (0..map.depth).rev().find_map(|z| match map.cell(n / 2, n / 2, z).material { Material::Rock(r) => Some(r), _ => None }).unwrap_or(RockType::Granite);
+        let szs = map.surface_z.clone();
+        for j in 1..n - 1 {
+            for i in 1..n - 1 {
+                let sz = szs[j * n + i];
+                let nb = [szs[j * n + i - 1], szs[j * n + i + 1], szs[(j - 1) * n + i], szs[(j + 1) * n + i]];
+                let drop = nb.iter().map(|&o| sz - o).max().unwrap_or(0);
+                let rise = nb.iter().map(|&o| o - sz).max().unwrap_or(0);
+                let k = map.idx(i, j, sz.max(0) as usize);
+                // Ice over a frozen lake stays ice.
+                if map.cells[k].shape != Shape::Floor || map.cells[k].material == Material::Ice { continue; }
+                if drop >= 1 {
+                    map.cells[k].material = Material::Rock(rock);
+                    map.cells[k].plant = Plant::None;
+                } else if rise >= 1 && hash(i as i64, j as i64, 0x5C2EE) < 0.3 {
+                    map.cells[k].boulder = true;
+                    map.cells[k].plant = Plant::None;
+                }
+            }
+        }
+    }
     site::furnish(&mut map, &battles);
+    // Something down there: lairs, tombs, old mines and caves, each with its cause.
+    {
+        let (x0, y0) = (region.world_x0, region.world_y0);
+        let tile_of = |x: f64, y: f64| (((x0 * s + x as i64).div_euclid(s)).rem_euclid(world.width as i64) as usize, ((y0 * s + y as i64).div_euclid(s)).clamp(0, world.height as i64 - 1) as usize);
+        map.places = places::place(&mut map, lore, world, world_tile, tile_of, region.params.seed);
+    }
 
     // Ramps: a floor next to ground exactly one level higher leads up (DF style).
     for j in 0..n {
@@ -706,8 +849,12 @@ mod tests {
         let region = crate::region::zoom::generate_zoom(&world, &params);
         let map = generate_local(&world, &region, None, region.width as f64 / 2.0, region.height as f64 / 2.0);
         assert_eq!(map.cells.len(), LOCAL_SIZE * LOCAL_SIZE * map.depth);
+        // Places carved under the ground (caves, lairs, tombs: `places.rs`) are open below it.
+        let carved: std::collections::HashSet<(u16, u16)> = map.places.iter().flat_map(|p| p.cells.iter().map(|c| c.0)).collect();
+        assert!(!map.caverns.is_empty(), "no cavern under the test embark");
         for y in 0..map.height {
             for x in 0..map.width {
+                if carved.contains(&(x as u16, y as u16)) { continue; }
                 let sz = map.surface_z[y * map.width + x] as usize;
                 for z in 0..map.depth {
                     let c = map.cell(x, y, z);
@@ -715,7 +862,8 @@ mod tests {
                     // ice may sit directly on the bed when the water froze through).
                     let above = if z + 1 < map.depth { Some(map.cell(x, y, z + 1)) } else { None };
                     let bed = c.shape == Shape::Floor && above.map(|a| a.water > 0 || a.material == Material::Ice).unwrap_or(false);
-                    if z < sz { assert!(c.shape == Shape::Wall || c.water > 0 || bed, "solid (or frozen-over water) below the surface"); }
+                    if z < sz && map.cavern_at(x, y, z as i32).is_some() { continue; }
+                    if z < sz { assert!(c.shape == Shape::Wall || c.water > 0 || bed, "solid (or frozen-over water) below the surface at {},{},{}", x, y, z); }
                     if z == sz { assert!(matches!(c.shape, Shape::Floor | Shape::Ramp)); }
                     if z > sz && c.shape != Shape::Empty {
                         assert!(matches!(c.material, Material::Wood | Material::Block(_) | Material::Clay | Material::Ice), "only buildings or ice above the surface");
@@ -727,4 +875,29 @@ mod tests {
         let trees = map.cells.iter().filter(|c| matches!(c.plant, Plant::Tree(_))).count();
         println!("local map: {} z-levels, {} trees, biome {:?}", map.depth, trees, map.biome);
     }
+}
+
+/// A cluster of gems in a rock cell (Dwarf Fortress's small clusters, by host rock): one cell in
+/// sixty, by a hash of its place in the world (so the same cell holds the same stone on every
+/// visit). Granite holds rock crystal or garnets, basalt obsidian or agate, limestone marble,
+/// shale jet, sandstone and loose sediment amber.
+pub fn gem_in(map: &LocalMap, x: usize, y: usize, z: usize) -> Option<&'static str> {
+    use crate::erosion::materials::RockType as R;
+    let Material::Rock(r) = map.cell(x, y, z).material else { return None };
+    let (tx, ty) = (map.world_tile.0 as u64, map.world_tile.1 as u64);
+    let mut h = (tx << 40) ^ (ty << 28) ^ ((x as u64) << 18) ^ ((y as u64) << 8) ^ z as u64;
+    h = h.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    h = (h ^ (h >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    h = (h ^ (h >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    h ^= h >> 31;
+    if h % 60 != 0 { return None; }
+    let pick = (h >> 8) % 2 == 0;
+    Some(match r {
+        R::Granite => if pick { "rock crystal" } else { "garnets" },
+        R::Basalt => if pick { "obsidian" } else { "agate" },
+        R::Limestone => "marble",
+        R::Shale => "jet",
+        R::Sandstone | R::Sediment => "amber",
+        R::Ice => return None,
+    })
 }

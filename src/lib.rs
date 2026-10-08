@@ -37,6 +37,8 @@ pub mod local;
 pub mod lore;
 pub mod map_export;
 pub mod microclimate;
+pub mod monsters;
+pub mod persona;
 pub mod plates;
 pub mod region;
 pub mod scale;

@@ -57,4 +57,68 @@ the zoomed region around a point.
   this level as drawn; open air above the ground ghosts the land below; rock and soil below are
   hatched parchment in their colour with ore flecked in its metal and inked edges against open
   space; water blue. `PLANET_TILE_LEVELS=1` brings back the old atlas tiles.
+- Levels below the ground are cut at standing height (2026-10-08): the rock one would walk into
+  hatched in its layer's colour (ore flecked, gem clusters as small marks, wet aquifer rock
+  stippled blue), floors to stand on (halls, rooms, cavern floors with fungus) a pale wash inked
+  at the rock, stairs (`Shape::Stair`, cut by the colony or built down into a cavern) as steps
+  with a red chevron up, down or both, open dark dusk-grey. Above the ground a level shows what
+  was built up to it (a tower's platform, walls at standing height). Each stone has its own
+  wash (`local_ink::rock_wash`: granite pinkish grey, basalt slate, sandstone ochre, limestone
+  cream, shale blue-grey, sediment buff), so the strata read as layers in levels and sections.
 
+
+## Something down there (`local/places.rs`)
+- `LocalMap::places` (`UnderPlace`: kind, name, cause, contents, cells, mouth, found) is filled at
+  the end of `generate_local` from causes, never a bare roll: a beast laired on the tile
+  (`RegionLore::lairs`: name, alive, hoard by artifact name, kills) gets its lair; the battle
+  with the most named dead on the tile a tomb ("Zromp the Scourge ... fell here in the Battle of
+  the Brolmdustoor Pass (366)"); a town that fell on the tile its old mine (ore near) or
+  undercroft; limestone on half the tiles and sandstone/shale on a third (hashed by the tile;
+  karst biomes always) a cave; the first cavern layer where it lies within 13 levels (see Caverns below; the old hashed deep cavern is gone). Spots are dry ground 30-80 cells from
+  the middle, tried in a hashed order; each is carved like a colony dig (a passage into a rise,
+  else a sinkhole ramp down to a room) and is walkable from its mouth.
+- `--sim-projects N` prints a `Place:` line per place (with "walkable from the surface").
+  Dev: 46,13 the living Baelfang's lair, 47,14 a tomb, 50,20 a limestone cave; 7 of 18
+  livable embarks hold nothing. Tested (`tests/colony.rs` something_down_there). Not yet: the
+  places' pages, drawing the hoard and bones, the found/unknown state (card 'The unknown is
+  blank'); dev beasts' hoards are empty (beasts in the history own no artifacts).
+
+## Caverns (`local/caverns.rs`; DF design guide ch. 11, "coarse data drives fine data")
+- Every embark now keeps 52 solid levels (was 30) and three cavern layers whose middles lie
+  22 / 52 / 86 m under the region's smooth surface (`Col::base`, the zoom's bicubic elevation
+  without metre relief) +-10 m of broad noise; bands 5 / 6.5 / 8 m half-height, varying. A cell is
+  open where 3-D Perlin over absolute position (+ detail) + the rock's openness (limestone 0.22 ...
+  granite -0.08, `openness`) + a band-centre bonus passes 0.82; one open run per column per layer,
+  at least 4 levels of roof. The cell under the run becomes the floor (`cavern_z[col][k]` = floor,
+  top). Under 40 floor cells a layer is filled back in. Pools fill hollows to a line set by the
+  tile's water table; floors grow `TreeKind::Fungus` and cave moss (Grass). Life per layer from a
+  dry/wet list. A forgotten beast (`monsters::generate`, kind "forgotten") sleeps in the deepest
+  layer with 300+ floor cells, seeded by the 3x3 block of world tiles (neighbours share it,
+  dev: "Gru" under 45,12 and 46,13), named in the Harsh style. Dev coverage: first layer 20-26%
+  of the embark, 11-28 levels down; deeper layers 30-60%. Embark generation ~0.06 s.
+- Because the noise is keyed on absolute position and the reference elevation comes from the
+  zoomed region, layers meet across neighbouring embarks of one zoom region.
+- `LocalMap::cavern_at(x, y, z)`; `places` records the first cavern only where it lies within 13
+  levels (`PlaceKind::Cavern`, no carving); `host_rock` now reads the top 30 levels (the deeper map
+  had made deep granite outvote the sandstone a cave is cut in). Both section renderers draw
+  cavern air dark, fungus mauve, moss dim. `--sim-projects` prints a `Cavern:` line per layer.
+
+## Embarks beside the river (`viewer::river_bank`, `local::bank_near`, `local::channel_width`)
+- Embark positions ("cells" in world codes, `START_CELL`, `Colony::cell`) are now in 1/64ths of a
+  region cell (`viewer::CELL_FRAC`): on the dev world a region cell is 3.26 km, so whole cells put
+  every embark on a cell corner, ~1.6 km from the river centrelines through cell centres, and the
+  384 m embark missed them. Walking embarks go through `colony_site` at the quantised position, so
+  a code rebuilds exactly the camp that was played. Old codes with cells are not compatible.
+- The offered sites (`three_sites`) embark beside the tile's river (DF: the world's river runs
+  through the embark tiles it crosses): the region cell with a drawn channel 3 m+ wide
+  (`channel_width`, the embark's own rule) nearest the tile centre, then `bank_near` samples a
+  25 m grid within 0.6 cells with the embark's meander warp and segment distances and takes the
+  nearest point 20-60 m from the water's edge. `SiteOffer::cell` carries it and choosing the site
+  sets the start cell; the first pass offers only tiles with a bank. Six dev seeds: 14 of 18
+  offers no longer lack water (3, 2, 1, 2, 3, 3; was 1 of 18). Tested in `three_sites_to_choose_from`.
+- What lies below (`site::below`, appended to `site::report` as "below: ..."; DF's embark
+  screen): the host rock, ore seams and gems in the top thirty levels near the centre (sampled
+  every other cell), an aquifer and how deep ("an aquifer 4-8 levels down", `LocalMap::aquifer`:
+  where the tile's water table is 0.45+, levels 4-8 under the median ground), and the caverns
+  ("3 cavern layers (the first 16 levels down); the old songs say something sleeps in the deep",
+  the beast unnamed). Gems: `local::gem_in` (one rock cell in sixty, by world place and rock).

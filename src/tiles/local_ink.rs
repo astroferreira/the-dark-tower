@@ -68,10 +68,27 @@ fn wash(c: &crate::local::Cell) -> Rgb {
         Material::Gravel => [190.0, 182.0, 160.0],
         Material::Snow => [240.0, 238.0, 230.0],
         Material::Ice => [214.0, 226.0, 228.0],
-        Material::Rock(_) | Material::Ore(_) => [178.0, 168.0, 148.0],
+        // Each stone its own wash, so the strata read as layers in a level or the section.
+        Material::Rock(r) => rock_wash(r),
+        Material::Ore(_) => [178.0, 168.0, 148.0],
         Material::Block(_) => [196.0, 188.0, 170.0],
         Material::Wood => [176.0, 140.0, 100.0],
         Material::Air => [182.0, 160.0, 120.0],
+    }
+}
+
+/// A stone's wash: granite a pinkish grey, basalt dark slate, sandstone ochre, limestone cream,
+/// shale a blue-grey, loose sediment buff.
+fn rock_wash(r: crate::erosion::materials::RockType) -> Rgb {
+    use crate::erosion::materials::RockType as R;
+    match r {
+        R::Granite => [184.0, 164.0, 156.0],
+        R::Basalt => [128.0, 128.0, 134.0],
+        R::Sandstone => [204.0, 172.0, 120.0],
+        R::Limestone => [214.0, 206.0, 178.0],
+        R::Shale => [148.0, 154.0, 164.0],
+        R::Sediment => [190.0, 170.0, 136.0],
+        R::Ice => [214.0, 226.0, 228.0],
     }
 }
 
@@ -85,6 +102,8 @@ fn crown(kind: TreeKind) -> (f32, Rgb) {
         TreeKind::Palm => (0.85, [128.0, 152.0, 90.0]),
         TreeKind::Acacia => (1.05, [154.0, 154.0, 94.0]),
         TreeKind::Dead => (0.55, [150.0, 132.0, 108.0]),
+        // A fungus cap: wide and pale, mauve-grey.
+        TreeKind::Fungus => (0.9, [156.0, 128.0, 150.0]),
     }
 }
 
@@ -462,18 +481,28 @@ fn edge_distance(u: f32, w: f32, west: bool, east: bool, north: bool, south: boo
 /// two living settlers look alike is shifted to the next unused colour.
 /// A level slice in ink, so the levels read as the same land as the surface view: the surface is
 /// drawn first; where the ground lies at this level it shows as it is; above the ground (open
-/// air) the surface below shows as a faint ghost; below the ground the rock and soil are cut
-/// (parchment with hatching in the material's colour, ore flecked in its metal, inked edges where
-/// rock meets open space); dug floors are a pale wash; water is blue.
+/// air) the surface below shows as a faint ghost. Below the ground the view is a cut at standing
+/// height (DF's level): the rock and soil one would walk into are parchment hatched in their
+/// colour (ore flecked in its metal, gem clusters glinting, wet rock of the aquifer stippled
+/// blue), each layer its own wash; floors one can stand on (halls, rooms, passages, cavern
+/// floors) are a pale wash of their stone, inked where they meet the rock; stairs are drawn as
+/// steps with a mark for the way they go (up, down or both); open dark (a cavern's air, a shaft)
+/// is dusk-grey; water is blue.
 pub fn render_level_ink(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
+    use crate::local::Shape;
     let surface = LocalCamera { surface_view: true, ..*cam };
     render_local_ink(map, &surface, buf, w, h);
     let t = cam.tile_px;
-    let z = cam.z.clamp(0, map.depth as i32 - 1) as usize;
+    let z = cam.z.clamp(0, map.depth as i32 - 2);
+    let zu = z as usize;
     let paper: Rgb = [234.0, 222.0, 196.0];
-    let solid = |x: i64, y: i64| -> Option<bool> {
+    // What a cell of the slice is: 0 rock at standing height, 1 a floor to stand on, 2 open dark.
+    let kind = |x: i64, y: i64| -> Option<u8> {
         if x < 0 || y < 0 || x as usize >= map.width || y as usize >= map.height { return None; }
-        Some(map.cell(x as usize, y as usize, z).shape == crate::local::Shape::Wall)
+        let (x, y) = (x as usize, y as usize);
+        if crate::colony::nav::standable(map, x, y, z) { return Some(1); }
+        let body = map.cell(x, y, zu + 1);
+        Some(if matches!(body.shape, Shape::Empty | Shape::Stair) { 2 } else { 0 })
     };
     for sy in 0..h {
         let fy = cam.cy + (sy as f32 + 0.5 - h as f32 / 2.0) / t;
@@ -481,38 +510,89 @@ pub fn render_level_ink(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: u
             let fx = cam.cx + (sx as f32 + 0.5 - w as f32 / 2.0) / t;
             if fx < 0.0 || fy < 0.0 || fx >= map.width as f32 || fy >= map.height as f32 { continue; }
             let (x, y) = (fx as usize, fy as usize);
-            let sz = map.surface_z[y * map.width + x].max(0) as usize;
+            let sz = map.surface_z[y * map.width + x];
             let k = sy * w + sx;
             let p = buf[k];
             let here: Rgb = [((p >> 16) & 255) as f32, ((p >> 8) & 255) as f32, (p & 255) as f32];
-            let cell = map.cell(x, y, z);
-            let c: Rgb = if z == sz && cell.shape != crate::local::Shape::Wall {
+            let floor = map.cell(x, y, zu);
+            let body = map.cell(x, y, zu + 1);
+            let (u, v) = (fx.fract(), fy.fract());
+            let e = 1.2 / t;
+            let c: Rgb = if z == sz && floor.shape != Shape::Stair {
                 // The ground at this level: the surface as drawn.
                 here
             } else if z > sz {
-                // Open air above the ground: the land below, faint.
-                if cell.water > 0 { mix(water_wash(cell.water as f32), paper, 0.3) } else { mix(here, paper, 0.72) }
-            } else if cell.shape == crate::local::Shape::Wall {
-                // Cut rock or soil: parchment, hatched in its colour.
-                let base = mix(paper, wash(cell), 0.45);
-                let (gx, gy) = (fx * 6.0, fy * 6.0);
-                let hatch = ((gx + gy) as i64).rem_euclid(3) == 0;
-                let mut c = if hatch { mix(base, INK, 0.18) } else { base };
-                if let crate::local::Material::Ore(r) = cell.material {
-                    let col = crate::lore::resource_color(r);
-                    if unit((fx * 5.0) as i64, (fy * 5.0) as i64, 0x0E) < 0.35 { c = mix(c, [col[0] as f32, col[1] as f32, col[2] as f32], 0.85); }
-                }
-                // Ink where rock meets open space.
-                let (u, v) = (fx.fract(), fy.fract());
-                let open = |dx: i64, dy: i64| solid(x as i64 + dx, y as i64 + dy) == Some(false);
-                let e = 1.2 / t;
-                if (u < e && open(-1, 0)) || (u > 1.0 - e && open(1, 0)) || (v < e && open(0, -1)) || (v > 1.0 - e && open(0, 1)) { c = INK; }
+                // Above the ground: what was built up to this level (a tower's platform, the walls
+                // of a hut or a tower at standing height), else open air with the land faint below.
+                let kd = kind(x as i64, y as i64).unwrap_or(2);
+                let open_near = |want: u8| (u < e && kind(x as i64 - 1, y as i64) == Some(want)) || (u > 1.0 - e && kind(x as i64 + 1, y as i64) == Some(want))
+                    || (v < e && kind(x as i64, y as i64 - 1) == Some(want)) || (v > 1.0 - e && kind(x as i64, y as i64 + 1) == Some(want));
+                if kd == 1 {
+                    let mut c = mix(paper, wash(floor), 0.5);
+                    if ((fx * 4.0).fract() < 0.08) || ((fy * 4.0).fract() < 0.08) { c = mix(c, INK, 0.25); }
+                    if body.shape == Shape::Stair || floor.shape == Shape::Stair { if (v * 5.0).fract() < 0.28 && u > 0.12 && u < 0.88 { c = mix(c, INK, 0.5); } }
+                    if open_near(2) { INK } else { c }
+                } else if kd == 0 {
+                    let base = mix(wash(body), INK, 0.3);
+                    if ((fx + fy) * 5.0).fract() < 0.3 { mix(base, INK, 0.3) } else { base }
+                } else if floor.water > 0 { mix(water_wash(floor.water as f32), paper, 0.3) } else { mix(here, paper, 0.72) }
+            } else if sz - z <= 2 && floor.shape == Shape::Wall && !crate::colony::nav::standable(map, x, y, z) && map.cavern_at(x, y, z + 1).is_none() {
+                // Ground a level or two above this one (a slope, the bank of a rise): the surface
+                // as drawn, shaded with hachures, inked where it meets this level's ground. (Cut
+                // rock hatching here made a gentle slope look like a quarry face.)
+                let mut c = mix(here, INK, 0.12 + 0.06 * (sz - z) as f32);
+                if ((fx - fy) * 5.0).fract() < 0.18 { c = mix(c, INK, 0.25); }
+                let lower = |dx: i64, dy: i64| { let (qx, qy) = (x as i64 + dx, y as i64 + dy); qx >= 0 && qy >= 0 && (qx as usize) < map.width && (qy as usize) < map.height && map.surface_z[qy as usize * map.width + qx as usize] <= z };
+                if (u < e && lower(-1, 0)) || (u > 1.0 - e && lower(1, 0)) || (v < e && lower(0, -1)) || (v > 1.0 - e && lower(0, 1)) { c = INK; }
                 c
-            } else if cell.water > 0 {
-                water_wash(cell.water as f32)
             } else {
-                // A dug or open floor below ground: a pale wash.
-                mix(paper, wash(cell), 0.25)
+                let kd = kind(x as i64, y as i64).unwrap_or(0);
+                let edge_to = |want: u8| (u < e && kind(x as i64 - 1, y as i64) == Some(want)) || (u > 1.0 - e && kind(x as i64 + 1, y as i64) == Some(want))
+                    || (v < e && kind(x as i64, y as i64 - 1) == Some(want)) || (v > 1.0 - e && kind(x as i64, y as i64 + 1) == Some(want));
+                if body.water > 0 && kd != 0 {
+                    water_wash(body.water as f32)
+                } else if kd == 0 {
+                    // Rock or soil at standing height, hatched in its colour.
+                    let base = mix(paper, wash(body), 0.5);
+                    let (gx, gy) = (fx * 6.0, fy * 6.0);
+                    let hatch = ((gx + gy) as i64).rem_euclid(3) == 0;
+                    let mut c = if hatch { mix(base, INK, 0.18) } else { base };
+                    if let crate::local::Material::Ore(r) = body.material {
+                        let col = crate::lore::resource_color(r);
+                        if unit((fx * 5.0) as i64, (fy * 5.0) as i64, 0x0E) < 0.35 { c = mix(c, [col[0] as f32, col[1] as f32, col[2] as f32], 0.85); }
+                    }
+                    if crate::local::gem_in(map, x, y, zu + 1).is_some() && ((u - 0.5).abs() + (v - 0.5).abs()) < 0.16 { c = mix(c, [150.0, 60.0, 120.0], 0.6); }
+                    if map.is_aquifer(x, y, zu + 1) && unit((fx * 7.0) as i64, (fy * 7.0) as i64, 0xA9) < 0.12 { c = mix(c, [70.0, 110.0, 160.0], 0.7); }
+                    if edge_to(1) || edge_to(2) { c = INK; }
+                    c
+                } else if kd == 1 {
+                    // A floor to stand on: a pale wash of its stone (a cavern's darker), a stair's
+                    // steps across it.
+                    let cavern = map.cavern_at(x, y, z + 1).is_some();
+                    let mut c = if cavern { mix(paper, [96.0, 88.0, 100.0], 0.55) } else { mix(paper, wash(floor), 0.22) };
+                    if floor.plant == crate::local::Plant::Tree(TreeKind::Fungus) {
+                        let d = ((u - 0.5).powi(2) + (v - 0.5).powi(2)).sqrt();
+                        if d < 0.38 { c = if d > 0.3 { INK } else { [150.0, 110.0, 140.0] }; }
+                    }
+                    let up = body.shape == Shape::Stair;
+                    let down = floor.shape == Shape::Stair;
+                    if up || down {
+                        // Steps: bars across the cell, darker toward the way down.
+                        let bar = ((v * 5.0) as i32).clamp(0, 4);
+                        let in_bar = (v * 5.0).fract() < 0.28 && u > 0.12 && u < 0.88;
+                        if in_bar { c = mix(c, INK, 0.45 + 0.1 * bar as f32); }
+                        // The way: a chevron up (^), down (v), or both (X).
+                        let (cu, cv) = (u - 0.5, v - 0.5);
+                        let on = |a: f32| (a - cu.abs() * 1.2).abs() < 0.07;
+                        if (up && cv < 0.0 && on(-cv - 0.05)) || (down && cv > 0.0 && on(cv - 0.05)) { c = [150.0, 40.0, 30.0]; }
+                    }
+                    if edge_to(0) { c = INK; }
+                    c
+                } else {
+                    // Open dark: a cavern's air, a shaft, the space over a lower floor.
+                    let c = mix(paper, [62.0, 54.0, 66.0], 0.75);
+                    if edge_to(0) { INK } else { c }
+                }
             };
             buf[k] = pack(c);
         }
@@ -539,6 +619,18 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
     use crate::colony::{ItemKind, Job};
     let t = cam.tile_px;
     let to_screen = |x: f32, y: f32| ((x - cam.cx) * t + w as f32 / 2.0, (y - cam.cy) * t + h as f32 / 2.0);
+    // Winter: in a hard winter the land pales toward snow, more in a deep freeze (the embark's
+    // season, which the colony lives through; the map itself keeps its annual colours).
+    if colony.hard_winter() {
+        let snow: Rgb = [236.0, 234.0, 226.0];
+        let a = if colony.frozen() { 0.42 } else { 0.28 };
+        for p in buf.iter_mut() {
+            let old = [((*p >> 16) & 0xFF) as f32, ((*p >> 8) & 0xFF) as f32, (*p & 0xFF) as f32];
+            // Darker ink (lines, buildings' walls) keeps more of itself than the open ground.
+            let lum = (old[0] + old[1] + old[2]) / 765.0;
+            *p = pack(mix(old, snow, a * lum.powf(0.7)));
+        }
+    }
     // Night: the map washes toward sea-ink blue, but for a warm glow round the fire and the watch.
     let dark = colony.darkness();
     if dark > 0.0 {
@@ -667,6 +759,17 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
                 for k in -ri..=ri / 3 { put(cx as i64, cy as i64 + k, INK, 0.95); }
                 for k in -ri / 2..=ri / 2 { put(cx as i64 + k, cy as i64 - ri / 2, INK, 0.95); }
             }
+            crate::colony::MarkKind::Cage => {
+                // A barred square; dark within when something sits caged.
+                let ri = (r * 0.8) as i64;
+                let full = m.title.starts_with("The cage of");
+                for dy in -ri..=ri { for dx in -ri..=ri {
+                    let edge = dx.abs() == ri || dy.abs() == ri;
+                    let bar = dx % 2 == 0;
+                    if edge || bar { put(cx as i64 + dx, cy as i64 + dy, INK, 0.9); }
+                    else if full { put(cx as i64 + dx, cy as i64 + dy, [70.0, 50.0, 46.0], 0.85); }
+                } }
+            }
             crate::colony::MarkKind::Scorch => {
                 let ri = (r * 1.6) as i64;
                 for dy in -ri..=ri { for dx in -ri..=ri {
@@ -684,14 +787,111 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
             }
         }
     }
+    // Engravings on the hall's walls: a carved panel on the face toward the floor, a little
+    // figure scratched in it (`colony::engrave`).
+    for e in &colony.engravings {
+        let (wx, wy) = to_screen(e.wall.0 as f32 + 0.5, e.wall.1 as f32 + 0.5);
+        let (dx, dy) = (e.from.0 as f32 - e.wall.0 as f32, e.from.1 as f32 - e.wall.1 as f32);
+        let (cx, cy) = (wx + dx * t * 0.3, wy + dy * t * 0.3);
+        let (hw, hh) = if dx != 0.0 { ((t * 0.12).max(1.5), (t * 0.36).max(3.0)) } else { ((t * 0.36).max(3.0), (t * 0.12).max(1.5)) };
+        let (hwi, hhi) = (hw as i64, hh as i64);
+        for yy in -hhi..=hhi { for xx in -hwi..=hwi {
+            let edge = xx.abs() == hwi || yy.abs() == hhi;
+            put(cx as i64 + xx, cy as i64 + yy, if edge { INK } else { [196.0, 178.0, 140.0] }, if edge { 0.9 } else { 0.8 });
+        } }
+        // The figure: a dot and a stroke, darker for a finer hand.
+        let a = 0.5 + 0.08 * e.quality as f32;
+        put(cx as i64, cy as i64 - 1, INK, a);
+        put(cx as i64, cy as i64, INK, a);
+        put(cx as i64, cy as i64 + 1, INK, a);
+    }
+    // Worn ground: a track where feet have gone often (15+ steps), a lane where most (120+).
+    if colony.steps.len() == colony.map.width * colony.map.height {
+        let (x0, y0) = ((cam.cx - w as f32 / 2.0 / t).max(0.0) as usize, (cam.cy - h as f32 / 2.0 / t).max(0.0) as usize);
+        let (x1, y1) = (((cam.cx + w as f32 / 2.0 / t) as usize + 1).min(colony.map.width), ((cam.cy + h as f32 / 2.0 / t) as usize + 1).min(colony.map.height));
+        for cy in y0..y1 { for cx in x0..x1 {
+            let n = colony.steps[cy * colony.map.width + cx];
+            if n < 15 { continue; }
+            let a = if n >= 120 { 0.6 } else { 0.3 + 0.3 * (n as f32 - 15.0) / 105.0 };
+            let (px, py) = to_screen(cx as f32 + 0.5, cy as f32 + 0.5);
+            let r = (t * if n >= 120 { 0.6 } else { 0.45 }).max(2.0);
+            let ri = r.ceil() as i64;
+            for dy in -ri..=ri { for dx in -ri..=ri {
+                let d = ((dx * dx + dy * dy) as f32).sqrt() / r;
+                if d < 1.0 { put(px as i64 + dx, py as i64 + dy, [132.0, 104.0, 72.0], (a + 0.15) * (1.0 - d * d)); }
+            } }
+        } }
+    }
+    // Dug rooms under rock, cut away: the rock above hatched dark, the room's edge inked.
+    {
+        let (x0, y0) = ((cam.cx - w as f32 / 2.0 / t).max(0.0) as usize, (cam.cy - h as f32 / 2.0 / t).max(0.0) as usize);
+        let (x1, y1) = (((cam.cx + w as f32 / 2.0 / t) as usize + 1).min(colony.map.width), ((cam.cy + h as f32 / 2.0 / t) as usize + 1).min(colony.map.height));
+        for cy in y0..y1 { for cx in x0..x1 {
+            let p = (cx as u16, cy as u16);
+            if !colony.hall_cells.contains(&p) { continue; }
+            let (px, py) = to_screen(cx as f32, cy as f32);
+            let open = |dx: i32, dy: i32| { let q = ((cx as i32 + dx) as u16, (cy as i32 + dy) as u16); !colony.hall_cells.contains(&q) };
+            for yy in py as i64..(py + t).ceil() as i64 { for xx in px as i64..(px + t).ceil() as i64 {
+                let (u, v) = ((xx as f32 - px) / t, (yy as f32 - py) / t);
+                let edge = (u < 0.12 && open(-1, 0)) || (u > 0.88 && open(1, 0)) || (v < 0.12 && open(0, -1)) || (v > 0.88 && open(0, 1));
+                let hatch = (xx + yy).rem_euclid(5) == 0;
+                put(xx, yy, if edge { INK } else if hatch { [70.0, 60.0, 52.0] } else { [120.0, 108.0, 94.0] }, if edge { 0.95 } else { 0.6 });
+            } }
+        } }
+    }
+    // The delve's mouth: a stair going down into the dark, framed in ink.
+    if let Some(m) = colony.delve_mouth.filter(|_| colony.spine.is_some()) {
+        let sp = colony.spine.unwrap();
+        let at = if colony.map.cell(sp.at.0 as usize, sp.at.1 as usize, colony.map.surface_z[sp.at.1 as usize * colony.map.width + sp.at.0 as usize].max(0) as usize).shape == crate::local::Shape::Stair { sp.at } else { m };
+        let (px, py) = to_screen(at.0 as f32, at.1 as f32);
+        for yy in py as i64..(py + t).ceil() as i64 { for xx in px as i64..(px + t).ceil() as i64 {
+            let (u, v) = ((xx as f32 - px) / t, (yy as f32 - py) / t);
+            let edge = u < 0.1 || u > 0.9 || v < 0.1 || v > 0.9;
+            let step = (v * 4.0).fract() < 0.3;
+            put(xx, yy, if edge { INK } else if step { mix([60.0, 52.0, 48.0], INK, v) } else { mix([120.0, 108.0, 94.0], [40.0, 34.0, 32.0], v) }, 0.95);
+        } }
+    }
+    // Buildings going up, drawn by the share of loads laid: pegs and a line (a quarter), a
+    // timber frame (to three fifths), then walls rising round the ring.
+    for (at, bw, bh, share) in colony.rising() {
+        let ring: Vec<(u16, u16)> = (0..bw).map(|dx| (dx, 0)).chain((1..bh).map(|dy| (bw - 1, dy))).chain((0..bw.saturating_sub(1)).rev().map(|dx| (dx, bh - 1))).chain((1..bh.saturating_sub(1)).rev().map(|dy| (0, dy))).collect();
+        let (x0, y0) = to_screen(at.0 as f32, at.1 as f32);
+        let (x1, y1) = to_screen((at.0 + bw) as f32, (at.1 + bh) as f32);
+        // The pegged line.
+        for x in x0 as i64..x1 as i64 { if (x / 3) % 2 == 0 { put(x, y0 as i64, INK, 0.6); put(x, y1 as i64 - 1, INK, 0.6); } }
+        for y in y0 as i64..y1 as i64 { if (y / 3) % 2 == 0 { put(x0 as i64, y, INK, 0.6); put(x1 as i64 - 1, y, INK, 0.6); } }
+        for (cx, cy) in [(x0, y0), (x1 - 1.0, y0), (x0, y1 - 1.0), (x1 - 1.0, y1 - 1.0)] { disc(&mut put, cx, cy, (t * 0.12).max(1.5), [120.0, 84.0, 50.0], INK); }
+        if share >= 0.25 {
+            // The frame: posts every other cell of the ring.
+            for (k, &(dx, dy)) in ring.iter().enumerate() {
+                if k % 2 != 0 { continue; }
+                let (px, py) = to_screen(at.0 as f32 + dx as f32 + 0.5, at.1 as f32 + dy as f32 + 0.5);
+                disc(&mut put, px, py, (t * 0.16).max(1.5), [150.0, 108.0, 66.0], INK);
+            }
+        }
+        if share >= 0.6 {
+            // Walls: the ring filled as far as the loads go.
+            let n = ((share - 0.6) / 0.4 * ring.len() as f32).ceil() as usize;
+            for &(dx, dy) in ring.iter().take(n) {
+                let (px, py) = to_screen(at.0 as f32 + dx as f32, at.1 as f32 + dy as f32);
+                for yy in py as i64..(py + t) as i64 { for xx in px as i64..(px + t) as i64 {
+                    let edge = xx == px as i64 || yy == py as i64 || xx == (px + t) as i64 - 1 || yy == (py + t) as i64 - 1;
+                    put(xx, yy, if edge { INK } else { [176.0, 140.0, 100.0] }, 0.9);
+                } }
+            }
+        }
+    }
     // Settlers: inked head-and-shoulders figures in their portrait's colours, with a pictogram
     // for what they are doing. Those asleep under a roof are a count on it.
     let scale = (t / 16.0).clamp(0.55, 1.4);
     let mut under_roof: Vec<((u16, u16), usize)> = Vec::new();
     let mut labels = Vec::new();
     let looks = settler_looks(colony, history);
+    let mut below = 0;
     for (i, s) in colony.settlers.iter().enumerate() {
         if !s.alive { continue; }
+        // Down in the delve: counted at its mouth, not drawn on the ground above them.
+        if colony.below(i) { below += 1; continue; }
         if s.path.is_empty() {
             if let Some(roof) = colony.roof_over(s.pos) {
                 match under_roof.iter_mut().find(|r| r.0 == roof) { Some(r) => r.1 += 1, None => under_roof.push((roof, 1)) }
@@ -723,6 +923,8 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
                 put(hx as i64 + dx, hy as i64 + dy, c, 0.97);
             }
         }
+        // The camp's builder, forager, ...: a small gold mark on the shoulder.
+        if s.role.is_some() { disc(&mut put, x - sw * 0.55, base - sh * 0.55, (1.8 * scale).max(1.5), [200.0, 160.0, 60.0], INK); }
         // What they are doing, beside the head.
         let watch = colony.watcher == Some(i) && colony.clock.is_night();
         let (gx, gy) = (x + sw + 2.0, hy - hr);
@@ -775,6 +977,42 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
                 disc(&mut put, x, y + r * 0.6, r, [110.0, 32.0, 30.0], INK);
                 disc(&mut put, x, y - r * 0.9, r * 0.6, [150.0, 150.0, 150.0], INK);
             }
+            crate::colony::creatures::CreatureKind::Besieger => {
+                // A raider at the besiegers' fires: the figure, and the fire's glow at its feet.
+                let r = (5.0 * scale).max(3.0);
+                disc(&mut put, x + r * 1.2, y + r * 1.3, r * 0.55, [226.0, 128.0, 40.0], [150.0, 60.0, 20.0]);
+                disc(&mut put, x, y + r * 0.6, r, [110.0, 32.0, 30.0], INK);
+                disc(&mut put, x, y - r * 0.9, r * 0.6, [150.0, 150.0, 150.0], INK);
+            }
+            crate::colony::creatures::CreatureKind::Game => {
+                // A grazer: a small brown body with a head.
+                let (rx, ry) = ((t * 0.4).max(4.0), (t * 0.22).max(2.5));
+                let (ix, iy) = (rx.ceil() as i64 + 1, ry.ceil() as i64 + 1);
+                for dy in -iy..=iy { for dx in -ix..=ix {
+                    let e = (dx as f32 / rx).powi(2) + (dy as f32 / ry).powi(2);
+                    if e <= 1.0 { put(x as i64 + dx, y as i64 + dy, if e > 0.7 { INK } else { [150.0, 112.0, 72.0] }, 0.95); }
+                } }
+                disc(&mut put, x + rx, y - ry, (t * 0.12).max(1.6), [150.0, 112.0, 72.0], INK);
+            }
+            crate::colony::creatures::CreatureKind::Pet => {
+                // A kept animal: smaller and paler than the herd, with a red collar.
+                let (rx, ry) = ((t * 0.32).max(3.5), (t * 0.18).max(2.2));
+                let (ix, iy) = (rx.ceil() as i64 + 1, ry.ceil() as i64 + 1);
+                for dy in -iy..=iy { for dx in -ix..=ix {
+                    let e = (dx as f32 / rx).powi(2) + (dy as f32 / ry).powi(2);
+                    if e <= 1.0 { put(x as i64 + dx, y as i64 + dy, if e > 0.7 { INK } else { [190.0, 150.0, 100.0] }, 0.95); }
+                } }
+                disc(&mut put, x + rx, y - ry, (t * 0.11).max(1.5), [190.0, 150.0, 100.0], INK);
+                put((x + rx * 0.7) as i64, (y - ry * 0.6) as i64, [180.0, 40.0, 30.0], 1.0);
+                put((x + rx * 0.7) as i64 + 1, (y - ry * 0.6) as i64, [180.0, 40.0, 30.0], 1.0);
+            }
+            crate::colony::creatures::CreatureKind::Trader => {
+                // A trader with a pack: a figure in brown with an ochre bundle.
+                let r = (5.0 * scale).max(3.0);
+                disc(&mut put, x, y + r * 0.6, r, [128.0, 96.0, 60.0], INK);
+                disc(&mut put, x + r * 0.9, y + r * 0.2, r * 0.6, [196.0, 160.0, 80.0], INK);
+                disc(&mut put, x, y - r * 0.9, r * 0.6, [214.0, 180.0, 150.0], INK);
+            }
             crate::colony::creatures::CreatureKind::Wolf => {
                 let (rx, ry) = ((t * 0.45).max(5.0), (t * 0.22).max(3.0));
                 let (ix, iy) = (rx.ceil() as i64 + 1, ry.ceil() as i64 + 1);
@@ -786,7 +1024,7 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
         }
     }
     // The attackers are named on the map (one label for a band).
-    if let Some(c) = colony.creatures.iter().find(|c| c.kind != crate::colony::creatures::CreatureKind::Wolf && !c.leaving) {
+    if let Some(c) = colony.creatures.iter().find(|c| !matches!(c.kind, crate::colony::creatures::CreatureKind::Wolf | crate::colony::creatures::CreatureKind::Game | crate::colony::creatures::CreatureKind::Pet) && !c.leaving) {
         let (x, y) = to_screen(c.pos.0 as f32 + 0.5, c.pos.1 as f32 + 0.5);
         let tw = super::fonts::width(&c.name, super::fonts::Face::Italic, 14.0, 0.0);
         super::fonts::draw(buf, w, h, x - tw / 2.0, y - (t * 0.9 * c.size).max(12.0) - 18.0, &c.name, super::fonts::Face::Italic, 14.0, 0.0, 0x009A_2A1E, Some(0x00EE_E4CC));
@@ -797,6 +1035,13 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
         let txt = format!("{} within", n);
         let tw = super::fonts::width(&txt, super::fonts::Face::Italic, 13.0, 0.0);
         super::fonts::draw(buf, w, h, x - tw / 2.0, y - 8.0, &txt, super::fonts::Face::Italic, 13.0, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
+    }
+    // Below: how many are down in the delve, lettered by its mouth.
+    if let (Some(m), true) = (colony.delve_mouth, below > 0) {
+        let (x, y) = to_screen(m.0 as f32 + 0.5, m.1 as f32 + 1.6);
+        let txt = format!("{} below", below);
+        let tw = super::fonts::width(&txt, super::fonts::Face::Italic, 13.0, 0.0);
+        super::fonts::draw(buf, w, h, x - tw / 2.0, y, &txt, super::fonts::Face::Italic, 13.0, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
     }
     // Names in the map's hand, stepping aside from each other (above, below, right, left), or
     // left out when there is no room (hover shows them).
@@ -832,6 +1077,316 @@ pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut 
                 }
             }
             super::fonts::draw(buf, w, h, bx + 24.0, by + 4.0, text, super::fonts::Face::SmallCaps, px, 2.0, 0x009A_2A1E, None);
+        }
+    }
+}
+
+/// The camp cut open from the side, in ink: the row `row` of the map from `x0` to `x1`, levels
+/// from 9 above to 9 below the camp's ground. Rock and soil are parchment hatched in their
+/// colour (ore flecked in its metal), open air pale, dug rooms a pale wash with inked walls,
+/// water blue; settlers on the row (or a cell beside it) stand at their level as small figures;
+/// a depth scale on the left counts levels from the camp's ground.
+pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize, x1: usize, buf: &mut [u32], w: usize, h: usize) {
+    use crate::local::{Material, Shape};
+    let map = &colony.map;
+    let paper: Rgb = [234.0, 222.0, 196.0];
+    let sky: Rgb = [242.0, 236.0, 220.0];
+    let zc = map.surface_z[colony.camp.1 as usize * map.width + colony.camp.0 as usize];
+    // Deep enough for what was dug in this row (a mine) and the cavern it broke into.
+    let row_c = row.min(map.height - 1);
+    let mut deepest = zc;
+    for r in colony.rooms.iter().filter(|r| r.cells.iter().any(|c| c.1 as usize == row_c && (c.0 as usize) >= x0 && (c.0 as usize) < x1)) { deepest = deepest.min(r.z); }
+    if let Some(sp) = colony.spine.filter(|s| s.at.1 as usize == row_c) { deepest = deepest.min(sp.bottom); }
+    for x in x0..x1.min(map.width) {
+        if colony.under_rock((x as u16, row_c as u16)) { deepest = deepest.min(map.surface_z[row_c * map.width + x]); }
+        for &l in &colony.breached { if let Some((f, _)) = map.cavern_z.get(row_c * map.width + x).map(|c| c[l as usize]) { if f >= 0 { deepest = deepest.min(f as i32); } } }
+    }
+    let (ztop, levels) = (zc + 9, (zc + 9 - deepest + 4).clamp(19, 60));
+    let margin = 56.0f32;
+    let cw = (w as f32 - margin - 12.0) / (x1 - x0).max(1) as f32;
+    let ch = (h as f32 - 60.0) / levels as f32;
+    let top = 40.0f32;
+    for k in buf.iter_mut() { *k = pack(paper); }
+    let row = row.min(map.height - 1);
+    let open = |x: usize, z: i32| -> bool {
+        if z < 0 || z as usize >= map.depth { return z >= 0; }
+        !matches!(map.cell(x, row, z as usize).shape, Shape::Wall | Shape::Floor | Shape::Ramp)
+    };
+    for sy in 0..h {
+        let fz = (sy as f32 - top) / ch;
+        if fz < 0.0 || fz >= levels as f32 { continue; }
+        let z = ztop - fz as i32;
+        for sx in 0..w {
+            let fx = (sx as f32 - margin) / cw;
+            if fx < 0.0 || fx >= (x1 - x0) as f32 { continue; }
+            let x = x0 + fx as usize;
+            if x >= map.width { continue; }
+            let sz = map.surface_z[row * map.width + x];
+            let c: Rgb = if z < 0 || z as usize >= map.depth { sky } else {
+                let cell = map.cell(x, row, z as usize);
+                if matches!(cell.shape, Shape::Wall | Shape::Floor | Shape::Ramp) {
+                    let base = mix(paper, wash(cell), if cell.shape == Shape::Wall { 0.5 } else { 0.7 });
+                    let hatch = cell.shape == Shape::Wall && ((sx as i64 + sy as i64) / 2).rem_euclid(4) == 0;
+                    let mut c = if hatch { mix(base, INK, 0.22) } else { base };
+                    if let Material::Ore(r) = cell.material {
+                        let col = crate::lore::resource_color(r);
+                        if unit(sx as i64 / 3, sy as i64 / 3, 0x5EC) < 0.4 { c = mix(c, [col[0] as f32, col[1] as f32, col[2] as f32], 0.85); }
+                    }
+                    // Ink where solid meets open.
+                    let (u, v) = (fx.fract(), fz.fract());
+                    let e = 1.2 / cw.min(ch);
+                    if (v < e && open(x, z + 1)) || (u < e && x > 0 && open(x - 1, z)) || (u > 1.0 - e && x + 1 < map.width && open(x + 1, z)) || (v > 1.0 - e && open(x, z - 1)) { c = INK; }
+                    c
+                } else if cell.shape == Shape::Stair {
+                    // A stair: steps climbing across the cell.
+                    let (u, v) = (fx.fract(), fz.fract());
+                    let step = ((u + v) * 3.0).fract() < 0.3;
+                    if step { mix(paper, INK, 0.6) } else { mix(paper, [205.0, 190.0, 160.0], 0.6) }
+                } else if cell.water > 0 {
+                    water_wash(cell.water as f32)
+                } else if map.cavern_at(x, row, z).is_some() {
+                    // A cavern: dark air, a fungus stalk rising from the floor here and there.
+                    let floor = z >= 1 && map.cell(x, row, (z - 1) as usize).shape == Shape::Floor && map.cell(x, row, (z - 1) as usize).plant == crate::local::Plant::Tree(crate::local::TreeKind::Fungus);
+                    let (u, _) = (fx.fract(), fz.fract());
+                    if floor && (u - 0.5).abs() < 0.18 { mix(paper, [150.0, 110.0, 140.0], 0.8) } else { mix(paper, [62.0, 54.0, 66.0], 0.82) }
+                } else if z < sz || (z <= sz + 1 && colony.under_rock((x as u16, row as u16))) {
+                    // Dug, under the ground: a pale wash.
+                    mix(paper, [205.0, 190.0, 160.0], 0.6)
+                } else { sky }
+            };
+            buf[sy * w + sx] = pack(c);
+        }
+    }
+    // The depth scale: a tick a level, numbered every third from the camp's ground.
+    for l in 0..=levels {
+        let y = top + l as f32 * ch;
+        let d = (ztop - l) - zc;
+        let len = if d % 3 == 0 { 12.0 } else { 6.0 };
+        for x in (margin - len) as usize..margin as usize { if (y as usize) < h { buf[y as usize * w + x] = pack(INK); } }
+        if d % 3 == 0 && l < levels {
+            let label = if d == 0 { "0".to_string() } else { format!("{:+}", d) };
+            super::fonts::draw(buf, w, h, 6.0, y - 6.0, &label, super::fonts::Face::Roman, 12.0, 0.0, pack(INK), None);
+        }
+    }
+    for y in top as usize..(top + levels as f32 * ch) as usize { if y < h { buf[y * w + margin as usize] = pack(INK); } }
+    // Settlers on the row stand at their level.
+    for (i, s) in colony.settlers.iter().enumerate().filter(|(_, s)| s.alive && (s.pos.1 as i32 - row as i32).abs() <= 1) {
+        let x = s.pos.0 as usize;
+        if x < x0 || x >= x1 { continue; }
+        let z = colony.here3(i).2 + 1;
+        let (cx, base) = (margin + (x - x0) as f32 * cw + cw / 2.0, top + (ztop - z + 1) as f32 * ch);
+        let fig_h = ch * 0.9;
+        for yy in (base - fig_h) as i64..base as i64 {
+            let head = (yy as f32) < base - fig_h * 0.7;
+            let half = if head { fig_h * 0.14 } else { fig_h * 0.2 };
+            for xx in (cx - half) as i64..(cx + half) as i64 {
+                if xx >= 0 && yy >= 0 && (xx as usize) < w && (yy as usize) < h { buf[yy as usize * w + xx as usize] = pack(if head { [200.0, 160.0, 120.0] } else { [150.0, 60.0, 40.0] }); }
+            }
+        }
+    }
+    let title = format!("Section through row {} ({} levels; 0 is the camp's ground)", row, levels);
+    super::fonts::draw(buf, w, h, margin, 10.0, &title, super::fonts::Face::Italic, 16.0, 0.0, pack(INK), None);
+}
+
+/// Everything over a level slice: near the camp's ground (two levels either side) the camp as
+/// the surface view draws it (its fire, store, marks, crops, creatures, night and winter, those
+/// on the surface), then the delve's rooms and those below at this level; deeper or higher,
+/// the delve alone. So the level view and the surface view show the same camp.
+pub fn draw_level(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, history: Option<&crate::history::world_state::WorldHistory>) {
+    let zc = colony.map.surface_z[colony.camp.1 as usize * colony.map.width + colony.camp.0 as usize];
+    let near_ground = (cam.z - zc).abs() <= 2;
+    if near_ground { draw_colony(colony, cam, buf, w, h, history); }
+    draw_delve_inner(colony, cam, buf, w, h, history, near_ground);
+}
+
+/// Settlers in a level view (`draw_delve` without the portraits' colours).
+pub fn draw_settlers_by_level(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
+    draw_delve(colony, cam, buf, w, h, None);
+}
+
+/// A level of the delve: what furnishes its rooms (a bed in each bedroom with its owner's name, a
+/// door at its mouth, the great hall's long table and benches), the rooms named, and the settlers
+/// who stand on this level drawn as on the surface (those a level above or below faint, the rest
+/// not at all), so the player sees who is down in their room and who is at the table.
+pub fn draw_delve(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, history: Option<&crate::history::world_state::WorldHistory>) {
+    draw_delve_inner(colony, cam, buf, w, h, history, false);
+}
+
+fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, history: Option<&crate::history::world_state::WorldHistory>, surface_drawn: bool) {
+    use crate::colony::delve::RoomKind;
+    let t = cam.tile_px;
+    let to_screen = |x: f32, y: f32| ((x - cam.cx) * t + w as f32 / 2.0, (y - cam.cy) * t + h as f32 / 2.0);
+    let mut put = |x: i64, y: i64, c: Rgb, a: f32| {
+        if x < 0 || y < 0 || x as usize >= w || y as usize >= h { return; }
+        let k = y as usize * w + x as usize;
+        let p = buf[k];
+        let old = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
+        buf[k] = pack(mix(old, c, a));
+    };
+    let rect = |put: &mut dyn FnMut(i64, i64, Rgb, f32), x0: f32, y0: f32, x1: f32, y1: f32, fill: Rgb| {
+        for yy in y0 as i64..=y1 as i64 { for xx in x0 as i64..=x1 as i64 {
+            let edge = xx == x0 as i64 || xx == x1 as i64 || yy == y0 as i64 || yy == y1 as i64;
+            put(xx, yy, if edge { INK } else { fill }, 0.95);
+        } }
+    };
+    // Cuts still to be made on this level (DF's designations): dashed outlines in red ink, a
+    // stair's with its steps; the cell being dug now is filled.
+    if let Some(plan) = colony.dig_plan.as_ref() {
+        let busy: Vec<(u16, u16)> = colony.settlers.iter().filter_map(|s| if let crate::colony::Job::Dig(p, z) = s.job { (z == cam.z).then_some(p) } else { None }).collect();
+        for c in plan.iter().filter(|c| c.z == cam.z && !colony.cut_done(c)) {
+            let (x, y) = to_screen(c.p.0 as f32, c.p.1 as f32);
+            let red: Rgb = [170.0, 50.0, 36.0];
+            let now = busy.contains(&c.p);
+            for yy in y as i64..(y + t).ceil() as i64 { for xx in x as i64..(x + t).ceil() as i64 {
+                let (u, v) = ((xx as f32 - x) / t, (yy as f32 - y) / t);
+                let edge = u < 0.08 || u > 0.92 || v < 0.08 || v > 0.92;
+                let dash = ((u + v) * 6.0).fract() < 0.5;
+                if edge && dash { put(xx, yy, red, 0.9); }
+                else if now { put(xx, yy, red, 0.18); }
+                else if c.stair && (v * 4.0).fract() < 0.2 && u > 0.2 && u < 0.8 { put(xx, yy, red, 0.5); }
+            } }
+        }
+    }
+    let mut labels: Vec<(f32, f32, String, bool)> = Vec::new();
+    for r in colony.rooms.iter().filter(|r| r.z == cam.z) {
+        match r.kind {
+            RoomKind::Bedroom => {
+                // The door: a plank in the doorway (the room's first cell).
+                if let Some(&d) = r.cells.first() {
+                    let (x, y) = to_screen(d.0 as f32, d.1 as f32);
+                    rect(&mut put, x + t * 0.2, y + t * 0.2, x + t * 0.8, y + t * 0.8, [150.0, 110.0, 70.0]);
+                }
+                if let Some(b) = r.bed {
+                    let (x, y) = to_screen(b.0 as f32, b.1 as f32);
+                    // A bed (once made at the workshop): frame, blanket, pillow; else a pallet of straw.
+                    if r.furnished.is_some() {
+                        rect(&mut put, x + t * 0.15, y + t * 0.1, x + t * 0.85, y + t * 0.9, [176.0, 120.0, 90.0]);
+                        rect(&mut put, x + t * 0.25, y + t * 0.15, x + t * 0.75, y + t * 0.35, [236.0, 228.0, 210.0]);
+                    } else {
+                        for yy in (y + t * 0.3) as i64..(y + t * 0.8) as i64 { for xx in (x + t * 0.2) as i64..(x + t * 0.8) as i64 { if (xx + yy) % 3 == 0 { put(xx, yy, [196.0, 170.0, 100.0], 0.7); } } }
+                    }
+                    // (Named on the bed only when its owner is not lying in it.)
+                    let abed = r.owner.map_or(false, |o| colony.settlers[o].alive && colony.here3(o) == (b.0, b.1, r.z));
+                    if t >= 9.0 && !abed {
+                        let who = r.owner.map(|o| colony.settlers[o].name.clone()).unwrap_or_else(|| "empty".into());
+                        labels.push((x + t * 0.5, y - 2.0, who, r.owner.is_none()));
+                    }
+                }
+            }
+            RoomKind::GreatHall => {
+                if let Some(c) = r.bed.filter(|_| r.furnished.is_some()) {
+                    // The long table and its two benches.
+                    let (x, y) = to_screen(c.0 as f32 - 2.0, c.1 as f32);
+                    rect(&mut put, x + t * 0.1, y + t * 0.2, x + t * 4.9, y + t * 0.8, [160.0, 116.0, 74.0]);
+                    rect(&mut put, x + t * 0.3, y - t * 0.25, x + t * 4.7, y - t * 0.05, [140.0, 100.0, 64.0]);
+                    rect(&mut put, x + t * 0.3, y + t * 1.05, x + t * 4.7, y + t * 1.25, [140.0, 100.0, 64.0]);
+                    let (lx, ly) = to_screen(c.0 as f32 + 0.5, c.1 as f32 - 1.6);
+                    labels.push((lx, ly, "the great hall".into(), false));
+                }
+            }
+            RoomKind::Hall | RoomKind::Cellar => {
+                let n = r.cells.len().max(1) as f32;
+                let (mx, my) = r.cells.iter().fold((0.0, 0.0), |a, c| (a.0 + c.0 as f32, a.1 + c.1 as f32));
+                let (lx, ly) = to_screen(mx / n + 0.5, my / n + 0.5);
+                labels.push((lx, ly, r.kind.word().trim_start_matches("the ").to_string(), false));
+            }
+            RoomKind::Tomb => {
+                // A niche: a stone coffin with a cross cut in its lid, and the name of who lies
+                // there; an empty niche is a bare ledge.
+                if let Some(&c) = r.cells.first() {
+                    let (x, y) = to_screen(c.0 as f32, c.1 as f32);
+                    if let Some(o) = r.owner {
+                        rect(&mut put, x + t * 0.2, y + t * 0.12, x + t * 0.8, y + t * 0.88, [120.0, 112.0, 104.0]);
+                        for k in 0..(t * 0.5) as i64 { put((x + t * 0.5) as i64, (y + t * 0.25) as i64 + k, INK, 0.9); }
+                        for k in 0..(t * 0.3) as i64 { put((x + t * 0.35) as i64 + k, (y + t * 0.4) as i64, INK, 0.9); }
+                        if t >= 9.0 { labels.push((x + t * 0.5, y - 2.0, colony.settlers[o].name.clone(), false)); }
+                    } else {
+                        for xx in (x + t * 0.2) as i64..(x + t * 0.8) as i64 { put(xx, (y + t * 0.5) as i64, INK, 0.4); }
+                    }
+                }
+            }
+            RoomKind::Corridor => {}
+        }
+    }
+    // The places in the hills, once found: what lies at the far end (a sarcophagus, a beast's
+    // bones and hoard, an ore cart at the seam), named.
+    for (k, pl) in colony.map.places.iter().enumerate() {
+        if !colony.places_found.contains(&k) || pl.mouth.is_none() { continue; }
+        let Some(&(c, z)) = pl.cells.last() else { continue };
+        if z != cam.z { continue; }
+        let (x, y) = to_screen(c.0 as f32, c.1 as f32);
+        use crate::local::places::PlaceKind;
+        match pl.kind {
+            PlaceKind::Tomb => {
+                rect(&mut put, x + t * 0.1, y + t * 0.25, x + t * 0.9, y + t * 0.75, [150.0, 142.0, 130.0]);
+                for k in 0..(t * 0.6) as i64 { put((x + t * 0.2) as i64 + k, (y + t * 0.5) as i64, INK, 0.7); }
+            }
+            PlaceKind::Lair => {
+                for k in 0..7 { let (bx, by) = (x + t * (0.2 + 0.1 * k as f32), y + t * (0.3 + 0.07 * ((k * 5) % 7) as f32)); for d in 0..(t * 0.25) as i64 { put(bx as i64 + d, by as i64, [228.0, 220.0, 196.0], 0.9); } }
+                put((x + t * 0.6) as i64, (y + t * 0.6) as i64, [210.0, 170.0, 60.0], 1.0);
+            }
+            PlaceKind::OldMine => { rect(&mut put, x + t * 0.25, y + t * 0.35, x + t * 0.75, y + t * 0.7, [110.0, 90.0, 70.0]); }
+            _ => {}
+        }
+        if t >= 9.0 { labels.push((x + t * 0.5, y - 2.0, pl.name.clone(), false)); }
+    }
+    // Settlers on this level, and faintly those a level off.
+    let looks = settler_looks(colony, history);
+    let scale = (t / 16.0).clamp(0.55, 1.4);
+    for (i, s) in colony.settlers.iter().enumerate().filter(|(_, s)| s.alive) {
+        // (Those on the surface are drawn by `draw_colony` when it ran.)
+        if surface_drawn && !colony.below(i) { continue; }
+        let z = colony.here3(i).2;
+        let off = (z - cam.z).abs();
+        if off > 1 { continue; }
+        let a = if off == 0 { 0.97 } else { 0.3 };
+        let dp = colony.draw_pos(i);
+        let (x, y) = to_screen(dp.0 + 0.5, dp.1 + 0.5);
+        let (skin, hair, dress) = looks[i];
+        let (sw, sh) = (7.0 * scale, 6.0 * scale);
+        let base = y + 5.0 * scale;
+        for dy in -(sh as i64)..=0 { for dx in -(sw as i64 + 1)..=(sw as i64 + 1) {
+            let e = (dx as f32 / sw).powi(2) + (dy as f32 / sh).powi(2);
+            if e <= 1.0 { put(x as i64 + dx, base as i64 + dy, if e > 0.72 { INK } else { dress }, a); }
+        } }
+        let hr = 4.2 * scale;
+        let (hx, hy) = (x, base - sh - hr * 0.7);
+        let rr = hr.ceil() as i64 + 1;
+        for dy in -rr..=rr { for dx in -rr..=rr {
+            let d = ((dx as f32).powi(2) + (dy as f32).powi(2)).sqrt();
+            if d > hr + 0.4 { continue; }
+            let c = if d > hr - 1.0 { INK } else if (dy as f32) < -hr * 0.25 { hair } else { skin };
+            put(hx as i64 + dx, hy as i64 + dy, c, a);
+        } }
+        if off == 0 && t >= 6.0 { labels.push((x, hy - hr - 2.0, s.name.clone(), false)); }
+    }
+    // The level's caption: how deep, and what is dug on it.
+    {
+        let zc = colony.map.surface_z[colony.camp.1 as usize * colony.map.width + colony.camp.0 as usize];
+        let d = cam.z - zc;
+        let mut kinds: Vec<String> = Vec::new();
+        for (r, dug) in colony.rooms.iter().map(|r| (r, true)).chain(colony.dig_rooms.iter().map(|r| (r, false))).filter(|(r, _)| r.z == cam.z) {
+            let k = match r.kind { RoomKind::Bedroom => "bedrooms", RoomKind::GreatHall => "the great hall", RoomKind::Hall => "the hall in the hill", RoomKind::Cellar => "the cellar", RoomKind::Tomb => "the tombs", RoomKind::Corridor => continue };
+            let k = if dug { k.to_string() } else { format!("{} (being dug)", k) };
+            if !kinds.iter().any(|x| *x == k) { kinds.push(k); }
+        }
+        if let Some(c) = colony.map.caverns.iter().find(|c| (0..colony.map.width).step_by(16).any(|x| colony.map.cavern_at(x, colony.camp.1 as usize, cam.z + 1).map_or(false, |l| l == c.layer as usize))) { kinds.push(c.name.clone()); }
+        let depth = if d == 0 { "the camp's ground".to_string() } else if d < 0 { format!("{} below the camp's ground", -d) } else { format!("{} above the camp's ground", d) };
+        let cap = format!("Level {} - {}{}", cam.z, depth, if kinds.is_empty() { String::new() } else { format!(": {}", kinds.join(", ")) });
+        let tw = super::fonts::width(&cap, super::fonts::Face::Italic, 16.0, 0.0);
+        super::fonts::draw(buf, w, h, w as f32 / 2.0 - tw / 2.0, 14.0, &cap, super::fonts::Face::Italic, 16.0, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
+    }
+    // Names step aside from each other (above, below, right, left) or are left out.
+    let mut placed: Vec<(f32, f32, f32, f32)> = Vec::new();
+    for (x, y, text, faint) in labels {
+        let px = 12.0;
+        let tw = super::fonts::width(&text, super::fonts::Face::Italic, px, 0.0);
+        for (ox, oy) in [(0.0, 0.0), (0.0, px + 16.0), (tw / 2.0 + 10.0, px * 0.6), (-tw / 2.0 - 10.0, px * 0.6)] {
+            let r = (x - tw / 2.0 + ox, y - px + oy, tw, px + 2.0);
+            if placed.iter().any(|q| r.0 < q.0 + q.2 && q.0 < r.0 + r.2 && r.1 < q.1 + q.3 && q.1 < r.1 + r.3) { continue; }
+            placed.push(r);
+            super::fonts::draw(buf, w, h, r.0, r.1, &text, super::fonts::Face::Italic, px, 0.0, if faint { 0x0080_7060 } else { 0x0030_1E14 }, Some(0x00EE_E4CC));
+            break;
         }
     }
 }

@@ -191,6 +191,47 @@ pub fn report(map: &LocalMap) -> Vec<String> {
     if stone { out.push("a standing stone".into()); }
     if ruin { out.push("buildings".into()); }
     if !map.furnished.is_empty() { out.push(format!("(the land was short of these; added: {})", map.furnished.join(", "))); }
+    let below = below(map);
+    if !below.is_empty() { out.push(format!("below: {}", below.join("; "))); }
+    out
+}
+
+/// What lies under the site, as Dwarf Fortress's embark screen tells it: the stone, ore seams and
+/// gems in the top thirty levels near the centre, an aquifer and how deep, the caverns (and what
+/// sleeps in them).
+pub fn below(map: &LocalMap) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(r) = super::places::host_rock(map) { out.push(format!("{} rock", format!("{:?}", r).to_lowercase())); }
+    let (c, n) = (map.width / 2, map.width);
+    let mut ores: Vec<String> = Vec::new();
+    let mut gems: Vec<&'static str> = Vec::new();
+    for y in (c.saturating_sub(24)..(c + 24).min(n)).step_by(2) {
+        for x in (c.saturating_sub(24)..(c + 24).min(n)).step_by(2) {
+            let sz = map.surface_z[y * n + x].max(0) as usize;
+            for z in sz.saturating_sub(30)..sz {
+                match map.cell(x, y, z).material {
+                    Material::Ore(r) => { let w = format!("{:?}", r).to_lowercase(); if !ores.contains(&w) { ores.push(w); } }
+                    Material::Rock(_) => if let Some(g) = super::gem_in(map, x, y, z) { if !gems.contains(&g) { gems.push(g); } },
+                    _ => {}
+                }
+            }
+        }
+    }
+    if !ores.is_empty() { out.push(format!("seams of {}", ores.join(" and "))); }
+    if !gems.is_empty() { out.push(gems.join(", ")); }
+    if let Some((lo, hi)) = map.aquifer {
+        let mut zs: Vec<i32> = map.surface_z.clone();
+        zs.sort_unstable();
+        let med = zs[zs.len() / 2];
+        out.push(format!("an aquifer {}-{} levels down", med - hi, med - lo));
+    }
+    if !map.caverns.is_empty() {
+        let first = map.caverns.iter().map(|cv| cv.depth_levels).min().unwrap_or(0);
+        // (What sleeps there is not named before anyone has dug down to it.)
+        let beast = map.caverns.iter().any(|cv| cv.beast.is_some());
+        out.push(format!("{} cavern {} (the first {} levels down){}", map.caverns.len(), if map.caverns.len() == 1 { "layer" } else { "layers" }, first,
+            if beast { "; the old songs say something sleeps in the deep" } else { "" }));
+    }
     out
 }
 

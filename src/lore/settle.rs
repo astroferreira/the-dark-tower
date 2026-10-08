@@ -57,6 +57,19 @@ pub struct RegionLore {
     pub wildlife: crate::history::det::HashMap<(usize, usize), Vec<f32>>,
     /// Battles fought on each world tile in and around the region: (title, year, the named dead).
     pub battles: crate::history::det::HashMap<(usize, usize), Vec<(String, u32, Vec<String>)>>,
+    /// Legendary beasts laired on each world tile in and around the region.
+    pub lairs: crate::history::det::HashMap<(usize, usize), Vec<Lair>>,
+}
+
+/// A beast's lair as the history knows it: its name, whether it lives, what it hoards, how many
+/// it has killed.
+#[derive(Clone, Debug)]
+pub struct Lair {
+    pub name: String,
+    pub alive: bool,
+    pub died: Option<u32>,
+    pub hoard: Vec<String>,
+    pub kills: usize,
 }
 
 impl RegionLore {
@@ -280,7 +293,19 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
         if e.event_type == crate::history::events::types::EventType::HeroDied && dead.is_empty() { continue; }
         battles.entry((x, y)).or_default().push((e.title.clone(), e.date.year, dead));
     }
-    RegionLore { sites, roads, cover, wildlife, battles }
+    // Beasts' lairs on the region's tiles, with their hoards by name.
+    let mut lairs: crate::history::det::HashMap<(usize, usize), Vec<Lair>> = Default::default();
+    let mut beasts: Vec<_> = history.legendary_creatures.values().collect();
+    beasts.sort_by_key(|b| b.id.0);
+    for b in beasts {
+        let Some((x, y)) = b.lair_location else { continue };
+        let dx = (x as i64 - region.world_x0).rem_euclid(ww);
+        let dy = y as i64 - region.world_y0;
+        if dx > tiles_x + 1 || dy < -1 || dy > tiles_y + 1 { continue; }
+        let hoard = b.artifacts_owned.iter().filter_map(|a| history.artifacts.get(a)).map(|a| a.name.clone()).collect();
+        lairs.entry((x, y)).or_default().push(Lair { name: b.full_name(), alive: b.death_date.is_none(), died: b.death_date.map(|d| d.year), hoard, kills: b.kills.len() });
+    }
+    RegionLore { sites, roads, cover, wildlife, battles, lairs }
 }
 
 /// Least-cost path between two points (region cells) favouring gentle ground; crossing a river
