@@ -13,7 +13,7 @@ use super::*;
 impl Colony {
     /// The gates of the palisade ring (`projects.rs`): the four points where the ring is open.
     pub(crate) fn gates(&self) -> Vec<Pos> {
-        let r = 11i32;
+        let r = self.wall_r();
         [(r, 0), (-r, 0), (0, r), (0, -r)].iter().filter_map(|&(dx, dy)| {
             let (x, y) = (self.camp.0 as i32 + dx, self.camp.1 as i32 + dy);
             (x >= 1 && y >= 1 && (x as usize) < self.map.width && (y as usize) < self.map.height).then_some((x as u16, y as u16))

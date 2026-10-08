@@ -49,6 +49,9 @@ pub struct Mind {
     /// Today: time spent near others (minutes), prayers said, work of their hands done.
     pub company: u32,
     pub prayed: bool,
+    /// Needs (`needs.rs`, DF's personality needs), rolled from the persona when first asked.
+    pub needs: Vec<super::needs::NeedState>,
+    pub needs_rolled: bool,
     /// Drilled this evening (`militia.rs`).
     pub drilled: bool,
     pub made: u32,
@@ -170,12 +173,16 @@ pub enum Feel {
     Rationed,
     /// Slept in a bedroom of their own (`delve.rs`), of this worth (`room_value`).
     OwnRoom { value: u32 },
+    /// A need long unmet (`needs.rs`): what, its strength, days since it was met.
+    NeedUnmet { what: String, level: u8, days: u64 },
 }
 
 impl Colony {
     /// Settler `i` feels something: its weight follows their character; the thought is kept and
     /// moves their stress.
     pub(crate) fn feel(&mut self, i: usize, f: Feel) {
+        // Some things felt meet a need (`needs.rs`).
+        if self.settlers[i].alive { self.needs_from_feel(i, &f); }
         // What a ruling lord does against someone is remembered (`rising.rs`).
         if self.settlers[i].alive {
             match &f {
@@ -244,6 +251,7 @@ impl Colony {
             Feel::OwnRoom { value } => (format!("slept in {} bedroom of their own", if *value >= 9 { "a splendid" } else if *value >= 5 { "a fine" } else { "a" }),
                 0.03 * (0.5 + fac(Facet::Bashfulness).max(fac(Facet::Orderliness))) * (1.0 + 0.1 * (*value).min(12) as f32)),
             Feel::Dreamt { what } => (format!("realized a dream of {}", what), 0.6),
+            Feel::NeedUnmet { what, level, days } => (format!("has gone {} days without {}", days, what), -(0.008 + 0.004 * *level as f32)),
             Feel::Ragged => ("went about in rags".to_string(), -0.04 * (0.5 + fac(Facet::Vanity))),
             Feel::Torn { people } => (format!("saw their own people, {}, raid the camp", people), -0.25 * (0.5 + val(Val::Loyalty).max(0.0)) * (0.6 + 0.8 * fac(Facet::Love))),
             Feel::Drank => ("had a cup of berry wine with a meal".into(), 0.02 + 0.04 * fac(Facet::Immoderation)),

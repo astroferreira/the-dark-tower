@@ -600,7 +600,7 @@ impl Colony {
     /// at the four gates. What walks the surface cannot climb two levels, so raiders and beasts
     /// come in by the gates, where the cage traps stand.
     fn plan_moat(&self) -> Option<DelvePlan> {
-        let r = 13i32;
+        let r = self.wall_r() + 2;
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
         let w = self.map.width;
         let mut ring: Vec<Pos> = Vec::new();
@@ -620,8 +620,20 @@ impl Colony {
         if ring.len() < 60 { return None; }
         let sz = |p: Pos| self.map.surface_z[p.1 as usize * w + p.0 as usize];
         let mut cuts: Vec<DigCell> = ring.iter().map(|&p| DigCell::room(p, sz(p) - 1)).collect();
-        // (The cells beside each crossing stay a level deep: steps out of the ditch at the gates.)
-        let step = |p: Pos| { let (dx, dy) = ((p.0 as i32 - cx).abs(), (p.1 as i32 - cy).abs()); (dx == 2 && dy == r) || (dy == 2 && dx == r) };
+        // (The cells beside each crossing stay a level deep: steps out of the ditch at the gates.
+        // So do the cells beside any stretch left uncut, by a building or on wet or forbidden
+        // ground: a stretch of ditch closed at both ends had trapped its digger, who starved.)
+        let cut: std::collections::HashSet<Pos> = ring.iter().copied().collect();
+        let on_ring = |x: i32, y: i32| (x - cx).abs() == r || (y - cy).abs() == r;
+        let step = |p: Pos| {
+            let (dx, dy) = ((p.0 as i32 - cx).abs(), (p.1 as i32 - cy).abs());
+            if (dx == 2 && dy == r) || (dy == 2 && dx == r) { return true; }
+            (-1i32..=1).any(|oy| (-1i32..=1).any(|ox| {
+                let (x, y) = (p.0 as i32 + ox, p.1 as i32 + oy);
+                (ox, oy) != (0, 0) && on_ring(x, y) && (x - cx).abs() <= r && (y - cy).abs() <= r
+                    && (x - cx).abs() > 1 && (y - cy).abs() > 1 && !cut.contains(&(x as u16, y as u16))
+            }))
+        };
         cuts.extend(ring.iter().filter(|&&p| !step(p)).map(|&p| DigCell::room(p, sz(p) - 2)));
         Some(DelvePlan { cuts, rooms: Vec::new(), spine: None, mouth: self.camp })
     }
@@ -702,7 +714,7 @@ impl Colony {
     pub(crate) fn build_drawbridges(&mut self) {
         use crate::local::{Material, Shape};
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
-        let r = 13i32;
+        let r = self.wall_r() + 2;
         let w = self.map.width;
         let mut bridges = Vec::new();
         for (ax, ay) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
@@ -803,6 +815,9 @@ impl Colony {
             Job::Wander(t) if why.starts_with("Keeping watch") && self.tower.map_or(false, |(p, _)| p == t) => self.tower.map(|(_, z)| z),
             // (A mood holding the workshop below.)
             Job::Wander(t) if why.contains("workshop") && in_room(&[RoomKind::Workshop]).is_some() => in_room(&[RoomKind::Workshop]),
+            // Something admired in a room below (an artifact, an engraving: `needs.rs`).
+            Job::Wander(t) if why.starts_with("Admiring") => self.engravings.iter().find(|e| e.from == t).map(|e| e.z)
+                .or_else(|| self.placed.iter().find(|p| p.2 == t).and_then(|p| self.rooms.get(p.1)).map(|r| r.z)),
             Job::Wander(_) => self.settlers.iter().enumerate()
                 .find(|(j, s)| *j != i && s.alive && s.pos == target && !why.starts_with("Playing"))
                 .map(|(j, _)| self.here3(j).2),

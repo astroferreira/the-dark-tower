@@ -155,6 +155,7 @@ impl Colony {
         if let Some(p) = self.pet_of(i) { out.push(cap(p)); }
         if let Some(g) = self.guild_of(i) { out.push(g); }
         if let Some(v) = self.vow_of(i) { out.push(v); }
+        if let Some(n) = self.needs_text(i) { out.push(n); }
         if let Some(d) = self.dream_line(i) { out.push(d); }
         if let Some(a) = self.arm_of(i) { out.push(format!("Bears {} in the militia{}", a.kind, self.armour_of(i).map(|x| format!(", and wears {}", x.kind)).unwrap_or_default())); }
         if let Some(v) = &self.settlers[i].visitor { out.push(format!("Came as {}{}", v, if self.settlers[i].guest_until == 0 { ", and stayed" } else { "; a guest" })); }
