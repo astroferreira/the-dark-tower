@@ -545,7 +545,18 @@ pub fn render_level_ink(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: u
                 } else if kd == 0 {
                     let base = mix(wash(body), INK, 0.3);
                     if ((fx + fy) * 5.0).fract() < 0.3 { mix(base, INK, 0.3) } else { base }
-                } else if floor.water > 0 { mix(water_wash(floor.water as f32), paper, 0.3) } else { mix(here, paper, 0.72) }
+                } else if floor.water > 0 { mix(water_wash(floor.water as f32), paper, 0.3) }
+                else if z - sz <= 3 && (-1i64..=1).any(|dy| (-1i64..=1).any(|dx| {
+                    let (qx, qy) = (x as i64 + dx, y as i64 + dy);
+                    qx >= 0 && qy >= 0 && (qx as usize) < map.width && (qy as usize) < map.height && {
+                        let qz = map.surface_z[qy as usize * map.width + qx as usize];
+                        z - qz >= 1 && z - qz <= 3 && matches!(map.cell(qx as usize, qy as usize, qz.max(0) as usize).plant, Plant::Tree(t) if t != TreeKind::Fungus)
+                    }
+                })) {
+                    // Trees reach up through the levels over the ground (DF): their crowns show
+                    // here, fading with height.
+                    mix(here, paper, 0.18 + 0.12 * (z - sz) as f32)
+                } else { mix(here, paper, 0.72) }
             } else if sz - z <= 2 && floor.shape == Shape::Wall && !crate::colony::nav::standable(map, x, y, z) && map.cavern_at(x, y, z + 1).is_none() {
                 // Ground a level or two above this one (a slope, the bank of a rise): the surface
                 // as drawn, shaded with hachures, inked where it meets this level's ground. (Cut
