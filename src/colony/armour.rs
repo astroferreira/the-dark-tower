@@ -36,15 +36,16 @@ impl Colony {
     /// What armour the workshop could make now: (kind, cover, uses a hide). Metal comes from the
     /// ore the camp works.
     fn armour_to_hand(&self) -> Option<(String, f32, Source)> {
-        let metal = |m: &str| self.ores.iter().any(|o| o == m);
+        // (Mail takes bars of the metal at a forge: `industry.rs`.)
+        let metal = |m: &str| self.metal_forge() && self.bars_of(m) >= super::industry::MAIL_BARS;
         if metal("adamantine") { return Some(("an adamantine mail shirt".into(), 0.75, Source::Ore)); }
-        if self.iron_worked() && (metal("iron") || self.tools_bought) { return Some(("an iron mail shirt".into(), 0.55, Source::Ore)); }
+        if metal("iron") { return Some(("an iron mail shirt".into(), 0.55, Source::Ore)); }
         // The hide of a beast the camp slew (`fight.rs`): better than any leather.
         if let Some(b) = self.remains.iter().position(|r| r.3 > 0) {
             let r = &self.remains[b];
             return Some((format!("a coat of {}'s {}", r.1, r.4), if r.4.ends_with("plates") { 0.5 } else { 0.45 }, Source::Beast(b)));
         }
-        if self.iron_worked() && metal("copper") { return Some(("a copper scale shirt".into(), 0.45, Source::Ore)); }
+        if metal("copper") { return Some(("a copper scale shirt".into(), 0.45, Source::Ore)); }
         if self.hunted > self.hides_used { return Some(("a leather jerkin".into(), 0.25, Source::Hide)); }
         None
     }
@@ -58,16 +59,17 @@ impl Colony {
     /// A piece of armour finished.
     pub(crate) fn finish_armour(&mut self, i: usize) {
         let Some((kind, cover, src)) = self.armour_to_hand() else { return };
-        match src { Source::Hide => self.hides_used += 1, Source::Beast(b) => self.remains[b].3 -= 1, Source::Ore => {} }
+        match src { Source::Hide => self.hides_used += 1, Source::Beast(b) => self.remains[b].3 -= 1, Source::Ore => { if let Some(m) = Self::metal_in(&kind) { self.take_bars(m, super::industry::MAIL_BARS); } } }
         // Mail forged at the magma (`deep.rs`): closer rings.
         let (kind, cover) = if self.magma_forge && matches!(src, Source::Ore) { (super::deep::magma_forged(&kind), (cover + 0.05).min(0.85)) } else { (kind, cover) };
         let day = self.clock.day();
         let name = self.settlers[i].name.clone();
         self.settlers[i].made.push(format!("{} (day {})", kind, day));
         self.armour.push(armour::Armour { kind: kind.clone(), cover, maker: i, day, holder: None });
+        if matches!(src, Source::Ore) { self.forged_arm(i, &kind); }
         if self.armour.len() == 1 {
             let why = self.trouble_foretold().map(|t| format!("for fear of {}", t)).unwrap_or_else(|| "against the next trouble".into());
-            self.note(format!("{} makes {} at the workshop, {}; the first armour in the camp.", name, kind, why));
+            self.note(format!("{} makes {} at {}, {}; the first armour in the camp.", name, kind, if matches!(src, Source::Ore) { "the forge" } else { "the workshop" }, why));
         }
         self.armour_up();
     }

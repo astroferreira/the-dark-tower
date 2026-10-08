@@ -948,7 +948,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   Tested (`the_pen_breeds_and_feeds`).
 - Materials (DF: the material decides what a thing is): `Colony::ores` records each kind of ore
   struck ("iron", "copper", "gold"...). `iron_worked` now needs iron or copper ore (or bought
-  tools); a mood that wants a metal needs that metal's own ore (iron also when bought). Spearheads
+  tools) (since the industries: forged or bought tools, and metal heads take bars); a mood that wants a metal needs that metal's own ore (iron also when bought). Spearheads
   are the best to hand (`finish_arm`): iron 1.45, copper 1.3, obsidian from a gem cluster 1.25
   (uses one), the land's stone 1.15, bone 1.05 where the land has no named stone. No dev seed
   strikes ore yet, so its spears are flint or sandstone. Mithril has no deposits; adamantine comes
@@ -1529,6 +1529,43 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   days 59-214; seeds 3 and 58 raise them in a siege (58's lifts).
 - `PLANET_FORCE_BRAWL=1` lets any dislike at the tavern come to blows without the roll (the test:
   hot-tempered drinkers who dislike someone have grown rare in the camps).
+- Industries (`industry.rs`, DF's production chains; type x material): five workshops cut off
+  the stair as 4x3 rooms (`plan_level` tag 400; `ProjectKind::{MasonShop, CarpenterShop,
+  Smelter, Forge, Kiln}`, `RoomKind::{Mason, Carpenter, Smelter, Forge, Kiln}`, planned in
+  `industry_candidates` from `delve_candidates`): a smelter when ore lies waiting (1.6), a forge
+  once the smelter is dug (1.5; none needed over the magma), a mason's from day 45 after 40
+  stone loads (0.55, 0.9 for masons), a carpenter's from day 45 after 40 trees felled with a
+  still or two unfurnished rooms (0.5), a kiln from day 60 with 6 loads of clay or sand dug
+  (0.45; the ditch digs most). The stock is `Colony::industry` (ore, bars by metal, charcoal,
+  blocks, barrels, clay, sand, smith skill per settler, forged tools), not `ItemKind`. Jobs
+  (`industry_option`, `Job::Craft` with a why prefix, dispatched by `industry::is_industry` to
+  `finish_industry`; one hand a shop; x0.6 while the store is under its goal): dressing stone
+  (a stored stone -> 2 blocks, 150 min, to 12 blocks), a barrel (a log, 150 min; three kept,
+  more for trade with 6 spare logs), burning charcoal (a log -> 1, 120 min, while ore waits),
+  smelting (an ore + a charcoal, none at the magma -> 2 bars; adamantine a wafer a strand; 240
+  min), tools (2 bars of iron or copper, once: `iron_worked`, which is now forged or bought
+  tools only), forging a spear or mail of metal to replace a wooden or leather one, firing (2
+  clay or sand + a log -> a pot or glass work, while under 3 unsold). Ore: each ore cell dug is
+  a load (the stone load still drops), an old mine gives 6, the deep vein 6 adamantine strands,
+  the liaison's "loads of iron ore" 8 (asked when the smelter stands cold and the town holds
+  iron; "sacks of charcoal" 10 when ore waits and no wood is in reach). Links: furniture takes
+  blocks first ("granite blocks"), made at the carpenter's or mason's (+0.1 quality); spears
+  and mail of metal take 1 / 2 bars at a forge (`arm_metal`; `militia.rs`/`armour.rs` only
+  consume, force and cover unchanged), made by the best smith (`smith_skill`: half the building
+  hand at first, +4% of the rest a piece) whose hand sets the head's force (0.9 + 0.2 x skill)
+  and quality word ("a superior iron-headed spear"); the still brews a cup more per barrel
+  (three at most); caravans buy blocks past 6, bars past 4 (4 each; never adamantine), barrels
+  past 3. `--sim-projects` prints "Industry: ...". `PLANET_FORCE_ORE=1` makes the first eight
+  rock loads dug iron (no dev seed strikes ore): dev 76 strikes it day 12, smelter day 17, first
+  bars day 25, forge and iron tools day 26, an iron spear day 30, bars sold day 45. Unforced, six
+  dev years: mason's on all six (days 47-237), carpenter's on five, kiln on four (pots and green
+  glass), smelters for the deep vein's adamantine on four (wafers at the magma, no fuel), 13-37
+  stones dressed. A dev year ~10% more CPU (seed 76 11.2 -> 13.0 s, 11 14.8 -> 16.4 under load).
+  Tested (`ore_becomes_bars_tools_and_iron_spears`); `the_camp_keeps_a_library` tries seed 76
+  too (the shops' digs put seed 11's library at day 120, seed 3's past its first year). Also fixed on the way: a meal in a hall below
+  from 60 cells out exceeded the path budget and two of seed 11's foragers starved with 90
+  meals stored (Eat now falls back to the fire, like Sleep and Build); a slain or caged
+  forgotten beast is not woken again by a later breach (`wake_the_deep`).
 - Artifacts set in place (`delve.rs::place_artifacts`, `Colony::placed`; DF: an artifact makes a
   room): at dawn each artifact not yet placed goes to the great hall (a throne to the lord's room
   if there is one), on a free cell away from the table; a stolen one leaves its place. Each adds 10

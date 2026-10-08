@@ -14,11 +14,11 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Want { Herbs, Salt, SeedGrain, IronTools, Cloth }
+pub enum Want { Herbs, Salt, SeedGrain, IronTools, Cloth, Ore, Charcoal }
 
 impl Want {
     pub fn word(self) -> &'static str {
-        match self { Want::Herbs => "healing herbs", Want::Salt => "a cask of salt", Want::SeedGrain => "sacks of seed grain", Want::IronTools => "iron tools", Want::Cloth => "bolts of cloth" }
+        match self { Want::Herbs => "healing herbs", Want::Salt => "a cask of salt", Want::SeedGrain => "sacks of seed grain", Want::IronTools => "iron tools", Want::Cloth => "bolts of cloth", Want::Ore => "loads of iron ore", Want::Charcoal => "sacks of charcoal" }
     }
 }
 
@@ -41,6 +41,14 @@ impl Colony {
         }
         let ragged = (0..self.settlers.len()).filter(|&i| self.settlers[i].alive && self.settlers[i].guest_until == 0 && self.clothes_worn(i) >= 180).count();
         if ragged >= 3 && self.cloth == 0 && self.hunted <= self.hides_used { return Some((Want::Cloth, format!("{} of them go about in rags", ragged))); }
+        // The smelter (`industry.rs`): ore for it when none is struck, charcoal when there is
+        // ore but no wood to burn.
+        if iron && self.shop(super::delve::RoomKind::Smelter).is_some() && self.ore_total() == 0 {
+            return Some((Want::Ore, "the smelter stands cold: no ore has been struck in the camp's rock".into()));
+        }
+        if self.ore_total() > 0 && self.industry.charcoal == 0 && !self.magma_forge && !self.wood_in_reach && !self.items.iter().any(|it| it.kind == ItemKind::Log) {
+            return Some((Want::Charcoal, format!("{} loads of ore wait at the smelter and there is no wood to burn", self.ore_total())));
+        }
         if iron && !self.iron_worked() { return Some((Want::IronTools, "the camp works with stone and bone".into())); }
         None
     }
@@ -56,6 +64,8 @@ impl Colony {
                     Want::Herbs => { self.herbs = 6; "the healer's work will go quicker".to_string() }
                     Want::IronTools => { self.tools_bought = true; "the camp's works will go quicker".to_string() }
                     Want::Cloth => { self.cloth += 6; "there will be clothes for those in rags".to_string() }
+                    Want::Ore => { self.add_ore("iron", 8); "the smelter has work".to_string() }
+                    Want::Charcoal => { self.industry.charcoal += 10; "the smelter has fuel".to_string() }
                 };
                 self.note(format!("As asked, the traders of {} have brought {}: {}.", p.town, w.word(), what));
             } else {

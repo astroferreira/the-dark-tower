@@ -258,13 +258,18 @@ impl Colony {
             if first { self.moment(format!("{} in the rock", super::arc::capital_word(g)), line, "because the rock they dug holds such stones".into(), p); }
             for j in 0..self.settlers.len() { if self.settlers[j].alive && self.settlers[j].persona.likes.material == g { self.feel(j, super::mind::Feel::LikedWork { material: g.to_string() }); } }
         }
+        // (Debug: PLANET_FORCE_ORE=1 makes the first eight loads of rock dug an iron seam, for the
+        // industries' test: no dev seed strikes ore.)
+        let m = if matches!(m, Material::Rock(_)) && self.ore_found < 8 && std::env::var("PLANET_FORCE_ORE").is_ok() { Material::Ore(crate::history::civilizations::economy::ResourceType::Iron) } else { m };
         if let Material::Ore(r) = m {
             self.ore_found += 1;
             let kind = format!("{:?}", r).to_lowercase();
-            if !self.ores.contains(&kind) { self.ores.push(kind); }
+            // A load of ore for the smelter (`industry.rs`): only rock until it is smelted.
+            self.add_ore(&kind, 1);
             self.once("ore", format!("{} strikes a seam of {:?} at {},{}, {} levels down.", name, r, p.0, p.1, self.dig_depth(p, z)));
-            if self.iron_worked() { self.once("iron", "The workshop turns the ore into tools and spearheads: felling and building go faster, and the watch is better armed.".into()); }
         }
+        // Clay and sand for the kiln.
+        match m { Material::Clay => self.industry.clay += 1, Material::Sand => self.industry.sand += 1, _ => {} }
         if matches!(m, Material::Rock(_) | Material::Ore(_)) {
             // Carried up to the mouth from below; left where it fell on the surface.
             let at = if self.below(i) { self.delve_mouth.unwrap_or(self.camp) } else { self.settlers[i].pos };
@@ -299,11 +304,10 @@ impl Colony {
         (top - z).max(1)
     }
 
-    /// Ore dug and a workshop to work it: iron tools (work 0.65x instead of the workshop's 0.8x)
-    /// and arms (readiness +0.05 a seam).
-    /// Metal tools and arms: iron or copper ore dug and a workshop to work it, or iron bought.
+    /// Metal tools (work 0.65x instead of the workshop's 0.8x, two more picks): forged from bars
+    /// of iron or copper (`industry.rs`: ore, smelter, forge), or bought from a caravan.
     pub fn iron_worked(&self) -> bool {
-        (self.ores.iter().any(|o| o == "iron" || o == "copper") && self.projects.iter().any(|p| p.done && p.kind == super::projects::ProjectKind::Workshop)) || self.tools_bought
+        self.industry.tools.is_some() || self.tools_bought
     }
 
     /// Cells dug under rock (halls, cellars, rooms).

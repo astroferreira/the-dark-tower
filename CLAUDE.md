@@ -111,9 +111,10 @@ that changes character (`temper.rs`), a tavern and sellswords (`tavern.rs`), boo
 places in the hills found and robbed (`explore.rs`), prisoners (`prisoners.rs`), the world's regard for the camp (`regard.rs`), armour (`armour.rs`), snatchers (`snatch.rs`), sieges (`siege.rs`), evil weather (`weather.rs`), guilds (`guild.rs`), a rising against the lord (`rising.rs`), the caravan's liaison (`liaison.rs`), pets that defend their keepers (`pets.rs`), old comrades and enemies (`recognize.rs`), a slain beast's bones and hide worked into trophies and armour, caravans ambushed on the road, wolves' dens cleared and the restless dead burned (`respond.rs`), artifact thieves (`thieves.rs`), the temple's priest (`priest.rs`), the call to arms (`warcall.rs`), woods that grow back (`regrow.rs`), the tithe (`tithe.rs`), widows and widowers, vows of vengeance (`vow.rs`), peace after vengeance, the kitchen and its cook (`kitchen.rs`), clothes that wear out (`clothes.rs`), dreams of a lifetime (`dreams.rs`), childhood (`childhood.rs`), troubles that come again, rations (`rations.rs`), frozen water and wintering herds, tavern brawls, the patron's bell (`ring_bell`, key B), aquifers and gems (`local/mod.rs`, `dig.rs`), legends
 of the camps kept with the world (`legend.rs`, `--sim-legend`), and space in three dimensions: settlers walk any level (`nav::path3`,
 `Shape::Stair`), dig a stair spine with bedrooms and a great hall on its levels (`delve.rs`), and
-raise the lookout as a tower. Each has its notes in
+raise the lookout as a tower, and industries: a smelter, forge, mason's, carpenter's and kiln
+cut below, ore -> bars -> tools and arms (`industry.rs`). Each has its notes in
 `src/colony/CLAUDE.md`. Debug forcing: `PLANET_FORCE_WERE`, `PLANET_FORCE_SEEKER`,
-`PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`. Board cards `df-*`; progress log in the Claude Doc
+`PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`, `PLANET_FORCE_ORE`. Board cards `df-*`; progress log in the Claude Doc
 "Dwarf Fortress systems: progress log".
 
 ### Rejecting worlds (`--require`)

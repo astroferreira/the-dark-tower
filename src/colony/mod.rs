@@ -69,6 +69,7 @@ pub mod rations;
 pub mod delve;
 pub mod annals;
 pub mod justice;
+pub mod industry;
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -277,7 +278,9 @@ impl Moment {
             || t.starts_with("The wedding") || t.ends_with("'s dream") || t.ends_with(" keeps the temple") || t.ends_with(" is hired")
             || t.starts_with("The friendship of") || t == "Migrants" || t == "The farm under the rock" || t.ends_with(" stays") || t.ends_with(" comes")
             || t == "Iron from the caravan" || t == "Water in the rock" || t.ends_with(" breaks") || t == "Old enemies at the fire"
-            || t == "The wolves' den" || t.starts_with("The burning of") || t == "The old grave burned" || t.starts_with("Peace with");
+            || t == "The wolves' den" || t.starts_with("The burning of") || t == "The old grave burned" || t.starts_with("Peace with")
+            // The industries' digs and firsts (`industry.rs`).
+            || t == "The first bars" || t.starts_with("Tools of ") || (t.ends_with(" below dug") && ["mason", "carpenter", "smelter", "forge", "kiln"].iter().any(|w| t.contains(w)));
         !minor
     }
 }
@@ -551,6 +554,8 @@ pub struct Colony {
     pub pen: Option<(String, u32)>,
     /// The kinds of ore struck ("iron", "copper", "gold").
     pub ores: Vec<String>,
+    /// The industries' stock: ore, bars, charcoal, blocks, barrels, clay and sand (`industry.rs`).
+    pub industry: industry::Industry,
     /// The day the miners following the adamantine break into the hollow (`deep.rs`).
     pub(crate) hollow_day: Option<u64>,
     /// Whose raiders the camp is fighting tonight (`fight.rs`: their own stand aside).
@@ -740,7 +745,7 @@ impl Colony {
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
             log: Vec::new(), decisions: Vec::new(), rng, seed, milestones: Default::default(), basket: Default::default(),
             patron: Patron { favour: FAVOUR_MAX, marks: Vec::new(), favourite: None, dreams: Vec::new(), last_refill_day: 1 },
-            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, cave_bites: 0, placed: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log,
+            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, cave_bites: 0, placed: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), industry: Default::default(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log,
         };
         c.shrubs = (1..c.map.height - 1).flat_map(|y| (1..c.map.width - 1).map(move |x| (x as u16, y as u16))).filter(|&p| c.floor_plant(p) == Plant::Shrub).collect();
         c.fishing_spots = (1..c.map.height - 1).flat_map(|y| (1..c.map.width - 1).map(move |x| (x as u16, y as u16)))
@@ -1808,13 +1813,16 @@ impl Colony {
         let spears = !armour && self.arms_wanted() && self.items.iter().any(|it| it.stored && it.kind == ItemKind::Log);
         if (spears || armour) && !night && self.workshop_spot().is_some()
             && !self.settlers.iter().any(|x| x.alive && x.job == Job::Craft && (x.why.starts_with("Making spears") || x.why.starts_with("Making armour"))) {
+            // (With metal to forge, the best smith: `industry.rs`.)
+            let (place, smith) = match self.arms_spot() { Some((_, w)) => (w, w == "the forge"), None => ("the workshop", false) };
+            let hand = |j: usize| if smith { self.smith_skill(j) } else { self.settlers[j].skill[4] };
             let best = (0..self.settlers.len()).filter(|&j| self.settlers[j].alive && self.settlers[j].ill_until <= self.clock.tick)
-                .max_by(|&a, &b| self.settlers[a].skill[4].total_cmp(&self.settlers[b].skill[4]).then(b.cmp(&a)));
+                .max_by(|&a, &b| hand(a).total_cmp(&hand(b)).then(b.cmp(&a)));
             if best == Some(i) {
                 let threat = self.trouble_foretold().unwrap_or_default();
                 let fear = if threat.is_empty() { "against the next trouble".to_string() } else { format!("for fear of {}", threat) };
-                if spears { options.push((if threat.is_empty() { 0.5 } else { 1.1 }, Job::Craft, format!("Making spears at the workshop, {} ({} of {} made)", fear, self.arms.len(), self.arms.len() + 1))); }
-                else { options.push((if threat.is_empty() { 0.6 } else { 1.0 }, Job::Craft, format!("Making armour at the workshop, {} ({} of {} made)", fear, self.armour.len(), self.armour.len() + 1))); }
+                if spears { options.push((if threat.is_empty() { 0.5 } else { 1.1 }, Job::Craft, format!("Making spears at {}, {} ({} of {} made)", place, fear, self.arms.len(), self.arms.len() + 1))); }
+                else { options.push((if threat.is_empty() { 0.6 } else { 1.0 }, Job::Craft, format!("Making armour at {}, {} ({} of {} made)", place, fear, self.armour.len(), self.armour.len() + 1))); }
             }
         }
         if let Some(o) = self.drill_option(i) { options.push(o); }
@@ -1826,6 +1834,7 @@ impl Colony {
         if let Some(o) = self.brew_option(i) { options.push(o); }
         if let Some(o) = self.write_option(i) { options.push(o); }
         if let Some(o) = self.explore_option(i) { options.push(o); }
+        if let Some(o) = self.industry_option(i) { options.push(o); }
         if wish > 0.0 && !night {
             let p = &self.settlers[i].persona;
             let why = if p.facet(crate::persona::Facet::ArtInclined) >= 60 { p.facet_phrase(crate::persona::Facet::ArtInclined as usize).unwrap_or_else(|| "loves beautiful things".into()) } else { "values fine work".to_string() };
@@ -2067,6 +2076,10 @@ impl Colony {
             Job::Craft if why.starts_with("Engraving") => match self.engrave_spot() { Some(p) => p, None => return },
             Job::Craft if why.starts_with("Brewing") => self.still().unwrap_or(self.camp),
             Job::Craft if why.starts_with("Writing") => self.temple().map(|t| t.0).or_else(|| self.tavern()).or_else(|| self.hall_cells.first().copied()).unwrap_or(self.camp),
+            // The workshops below (`industry.rs`): the job's own bench.
+            Job::Craft if industry::is_industry(&why) => match self.industry_spot(&why) { Some(p) => p, None => return },
+            Job::Craft if why.starts_with("Making spears") || why.starts_with("Making armour") => self.arms_spot().map(|s| s.0).unwrap_or(self.camp),
+            Job::Craft if why.starts_with("Making furniture") => self.furniture_shop().map(|s| s.0).or_else(|| self.workshop_spot()).unwrap_or(self.camp),
             Job::Craft => self.workshop_spot().unwrap_or(self.camp),
             Job::Fell(p) => match (self.floor_plant(p), self.cavern_tree_level(p)) {
                 (Plant::None, Some(f)) => match self.cavern_stand(p, f) { Some(q) => q, None => return },
@@ -2094,7 +2107,10 @@ impl Colony {
             if job == Job::Sleep { self.settlers[i].bed_blocked_until = self.clock.tick + TICKS_PER_DAY; }
             if why.starts_with("Keeping watch") { self.watch_blocked_until = self.clock.tick + TICKS_PER_DAY; }
         }
-        let found = first.or_else(|| if matches!(job, Job::Build | Job::Sleep) { nav::path3(&self.map, None, from3, nav::surface3(&self.map, self.camp), PATH_BUDGET) } else { None });
+        // (A meal in a hall below, from far out on the land, can be past the search's budget: they
+        // walk back to the fire and eat there. Seed 11 had starved two foragers 60 cells out with
+        // 90 meals in the store, failing that search 400 times.)
+        let found = first.or_else(|| if matches!(job, Job::Build | Job::Sleep | Job::Eat) { nav::path3(&self.map, None, from3, nav::surface3(&self.map, self.camp), PATH_BUDGET) } else { None });
         match found {
             Some(p) => {
                 match job {
@@ -2106,6 +2122,7 @@ impl Colony {
                     self.decisions.push(format!("{}  {:<9} {:<16} {}", self.clock.stamp(), self.settlers[i].name, job.verb(), why));
                 }
                 let mood_pace = self.mood_pace(i) * self.thirst_pace(i) * self.wound_work(i, matches!(job, Job::Fell(_) | Job::Quarry(_) | Job::Dig(..) | Job::Build | Job::Haul(_)));
+                let craft_minutes = industry::minutes(&why).unwrap_or(360);
                 let s = &mut self.settlers[i];
                 s.path = p.into_iter().skip(1).collect();
                 s.job = job;
@@ -2115,7 +2132,7 @@ impl Colony {
                     Job::Fell(_) => 150, Job::Quarry(_) => 150, Job::Build => 60, Job::Haul(_) => 2, Job::Wander(_) => 30, Job::Idle => 0,
                     Job::Dig(p, z) => dig::dig_minutes(self.map.cell(p.0 as usize, p.1 as usize, (z + 1).max(0) as usize).material),
                     Job::Hunt(_) => 25,
-                    Job::Craft => 360,
+                    Job::Craft => craft_minutes,
                 };
                 // Skill: a green hand takes 1.3x the time, a master 0.7x.
                 // Body and mind: the strong fell faster, the patient fish better (`Persona::work_time`).
@@ -2348,7 +2365,7 @@ impl Colony {
             Job::Wander(_) if self.settlers[i].why.starts_with("Tending") => self.tend(i),
             Job::Dig(p, z) => { self.finish_dig(i, p, z); }
             Job::Hunt(id) => { if self.finish_hunt(i, id) { let n = self.eat_catch(i, 6); if self.carry_home(i, n) { return; } } }
-            Job::Craft => if self.settlers[i].why.starts_with("Making spears") { self.finish_arm(i) } else if self.settlers[i].why.starts_with("Making armour") { self.finish_armour(i) } else if self.settlers[i].why.starts_with("Sewing") { self.finish_sew(i) } else if self.settlers[i].why.starts_with("Making furniture") { self.finish_furniture(i) } else if self.settlers[i].why.starts_with("Engraving") { self.finish_engraving(i) } else if self.settlers[i].why.starts_with("Carving a slab") { self.finish_slab(i) } else if self.settlers[i].why.starts_with("Brewing") { self.finish_brew(i) } else if self.settlers[i].why.starts_with("Writing") { self.finish_book(i) } else { self.finish_craft(i) },
+            Job::Craft => if industry::is_industry(&self.settlers[i].why) { self.finish_industry(i) } else if self.settlers[i].why.starts_with("Making spears") { self.finish_arm(i) } else if self.settlers[i].why.starts_with("Making armour") { self.finish_armour(i) } else if self.settlers[i].why.starts_with("Sewing") { self.finish_sew(i) } else if self.settlers[i].why.starts_with("Making furniture") { self.finish_furniture(i) } else if self.settlers[i].why.starts_with("Engraving") { self.finish_engraving(i) } else if self.settlers[i].why.starts_with("Carving a slab") { self.finish_slab(i) } else if self.settlers[i].why.starts_with("Brewing") { self.finish_brew(i) } else if self.settlers[i].why.starts_with("Writing") { self.finish_book(i) } else { self.finish_craft(i) },
             Job::Forage(t) => {
                 self.claimed.remove(&t);
                 self.shrub_ready.insert(t, day + SHRUB_REGROW_DAYS);

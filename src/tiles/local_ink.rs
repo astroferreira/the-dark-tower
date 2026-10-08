@@ -1404,6 +1404,51 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                 }
                 if let Some(c) = r.bed { let (lx, ly) = to_screen(c.0 as f32 + 0.5, c.1 as f32 - 2.6); labels.push((lx, ly, "the farm under the rock".into(), false)); }
             }
+            RoomKind::Mason | RoomKind::Carpenter | RoomKind::Smelter | RoomKind::Forge | RoomKind::Kiln => {
+                // The industries' shops (`colony/industry.rs`): each its bench or furnace, named.
+                if let Some(c) = r.bed {
+                    let (x, y) = to_screen(c.0 as f32, c.1 as f32);
+                    let glow = [222.0, 120.0, 48.0];
+                    match r.kind {
+                        RoomKind::Mason => {
+                            // A bench, and a stack of dressed blocks beside it.
+                            rect(&mut put, x - t * 0.9, y + t * 0.25, x + t * 0.9, y + t * 0.75, [150.0, 112.0, 76.0]);
+                            for (bx, by) in [(1.15f32, 0.15f32), (1.55, 0.15), (1.35, -0.25)] {
+                                rect(&mut put, x + t * bx, y + t * by, x + t * (bx + 0.36), y + t * (by + 0.36), [176.0, 170.0, 160.0]);
+                            }
+                        }
+                        RoomKind::Carpenter => {
+                            // A bench with a saw line, and a barrel.
+                            rect(&mut put, x - t * 0.9, y + t * 0.25, x + t * 0.9, y + t * 0.75, [150.0, 112.0, 76.0]);
+                            for k in 0..(t * 0.8) as i64 { put((x - t * 0.4) as i64 + k, (y + t * 0.5) as i64, INK, 0.8); }
+                            let (cx, cy, rr) = (x + t * 1.5, y + t * 0.5, t * 0.3);
+                            for yy in (cy - rr) as i64..=(cy + rr) as i64 { for xx in (cx - rr) as i64..=(cx + rr) as i64 {
+                                let d = ((xx as f32 - cx).powi(2) + (yy as f32 - cy).powi(2)).sqrt();
+                                if d <= rr { put(xx, yy, if d > rr - 1.2 || (yy as f32 - cy).abs() < 0.6 { INK } else { [160.0, 110.0, 64.0] }, 0.95); }
+                            } }
+                        }
+                        RoomKind::Smelter | RoomKind::Kiln => {
+                            // A round furnace (the kiln a dome of red clay), its mouth glowing.
+                            let body = if r.kind == RoomKind::Kiln { [176.0, 96.0, 70.0] } else { [92.0, 84.0, 80.0] };
+                            let (cx, cy, rr) = (x + t * 0.5, y + t * 0.5, t * 0.75);
+                            for yy in (cy - rr) as i64..=(cy + rr) as i64 { for xx in (cx - rr) as i64..=(cx + rr) as i64 {
+                                let d = ((xx as f32 - cx).powi(2) + (yy as f32 - cy).powi(2)).sqrt();
+                                if d <= rr { put(xx, yy, if d > rr - 1.5 { INK } else if d < rr * 0.35 { glow } else { body }, 0.97); }
+                            } }
+                        }
+                        _ => {
+                            // The forge: a hearth with its glow, and an anvil.
+                            rect(&mut put, x - t * 0.9, y + t * 0.1, x + t * 0.1, y + t * 0.9, [92.0, 84.0, 80.0]);
+                            rect(&mut put, x - t * 0.65, y + t * 0.35, x - t * 0.15, y + t * 0.65, glow);
+                            rect(&mut put, x + t * 0.6, y + t * 0.35, x + t * 1.6, y + t * 0.55, [70.0, 70.0, 76.0]);
+                            rect(&mut put, x + t * 0.95, y + t * 0.55, x + t * 1.25, y + t * 0.9, [70.0, 70.0, 76.0]);
+                        }
+                    }
+                    let name = match r.kind { RoomKind::Mason => "the mason's", RoomKind::Carpenter => "the carpenter's", RoomKind::Smelter => "the smelter", RoomKind::Forge => "the forge", _ => "the kiln" };
+                    let (lx, ly) = to_screen(c.0 as f32 + 0.5, c.1 as f32 - 1.3);
+                    labels.push((lx, ly, name.into(), false));
+                }
+            }
             RoomKind::Corridor => {}
         }
     }
@@ -1473,7 +1518,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         let d = cam.z - zc;
         let mut kinds: Vec<String> = Vec::new();
         for (r, dug) in colony.rooms.iter().map(|r| (r, true)).chain(colony.dig_rooms.iter().map(|r| (r, false))).filter(|(r, _)| r.z == cam.z) {
-            let k = match r.kind { RoomKind::Bedroom => "bedrooms", RoomKind::GreatHall => "the great hall", RoomKind::Hall => "the hall in the hill", RoomKind::Cellar => "the cellar", RoomKind::Tomb => "the tombs", RoomKind::Workshop => "the workshops", RoomKind::Farm => "the farm", RoomKind::Corridor => continue };
+            let k = match r.kind { RoomKind::Bedroom => "bedrooms", RoomKind::GreatHall => "the great hall", RoomKind::Hall => "the hall in the hill", RoomKind::Cellar => "the cellar", RoomKind::Tomb => "the tombs", RoomKind::Workshop => "the workshops", RoomKind::Farm => "the farm", RoomKind::Mason => "the mason's", RoomKind::Carpenter => "the carpenter's", RoomKind::Smelter => "the smelter", RoomKind::Forge => "the forge", RoomKind::Kiln => "the kiln", RoomKind::Corridor => continue };
             let k = if dug { k.to_string() } else { format!("{} (being dug)", k) };
             if !kinds.iter().any(|x| *x == k) { kinds.push(k); }
         }

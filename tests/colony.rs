@@ -1670,10 +1670,12 @@ fn the_bell_sends_everyone_indoors() {
 
 /// The library (Dwarf Fortress's libraries): once the camp has written two books it builds a
 /// library to keep them.
+/// (Seed 76 too: the industries' digs below put seed 11's library at day 120 and seed 3's out of
+/// its first year.)
 #[test]
 fn the_camp_keeps_a_library() {
-    let logs: Vec<String> = ["11", "3"].iter().map(|s| run_log(s, "110", &[])).collect();
-    assert!(logs.iter().any(|t| t.lines().any(|l| l.contains("They set to work on a library"))), "no library");
+    let found = ["76", "11", "3"].iter().any(|s| run_log(s, "110", &[]).lines().any(|l| l.contains("They set to work on a library")));
+    assert!(found, "no library");
 }
 
 /// The delve (Dwarf Fortress's fortress): the dev colony at 45,12 cuts a stair down beside the
@@ -1745,4 +1747,25 @@ fn the_caverns_are_sealed_with_a_hatch() {
     let text = run_log("3", "120", &[]);
     let at = text.lines().position(|l| l.contains("They set a hatch of")).unwrap_or_else(|| panic!("no hatch on seed 3"));
     assert!(!text.lines().skip(at).any(|l| l.contains("come up from the mine, alone")), "something came up after the hatch");
+}
+
+/// Industries (Dwarf Fortress's production chains): ore struck (forced: no dev seed strikes any)
+/// waits for a smelter cut below the stair, which melts it with charcoal burnt from logs; a forge
+/// turns the bars into iron tools and an iron-headed spear, and the traders buy the spare bars.
+/// Stone is dressed into blocks at a mason's.
+#[test]
+fn ore_becomes_bars_tools_and_iron_spears() {
+    let text = run_log("76", "100", &[("PLANET_FORCE_ORE", "1")]);
+    let at = |n: &str| text.lines().position(|l| l.contains(n)).unwrap_or_else(|| panic!("never: {n}\n{text}"));
+    let seam = at("strikes a seam of Iron");
+    let smelter = at("breaks through the last of a smelter below");
+    let charcoal = at("burns the first charcoal at the smelter");
+    let bars = at("smelts the first iron at the smelter: two bars of iron");
+    let forge = at("breaks through the last of a forge below");
+    let tools = at("forges a set of iron tools");
+    let spear = at("forges an iron-headed spear at the forge");
+    assert!(seam < smelter && smelter < charcoal && charcoal < bars, "ore, smelter, fuel, bars out of order");
+    assert!(forge < tools && bars < tools && tools < spear, "the forge's tools and spear came before its bars");
+    assert!(text.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron")), "no bars sold");
+    assert!(text.lines().any(|l| l.contains("dresses the first blocks of")), "no blocks at the mason's");
 }

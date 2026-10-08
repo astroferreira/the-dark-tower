@@ -8,8 +8,8 @@
 //! delve's stair cut on down from its foot to the deepest rock, a cut a level, with a stair let
 //! down through each cavern below; `delve.rs`). When it is done the shaft has reached
 //! the deepest rock: where the land has three cavern layers, one camp in two strikes adamantine
-//! ("a vein of adamantine, glittering blue-white", a moment; `Colony::ores` gains it, and spearheads
-//! of it strike at 2.2). Greed follows the vein: 12-20 days later the miners break into a hollow
+//! ("a vein of adamantine, glittering blue-white", a moment; six strands go to the smelter,
+//! `industry.rs`, whose wafers make spearheads that strike at 2.2 and mail). Greed follows the vein: 12-20 days later the miners break into a hollow
 //! that should not be there, and something comes up out of it: a demon (a generated monster of
 //! fire and darkness, size 3.5, not to be caged or easily slain) as the next trouble of the camp,
 //! with a sound from below first. Once only.
@@ -50,7 +50,8 @@ impl Colony {
         let struck = three && crate::history::settlers::hash_pub(self.seed, 0xADA) % 2 == 0;
         let at = self.mine_mouth().unwrap_or(self.camp);
         if struck {
-            if !self.ores.iter().any(|o| o == "adamantine") { self.ores.push("adamantine".into()); }
+            // Six strands for the smelter (`industry.rs`): wafers of it make spearheads and mail.
+            self.add_ore("adamantine", 6);
             let line = "At the bottom of the deep shaft the miners strike a vein of adamantine, glittering blue-white, running down into the dark.".to_string();
             self.note(line.clone());
             self.moment("Adamantine".into(), line, "because they sank the deep shaft past the caverns into the deepest rock".into(), at);
