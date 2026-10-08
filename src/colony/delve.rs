@@ -640,6 +640,28 @@ impl Colony {
         v
     }
 
+    /// Fallen halls found near the fire (within 40 cells; DF's reclaiming): with no great hall of
+    /// its own, the camp takes the old one, its stone table standing, and eats there.
+    pub(crate) fn reclaim_halls(&mut self, place: usize, town: &str) {
+        if self.rooms.iter().any(|r| r.kind == RoomKind::GreatHall) { return; }
+        let pl = self.map.places[place].clone();
+        let Some(m) = pl.mouth else { return };
+        if (m.0 as i32 - self.camp.0 as i32).abs().max((m.1 as i32 - self.camp.1 as i32).abs()) > 40 { return; }
+        // The great hall: the level with the most cells.
+        let Some(z) = pl.cells.iter().map(|c| c.1).max_by_key(|&z| (pl.cells.iter().filter(|c| c.1 == z).count(), z)) else { return };
+        let cells: Vec<Pos> = pl.cells.iter().filter(|c| c.1 == z).map(|c| c.0).collect();
+        let n = cells.len() as f32;
+        let (mx, my) = cells.iter().fold((0.0, 0.0), |a, c| (a.0 + c.0 as f32 / n, a.1 + c.1 as f32 / n));
+        let Some(&table) = cells.iter().min_by_key(|c| ((c.0 as f32 - mx).abs() + (c.1 as f32 - my).abs()) as i32) else { return };
+        let mut r = room(RoomKind::GreatHall, z, cells, Some(table));
+        r.furnished = Some(format!("the old stone of {}", town));
+        r.day = self.clock.day();
+        self.rooms.push(r);
+        let line = format!("They take the great hall of {} for their own: the old stone table still stands, and they carry the store's bread down to it.", town);
+        self.note(line.clone());
+        self.moment(format!("The halls of {} reclaimed", town), line, format!("because the halls of {} lay empty within sight of the fire", town), m);
+    }
+
     /// Picks to dig with (DF's miners each need one): two brought, two more made at the workshop,
     /// two more of metal once ore is worked or iron bought.
     pub fn picks(&self) -> usize {

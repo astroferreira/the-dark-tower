@@ -2180,8 +2180,9 @@ impl Colony {
     fn eat_spot(&self, i: usize) -> Pos {
         let p = self.settlers[i].pos;
         let d = |q: Pos| (q.0 as i32 - p.0 as i32).abs().max((q.1 as i32 - p.1 as i32).abs());
-        // The great hall below, where the camp eats together (`delve.rs`).
-        if let Some((t, _)) = self.great_hall() { return t; }
+        // The great hall below, where the camp eats together (`delve.rs`), unless it lies much
+        // farther than the fire (a reclaimed hall out in the hills).
+        if let Some((t, _)) = self.great_hall() { if d(t) <= d(self.camp) + 10 { return t; } }
         match self.hall_cells.first() { Some(&h) if d(h) < d(self.camp) => h, _ => self.camp }
     }
 

@@ -1514,3 +1514,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   and left its land in winter with its mine missing the caverns; now it breaks in on day 35,
   digs the farm next, and holds out. The still's spot is open ground beside its posts (brewers
   had walked to a post). `PLANET_DEBUG_DIG` also prints why a dig is given up.
+- Reclaiming (DF): fallen halls found within 40 cells of the fire become the camp's great hall
+  if it has none (`delve.rs::reclaim_halls`: the halls' busiest level, "the old stone table",
+  furnished; a moment), and engravers carve its walls. A great hall is eaten in only when it is no
+  farther than the fire plus 10 cells (`eat_spot`). Seed 3 camped on tile 27,9
+  (`PLANET_FORCE_CAMP=1`) takes the halls of Slitash on day 11.
