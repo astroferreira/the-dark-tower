@@ -1158,10 +1158,11 @@ fn legends_outlive_the_camp() {
 /// Most camps carve within days, so a few dev seeds are tried until one shows it.
 #[test]
 fn the_dead_who_died_badly_walk_until_remembered() {
-    // (Camps carve slabs for their dead within days; seed 6's ghost walks on day 15 and rests on
-    // day 16.)
-    let found = ["6", "2", "23"].iter().any(|seed| {
-        let text = run_log(seed, "120", &[]);
+    // (Camps carve slabs for their dead within days, so a ghost is rare: PLANET_FORCE_GHOST keeps
+    // anyone from carving for six days, and PLANET_FORCE_RAID_DEATH gives the violent death.
+    // Seeds 23 and 58: seen on days 17 and 16, at rest the next days.)
+    let found = ["23", "58", "11"].iter().any(|seed| {
+        let text = run_log(seed, "60", &[("PLANET_FORCE_GHOST", "1"), ("PLANET_FORCE_RAID_DEATH", "1")]);
         let seen = text.lines().position(|l| l.contains("The ghost of ") && l.contains(" is seen "));
         let rest = text.lines().position(|l| l.contains("carved in memory of") && l.contains("ghost is at rest"));
         seen.is_some() && rest.is_some() && seen < rest
@@ -1383,11 +1384,11 @@ fn the_world_remembers_what_the_camp_did() {
 /// Armour (Dwarf Fortress's layers of material): once the militia bears spears the workshop
 /// makes armour of the best to hand (adamantine from the deep shaft, iron, copper, leather from
 /// the hunt), and in the clash it turns blows. (Leather and hide only lighten an edge; mail is
-/// forged from bars, so ore is forced: no dev seed strikes any. Blows are turned on days 34 (2),
-/// 35 (6) and 75 (1).)
+/// forged from bars, so ore is forced: no dev seed strikes any. Blows are turned on days 60 (76)
+/// and 94 (3).)
 #[test]
 fn armour_turns_blows() {
-    let logs: Vec<String> = ["2", "6", "1"].iter().map(|s| run_log(s, "110", &[("PLANET_FORCE_ORE", "1")])).collect();
+    let logs: Vec<String> = ["76", "3"].iter().map(|s| run_log(s, "110", &[("PLANET_FORCE_ORE", "1")])).collect();
     let any = |n: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(n)));
     assert!(any("the first armour in the camp"), "no armour made");
     assert!(any("does not get through") || any("took the worst of it") || any("turns it.") || any("is turned by"), "no blow turned");
@@ -1857,9 +1858,9 @@ fn ore_becomes_bars_tools_and_iron_spears() {
     let spear = text.lines().position(|l| l.contains(" forges ") && l.contains("iron-headed spear at the forge")).unwrap_or_else(|| panic!("never: an iron-headed spear forged\n{text}"));
     assert!(seam < smelter && smelter < charcoal && charcoal < bars, "ore, smelter, fuel, bars out of order");
     assert!(forge < tools && bars < tools && tools < spear, "the forge's tools and spear came before its bars");
-    // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 76 sells them to
-    // the caravan of day 105.)
-    let spare = run_log("76", "110", &[("PLANET_FORCE_ORE", "30")]);
+    // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 2 sells them to
+    // the caravan of day 105, seed 76 to that of day 135.)
+    let spare = ["2", "76"].iter().map(|s| run_log(s, "140", &[("PLANET_FORCE_ORE", "30")])).find(|t| t.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron"))).unwrap_or_default();
     assert!(spare.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron")), "no bars sold");
     assert!(text.lines().any(|l| l.contains("dresses the first blocks of")), "no blocks at the mason's");
 }

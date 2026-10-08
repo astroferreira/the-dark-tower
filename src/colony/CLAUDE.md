@@ -1826,3 +1826,16 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   people alive no longer see eight). `PLANET_FORCE_PET_PREY=1` now lets night hunters take a
   pet's keeper wherever they are on the surface (keepers keeping their own hours were never caught
   alone).
+- Work no longer waits on a dig: the building under way is the first unfinished work that is not
+  a dig (`active_project`; digs are worked from `dig_target`), and diggers on their way to or at a
+  cut eat at 0.85 and nap only worn out, like a hand at the bench (a deep shaft's cuts lie hours
+  down the stair; diggers setting out at 0.6 turned back before they got there). Dev 50,20 (on
+  `main` too): the deep shaft had stood at 20 of 36 cuts for 50 days and two guildhalls at no
+  stones behind it; now the shaft is done on day ~100 and the camp goes on to a kitchen, library,
+  bedrooms and tombs. A cut that cannot be made is struck from the plan.
+- Crafts at the workshop use only what the work under way does not need (`industry::spare`):
+  the carvers had used every stone the quarriers brought. Engravers, slab carvers and sewers
+  are not held back by someone at the workshop (`maker_wish`, the wish without the workshop's
+  one-at-a-time rule): 50,20's hall had stayed bare for 150 days.
+- `PLANET_FORCE_GHOST=1`: no slab is carved for six days after a violent death (the ghost test,
+  with `PLANET_FORCE_RAID_DEATH`).

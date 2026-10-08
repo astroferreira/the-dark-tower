@@ -1737,7 +1737,9 @@ impl Colony {
         // early wasted half of every meal and emptied the winter store.
         // (One at the workshop finishes the piece before eating unless truly hungry: a craft
         // takes six hours, and meals at 0.6 broke off nearly every one.)
-        let at_bench = s.job == Job::Craft && s.path.is_empty() && s.work_left > 0;
+        // (A digger on the way down to a cut, or at it, likewise: the deep shaft's cuts lie hours
+        // down the stair, and diggers who set out at 0.6 turned back to eat before they got there.)
+        let at_bench = (s.job == Job::Craft && s.path.is_empty() && s.work_left > 0) || matches!(s.job, Job::Dig(..));
         if food > 0 && s.hunger > if at_bench { 0.85 } else { 0.6 } {
             // Woken by hunger they eat before lying down again (a tired settler at 95% had woken,
             // chosen sleep over food and woken again every minute).

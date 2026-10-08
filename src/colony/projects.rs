@@ -65,7 +65,10 @@ impl Colony {
         // on the woodpile held the palisade's mending for thirty days.)
         let wood = || self.wood_in_reach || self.items.iter().any(|it| it.kind == ItemKind::Log);
         if let Some(k) = self.projects.iter().position(|p| p.done && p.kind == ProjectKind::Woodpile && p.used < 4 && ok(p)).filter(|_| wood()) { return Some(k); }
-        self.projects.iter().position(|p| !p.done && ok(p))
+        // (Digs are worked from their own plan, `dig_target`: the builders go on with the next
+        // work meanwhile. A deep shaft stuck at its last cuts had held two guildhalls at no
+        // stones for sixty days.)
+        self.projects.iter().position(|p| !p.done && ok(p) && !is_dig(p.kind))
             // A finished woodpile burns down each night and is restocked.
             .or_else(|| self.projects.iter().position(|p| p.done && p.kind == ProjectKind::Woodpile && p.used < p.needed && ok(p)).filter(|_| wood()))
     }

@@ -118,7 +118,7 @@ forge, mason's, carpenter's and kiln cut below, ore -> bars -> tools and arms (`
 and blows resolved by a material model (`src/materials.rs`, `data/defaults/materials.json`:
 density, hardness, edge, capability flags; weapon shapes; tissue layers and armour by part).
 Each has its notes in `src/colony/CLAUDE.md` (knowledge in `src/history/CLAUDE.md`). Debug forcing: `PLANET_FORCE_WERE`, `PLANET_FORCE_SEEKER`,
-`PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`, `PLANET_FORCE_PET_PREY`, `PLANET_FORCE_ORE`, `PLANET_FORCE_HORROR`. Board cards `df-*`; progress log in the Claude Doc
+`PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`, `PLANET_FORCE_PET_PREY`, `PLANET_FORCE_ORE`, `PLANET_FORCE_HORROR`, `PLANET_FORCE_GHOST`. Board cards `df-*`; progress log in the Claude Doc
 "Dwarf Fortress systems: progress log".
 Minds that steer: DF's personality needs drive what settlers do between jobs (`colony/needs.rs`), their
 needs and character voice the camp's next work (`voices.rs`), and lots and the wall's size follow
