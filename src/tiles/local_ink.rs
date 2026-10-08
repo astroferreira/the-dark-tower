@@ -132,9 +132,18 @@ impl<'a> View<'a> {
             let (x, y) = (k % w, k / w);
             map.cell(x, y, map.surface_z[k].clamp(0, map.depth as i32 - 1) as usize)
         };
+        // Ground cut two levels or more below its neighbours (a ditch, a trench, a pit's mouth)
+        // lies in shadow.
+        let sunk = |k: usize| {
+            let (x, y) = (k % w, k / w);
+            let z = map.surface_z[k];
+            let hi = [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)].iter()
+                .filter(|&&(qx, qy)| qx < w && qy < h).map(|&(qx, qy)| map.surface_z[qy * w + qx]).max().unwrap_or(z);
+            hi - z
+        };
         let wash = (0..w * h).into_par_iter().map(|k| match top[k] {
             Top::Water(d) => water_wash(d),
-            _ => wash(floor_of(k)),
+            _ => { let c = wash(floor_of(k)); let d = sunk(k); if d >= 2 { mix(c, [70.0, 60.0, 50.0], (0.18 * d as f32).min(0.5)) } else { c } }
         }).collect();
         let crowns = (0..w * h).into_par_iter().map(|k| {
             if !matches!(top[k], Top::Ground) { return None; }

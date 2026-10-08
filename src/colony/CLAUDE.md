@@ -1440,3 +1440,26 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   then a bedroom is a straw pallet (no `Feel::OwnRoom`) and meals are not eaten in the great
   hall. Drawn: bed or pallet; the table only once made. Dev 45,12: the first bed day 38, the
   table day 71.
+- A dig no one can reach is given up (`give_up_dig`): forty failed ways in a row (`dig_fails`,
+  reset by any cut made) strike the work off ("They give up a hall in the hill: no one can find a
+  way to the rock they meant to cut") and its first cut is kept in `digs_given_up` so the same
+  dig is not planned again. On dev 50,20 one hall cut out of reach had been retried by everyone
+  every quarter hour (33,000 failed searches; 150 days in 177 s, now 13 s). The fellers' tree
+  search runs once a decision (the cavern-wood change had made it twice).
+- A ditch round the wall (`delve.rs::plan_moat`, `ProjectKind::Moat`, DF's moats and channels):
+  with the palisade closed, a chapter of trouble past and day 30+, the ring two cells outside the
+  palisade (radius 13) is cut down two levels, column by column (its surface cell, then the one
+  under it), with three-cell crossings left at the four gates and the cells beside them only a
+  level deep (steps out of the ditch). What walks the surface cannot climb two levels, so raiders
+  and beasts come in by the gates, where the cages stand. Readiness +0.08, "the palisade closed
+  and ditched" in the tally. Cells by a building or on forbidden ground are left (gaps a raider
+  may find). Six dev seeds: ditches done on days 30-113. The surface ink shades ground two or
+  more levels below its neighbours (`local_ink::View::new`). Lots for buildings now fall back to
+  24 cells from the fire when 14 is full (the ditch takes the ring at 13; the lord's hall had found
+  no lot).
+- Tree search: `nearest_tree` looks the whole map over once a day and makes no search on a day
+  with no tree to fell anywhere; otherwise it searches as before (a per-searcher "none found"
+  cache was wrong: the search is within the work radius and skips claimed trees).
+- Picking in the window (`Colony::settler_at`): in the surface view only those not below, in a
+  level view those on that level (and surface settlers near it), for the hover chip, the title,
+  clicks and the patron's verbs.

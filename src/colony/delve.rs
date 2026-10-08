@@ -121,6 +121,7 @@ impl Colony {
                 self.plan_level(kind, want)
             }
             ProjectKind::GreatHall | ProjectKind::Tombs => self.plan_level(kind, 0),
+            ProjectKind::Moat => self.plan_moat(),
             _ => None,
         }
     }
@@ -481,6 +482,50 @@ impl Colony {
         Some((p, self.dig_depth(p, f), name))
     }
 
+    /// The living settler under the mouse at `(hx, hy)` (cells) as a view shows them: in the
+    /// surface view those not below, in a level view (`level`) those standing on it.
+    pub fn settler_at(&self, hx: f32, hy: f32, reach: f32, level: Option<i32>) -> Option<usize> {
+        (0..self.settlers.len()).find(|&i| {
+            let s = &self.settlers[i];
+            s.alive && (s.pos.0 as f32 + 0.5 - hx).abs() < reach && (s.pos.1 as f32 + 0.5 - hy).abs() < reach
+                && match level { None => !self.below(i), Some(z) => self.here3(i).2 == z || (!self.below(i) && (self.here3(i).2 - z).abs() <= 2) }
+        })
+    }
+
+    /// A ditch round the wall (DF's moats and channels): the ring two cells outside the palisade
+    /// cut down two levels (each column's surface cell, then the one under it), crossings left
+    /// at the four gates. What walks the surface cannot climb two levels, so raiders and beasts
+    /// come in by the gates, where the cage traps stand.
+    fn plan_moat(&self) -> Option<DelvePlan> {
+        let r = 13i32;
+        let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
+        let w = self.map.width;
+        let mut ring: Vec<Pos> = Vec::new();
+        for dy in -r..=r { for dx in -r..=r {
+            if dx.abs() != r && dy.abs() != r { continue; }
+            // The crossings: three cells at each gate's axis.
+            if dx.abs() <= 1 || dy.abs() <= 1 { continue; }
+            let (x, y) = (cx + dx, cy + dy);
+            if x < 4 || y < 4 || x as usize + 4 >= w || y as usize + 4 >= self.map.height { return None; }
+            let p = (x as u16, y as u16);
+            let sz = self.map.surface_z[y as usize * w + x as usize];
+            if sz < 5 || self.built_near(p) || self.marked_at(p, true) { continue; }
+            let wet = (sz - 1..=sz + 1).any(|z| self.map.cell(x as usize, y as usize, z as usize).water > 0);
+            let rock = (sz - 2..=sz).all(|z| matches!(self.map.cell(x as usize, y as usize, z as usize).shape, crate::local::Shape::Wall | crate::local::Shape::Floor | crate::local::Shape::Ramp));
+            if !wet && rock && self.map.cavern_at(x as usize, y as usize, sz - 1).is_none() { ring.push(p); }
+        } }
+        if ring.len() < 60 { return None; }
+        let sz = |p: Pos| self.map.surface_z[p.1 as usize * w + p.0 as usize];
+        let mut cuts: Vec<DigCell> = ring.iter().map(|&p| DigCell::room(p, sz(p) - 1)).collect();
+        // (The cells beside each crossing stay a level deep: steps out of the ditch at the gates.)
+        let step = |p: Pos| { let (dx, dy) = ((p.0 as i32 - cx).abs(), (p.1 as i32 - cy).abs()); (dx == 2 && dy == r) || (dy == 2 && dx == r) };
+        cuts.extend(ring.iter().filter(|&&p| !step(p)).map(|&p| DigCell::room(p, sz(p) - 2)));
+        Some(DelvePlan { cuts, rooms: Vec::new(), spine: None, mouth: self.camp })
+    }
+
+    /// Whether the ditch round the wall is dug.
+    pub fn moat_dug(&self) -> bool { self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Moat) }
+
     /// Picks to dig with (DF's miners each need one): two brought, two more made at the workshop,
     /// two more of metal once ore is worked or iron bought.
     pub fn picks(&self) -> usize {
@@ -576,6 +621,17 @@ impl Colony {
             }
         }
         let has = |k: RoomKind| self.rooms.iter().any(|r| r.kind == k);
+        // A ditch round the wall, once the palisade stands and trouble keeps coming.
+        let walled = self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Palisade);
+        let chapters = self.arc.as_ref().map_or(0, |a| a.chapter);
+        if walled && chapters >= 1 && day >= 30 && !self.projects.iter().any(|p| p.kind == ProjectKind::Moat) {
+            if let Some(plan) = self.plan_moat() {
+                let raids = self.arc.as_ref().map_or(0, |a| a.events.iter().filter(|e| e.title == "The raid").count());
+                let why = format!("{} {} come to the palisade; a ditch two levels deep round it would leave them only the four gates{}", raids, if raids == 1 { "raid has" } else { "raids have" },
+                    if self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Traps) { ", where the cages wait" } else { "" });
+                c.push((if masons { 1.2 } else { 0.8 }, ProjectKind::Moat, why, plan.cuts.len() as u32, self.camp));
+            }
+        }
         // Tombs, once the dead lie at the camp's edge (two or more of the camp's own).
         let graves = self.marks.iter().filter(|m| m.kind == MarkKind::Grave && m.title.starts_with("The grave of ")).count();
         if day >= 40 && graves >= 2 && !has(RoomKind::Tomb) {

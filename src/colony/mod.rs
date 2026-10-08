@@ -632,6 +632,8 @@ pub struct Colony {
     /// day): the ring search for berries scanned the whole reach every time none were ripe.
     pub(crate) shrubs: Vec<Pos>,
     pub(crate) ripe_today: std::cell::Cell<(u64, bool)>,
+    /// The day the map was last looked over for a tree to fell, and whether it held none.
+    pub(crate) treeless_day: std::cell::Cell<u64>,
     /// A lost artifact of the history lying near (`relic.rs`).
     pub relic: Option<relic::Relic>,
     pub(crate) were_bites: std::collections::BTreeMap<usize, u32>,
@@ -727,7 +729,7 @@ impl Colony {
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
             log: Vec::new(), decisions: Vec::new(), rng, seed, milestones: Default::default(), basket: Default::default(),
             patron: Patron { favour: FAVOUR_MAX, marks: Vec::new(), favourite: None, dreams: Vec::new(), last_refill_day: 1 },
-            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log,
+            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log,
         };
         c.shrubs = (1..c.map.height - 1).flat_map(|y| (1..c.map.width - 1).map(move |x| (x as u16, y as u16))).filter(|&p| c.floor_plant(p) == Plant::Shrub).collect();
         c.fishing_spots = (1..c.map.height - 1).flat_map(|y| (1..c.map.width - 1).map(move |x| (x as u16, y as u16)))
@@ -1669,7 +1671,7 @@ impl Colony {
             let force_below = self.cavern_level().is_some() && std::env::var("PLANET_FORCE_CAVERN").is_ok();
             // (One search: a whole-map ring search twice a decision had cost a treeless camp most
             // of its run.)
-            let any_tree = if force_below { None } else { self.nearest(s.pos, |c, p| c.is_felling_tree(p)) };
+            let any_tree = if force_below { None } else { self.nearest_tree(s.pos) };
             let near = any_tree.filter(|t| (t.0 as i32 - self.camp.0 as i32).abs().max((t.1 as i32 - self.camp.1 as i32).abs()) <= 30);
             if let Some(t) = near {
                 options.push((0.75 * s.taste[2], Job::Fell(t), format!("{} needs {} more logs; felling the tree at {},{}", capital(&work), logs_needed - logs_about.min(logs_needed), t.0, t.1)));
@@ -1755,7 +1757,7 @@ impl Colony {
             let who = self.settlers[m.who].name.clone();
             let stored = |k: ItemKind| self.items.iter().filter(|it| it.stored && it.kind == k).count();
             if stored(ItemKind::Log) < 3 {
-                if let Some(t) = self.nearest(s.pos, |c, p| c.is_felling_tree(p)) { options.push((0.95, Job::Fell(t), format!("{} wants wood for the work the mood demands; felling the tree at {},{}", who, t.0, t.1))); }
+                if let Some(t) = self.nearest_tree(s.pos) { options.push((0.95, Job::Fell(t), format!("{} wants wood for the work the mood demands; felling the tree at {},{}", who, t.0, t.1))); }
             }
             if stored(ItemKind::Stone) < 3 {
                 if let Some(t) = self.nearest(s.pos, |c, p| c.is_quarry_stone(p)) { options.push((0.95, Job::Quarry(t), format!("{} wants stone for the work the mood demands; breaking stone at {},{}", who, t.0, t.1))); }
@@ -1783,7 +1785,7 @@ impl Colony {
             }
         }
         if wish == 0.0 && wish_any > 0.3 && !night {
-            if let Some(t) = self.nearest(s.pos, |c, p| c.is_felling_tree(p)) {
+            if let Some(t) = self.nearest_tree(s.pos) {
                 options.push((wish_any * 0.8, Job::Fell(t), format!("Felling the tree at {},{} for wood to work at the workshop", t.0, t.1)));
             } else if let Some(t) = self.nearest(s.pos, |c, p| c.is_quarry_stone(p)) {
                 options.push((wish_any * 0.8, Job::Quarry(t), format!("Breaking stone at {},{} to work at the workshop", t.0, t.1)));
@@ -1946,6 +1948,23 @@ impl Colony {
     }
 
     pub(crate) fn floor_plant_pub(&self, p: Pos) -> Plant { self.floor_plant(p) }
+    /// The nearest tree that may be felled, from `from`; a day that found none skips the
+    /// whole-map search until the next dawn (a treeless camp had searched every decision).
+    pub(crate) fn nearest_tree(&self, from: Pos) -> Option<Pos> {
+        // Once a day the whole map is looked over: with no tree that may be felled anywhere, no
+        // search is made that day. (`treeless_day`: (day checked, none anywhere) packed.)
+        let day = self.clock.day();
+        let (checked, none) = (self.treeless_day.get() >> 1, self.treeless_day.get() & 1 == 1);
+        let none = if checked == day { none } else {
+            let w = self.map.width;
+            let none = !(0..w * self.map.height).any(|k| self.is_felling_tree(((k % w) as u16, (k / w) as u16)));
+            self.treeless_day.set(day << 1 | none as u64);
+            none
+        };
+        if none { return None; }
+        self.nearest(from, |c, p| c.is_felling_tree(p))
+    }
+
     fn floor_plant(&self, p: Pos) -> Plant {
         let (x, y) = (p.0 as usize, p.1 as usize);
         self.map.cell(x, y, self.map.surface_z[y * self.map.width + x] as usize).plant
@@ -2564,7 +2583,7 @@ impl Colony {
         self.run_days(1);
         let inside = |m: &PlaceMark, p: Pos| (m.at.0 as i32 - p.0 as i32).abs().max((m.at.1 as i32 - p.1 as i32).abs()) <= m.radius as i32;
         // Forbid the trees nearest the camp.
-        let tree = self.nearest(self.camp, |c, p| c.is_felling_tree(p));
+        let tree = self.nearest_tree(self.camp);
         let forbid = tree.map(|t| PlaceMark { at: t, radius: 8, forbidden: true });
         if let Some(m) = forbid { let _ = self.mark_place(m.at, m.radius, true); }
         // Bless a berry patch away from the camp.
@@ -2705,7 +2724,7 @@ impl Colony {
         Survey { shrubs, fishing, meals_a_day }
     }
 
-    pub fn nearest_tree_to_camp(&self) -> Option<Pos> { self.nearest(self.camp, |c, p| c.is_felling_tree(p)) }
+    pub fn nearest_tree_to_camp(&self) -> Option<Pos> { self.nearest_tree(self.camp) }
 
     /// Replay one recorded act ("tick verb args", as `interventions` writes them); the tick is
     /// the caller's business. Returns what happened, or why not.

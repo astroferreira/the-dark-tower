@@ -842,6 +842,8 @@ impl Colony {
             + if self.marked_at(self.watch_post(), false) { 0.1 } else { 0.0 }
             // A lookout sees them coming.
             + if self.projects.iter().any(|p| p.done && p.kind == super::projects::ProjectKind::Lookout) { 0.08 } else { 0.0 }
+            // A ditch round the wall: they come by the gates or not at all (`delve.rs`).
+            + if self.moat_dug() { 0.08 } else { 0.0 }
             // Spears in drilled hands (`militia.rs`).
             + self.militia_ready().0
             // A sally at dawn catches the besiegers in their camp (`siege.rs`).
@@ -857,7 +859,7 @@ impl Colony {
         };
         let armed = self.militia_ready().1;
         let tally = format!("{} night{} of watch kept, {}, {}, {} to fight{}{}", watches, if watches == 1 { "" } else { "s" },
-            wall_words, if hut { "the hut standing" } else { "no roof to hold" }, alive.len(), if armed > 0 { format!(", {} of them drilled and under arms", armed) } else { String::new() },
+            if self.moat_dug() { format!("{} and ditched", wall_words) } else { wall_words }, if hut { "the hut standing" } else { "no roof to hold" }, alive.len(), if armed > 0 { format!(", {} of them drilled and under arms", armed) } else { String::new() },
             if self.bell_rung() { ", warned by the bell" } else { "" });
         let patron = match captain {
             Some(i) => format!("; {}, the patron's favourite, captained the watch", self.settlers[i].name),

@@ -77,7 +77,19 @@ the zoomed region around a point.
   karst biomes always) a cave; the first cavern layer where it lies within 13 levels (see Caverns below; the old hashed deep cavern is gone). Spots are dry ground 30-80 cells from
   the middle, tried in a hashed order; each is carved like a colony dig (a passage into a rise,
   else a sinkhole ramp down to a room) and is walkable from its mouth.
-- `--sim-projects N` prints a `Place:` line per place (with "walkable from the surface").
+- Places are laid out on several levels (2026-10-08, `places::layout`, DF's site layouts), cut
+  under a roof that leaves the ground above: an old mine is a stair shaft eight levels down with
+  a gallery (and a side working) at three levels, its seam of ore left in the last gallery's end
+  wall; a tomb a stair four levels down to an antechamber, a passage, the crypt and a second
+  stair to the inner tomb; a lair or cave a tunnel winding down from a pit (a level every other
+  step, cut two high so it can be walked down) to a den two levels high (a lair's wide). A layout
+  must fit whole in solid rock out of the caverns and water (`cuttable`), else the old 2.5-D
+  passage or sinkhole. `UnderPlace::cells` are (column, floor level), the far end last. The level
+  view draws a found place's far end (a sarcophagus, bones and a hoard, an ore cart) and names
+  it; `PLANET_FRAMES` writes `_placeN.png` at each place's deepest level. Dev: the lair, the tomb
+  and the caves span six levels, all walkable from their mouths.
+- `--sim-projects N` prints a `Place:` line per place (with its levels and "walkable from the
+  surface", checked with `nav::path3`).
   Dev: 46,13 the living Baelfang's lair, 47,14 a tomb, 50,20 a limestone cave; 7 of 18
   livable embarks hold nothing. Tested (`tests/colony.rs` something_down_there). Not yet: the
   places' pages, drawing the hoard and bones, the found/unknown state (card 'The unknown is

@@ -1412,7 +1412,7 @@ fn the_liaison_brings_what_was_asked() {
 #[test]
 fn a_pet_stands_by_its_keeper() {
     // (Two seeds: which one shows it moves with every change to the camps' timelines.)
-    let found = ["58", "5"].iter().any(|seed| run_log(seed, "170", &[]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
+    let found = ["58", "5"].iter().any(|seed| run_log(seed, "260", &[]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
     assert!(found, "no pet stood by its keeper");
 }
 

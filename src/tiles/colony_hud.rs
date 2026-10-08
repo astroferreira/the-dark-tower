@@ -190,7 +190,8 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
         let (hx, hy) = (lcam.cx + (st.mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (st.mouse.1 - h as f32 / 2.0) / lcam.tile_px);
         let reach = (0.8f32).max(8.0 / lcam.tile_px);
         let building = if hx >= 0.0 && hy >= 0.0 { colony.building_at((hx as u16, hy as u16)) } else { None };
-        if let (Some(b), None) = (&building, colony.settlers.iter().filter(|s| s.alive).find(|s| (s.pos.0 as f32 + 0.5 - hx).abs() < reach && (s.pos.1 as f32 + 0.5 - hy).abs() < reach)) {
+        let under = colony.settler_at(hx, hy, reach, if lcam.surface_view { None } else { Some(lcam.z) });
+        if let (Some(b), None) = (&building, under) {
             let chip_w = 320.0f32.min(w as f32 - 20.0);
             let lines = wrap_px(b, Face::Italic, SMALL, chip_w - 24.0);
             let chip_h = 16 + lines.len().min(5) * 16;
@@ -201,7 +202,7 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
                 fonts::draw(buf, w, h, (x + 12) as f32, (y + 8 + k * 16) as f32, l, Face::Italic, SMALL, 0.0, INK, None);
             }
         }
-        if let Some(s) = colony.settlers.iter().filter(|s| s.alive).find(|s| (s.pos.0 as f32 + 0.5 - hx).abs() < reach && (s.pos.1 as f32 + 0.5 - hy).abs() < reach) {
+        if let Some(s) = under.map(|i| &colony.settlers[i]) {
             let chip_w = 300.0f32.min(w as f32 - 20.0);
             let why = wrap_px(&s.why, Face::Italic, SMALL, chip_w - 24.0);
             let mut head = s.name.clone();

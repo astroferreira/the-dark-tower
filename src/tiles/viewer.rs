@@ -703,7 +703,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         dirty = true;
                     } else {
                         let (hx, hy) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
-                        if let Some(i) = colony.settlers.iter().position(|st| (st.pos.0 as f32 + 0.5 - hx).abs() < 0.9 && (st.pos.1 as f32 + 0.5 - hy).abs() < 0.9) {
+                        if let Some(i) = colony.settler_at(hx, hy, 0.9, if lcam.surface_view { None } else { Some(lcam.z) }) {
                             inspect = vec![super::inspector::Subject::Settler(i)];
                             dirty = true;
                         } else if let Some(i) = colony.marks.iter().position(|m| (m.at.0 as f32 + 0.5 - hx).abs() < 0.9 && (m.at.1 as f32 + 0.5 - hy).abs() < 0.9) {
@@ -718,7 +718,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 if !choosing && !leave_asked {
                     let (mx, my) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
                     let at = (mx.max(0.0) as u16, my.max(0.0) as u16);
-                    let who = colony.settlers.iter().position(|st| st.alive && (st.pos.0 as f32 + 0.5 - mx).abs() < 0.9 && (st.pos.1 as f32 + 0.5 - my).abs() < 0.9);
+                    let who = colony.settler_at(mx, my, 0.9, if lcam.surface_view { None } else { Some(lcam.z) });
                     let said = if pressed(Key::H) { Some(colony.place_stone(crate::colony::StoneKind::Hall, at)) }
                         else if pressed(Key::J) { Some(colony.place_stone(crate::colony::StoneKind::Grove, at)) }
                         else if pressed(Key::K) { Some(colony.place_stone(crate::colony::StoneKind::Shrine, at)) }
@@ -829,8 +829,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 };
                 let view = if lcam.surface_view { "surface view".to_string() } else { format!("z {} ({:.0} m)", lcam.z, map.z_elevation(lcam.z)) };
                 // A settler under the mouse says what they are doing and why.
-                let who = colony.settlers.iter().filter(|s| s.alive)
-                    .find(|s| (s.pos.0 as f32 + 0.5 - hx).abs() < 0.8 && (s.pos.1 as f32 + 0.5 - hy).abs() < 0.8)
+                let who = colony.settler_at(hx, hy, 0.8, if lcam.surface_view { None } else { Some(lcam.z) }).map(|i| &colony.settlers[i])
                     .map(|s| format!("{}: {} - {} | ", s.name, s.job.verb(), s.why))
                     .or_else(|| colony.marks.iter().find(|m| (m.at.0 as f32 + 0.5 - hx).abs() < 0.8 && (m.at.1 as f32 + 0.5 - hy).abs() < 0.8)
                         .map(|m| format!("{} (click to read) | ", m.title)))
