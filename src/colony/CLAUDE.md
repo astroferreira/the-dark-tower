@@ -1529,3 +1529,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   days 59-214; seeds 3 and 58 raise them in a siege (58's lifts).
 - `PLANET_FORCE_BRAWL=1` lets any dislike at the tavern come to blows without the roll (the test:
   hot-tempered drinkers who dislike someone have grown rare in the camps).
+- Artifacts set in place (`delve.rs::place_artifacts`, `Colony::placed`; DF: an artifact makes a
+  room): at dawn each artifact not yet placed goes to the great hall (a throne to the lord's room
+  if there is one), on a free cell away from the table; a stolen one leaves its place. Each adds 10
+  to its room's worth; drawn on a gilded plinth with its name. Dev: Dreamlight (76, day 169),
+  Rumoor (5), Shimmerglade (11).

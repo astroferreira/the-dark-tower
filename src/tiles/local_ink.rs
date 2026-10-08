@@ -1418,6 +1418,14 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         }
         if t >= 9.0 { labels.push((x + t * 0.5, y - 2.0, pl.name.clone(), false)); }
     }
+    // Artifacts set in the rooms: a gilded plinth with the work on it, named.
+    for (title, k, c) in &colony.placed {
+        if colony.rooms.get(*k).map_or(true, |r| r.z != cam.z) { continue; }
+        let (x, y) = to_screen(c.0 as f32, c.1 as f32);
+        rect(&mut put, x + t * 0.15, y + t * 0.15, x + t * 0.85, y + t * 0.85, [200.0, 170.0, 90.0]);
+        rect(&mut put, x + t * 0.32, y + t * 0.32, x + t * 0.68, y + t * 0.68, [150.0, 110.0, 160.0]);
+        if t >= 9.0 { labels.push((x + t * 0.5, y - 2.0, title.clone(), false)); }
+    }
     // Settlers on this level, and faintly those a level off.
     let looks = settler_looks(colony, history);
     let scale = (t / 16.0).clamp(0.55, 1.4);

@@ -607,7 +607,8 @@ impl Colony {
     pub fn room_value(&self, r: &Room) -> u32 {
         let furniture = if r.furnished.is_some() { 2 + r.quality as u32 } else { 0 };
         let carved: u32 = self.engravings.iter().filter(|e| e.z == r.z && r.cells.contains(&e.from)).map(|e| 1 + e.quality as u32).sum();
-        furniture + carved
+        let artifacts = 10 * self.placed.iter().filter(|p| self.rooms.get(p.1).map_or(false, |x| x.z == r.z && x.cells == r.cells)).count() as u32;
+        furniture + carved + artifacts
     }
 
     /// The stair is sealed below the first cavern (DF's walled-off caverns): a hatch of dressed
@@ -715,6 +716,29 @@ impl Colony {
         }
         self.bridges_up = up;
         self.note(if up { "The chains run out and the bridges come up: the ditch rings the camp, and no way crosses it.".into() } else { "The bridges are let down over the ditch again.".into() });
+    }
+
+    /// Dawn: artifacts are set in the rooms below (DF: an artifact makes a room): a throne in the
+    /// lord's room, anything else in the great hall, each on its own cell; a stolen one leaves.
+    /// Each adds 10 to its room's worth (`room_value`).
+    pub(crate) fn place_artifacts(&mut self) {
+        // Gone with a thief: off its plinth.
+        let stolen: Vec<String> = self.stolen.iter().map(|s| s.0.clone()).collect();
+        self.placed.retain(|p| !stolen.iter().any(|t| t.contains(&p.0)));
+        let arts: Vec<(String, String)> = self.works.iter().filter(|w| super::Colony::is_artifact(w))
+            .filter_map(|w| w.called.clone().map(|t| (t, w.kind.clone()))).collect();
+        for (title, kind) in arts {
+            if self.placed.iter().any(|p| p.0 == title) || stolen.iter().any(|t| t.contains(&title)) { continue; }
+            let room = if kind == "throne" { self.lords_room().or_else(|| self.rooms.iter().position(|r| r.kind == RoomKind::GreatHall)) } else { self.rooms.iter().position(|r| r.kind == RoomKind::GreatHall) };
+            let Some(k) = room else { continue };
+            let r = &self.rooms[k];
+            // A free cell away from the table and the bed.
+            let Some(&cell) = r.cells.iter().rev().find(|&&c| Some(c) != r.bed && !self.placed.iter().any(|p| p.2 == c)
+                && (r.kind != RoomKind::GreatHall || r.bed.map_or(true, |b| (b.1 as i32 - c.1 as i32).abs() >= 2))) else { continue };
+            let place = match r.kind { RoomKind::GreatHall => "the great hall".to_string(), _ => "the lord's room".to_string() };
+            self.placed.push((title.clone(), k, cell));
+            self.note(format!("They set {}, the {}, in {}, where all can see it.", title, kind, place));
+        }
     }
 
     /// Picks to dig with (DF's miners each need one): two brought, two more made at the workshop,
