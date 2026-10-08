@@ -281,9 +281,11 @@ impl Colony {
                 self.dig_finished(kind);
                 self.dig_plan = None;
                 let why = self.projects[k].why.clone();
-                self.note(format!("{} breaks through the last of {}: it stands dug, under rock.", name, kind.word()));
+                // (A ditch is dug in the open, not under rock.)
+                if kind == super::projects::ProjectKind::Moat { self.note(format!("{} throws up the last spadeful of {}: it stands dug, two levels deep.", name, kind.word())); }
+                else { self.note(format!("{} breaks through the last of {}: it stands dug, under rock.", name, kind.word())); }
                 let at = p;
-                self.moment(format!("{} dug", super::arc::capital_word(kind.word())), format!("{} finishes {} in the rock.", name, kind.word()), format!("because {}", why), at);
+                self.moment(format!("{} dug", super::arc::capital_word(kind.word())), format!("{} finishes {}{}.", name, kind.word(), if kind == super::projects::ProjectKind::Moat { "" } else { " in the rock" }), format!("because {}", why), at);
             }
         }
         self.once("dig", format!("{} breaks the first ground for the dig at {},{}.", name, p.0, p.1));

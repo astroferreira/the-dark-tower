@@ -346,7 +346,7 @@ impl Colony {
         if kind == ProjectKind::Woodpile && !self.timber_near() { return; }
         let stuff = if material == ItemKind::Stone { "stone" } else { "timber" };
         self.plan_line = format!("Next: {}. {}.", kind.word().trim_start_matches("the "), super::arc::capital_word(&why));
-        if is_dig(kind) || matches!(kind, ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft) { self.note(format!("They set to work on {}: {}.", kind.word(), why)); }
+        if is_dig(kind) || matches!(kind, ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::Hatch) { self.note(format!("They set to work on {}: {}.", kind.word(), why)); }
         else { self.note(format!("They set to work on {} of {}: {}.", kind.word(), stuff, why)); }
         if is_dig(kind) {
             match self.plan_dig(kind) { Some(plan) => self.begin_dig(plan), None => return }
