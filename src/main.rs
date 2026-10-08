@@ -143,6 +143,10 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     arms_sheet: Option<String>,
 
+    /// Draw every sprite (creatures, buildings, things, marks) on one sheet to FILE and exit
+    #[arg(long, value_name = "FILE")]
+    sprite_sheet: Option<String>,
+
     /// Pin a note to the map ("X,Y:text"; repeatable). Notes are kept beside the world
     /// (notes_<seed>.json, or <world file>.notes.json) and shown on the map and in the journal
     #[arg(long, value_name = "X,Y:TEXT")]
@@ -714,6 +718,13 @@ const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 fn main() {
     let mut args = parse_args();
     if let Some(px) = args.tiles_zoom { tiles::viewer::set_start_zoom(px); }
+    // The sprite sheet needs no world.
+    if let Some(path) = &args.sprite_sheet {
+        match tiles::sprite_sheet::save(path) {
+            Ok(n) => { println!("{} sprites drawn to {}", n, path); std::process::exit(0); }
+            Err(e) => { eprintln!("--sprite-sheet: {e}"); std::process::exit(1); }
+        }
+    }
     // A colony to open at a given day: its code, the patron's acts and the day.
     if let (Some(_), Some(day)) = (&args.code, args.day) {
         let script: Vec<String> = args.interventions.as_ref().and_then(|f| std::fs::read_to_string(f).ok())

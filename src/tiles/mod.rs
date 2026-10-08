@@ -2,9 +2,13 @@
 //! into tiles, pure software rendering, and a minifb window around it.
 
 pub mod atlas;
+pub mod beasts;
+pub mod ink;
+pub mod sprite_sheet;
 mod colony_hud;
 mod colony_ui;
 pub mod classify;
+pub mod folk;
 pub mod fonts;
 pub mod glyphs;
 pub mod heraldry;

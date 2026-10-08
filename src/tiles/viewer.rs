@@ -2684,7 +2684,34 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
             let path = format!("{prefix}_raidnight.png");
             save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
             written.push(path);
+            // Close up as they reach the camp (the attackers as figures or as their beast).
+            let near = |c: &crate::colony::Colony| c.creatures.iter().filter(|k| matches!(k.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider))
+                .map(|k| (k.pos.0 as i32 - c.camp.0 as i32).abs().max((k.pos.1 as i32 - c.camp.1 as i32).abs())).min();
+            let mut guard = 0;
+            while near(&c2).map_or(false, |d| d > 9) && guard < 4000 { c2.tick(); guard += 1; }
+            if let Some(a) = c2.creatures.iter().filter(|c| matches!(c.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider)).min_by_key(|k| (k.pos.0 as i32 - c2.camp.0 as i32).abs().max((k.pos.1 as i32 - c2.camp.1 as i32).abs())).map(|c| c.pos) {
+                let (w, h) = (1024usize, 640usize);
+                let cam = LocalCamera { cx: (a.0 as f32 + c2.camp.0 as f32) / 2.0, cy: (a.1 as f32 + c2.camp.1 as f32) / 2.0, tile_px: 20.0, z: 0, surface_view: true };
+                let mut buf = vec![0u32; w * h];
+                render_local(&c2.map, atlas, &cam, &mut buf, w, h);
+                draw_colony(&c2, &cam, &mut buf, w, h, history);
+                let path = format!("{prefix}_raidclose.png");
+                save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+                written.push(path);
+            }
         }
+    }
+    // The wild: the game nearest the camp, close up.
+    if let Some(g) = colony.creatures.iter().filter(|c| c.z.is_none() && !matches!(c.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider))
+        .min_by_key(|k| (k.pos.0 as i32 - colony.camp.0 as i32).abs() + (k.pos.1 as i32 - colony.camp.1 as i32).abs()).map(|c| c.pos) {
+        let (w, h) = (1024usize, 640usize);
+        let cam = LocalCamera { cx: g.0 as f32, cy: g.1 as f32, tile_px: 24.0, z: 0, surface_view: true };
+        let mut buf = vec![0u32; w * h];
+        render_local(&colony.map, atlas, &cam, &mut buf, w, h);
+        draw_colony(&colony, &cam, &mut buf, w, h, history);
+        let path = format!("{prefix}_wild.png");
+        save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        written.push(path);
     }
     // The camp at noon and at midnight of the next day (after everything above is reckoned).
     let mut lum = Vec::new();

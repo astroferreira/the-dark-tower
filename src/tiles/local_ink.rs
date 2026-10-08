@@ -1246,7 +1246,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     // on their level, `draw_delve`).
     for c in colony.creatures.iter().filter(|c| !colony.creature_below(c)) {
         let (x, y) = to_screen(c.pos.0 as f32 + 0.5, c.pos.1 as f32 + 0.5);
-        draw_creature(&mut put, c, x, y, t, scale, 1.0);
+        draw_creature(&mut put, colony, history, c, x, y, scale, 1.0);
     }
     // Labels that must show come first (the attackers' band, the patron's names, a roof's count,
     // the delve's); settlers' names then step aside from them and from each other.
@@ -1791,7 +1791,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         let off = (z - cam.z).abs();
         if off > 1 { continue; }
         let (x, y) = to_screen(c.pos.0 as f32 + 0.5, c.pos.1 as f32 + 0.5);
-        draw_creature(&mut put, c, x, y, t, scale, if off == 0 { 1.0 } else { 0.3 });
+        draw_creature(&mut put, colony, history, c, x, y, scale, if off == 0 { 1.0 } else { 0.3 });
         if off == 0 && t >= 9.0 && matches!(c.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::CaveHunter) {
             labels.push((x, y - (t * 0.6 * c.size).max(8.0) - 4.0, c.name.clone(), false));
         }
@@ -1854,90 +1854,74 @@ fn disc_a(put: &mut dyn FnMut(i64, i64, Rgb, f32), a: f32, cx: f32, cy: f32, r: 
     }
 }
 
-/// One creature at screen `(x, y)` (cell size `t`), at opacity `a` (faint a level off).
-fn draw_creature(put: &mut dyn FnMut(i64, i64, Rgb, f32), c: &crate::colony::creatures::Creature, x: f32, y: f32, t: f32, scale: f32, a: f32) {
-    let mut put = |px: i64, py: i64, col: Rgb, al: f32| put(px, py, col, al * a);
-    let put = &mut put;
+/// The sprite of a creature (`beasts.rs`): a beast of the threat or of the deep as its monster
+/// is described, game, herds, pets and cave life by their names, the dead and the cursed.
+pub(crate) fn creature_look(colony: &crate::colony::Colony, c: &crate::colony::creatures::Creature) -> super::beasts::Look {
+    use crate::colony::creatures::CreatureKind;
+    if c.kind == CreatureKind::Beast {
+        let monster = colony.arc.as_ref().filter(|a| a.threat.name == c.name).and_then(|a| a.threat.monster.as_ref())
+            .or_else(|| colony.map.caverns.iter().filter_map(|cv| cv.beast.as_ref()).find(|(n, _)| *n == c.name).map(|(_, m)| m))
+            .or_else(|| colony.expedition.as_ref().and_then(|e| e.monster.as_ref()));
+        if let Some(m) = monster { return super::beasts::of_monster(m); }
+        let mut l = super::beasts::of_name(&c.name);
+        l.len = (1.2 + c.size * 0.55).clamp(1.2, 4.0);
+        if l.glow.is_none() { l.glow = Some([230.0, 70.0, 40.0]); }
+        return l;
+    }
+    let mut l = super::beasts::of_name(&c.name);
+    if c.kind == CreatureKind::Wolf && !c.name.contains("risen") && !c.name.contains("dead") && !c.name.contains(crate::colony::curse::MOON) && !c.name.contains(crate::colony::curse::CHANGED) {
+        l = super::beasts::of_name("wolf");
+    }
+    l
+}
+
+/// Which way a creature faces (towards its next step; else as it last faced, by its id) and
+/// whether it is mid-stride.
+fn creature_motion(c: &crate::colony::creatures::Creature) -> (bool, super::beasts::Pose) {
+    let next = c.path.first().copied().or_else(|| c.path3.first().map(|p| (p.0, p.1)));
+    let left = match next { Some(n) if n.0 != c.pos.0 => n.0 < c.pos.0, _ => (c.id + c.home.0 as u32) % 2 == 0 };
+    let pose = if next.is_some() { super::beasts::Pose::Walk((c.pos.0 as u32 + c.pos.1 as u32) % 2 == 0) } else { super::beasts::Pose::Stand };
+    (left, pose)
+}
+
+/// One creature at screen `(x, y)` (the middle of its cell; cell size `t`), at opacity `a` (faint
+/// a level off): attackers as armed figures of their band (`folk.rs`), traders with a pack mule,
+/// everything else as its beast (`beasts.rs`), facing the way it walks.
+fn draw_creature(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::Colony, history: Option<&crate::history::world_state::WorldHistory>, c: &crate::colony::creatures::Creature, x: f32, y: f32, scale: f32, a: f32) {
+    use crate::colony::creatures::CreatureKind;
+    let (left, pose) = creature_motion(c);
+    let left = if c.leaving { !left || c.path.is_empty() } else { left };
     match c.kind {
-        crate::colony::creatures::CreatureKind::Beast => {
-            // A dark bulk at its size, inked, with two red eyes.
-            let (rx, ry) = ((t * 0.9 * c.size).max(12.0), (t * 0.6 * c.size).max(8.0));
-            let (ix, iy) = (rx.ceil() as i64 + 1, ry.ceil() as i64 + 1);
-            for dy in -iy..=iy { for dx in -ix..=ix {
-                let e = (dx as f32 / rx).powi(2) + (dy as f32 / ry).powi(2);
-                if e <= 1.0 { put(x as i64 + dx, y as i64 + dy, if e > 0.8 { INK } else { [52.0, 40.0, 40.0] }, 0.97); }
-            } }
-            for ex in [-0.35f32, 0.35] { put((x + rx * ex) as i64, (y - ry * 0.3) as i64, [210.0, 40.0, 30.0], 1.0); put((x + rx * ex) as i64 + 1, (y - ry * 0.3) as i64, [210.0, 40.0, 30.0], 1.0); }
+        CreatureKind::Raider | CreatureKind::Besieger => {
+            let threat = colony.arc.as_ref().map(|a| &a.threat).filter(|t| t.name == c.name);
+            let f = super::folk::raider(threat, &c.name, c.id, history);
+            // Striking when a settler is within reach.
+            let near = colony.settlers.iter().any(|s| s.alive && (s.pos.0 as i32 - c.pos.0 as i32).abs() <= 1 && (s.pos.1 as i32 - c.pos.1 as i32).abs() <= 1);
+            let strike = near && (colony.clock.tick / 3 + c.id as u64) % 2 == 0;
+            super::folk::draw(put, &f, x, y, scale, left, strike, a);
         }
-        crate::colony::creatures::CreatureKind::Raider => {
-            let r = (5.0 * scale).max(3.0);
-            disc_a(put, 1.0, x, y + r * 0.6, r, [110.0, 32.0, 30.0], INK);
-            disc_a(put, 1.0, x, y - r * 0.9, r * 0.6, [150.0, 150.0, 150.0], INK);
+        CreatureKind::Trader => {
+            // A pack mule a step behind the trader, laden.
+            let mule = super::beasts::of_name("mule");
+            let back = if left { 1.0 } else { -1.0 } * 13.0 * scale;
+            let mpx = super::beasts::px_for(&mule, scale) * 0.85;
+            super::beasts::draw(put, &mule, x + back, y + 7.0 * scale, mpx, left, pose, a);
+            let mut pen = super::ink::Pen::new(put, x + back, y + 7.0 * scale - mpx * 0.42, mpx).facing_left(left).faint(a);
+            pen.rect(-0.38, -0.08, -0.02, 0.12, [196.0, 160.0, 96.0]);
+            pen.rect(-0.02, -0.12, 0.26, 0.1, [170.0, 130.0, 80.0]);
+            let f = super::folk::trader(&c.name, c.id);
+            super::folk::draw(put, &f, x, y, scale, left, false, a);
         }
-        crate::colony::creatures::CreatureKind::Besieger => {
-            // A raider at the besiegers' fires: the figure, and the fire's glow at its feet.
-            let r = (5.0 * scale).max(3.0);
-            disc_a(put, 1.0, x + r * 1.2, y + r * 1.3, r * 0.55, [226.0, 128.0, 40.0], [150.0, 60.0, 20.0]);
-            disc_a(put, 1.0, x, y + r * 0.6, r, [110.0, 32.0, 30.0], INK);
-            disc_a(put, 1.0, x, y - r * 0.9, r * 0.6, [150.0, 150.0, 150.0], INK);
-        }
-        crate::colony::creatures::CreatureKind::Game => {
-            // A grazer: a small brown body with a head.
-            let (rx, ry) = ((t * 0.4).max(4.0), (t * 0.22).max(2.5));
-            let (ix, iy) = (rx.ceil() as i64 + 1, ry.ceil() as i64 + 1);
-            for dy in -iy..=iy { for dx in -ix..=ix {
-                let e = (dx as f32 / rx).powi(2) + (dy as f32 / ry).powi(2);
-                if e <= 1.0 { put(x as i64 + dx, y as i64 + dy, if e > 0.7 { INK } else { [150.0, 112.0, 72.0] }, 0.95); }
-            } }
-            disc_a(put, 1.0, x + rx, y - ry, (t * 0.12).max(1.6), [150.0, 112.0, 72.0], INK);
-        }
-        crate::colony::creatures::CreatureKind::Pet => {
-            // A kept animal: smaller and paler than the herd, with a red collar.
-            let (rx, ry) = ((t * 0.32).max(3.5), (t * 0.18).max(2.2));
-            let (ix, iy) = (rx.ceil() as i64 + 1, ry.ceil() as i64 + 1);
-            for dy in -iy..=iy { for dx in -ix..=ix {
-                let e = (dx as f32 / rx).powi(2) + (dy as f32 / ry).powi(2);
-                if e <= 1.0 { put(x as i64 + dx, y as i64 + dy, if e > 0.7 { INK } else { [190.0, 150.0, 100.0] }, 0.95); }
-            } }
-            disc_a(put, 1.0, x + rx, y - ry, (t * 0.11).max(1.5), [190.0, 150.0, 100.0], INK);
-            put((x + rx * 0.7) as i64, (y - ry * 0.6) as i64, [180.0, 40.0, 30.0], 1.0);
-            put((x + rx * 0.7) as i64 + 1, (y - ry * 0.6) as i64, [180.0, 40.0, 30.0], 1.0);
-        }
-        crate::colony::creatures::CreatureKind::Trader => {
-            // A trader with a pack: a figure in brown with an ochre bundle.
-            let r = (5.0 * scale).max(3.0);
-            disc_a(put, 1.0, x, y + r * 0.6, r, [128.0, 96.0, 60.0], INK);
-            disc_a(put, 1.0, x + r * 0.9, y + r * 0.2, r * 0.6, [196.0, 160.0, 80.0], INK);
-            disc_a(put, 1.0, x, y - r * 0.9, r * 0.6, [214.0, 180.0, 150.0], INK);
-        }
-        crate::colony::creatures::CreatureKind::Wolf => {
-            let (rx, ry) = ((t * 0.45).max(5.0), (t * 0.22).max(3.0));
-            let (ix, iy) = (rx.ceil() as i64 + 1, ry.ceil() as i64 + 1);
-            for dy in -iy..=iy { for dx in -ix..=ix {
-                let e = (dx as f32 / rx).powi(2) + (dy as f32 / ry).powi(2);
-                if e <= 1.0 { put(x as i64 + dx, y as i64 + dy, if e > 0.75 { INK } else { [120.0, 118.0, 112.0] }, 0.95); }
-            } }
-        }
-        crate::colony::creatures::CreatureKind::CaveHunter => {
-            // A pale cave hunter: a bone-white body low on eight inked legs.
-            let (rx, ry) = ((t * 0.32).max(4.0), (t * 0.24).max(3.0));
-            for k in 0..8 {
-                let ang = (k as f32 + 0.5) * std::f32::consts::PI / 4.0;
-                let (ex, ey) = (ang.cos() * rx * 1.9, ang.sin() * ry * 2.1);
-                let n = (rx * 2.0) as i64 + 2;
-                for s in 0..=n { let f = s as f32 / n as f32; put((x + ex * f) as i64, (y + ey * f) as i64, INK, 0.9); }
+        _ => {
+            let look = creature_look(colony, c);
+            let px = super::beasts::px_for(&look, scale);
+            let pose = if c.kind == CreatureKind::Game && pose == super::beasts::Pose::Stand && (colony.clock.tick / 240 + c.id as u64) % 3 == 0 { super::beasts::Pose::Graze } else { pose };
+            super::beasts::draw(put, &look, x, y + 7.0 * scale, px, left, pose, a);
+            if c.kind == CreatureKind::Pet {
+                // A kept animal: a red collar knot at the neck.
+                let mut pen = super::ink::Pen::new(put, x, y + 7.0 * scale - px * 0.4, px).facing_left(left).faint(a);
+                pen.ellipse_f(0.32, -0.08, 0.05, 0.05, [180.0, 40.0, 30.0], super::ink::Finish::Plain);
             }
-            let (ix, iy) = (rx.ceil() as i64 + 1, ry.ceil() as i64 + 1);
-            for dy in -iy..=iy { for dx in -ix..=ix {
-                let e = (dx as f32 / rx).powi(2) + (dy as f32 / ry).powi(2);
-                if e <= 1.0 { put(x as i64 + dx, y as i64 + dy, if e > 0.7 { INK } else { [222.0, 216.0, 200.0] }, 0.97); }
-            } }
-            put(x as i64 - 1, (y - ry * 0.3) as i64, [190.0, 40.0, 30.0], 1.0);
-            put(x as i64 + 1, (y - ry * 0.3) as i64, [190.0, 40.0, 30.0], 1.0);
-        }
-        crate::colony::creatures::CreatureKind::CaveLife => {
-            // Harmless cavern life: a small pale grey mote.
-            disc_a(put, 0.9, x, y, (t * 0.16).max(2.2), [176.0, 172.0, 164.0], INK);
         }
     }
 }
