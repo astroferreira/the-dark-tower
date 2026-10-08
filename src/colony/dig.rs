@@ -258,9 +258,10 @@ impl Colony {
             if first { self.moment(format!("{} in the rock", super::arc::capital_word(g)), line, "because the rock they dug holds such stones".into(), p); }
             for j in 0..self.settlers.len() { if self.settlers[j].alive && self.settlers[j].persona.likes.material == g { self.feel(j, super::mind::Feel::LikedWork { material: g.to_string() }); } }
         }
-        // (Debug: PLANET_FORCE_ORE=1 makes the first eight loads of rock dug an iron seam, for the
-        // industries' test: no dev seed strikes ore.)
-        let m = if matches!(m, Material::Rock(_)) && self.ore_found < 8 && std::env::var("PLANET_FORCE_ORE").is_ok() { Material::Ore(crate::history::civilizations::economy::ResourceType::Iron) } else { m };
+        // (Debug: PLANET_FORCE_ORE=1 makes the first eight loads of rock dug an iron seam, =N the
+        // first N, for the industries' and armour's tests: no dev seed strikes ore.)
+        let forced = std::env::var("PLANET_FORCE_ORE").ok().map(|v| v.parse::<u32>().ok().filter(|&n| n > 1).unwrap_or(8));
+        let m = if matches!(m, Material::Rock(_)) && forced.map_or(false, |n| self.ore_found < n) { Material::Ore(crate::history::civilizations::economy::ResourceType::Iron) } else { m };
         if let Material::Ore(r) = m {
             self.ore_found += 1;
             let kind = format!("{:?}", r).to_lowercase();

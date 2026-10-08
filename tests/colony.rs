@@ -1345,10 +1345,12 @@ fn the_world_remembers_what_the_camp_did() {
 
 /// Armour (Dwarf Fortress's layers of material): once the militia bears spears the workshop
 /// makes armour of the best to hand (adamantine from the deep shaft, iron, copper, leather from
-/// the hunt), and in the clash it turns blows.
+/// the hunt), and in the clash it turns blows. (Leather and hide only lighten an edge; mail is
+/// forged from bars, so ore is forced: no dev seed strikes any. Seeds 5 and 3 turn blows on days
+/// 66 and 93.)
 #[test]
 fn armour_turns_blows() {
-    let logs: Vec<String> = ["23", "76"].iter().map(|s| run_log(s, "230", &[])).collect();
+    let logs: Vec<String> = ["5", "3"].iter().map(|s| run_log(s, "100", &[("PLANET_FORCE_ORE", "1")])).collect();
     let any = |n: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(n)));
     assert!(any("the first armour in the camp"), "no armour made");
     assert!(any("does not get through") || any("took the worst of it") || any("turns it.") || any("is turned by"), "no blow turned");
@@ -1801,8 +1803,9 @@ fn ore_becomes_bars_tools_and_iron_spears() {
     let spear = at("forges an iron-headed spear at the forge");
     assert!(seam < smelter && smelter < charcoal && charcoal < bars, "ore, smelter, fuel, bars out of order");
     assert!(forge < tools && bars < tools && tools < spear, "the forge's tools and spear came before its bars");
-    // (Seed 76's armed camp forges every bar it smelts; seed 58 has bars to spare by day 105.)
-    let spare = run_log("58", "130", &[("PLANET_FORCE_ORE", "1")]);
+    // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 76 sells six on
+    // day 45.)
+    let spare = run_log("76", "60", &[("PLANET_FORCE_ORE", "30")]);
     assert!(spare.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron")), "no bars sold");
     assert!(text.lines().any(|l| l.contains("dresses the first blocks of")), "no blocks at the mason's");
 }
