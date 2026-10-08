@@ -1077,7 +1077,8 @@ pub fn render_cross_section(map: &LocalMap, row: usize, px: usize) -> image::Rgb
                 Material::Magma => [220, 80, 20],
             };
             let t = material_tint(c.material);
-            let f = if c.shape == Shape::Wall { 1.0 } else { 1.15 };
+            // A stair: its steps as darker bars across the cell.
+            let f = if c.shape == Shape::Wall { 1.0 } else if c.shape == Shape::Stair && (y as usize % px) * 2 < px { 0.7 } else { 1.15 };
             let rock = matches!(c.material, Material::Rock(_));
             let (r, g, b) = if rock {
                 ((base[0] as f32 * t[0] * f) as u8, (base[1] as f32 * t[1] * f) as u8, (base[2] as f32 * t[2] * f) as u8)

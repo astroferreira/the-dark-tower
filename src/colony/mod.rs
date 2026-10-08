@@ -2646,7 +2646,7 @@ impl Colony {
             }
         }
         let (cx, cy) = (at.0 as f32 + hw as f32 / 2.0, at.1 as f32 + hh as f32 / 2.0);
-        self.map.houses.push(RoofPlan { cx, cy, axis: (1.0, 0.0), half_width: hh as f32 / 2.0, stone });
+        self.map.houses.push(RoofPlan { cx, cy, axis: (1.0, 0.0), half_width: hh as f32 / 2.0, stone, flat: false });
         let id = self.map.houses.len() as u32;
         for (x, y) in cells { self.map.roofs[y * n + x] = id; }
         // Anyone standing in a wall steps out of it.
