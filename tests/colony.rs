@@ -378,6 +378,31 @@ fn three_sites_to_choose_from() {
     assert!(watered >= 12, "only {watered} of 18 offered sites have water at hand (was 1 before embarks went beside the river; 14 after)");
 }
 
+/// Coarse data drives fine data (DF): a tile the world map gives a river embarks on that river's
+/// bank, its channel as wide as the world's discharge makes it. Dev tiles round 47,8 hold four
+/// river tiles; none of their embarks held the river before (the tile's centre lies kilometres
+/// from it).
+#[test]
+fn world_rivers_run_through_their_embarks() {
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        .args(["--dev", "--river-survey", "--tiles-center", "47,8"])
+        .env("PLANET_SURVEY_RADIUS", "2")
+        .output()
+        .expect("run planet_generator");
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let line = text.lines().find(|l| l.starts_with("River survey:")).unwrap_or_else(|| panic!("no survey:\n{text}"));
+    let nums: Vec<usize> = line.split(|c: char| !c.is_ascii_digit()).filter_map(|n| n.parse().ok()).collect();
+    assert!(nums.len() >= 2 && nums[1] >= 3 && nums[0] == nums[1], "world-river tiles whose embark lacks the river: {line}");
+    // The embark's channel against the world's width: within a factor of two (it may lie below
+    // a confluence inside the tile).
+    for l in text.lines().filter(|l| l.contains("world RIVER")) {
+        let n: Vec<f32> = l.split(|c: char| !c.is_ascii_digit() && c != '.').filter_map(|n| n.parse().ok()).collect();
+        // Tile x, y, world width, region widest, embark river, water columns.
+        let (world, embark) = (n[2], n[4]);
+        assert!(embark >= 0.5 * world && embark <= 2.0 * world, "the embark's river is not the world's: {l}");
+    }
+}
+
 /// Skill makes roles: the dev colony names three or more of its settlers for a trade, the
 /// builder lays at least half the loads once named, and when the builder dies someone takes up
 /// the hammer and the work is slower.
@@ -1751,12 +1776,13 @@ fn the_camp_digs_a_delve() {
 /// to fish above (forced here: the dev camp has both nearby).
 #[test]
 fn fungus_trees_are_felled_in_the_cavern() {
-    let text = run_log("76", "45", &[("PLANET_FORCE_CAVERN", "1")]);
+    let text = run_log("76", "60", &[("PLANET_FORCE_CAVERN", "1")]);
     assert!(text.lines().any(|l| l.contains("breaks through into darkness")), "no cavern breached");
     assert!(text.lines().any(|l| l.contains("fells a fungus tree in ") && l.contains("haul up the stair")), "no fungus tree felled");
-    // (Seed 76 eats well and never fishes; seed 3 does below from day 24.)
-    let fished = run_log("3", "60", &[("PLANET_FORCE_CAVERN", "1")]);
-    assert!(fished.lines().any(|l| l.contains("the first blind white fish")), "no fish from the cavern's water");
+    // (Seed 76 fishes below from day 46 since the caverns' pools stand under each column's band
+    // rather than at the embark's mean floor; seed 3, which had fished from day 24, no longer
+    // does in 120 days though its cavern holds 218 fishing places by the stair.)
+    assert!(text.lines().any(|l| l.contains("the first blind white fish")), "no fish from the cavern's water");
 }
 
 /// Tombs under the rock (Dwarf Fortress's catacombs): once two of the camp lie in graves at its

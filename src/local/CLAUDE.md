@@ -164,8 +164,22 @@ the zoomed region around a point.
   layer with 300+ floor cells, seeded by the 3x3 block of world tiles (neighbours share it,
   dev: "Gru" under 45,12 and 46,13), named in the Harsh style. Dev coverage: first layer 20-26%
   of the embark, 11-28 levels down; deeper layers 30-60%. Embark generation ~0.06 s.
-- Because the noise is keyed on absolute position and the reference elevation comes from the
-  zoomed region, layers meet across neighbouring embarks of one zoom region.
+- Layers meet across neighbouring embarks (2026-10-08): `caverns::plan` works out every column's
+  open run in absolute levels before the map is laid out, from place alone: the rock's openness
+  and the water table come per column from the world tiles (`caverns::tile_fields`, blended over
+  the last 2 km before a tile border by `local::tile_weights`; a tile-centre embark takes its
+  own tile's values exactly); the band stops `BOTTOM_M` (100 m) under the smooth surface, and
+  the map is made deeper (`LocalMap::deepened` levels) when a run would reach its floor (ore
+  seams, gems and the magma sea count levels from the usual bottom, so they don't move); pools
+  stand `POOL_M` under each column's band centre (was the embark's mean floor); a layer under
+  40 floor cells is still carved, only not listed. Measured by `neighbouring_embarks_line_up`
+  (two embarks overlapping by half, test world): runs agreed in 89% of columns inside a tile and
+  7-61% across a border where the rock changes (33% overall), pools 94.5%; now 100% / 100%.
+  Dev 45,12 caverns keep their floors (7424 / 12637 / 23447 cells, pools 469 / 202 / 88, were
+  332 / 657 / 0); 50,20 is 7 levels deeper and its third layer is no longer clipped (3330 ->
+  8548 cells). Known: a cavern floor at level 0 trapped settlers whose `z` is still 0 before
+  their first step (floors are kept at level 1+). Mountain terraces blend over tile borders the
+  same way (`mountain_at`), so hillsides meet too.
 - `LocalMap::cavern_at(x, y, z)`; `places` records the first cavern only where it lies within 13
   levels (`PlaceKind::Cavern`, no carving); `host_rock` now reads the top 30 levels (the deeper map
   had made deep granite outvote the sandstone a cave is cut in). Both section renderers draw
@@ -190,6 +204,26 @@ the zoomed region around a point.
   where the tile's water table is 0.45+, levels 4-8 under the median ground), and the caverns
   ("3 cavern layers (the first 16 levels down); the old songs say something sleeps in the deep",
   the beast unnamed). Gems: `local::gem_in` (one rock cell in sixty, by world place and rock).
+
+- The world's river runs through its tile's embark (2026-10-08, DF ch. 11 "the world river
+  becomes the local channel"): a world tile is 417 km on the dev world, a region cell 3.26 km,
+  an embark 384 m, so the tile-centre embark (`colony_site` with no cell) missed the river the
+  world map draws on its tile. Now, where `local::world_river_width` > 0 (the world map's river
+  on the tile; width 0.8 sqrt(world discharge km2)), it embarks on the bank
+  (`viewer::world_river_bank`: the region channel at least half the world's width nearest the
+  tile centre, then `bank_near`). The river is where the region puts it, so neighbouring embarks
+  line up. `bank_near` now also skips lakes and wants land behind the point (5 of 8 points 150 m
+  out dry), so a great river's bank is not an island. Channel width counts each cell's true
+  area (`ZoomRegion::lat_cos`; region `river_width_m` too), depth `0.3 w^0.6` up to 16 m (was
+  8), and the bare sand strip along a river is at most 12 m (was 0.6 x half-width: hundreds of
+  metres of barren sand by a great river). `--river-survey` (`PLANET_SURVEY_RADIUS`, default 6)
+  around the dev embark: 5 of 5 world-river tiles' embarks carry a river (were 0 of 5), widths
+  611-972 m against the world's 606-659 m (before the latitude fix 331-1312 m); the 92 other
+  land tiles unchanged (2 hold a river), so dev 45,12 (no world river) is the same place.
+  Tested in `world_rivers_run_through_their_embarks`. Not done: walking embarks (an explicit
+  cell) are not moved onto the river; "borders" can't be honoured at this scale (a neighbouring
+  tile's river is 200+ km away); small streams (the creek threshold is a share of a tile, so on
+  the dev world every drawn channel is 25 m+ wide and most embarks still hold no water).
 
 ## The magma sea (2026-10-08, DF)
 - The bottom three levels of every embark (1-3, `LocalMap::magma_top`) are a sea of magma

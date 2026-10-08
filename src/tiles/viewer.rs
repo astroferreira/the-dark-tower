@@ -295,8 +295,13 @@ fn code_file(code: &str) -> String { code.chars().map(|c| if c.is_ascii_alphanum
 /// The playable area and seed for a colony at a world tile's centre, or at a global cell.
 fn colony_site(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), cell: Option<(u64, u64)>) -> (crate::local::LocalMap, u64, (f64, f64)) {
     let s = cells_per_tile() as f64;
-    let player = match cell { Some((x, y)) => (x as f64 / CELL_FRAC, y as f64 / CELL_FRAC), None => (tile.0 as f64 * s + s / 2.0, tile.1 as f64 * s + s / 2.0) };
     let zs = load_region(world, history, tile, world.seed());
+    // With no cell given: on the bank of the world's river where the world map has one on the
+    // tile (DF: the world's river runs through the embark it crosses), else the tile's centre.
+    let player = match cell {
+        Some((x, y)) => (x as f64 / CELL_FRAC, y as f64 / CELL_FRAC),
+        None => world_river_bank(world, &zs, tile).unwrap_or((tile.0 as f64 * s + s / 2.0, tile.1 as f64 * s + s / 2.0)),
+    };
     let map = crate::local::generate_local(world, &zs.region, zs.lore.as_ref(), player.0 - zs.origin.0 as f64, player.1 - zs.origin.1 as f64);
     let seed = match cell { Some((x, y)) => world.seed() ^ (x << 20) ^ y, None => world.seed() ^ ((tile.0 as u64) << 20) ^ tile.1 as u64 };
     (map, seed, player)
@@ -325,6 +330,35 @@ pub fn river_bank(world: &WorldData, history: Option<&WorldHistory>, tile: (usiz
     // A point on its bank, found the way the embark draws the channel (it meanders).
     let (px, py) = crate::local::bank_near(r, x as f64 + 0.5, y as f64 + 0.5)?;
     Some((((px + zs.origin.0 as f64) * CELL_FRAC).max(0.0) as u64, ((py + zs.origin.1 as f64) * CELL_FRAC).max(0.0) as u64))
+}
+
+/// Where to embark on a tile the world map gives a river (`local::world_river_width`): the
+/// region's channel that carries the world's river through the tile (a channel at least half the
+/// world river's width, the one nearest the tile's centre; else the tile's widest), and a point on
+/// its bank (`local::bank_near`), in global region cells (the colony's code names only the tile:
+/// this is where the tile's embark always lies). None where the world map has no river there.
+fn world_river_bank(world: &WorldData, zs: &ZoomState, tile: (usize, usize)) -> Option<(f64, f64)> {
+    let world_w = crate::local::world_river_width(world, tile.0, tile.1);
+    if world_w <= 0.0 { return None; }
+    let s = cells_per_tile();
+    let r = &zs.region;
+    let (w, h) = (r.width as i64, r.height as i64);
+    let (x0, y0) = (tile.0 as i64 * s - zs.origin.0, tile.1 as i64 * s - zs.origin.1);
+    let (cx, cy) = (x0 as f64 + s as f64 / 2.0, y0 as f64 + s as f64 / 2.0);
+    let mut chans: Vec<(f32, f64, i64, i64)> = Vec::new();
+    for y in y0.max(1)..(y0 + s).min(h - 1) {
+        for x in x0.max(1)..(x0 + s).min(w - 1) {
+            let cw = crate::local::channel_width(r, (y * w + x) as usize);
+            if cw > 0.0 { chans.push((cw, (x as f64 + 0.5 - cx).hypot(y as f64 + 0.5 - cy), x, y)); }
+        }
+    }
+    let widest = chans.iter().map(|c| c.0).fold(0.0, f32::max);
+    let floor = (0.5 * world_w).min(widest);
+    // Nearest the centre first; a bank may not be found by every cell (a lake or the sea beside it).
+    chans.retain(|c| c.0 >= floor);
+    chans.sort_by(|a, b| a.1.total_cmp(&b.1));
+    chans.iter().take(24).find_map(|&(_, _, x, y)| crate::local::bank_near(r, x as f64 + 0.5, y as f64 + 0.5))
+        .map(|(px, py)| (px + zs.origin.0 as f64, py + zs.origin.1 as f64))
 }
 
 /// Write the saga for each milestone the colony has reached and not yet written: numbered
@@ -2140,6 +2174,40 @@ pub fn embark_survey(world: &WorldData, history: Option<&WorldHistory>) {
                 x, y, b, world.temperature.get(x, y), world.moisture.get(x, y), map.biome, pct(t), pct(sh), pct(g), pct(none));
         }
     }
+}
+
+/// Whether embarks carry the world's rivers (`--river-survey`): for every land tile within six
+/// tiles of `centre` (`PLANET_SURVEY_RADIUS`), what the world says (a river on the tile, its
+/// width from the world's discharge), the widest channel the zoomed region draws in the tile, and the default embark
+/// (`colony_site` with no cell): the widest channel it holds and its water columns.
+pub fn river_survey(world: &WorldData, history: Option<&WorldHistory>, centre: (usize, usize)) {
+    let s = cells_per_tile();
+    let (mut river_tiles, mut carried, mut dry_tiles, mut dry_wet) = (0, 0, 0, 0);
+    let r: i64 = std::env::var("PLANET_SURVEY_RADIUS").ok().and_then(|v| v.parse().ok()).unwrap_or(6);
+    for dy in -r..=r {
+        for dx in -r..=r {
+            let (x, y) = ((centre.0 as i64 + dx).rem_euclid(world.width as i64) as usize, centre.1 as i64 + dy);
+            if y < 1 || y >= world.height as i64 - 1 { continue; }
+            let y = y as usize;
+            if *world.heightmap.get(x, y) <= 0.0 || world.water_body_map.get(x, y).is_lake() { continue; }
+            let river = world.water_body_map.get(x, y).is_river();
+            let zs = load_region(world, history, (x, y), world.seed());
+            let r = &zs.region;
+            let (x0, y0) = (x as i64 * s - zs.origin.0, y as i64 * s - zs.origin.1);
+            let mut widest = 0.0f32;
+            for j in y0.max(0)..(y0 + s).min(r.height as i64) { for i in x0.max(0)..(x0 + s).min(r.width as i64) {
+                widest = widest.max(crate::local::channel_width(r, (j * r.width as i64 + i) as usize));
+            } }
+            let world_w = crate::local::world_river_width(world, x, y);
+            let (map, _, _) = colony_site(world, history, (x, y), None);
+            let n = map.width;
+            let wet = (0..n * n).filter(|&c| { let z = map.surface_z[c] as usize + 1; z < map.depth && map.cell(c % n, c / n, z).water > 0 }).count();
+            if river { river_tiles += 1; if map.river_m > 0.0 { carried += 1; } } else { dry_tiles += 1; if map.river_m > 0.0 { dry_wet += 1; } }
+            println!("Tile {x},{y}: world {} (world width {:.0} m); region widest channel {:.0} m; embark river {:.0} m, {} water columns",
+                if river { "RIVER" } else { "dry" }, world_w, widest, map.river_m, wet);
+        }
+    }
+    println!("River survey: {carried} of {river_tiles} world-river tiles' embarks carry a river; {dry_wet} of {dry_tiles} other land tiles' embarks do");
 }
 
 /// Roles under strain (`--sim-roles`): 30 days, then the camp's builder dies of a fever; 30 more.
