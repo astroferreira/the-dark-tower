@@ -12,7 +12,7 @@ use crate::colony::needs::Need;
 pub enum Emblem {
     Tantrum, Despair, Lost,
     Fey, Secretive, Possessed, Macabre, Fell,
-    Hurt, Pray, Talk, Rest, Watch, Admire, Walk, Thrill, Help, Learn, Think, Merry, Tale, Martial, Whittle, Busy, Drink, Meal, Gloom, Love, Grief, Acquire,
+    Hurt, Pray, Talk, Rest, Watch, Admire, Walk, Thrill, Help, Learn, Think, Merry, Tale, Martial, Whittle, Busy, Drink, Meal, Gloom, Love, Grief, Acquire, Dreaming,
 }
 
 /// The sign over settler `i`, if any (most pressing first).
@@ -36,6 +36,8 @@ pub fn emblem_of(colony: &crate::colony::Colony, i: usize) -> Option<Emblem> {
             Need::Romance => Emblem::Love, Need::Remember => Emblem::Grief, Need::Acquire => Emblem::Acquire,
         });
     }
+    // Asleep under the patron's dream (`Patron::dreams`): a moon in the bubble.
+    if s.job == crate::colony::Job::Sleep && colony.patron.dreams.iter().any(|d| d.0 == i && colony.clock.day() <= d.2 + 1) { return Some(Emblem::Dreaming); }
     if s.job == crate::colony::Job::Eat { return Some(Emblem::Meal); }
     if s.last_drink > 0 && tick.saturating_sub(s.last_drink) < 90 { return Some(Emblem::Drink); }
     if s.mind.stress >= 0.8 { return Some(Emblem::Gloom); }
@@ -99,6 +101,12 @@ fn icon(pen: &mut Pen, e: Emblem) {
             pen.rect(-0.08, -0.28, 0.08, -0.14, [176.0, 136.0, 90.0]);
             pen.line((-0.12, -0.16), (0.12, -0.16), INK, 1.0);
             pen.ellipse(0.24, 0.24, 0.1, 0.07, [214.0, 176.0, 70.0]);
+        }
+        Emblem::Dreaming => {
+            pen.ellipse_f(0.0, 0.0, 0.6, 0.48, [52.0, 62.0, 92.0], Finish::Paint);
+            pen.ellipse(0.05, -0.02, 0.28, 0.28, [240.0, 226.0, 170.0]);
+            pen.ellipse_f(0.2, -0.1, 0.24, 0.24, [52.0, 62.0, 92.0], Finish::Paint);
+            pen.dot(-0.35, -0.2, [250.0, 240.0, 200.0]); pen.dot(-0.25, 0.25, [250.0, 240.0, 200.0]);
         }
         Emblem::Gloom => { pen.ellipse_f(0.0, 0.0, 0.42, 0.24, [70.0, 70.0, 80.0], Finish::Plain); pen.ellipse_f(-0.18, -0.08, 0.2, 0.16, [96.0, 96.0, 106.0], Finish::Paint); }
     }

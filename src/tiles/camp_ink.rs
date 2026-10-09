@@ -751,3 +751,17 @@ pub fn draw_lining(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w
     }
     for k in 0..4 { let u = -0.2 + k as f32 * 0.35; pen.line_a((u, -0.2), (u, 0.0), INK, 1.0, 0.6); pen.line_a((u + 0.17, 1.0), (u + 0.17, 1.2), INK, 1.0, 0.6); }
 }
+
+/// Scorched ground where a raid was fought or a fire took: blackened earth, ash, and a charred
+/// stake or two.
+pub fn draw_scorch(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, at: (u16, u16)) {
+    let c = Cells::new(cam, w, h);
+    if !c.visible(at.0 as f32, at.1 as f32, w, h, 3.0) { return; }
+    let mut pen = c.pen(put, at.0 as f32 + 0.5, at.1 as f32 + 0.5);
+    pen.shape([66.0, 56.0, 48.0], Finish::Paint, [-1.3, -1.0, 1.3, 1.0], &|u, v| { let r = (u * u / 1.5 + v * v).sqrt(); r < 0.95 - 0.12 * ((u * 5.0).sin() * (v * 4.0).cos()) });
+    for k in 0..9 { let a = k as f32 * 0.7; let rr = 0.25 + (k % 3) as f32 * 0.22; pen.ellipse_f(a.cos() * rr * 1.2, a.sin() * rr * 0.8, 0.07, 0.05, [150.0, 144.0, 136.0], Finish::Paint); }
+    for (u, v) in [(-0.35f32, -0.1f32), (0.4, 0.25)] {
+        pen.bone(&[(u, v + 0.25), (u + 0.05, v - 0.35)], [44.0, 36.0, 32.0], (pen.half * 0.06).max(1.0));
+        pen.dot(u + 0.05, v - 0.36, [220.0, 110.0, 50.0]);
+    }
+}

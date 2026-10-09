@@ -49,6 +49,18 @@ pub fn draw(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: Option<&crate::colo
         l.glow = Some([230.0, 70.0, 40.0]);
         l
     }));
+    if title.contains("envoy") || title.contains("tribute") {
+        // An envoy: a figure in their people's colours with a staff of office and a scroll.
+        ground(put);
+        let threat = colony.and_then(|c| c.arc.as_ref()).map(|a| &a.threat);
+        let mut f = super::folk::raider(threat, &m.text, 0, None);
+        f.arm = super::folk::Arm::Staff; f.helm = super::folk::Helm::Cap;
+        super::folk::draw(put, &f, cx - r * 0.15, cy + r * 0.12, r / 22.0 * 1.4, false, false, 1.0);
+        let mut pen = Pen::new(put, cx, cy, 2.0 * r);
+        pen.rect(0.25, -0.05, 0.6, 0.25, [236.0, 226.0, 200.0]);
+        pen.ellipse_f(0.42, 0.1, 0.05, 0.05, [150.0, 40.0, 30.0], Finish::Plain);
+        return;
+    }
     if title.contains("raid") || title.contains("they are coming") || has("climbs out of the mine") || has("coming up the stair") {
         ground(put);
         if let Some(look) = threat_look {

@@ -1145,14 +1145,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
                 let held = m.title.strip_prefix("The cage of ");
                 super::camp_ink::draw_cage(&mut put, cam, w, h, m.at, held, 1.0, colony);
             }
-            crate::colony::MarkKind::Scorch => {
-                let ri = (r * 1.6) as i64;
-                for dy in -ri..=ri { for dx in -ri..=ri {
-                    let d = ((dx * dx + dy * dy) as f32).sqrt() / ri as f32;
-                    let n = ((dx * 7 + dy * 13).rem_euclid(5)) as f32 / 5.0;
-                    if d < 1.0 { put(cx as i64 + dx, cy as i64 + dy, [70.0, 56.0, 46.0], (0.75 - d * 0.5) * (0.6 + 0.4 * n)); }
-                } }
-            }
+            crate::colony::MarkKind::Scorch => super::camp_ink::draw_scorch(&mut put, cam, w, h, m.at),
             crate::colony::MarkKind::Stone => super::camp_ink::draw_stone_mark(&mut put, cam, w, h, m.at, &m.title),
             crate::colony::MarkKind::Cairn | crate::colony::MarkKind::Bench | crate::colony::MarkKind::Carving => super::camp_ink::draw_haunt(&mut put, cam, w, h, m.at, m.kind),
         }
@@ -1737,6 +1730,13 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                         if r.furnished.is_some() { super::furniture::bed(&mut pen, r.owner.map(|o| looks[o].2).unwrap_or([150.0, 130.0, 110.0]), r.quality >= 3); }
                         else { super::furniture::pallet(&mut pen); }
                     }
+                    // A cradle made ready by the bed of one expecting (`family.rs`).
+                    if let Some(o) = r.owner.filter(|o| colony.expecting.iter().any(|e| e.0 == *o)) {
+                        let _ = o;
+                        let mut pen = cells.pen(&mut put, b.0 as f32 - 0.6, b.1 as f32 + 0.3);
+                        pen.shape([150.0, 108.0, 70.0], super::ink::Finish::Inked, [-0.3, -0.2, 0.3, 0.3], &|u, v| v > -0.15 && v < 0.25 && u.abs() < 0.28 - (v - 0.25).abs() * 0.1);
+                        pen.rect_f(-0.2, -0.1, 0.2, 0.1, [236.0, 228.0, 210.0], super::ink::Finish::Plain);
+                    }
                     // What the owner keeps as their own, by the bed (`Colony::kept`).
                     if let Some(o) = r.owner {
                         for (j, &(k, _)) in colony.kept.iter().filter(|kk| kk.1 == o).enumerate().take(3) {
@@ -1963,6 +1963,20 @@ fn draw_creature(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony
         CreatureKind::Raider | CreatureKind::Besieger => {
             let threat = colony.arc.as_ref().map(|a| &a.threat).filter(|t| t.name == c.name);
             let f = super::folk::raider(threat, &c.name, c.id, history);
+            // A child snatched by these raiders and coming back among them (`snatch.rs`) rides
+            // on the back of the first of them.
+            let first_raider = colony.creatures.iter().filter(|k| k.kind == CreatureKind::Raider).map(|k| k.id).min() == Some(c.id);
+            if first_raider {
+                if let Some(sn) = colony.snatched.iter().find(|sn| sn.coming && sn.home.is_none()) {
+                    if let Some(look) = settler_looks(colony, history).get(sn.who).copied() {
+                        let back = if left { 1.0 } else { -1.0 } * 6.0 * scale;
+                        let mut pen = super::ink::Pen::new(put, x + back, y - 12.0 * scale, 12.0 * scale).faint(a);
+                        pen.ellipse(0.0, 0.35, 0.45, 0.35, look.2);
+                        pen.ellipse(0.0, -0.3, 0.3, 0.3, look.0);
+                        pen.shape(look.1, super::ink::Finish::Paint, [-0.3, -0.6, 0.3, -0.35], &|u, v| u * u + (v + 0.3).powi(2) < 0.07 && v < -0.4);
+                    }
+                }
+            }
             // Striking when a settler is within reach.
             let near = colony.settlers.iter().any(|s| s.alive && (s.pos.0 as i32 - c.pos.0 as i32).abs() <= 1 && (s.pos.1 as i32 - c.pos.1 as i32).abs() <= 1);
             let strike = near && (colony.clock.tick / 3 + c.id as u64) % 2 == 0;
