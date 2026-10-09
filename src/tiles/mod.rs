@@ -1,6 +1,8 @@
 //! Graphical tile viewer (Dwarf Fortress style): a pixel-art tile atlas, world classification
 //! into tiles, pure software rendering, and a minifb window around it.
 
+pub mod adventure;
+pub mod adventure_ink;
 pub mod atlas;
 pub mod beasts;
 pub mod camp_ink;

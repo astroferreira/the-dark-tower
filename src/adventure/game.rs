@@ -180,8 +180,11 @@ impl Game {
         if let Some(p) = self.places.get(&t) {
             let f = &p.floors[0];
             if let Some((ax, ay)) = f.find(|x| matches!(x, Feature::Altar)) {
-                // Beside the altar.
-                for (dx, dy) in [(0, 1), (0, 2), (1, 1), (-1, 1)] { if f.walkable(ax + dx, ay + dy) { self.x = ax + dx; self.y = ay + dy; break; } }
+                // Before the altar (not where the priest stands).
+                for (dx, dy) in [(0, 2), (1, 2), (-1, 2), (1, 1), (-1, 1), (0, 3), (0, 1)] {
+                    let (x, y) = (ax + dx, ay + dy);
+                    if f.walkable(x, y) && !p.npcs.iter().any(|n| n.z == 0 && n.x == x && n.y == y) { self.x = x; self.y = y; break; }
+                }
             }
         }
         if let Some(s) = self.site(t) { self.tile = s.tile; }

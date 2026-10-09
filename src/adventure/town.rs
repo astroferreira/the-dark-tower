@@ -192,3 +192,4 @@ mod tests {
         assert!(p.monsters.iter().any(|m| m.boss));
     }
 }
+

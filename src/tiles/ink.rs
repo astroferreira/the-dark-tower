@@ -59,6 +59,8 @@ impl<'a> Pen<'a> {
     }
 
     pub fn facing_left(mut self, left: bool) -> Self { self.flip = left; self }
+    /// The pen's own pixel writer (to hand to a drawer that takes one, `glyphs::draw`).
+    pub fn put_fn(&mut self) -> &mut dyn FnMut(i64, i64, Rgb, f32) { &mut *self.put }
     pub fn faint(mut self, a: f32) -> Self { self.alpha = a; self }
 
     /// Unit point to screen.

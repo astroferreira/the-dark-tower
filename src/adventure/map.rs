@@ -107,7 +107,9 @@ impl Tile {
     pub fn floor(g: Ground) -> Tile { Tile { ground: g, wall: Wall::None, feature: Feature::None } }
     pub fn wall(w: Wall, g: Ground) -> Tile { Tile { ground: g, wall: w, feature: Feature::None } }
     pub fn walkable(&self) -> bool { self.wall == Wall::None && !matches!(self.ground, Ground::Water | Ground::Lava | Ground::Void) && !self.feature.blocks() }
-    pub fn opaque(&self) -> bool { !matches!(self.wall, Wall::None | Wall::Bars | Wall::Palisade) || self.feature.blocks_sight() }
+    pub fn opaque(&self) -> bool { !matches!(self.wall, Wall::None | Wall::Bars | Wall::Palisade | Wall::Tree | Wall::Hedge) && !self.boulder() || self.feature.blocks_sight() }
+    /// A rock standing on open ground (a boulder: it blocks the way, not the view).
+    pub fn boulder(&self) -> bool { self.wall == Wall::Rock && matches!(self.ground, Ground::Grass | Ground::Sand | Ground::Snow | Ground::Mud | Ground::Ash | Ground::Moss) }
 }
 
 /// One floor of a place.
@@ -173,6 +175,14 @@ impl Floor {
             }
         };
         for k in -r..=r { ray(x + k, y - r); ray(x + k, y + r); ray(x - r, y + k); ray(x + r, y + k); }
+        // Walls beside open ground in sight are seen too (rays miss wall cells in corners).
+        let mut more = Vec::new();
+        for cy in (y - r).max(0)..=(y + r).min(self.h as i32 - 1) { for cx in (x - r).max(0)..=(x + r).min(self.w as i32 - 1) {
+            let k = cy as usize * self.w + cx as usize;
+            if vis[k] || !self.at(cx, cy).opaque() { continue; }
+            if DIRS8.iter().any(|(dx, dy)| { let (nx, ny) = (cx + dx, cy + dy); self.inside(nx, ny) && vis[ny as usize * self.w + nx as usize] && !self.at(nx, ny).opaque() }) { more.push(k); }
+        } }
+        for k in more { vis[k] = true; }
         vis
     }
 
