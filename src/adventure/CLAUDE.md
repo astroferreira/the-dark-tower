@@ -179,6 +179,38 @@ everywhere).
   floor only when the way up is near. Balance (dev world, 40,000 acts): all four callings level
   20-21, no deaths (as before the land).
 
+## The living world (`living.rs`; cards adv-world-moves, adv-deeds-chronicle)
+- The history goes on while one plays: a season every `living::SEASON` ticks (15 days, so a
+  play sees wars and towns fall). The host (the window's `run`, the bot's `report`) keeps a
+  `Living` (a clone of the world's history + the game data from `data/`) and calls
+  `sync(&mut game, world)` after every act: deeds queued by the game go in, the seasons the
+  clock passed are stepped (`simulate_step` with a per-season seed), and `Game::on_history`
+  brings the changes in: a town razed becomes `SiteKind::Ruin` with its `TownShape.razed` (its
+  streets stamped burned and broken, looters and the dead in them, `stamp_town`), a town founded
+  becomes a new site, a capital's new ruler takes the hall's chair (`rename_lord`), every town's
+  news is this season's (`world::town_news`, which now tells the headline: it used to give only
+  "as X tell it"), and up to two great events the nearest town knows reach the log. Tiles whose
+  places changed are made anew (`remake_tiles`: their saved chunks let go). A razed home sends
+  the hero's temple to the nearest living town.
+- The adventurer is a figure of the history (`Game::hero_figure`, made by the `Arrived` deed,
+  epithet "the Wanderer"; the legends roll a persona for them). Deeds (`living::DeedKind`:
+  beasts of the history slain (`SiteSpec::creature`, sets the beast's death), bosses, relics
+  found (`ArtifactFound`), quests done (`QuestCompleted`), falls, the Shadow broken) are
+  recorded as chronicle events (`EventType::AdventurerDeed`, appended; fame Great for slayings
+  and finds, Legend for the Shadow). Word spreads by `history::knowledge`; `Game::songs` holds
+  what each town has heard (`refresh_talk`), sung by the inn's bard (`npc::Topic::Songs`). The
+  window writes the world's legends with the hero in them beside the save on leaving
+  (`SAVE.legends/`); the bot with `PLANET_ADV_LEGENDS=DIR`.
+- Saves keep `seasons` and `hero_events` (each with its season); a loaded adventure is
+  replayed (`sync` steps the same seasons and puts in the same deeds at the same seasons, quietly:
+  the save holds the results). `PLANET_ADV_SAVE` checks the replay ("History: ... the same");
+  `PLANET_ADV_WORLD=1` prints the world's changes as they reach the bot. Sites gained
+  `settlement` and `creature` (the history's ids). The bot is ~500 us an act with the history
+  stepping (was ~235).
+- Test: `tests/adventure.rs::the_world_moves_and_remembers` (in 16,000 acts a town falls or is
+  founded or a lord changes, the history replays the same, 2+ towns sing, the legends have the
+  hero's page of deeds).
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the
@@ -219,6 +251,5 @@ everywhere).
   from four levels under their place's level, and the priest's only for the risen dead.
 
 ## Not yet
-- Factions' regard (killing a people's soldiers angers their towns), houses, a bank, the world's
-  wars and the Shadow moving while one plays; boats over the sea; rivers through towns (a town
+- Factions' regard (killing a people's soldiers angers their towns), houses, a bank; boats over the sea; rivers through towns (a town
   is laid over its river); the weather.

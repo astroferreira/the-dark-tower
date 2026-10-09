@@ -114,6 +114,8 @@ pub enum EventType {
     ShadowBane,
     /// Two notables of friendly peoples wed; one moves to the other's town (appended).
     Marriage,
+    /// A deed of an adventurer played in adventure mode (appended: older saves still decode).
+    AdventurerDeed,
 }
 
 impl EventType {

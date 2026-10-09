@@ -64,3 +64,26 @@ fn an_adventure_saves_and_loads_whole() {
     let line = text.lines().find(|l| l.starts_with("Save:")).unwrap_or_else(|| panic!("no save line:\n{text}"));
     assert!(line.contains("round trip ok") && line.contains("the same"), "{line}");
 }
+
+/// The history goes on while the adventure is played (towns fall, towns are founded, lords
+/// change), the adventurer's deeds enter its chronicle, bards in many towns sing them, the
+/// world's legends name the adventurer, and a loaded adventure replays the same history.
+#[test]
+fn the_world_moves_and_remembers() {
+    let dir = std::env::temp_dir().join(format!("adv_legends_{}", std::process::id()));
+    let save = std::env::temp_dir().join(format!("adv_world_{}.adv", std::process::id()));
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--adventure-bot", "16000"])
+        .env("PLANET_ADV_WORLD", "1").env("PLANET_ADV_LEGENDS", &dir).env("PLANET_ADV_SAVE", &save).output().expect("run");
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let _ = std::fs::remove_file(&save);
+    assert!(text.lines().any(|l| l.contains("world at day") && (l.contains("has fallen") || l.contains("new town") || l.contains(" rules "))), "the world stood still:\n{text}");
+    let hist = text.lines().find(|l| l.starts_with("History:")).unwrap_or_else(|| panic!("no history line:\n{text}"));
+    assert!(hist.contains("the same"), "{hist}");
+    let songs = text.lines().find(|l| l.starts_with("Songs:")).expect("songs line");
+    assert!(count(songs, "Songs:") >= 2, "few towns sing: {songs}");
+    let hero = text.lines().find(|l| l.contains(" sets out from ")).and_then(|l| l.split(" of the ").next()).expect("hero line").to_string();
+    let named = std::fs::read_dir(&dir).expect("legends dir").filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with("figure-"))
+        .any(|e| std::fs::read_to_string(e.path()).map_or(false, |t| t.contains(&hero) && t.contains("slew")));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(named, "{} has no page of deeds in the legends", hero);
+}

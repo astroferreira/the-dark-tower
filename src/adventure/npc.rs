@@ -15,6 +15,8 @@ pub enum Topic {
     Bless(u32), Improve, Refine(super::hero::Slot, u32), Hire(u32),
     /// The Mapmaker's charts sold to a sage (gold for the tiles inked on foot).
     Charts(u32),
+    /// What the inn's bard sings of the adventurer (from the history: what this town has heard).
+    Songs,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -56,6 +58,7 @@ fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
         _ => {}
     }
     if role == Role::Innkeeper {
+        v.push(("A song from the bard".into(), Topic::Songs));
         v.push(("A bed (10 gold)".into(), Topic::Rest(10)));
         if g.companion.is_none() { let p = 80 * g.hero.level.max(1); v.push((format!("A sellsword to go with you ({} gold)", p), Topic::Hire(p))); }
     }
@@ -323,6 +326,16 @@ pub fn answer(g: &mut Game, i: usize) {
             stow(&mut g.hero.pack, Item::new("gold", price));
             g.stats.gold_found += price;
             said = format!("{} lands I had only guessed at, drawn true. Here: {} gold, and come back with more.", n_tiles, price);
+        }
+        Topic::Songs => {
+            let town = town_id(g);
+            said = match g.songs.get(&town).filter(|v| !v.is_empty()) {
+                Some(v) => {
+                    let k = (g.turn as usize / 100) % v.len();
+                    format!("The bard tunes up and sings of {}: {}. The room drinks to it.", g.hero.name, v[k])
+                }
+                None => "The bard shrugs. \"No one sings of you here. Not yet. Do something worth a song.\"".into(),
+            };
         }
         Topic::Back => {}
         Topic::Bye => { g.say(Tone::Talk, format!("{}: \"Good bye, {}.\"", n.name, g.hero.name)); g.talk = None; return; }

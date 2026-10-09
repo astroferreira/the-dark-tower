@@ -349,7 +349,7 @@ pub fn generate(land: &Land, tx: i64, ty: i64, sites: &[&SiteSpec]) -> Gen {
     let mut taken: Vec<(i32, i32, i32, i32)> = Vec::new();
     let mut sites: Vec<&SiteSpec> = sites.to_vec();
     sites.sort_by_key(|s| (s.kind != SiteKind::Town, s.id));
-    for s in sites.iter().filter(|s| s.kind == SiteKind::Town) { stamp_town(land, &mut g, s, tx, ty, &mut taken); }
+    for s in sites.iter().filter(|s| s.kind == SiteKind::Town || (s.kind == SiteKind::Ruin && s.town.is_some())) { stamp_town(land, &mut g, s, tx, ty, &mut taken); }
     // 6. Roads between road tiles (bridges over water; trees and rocks cleared).
     for dy in -span..=span { for dx in -span..=span {
         let (sx, sy) = (tx + dx, ty + dy);
@@ -396,6 +396,7 @@ pub fn generate(land: &Land, tx: i64, ty: i64, sites: &[&SiteSpec]) -> Gen {
     for s in sites {
         match s.kind {
             SiteKind::Town => {}
+            SiteKind::Ruin if s.town.is_some() => {}
             SiteKind::Ruin | SiteKind::Tomb | SiteKind::Temple | SiteKind::Shrine | SiteKind::Castle | SiteKind::Camp | SiteKind::DarkFortress => {
                 if !stamp_site(land, &mut g, s, tx, ty, &mut taken) { mouth(land, &mut g, s, tx, ty, &mut taken); }
             }
@@ -437,6 +438,30 @@ fn stamp_town(_land: &Land, g: &mut Gen, s: &SiteSpec, tx: i64, ty: i64, taken: 
     for (pos, items) in f.items.iter() { for it in items { g.items.push((*pos, it.clone())); } }
     let (hw, hh) = town_extent(s.town.as_ref().map_or(1, |t| t.size));
     taken.push((CH / 2 - hw - 3, CH / 2 - hh - 3, 2 * hw + 7, 2 * hh + 7));
+    let razed = s.kind != SiteKind::Town;
+    if razed {
+        // Razed: walls broken, roofs burned, its people gone; looters and the dead in the streets.
+        let mut b = Builder { rng: ChaCha8Rng::seed_from_u64(s.seed ^ 0xA5E5) };
+        for y in 0..CH { for x in 0..CH {
+            if !mask[idx(x, y)] { continue; }
+            let t = &mut g.tiles[idx(x, y)];
+            g.safe[idx(x, y)] = false;
+            if matches!(t.wall, Wall::Brick | Wall::Timber | Wall::Palisade | Wall::Hedge | Wall::Rock) && b.chance(0.35) { *t = Tile::floor(Ground::Rubble); continue; }
+            if t.wall == Wall::None {
+                if matches!(t.ground, Ground::Wood | Ground::Carpet | Ground::Field | Ground::Grass | Ground::Moss) && b.chance(0.6) { t.ground = Ground::Ash; }
+                match t.feature { Feature::Door { .. } | Feature::Counter | Feature::Table | Feature::Bed | Feature::Bookshelf | Feature::Throne | Feature::Barrel | Feature::Crate | Feature::Sign { .. } => { t.feature = if b.chance(0.2) { Feature::Bones } else { Feature::None }; } _ => {} }
+                if t.feature == Feature::None && b.chance(0.012) { t.feature = Feature::Bones; }
+            }
+        } }
+        let cells: Vec<(i32, i32)> = (0..CH * CH).map(|k| (k % CH, k / CH)).filter(|&(x, y)| mask[idx(x, y)] && g.tiles[idx(x, y)].walkable() && g.tiles[idx(x, y)].feature == Feature::None).collect();
+        let table = ["bandit", "bandit", "ghoul", "zombie", "skeleton", "rat", "orc"];
+        for _ in 0..(6 + s.town.as_ref().map_or(1, |t| t.size as i32) * 3) {
+            let Some(&(x, y)) = b.pick(&cells).as_ref() else { break };
+            g.monsters.push(Monster::new(0, table[b.range(0, table.len() as i32 - 1) as usize], x, y, 0));
+        }
+        if let Some(boss) = &s.boss { if let Some(&(x, y)) = b.pick(&cells).as_ref() { g.monsters.push(Monster::boss(0, &boss.def, &boss.name, boss.scale, x, y, 0)); } }
+        p.npcs.clear();
+    }
     let mut npcs: Vec<Npc> = p.npcs.drain(..).collect();
     for n in npcs.iter_mut() { n.home = s.id; }
     g.npcs.extend(npcs);

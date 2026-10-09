@@ -544,6 +544,9 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
         println!("debug: battles {} hero-died {} figures-died-in-battle {} razed {:?} tomb monuments {} temple monuments {} holy sites {} sacred places {} cults with hq {} (of {}), shadow {:?}", battles, hero_died, fig_battle, razed, tombs, temples_m, holy, sacred, cults, h.cults.len(), h.shadow.as_ref().map(|s| (s.seat, s.broken.is_some())));
     } }
     let mut b = Bot::default();
+    // The history goes on beside the adventure.
+    let mut living = history.map(super::living::Living::new);
+    if let Some(l) = living.as_mut() { l.sync(&mut g, world); }
     let t1 = std::time::Instant::now();
     let step = (acts / 10).max(1);
     let mut dumped = false;
@@ -552,6 +555,7 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     for k in 0..acts {
         let before = (g.x, g.y, g.log.len());
         if !b.step(&mut g) { let _ = g.act(Action::Wait); }
+        if let Some(l) = living.as_mut() { if l.sync(&mut g, world) && std::env::var("PLANET_ADV_WORLD").is_ok() { for line in g.log[before.2.min(g.log.len())..].iter().filter(|l| l.tone == super::game::Tone::Danger || l.text.starts_with("Word") || l.text.contains(" rules ")) { println!("  world at day {}: {}", g.turn / super::land::DAY + 1, line.text); } } }
         if std::env::var("PLANET_ADV_DEATHS").is_ok() { for l in g.log[before.2.min(g.log.len())..].iter().filter(|l| l.tone == super::game::Tone::Death) { println!("  death at act {} (level {}, {} on {:?}): {}", k, g.hero.level, g.place().map(|p| p.spec.name.clone()).unwrap_or_default(), g.tile, l.text); } }
         if let Some((a, z)) = trace { if k >= a && k < z {
             let near: Vec<String> = g.place().map(|p| p.monsters.iter().filter(|m| m.z == g.z && (m.x - g.x).abs().max((m.y - g.y).abs()) <= 3).map(|m| format!("{}@{},{} hp{} awake{} vis{}", m.def, m.x, m.y, m.hp, m.awake, g.visible(m.x, m.y))).collect()).unwrap_or_default();
@@ -576,6 +580,13 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
         g.save(p).expect("save");
         let mut back = super::Game::load(p, g.world.clone()).expect("load");
         let same = back.hero.level == g.hero.level && back.hero.xp == g.hero.xp && back.places.len() == g.places.len() && back.log.len() == g.log.len() && back.hero.pack == g.hero.pack;
+        // The history replays to the same: the seasons and the deeds in the same places.
+        if let (Some(h), Some(l)) = (history, living.as_ref()) {
+            let mut l2 = super::living::Living::new(h);
+            l2.sync(&mut back, world);
+            let (a, b2) = (l.history.chronicle.events.len(), l2.history.chronicle.events.len());
+            println!("History: {} seasons, {} events live, {} replayed: {}", back.seasons, a, b2, if a == b2 && l.history.current_date == l2.history.current_date { "the same" } else { "DIFFERENT" });
+        }
         let mut b2 = b.clone();
         let mut g2 = g.clone();
         g2.rng = back.rng.clone();
@@ -588,6 +599,12 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     let gear: Vec<String> = g.hero.equipped.iter().flatten().map(|i| i.describe()).collect();
     println!("Wears: {}", gear.join(", "));
     println!("Quests: {}", g.quests.iter().map(|q| format!("{} [{}]", q.title, q.progress())).collect::<Vec<_>>().join("; "));
+    if let (Ok(dir), Some(l)) = (std::env::var("PLANET_ADV_LEGENDS"), living.as_ref()) {
+        let gaz = crate::lore::build_gazetteer(world, Some(&l.history), seed);
+        match crate::lore::legends::write_legends(world, &l.history, &gaz, &[], None, std::path::Path::new(&dir)) { Ok(r) => println!("Legends written to {}: {}", dir, r.line()), Err(e) => println!("Legends failed: {}", e) }
+    }
+    let songs: usize = g.songs.values().map(|v| v.len()).sum();
+    println!("Songs: {} towns sing of {} ({} songs); deeds in the chronicle: {}", g.songs.len(), g.hero.name, songs, g.hero_events.len());
     if let Ok(path) = std::env::var("PLANET_ADV_LEGEND") { let _ = std::fs::write(&path, g.legend_html()); println!("Legend written to {} ({} deeds)", path, g.deeds.len()); }
     if let Some(c) = &g.companion { println!("Companion: {} ({} of {} life, {} slain)", c.name, c.hp, c.max_hp, c.kills); }
     println!("{} acts in {:.1} s ({:.0} µs an act)", acts, t1.elapsed().as_secs_f64(), t1.elapsed().as_secs_f64() * 1e6 / acts.max(1) as f64);

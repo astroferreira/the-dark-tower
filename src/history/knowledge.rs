@@ -49,6 +49,9 @@ pub fn fame(e: &Event) -> Fame {
             | E::TreatyBroken | E::QuestCompleted | E::MonumentBuilt | E::Marriage | E::LandScarred | E::Flood | E::Drought | E::Miracle
             | E::TempleProfaned | E::ArtifactLost | E::ArtifactFound | E::Authored => Fame::Notable,
         _ if e.title.contains("rises again") => Fame::Great,
+        E::AdventurerDeed if e.title.contains("broke the Shadow") => Fame::Legend,
+        E::AdventurerDeed if e.title.contains(" slew ") || e.title.contains(" found ") => Fame::Great,
+        E::AdventurerDeed => Fame::Notable,
         _ => Fame::Local,
     };
     // A quest that came to nothing, a plot foiled: less to tell.

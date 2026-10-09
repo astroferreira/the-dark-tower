@@ -87,6 +87,12 @@ pub struct SiteSpec {
     /// A town's shape from the history (size, walls, its people's way of building).
     #[serde(default)]
     pub town: Option<TownShape>,
+    /// The town of the history it is (`SettlementId`), for a town or a razed town's ruin.
+    #[serde(default)]
+    pub settlement: Option<u64>,
+    /// The beast of the history it is the lair of (`LegendaryCreatureId`).
+    #[serde(default)]
+    pub creature: Option<u64>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -105,6 +111,9 @@ pub struct TownShape {
     /// The sides the sea lies on (`map::DIRS4` bits): a port's piers.
     #[serde(default)]
     pub sea: u8,
+    /// Razed in this year of the history while one walked the world (its streets burned).
+    #[serde(default)]
+    pub razed: Option<u32>,
 }
 
 /// A realized place.
@@ -842,7 +851,7 @@ mod tests {
 
     pub fn spec(kind: SiteKind, floors: usize, tier: u32, seed: u64) -> SiteSpec {
         SiteSpec { id: 1, kind, name: "Testplace".into(), tile: (0, 0), seed, tier, cause: String::new(), boss: Some(BossSpec { def: "troll".into(), name: "Gnash the Old".into(), scale: 1.5, legend: None, hoard: vec![Item::new("gold", 200)], story: String::new() }),
-            treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors, people: "human".into(), god: "the gods".into(), news: Vec::new(), lord: None, town: None }
+            treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors, people: "human".into(), god: "the gods".into(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None }
     }
 
     /// Every floor's way down is reachable from where one arrives (doors and gates passable,

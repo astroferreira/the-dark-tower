@@ -166,6 +166,21 @@ pub struct Game {
     /// The land floor moved under the adventurer by (dx, dy) cells (for the window's easing).
     #[serde(skip)]
     pub shifted: (i32, i32),
+    /// Seasons of the history stepped while one played (`living`), and the adventurer's deeds
+    /// put into it (replayed on load).
+    #[serde(default)]
+    pub seasons: u32,
+    #[serde(default)]
+    pub hero_events: Vec<super::living::HeroEvent>,
+    /// Deeds waiting for the host to put them into the history.
+    #[serde(skip)]
+    pub deed_queue: Vec<super::living::HeroEvent>,
+    /// The adventurer as a figure of the history.
+    #[serde(default)]
+    pub hero_figure: Option<u64>,
+    /// What each town's bards sing of the adventurer (site -> lines), from the history.
+    #[serde(skip)]
+    pub songs: HashMap<u32, Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -178,6 +193,7 @@ impl Game {
             corpses: HashMap::new(), known: Vec::new(), respawn: Vec::new(), quests: Vec::new(), talk: None, chosen: Vec::new(), facing: (0, 1),
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
+            seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(),
         };
         g.set_atlas();
         g.hero.temple = start_town;
@@ -191,6 +207,8 @@ impl Game {
         g.wake_at_temple();
         let town = g.site(start_town).map(|s| s.name.clone()).unwrap_or_default();
         g.say(Tone::Level, format!("{} wakes in the temple of {}. The world is wide, and you are nobody yet: a club, a patched tunic, twenty coins. Below the square, the townsfolk say, the sewers are full of rats.", g.hero.name, town));
+        let who = g.hero.name.clone();
+        g.chronicle(super::living::DeedKind::Arrived, format!("{} sets out from {}", who, town), format!("{} left {} to make a name in the world.", who, town));
         g
     }
 
@@ -877,7 +895,15 @@ impl Game {
         if !dead.boss && here != LAND { self.respawn.push((here, dead.clone(), turn)); }
         self.stats.kills += 1;
         self.hero.kills += 1;
-        if dead.boss { self.stats.bosses += 1; self.slain.push(dead.name.clone()); let place = self.place().map(|p| p.spec.name.clone()).unwrap_or_default(); let lvl = self.hero.level; self.deeds.push((turn, format!("slew {} in {} (level {})", dead.name, place, lvl))); }
+        if dead.boss {
+            self.stats.bosses += 1; self.slain.push(dead.name.clone());
+            let place = self.place().map(|p| p.spec.name.clone()).unwrap_or_default(); let lvl = self.hero.level;
+            self.deeds.push((turn, format!("slew {} in {} (level {})", dead.name, place, lvl)));
+            let creature = self.place().and_then(|p| p.spec.creature).filter(|_| dead.legend.is_some());
+            let who = self.hero.name.clone();
+            let kind = match creature { Some(c) => super::living::DeedKind::BeastSlain(c), None => super::living::DeedKind::BossSlain };
+            self.chronicle(kind, format!("{} slew {}", who, dead.name), format!("{} slew {} in {}.", who, dead.name, place));
+        }
         if dead.boss && self.place().map_or(false, |p| p.spec.kind == SiteKind::DarkFortress) && !self.victory {
             self.victory = true;
             let who = self.hero.name.clone();
@@ -885,6 +911,7 @@ impl Game {
             self.say(Tone::Quest, format!("{} has broken the Shadow.", who));
             let t = self.turn;
             self.deeds.push((t, format!("broke the Shadow, slaying {} in its seat", dead.name)));
+            self.chronicle(super::living::DeedKind::ShadowBroken, format!("{} broke the Shadow", who), format!("{} slew {} in the seat of its power and broke the Shadow.", who, dead.name));
         }
         let lead = if dead.boss { format!("{} falls, and does not rise.", cap(&name)) } else { format!("You slay {}.", name) };
         self.say(if dead.boss { Tone::Quest } else { Tone::Hit }, format!("{} ({} experience)", lead, xp));
@@ -922,6 +949,8 @@ impl Game {
         let place = self.place().map(|p| p.spec.name.clone()).unwrap_or_default();
         let t = self.turn;
         self.deeds.push((t, format!("was slain by {} in {}", what, place)));
+        let who = self.hero.name.clone();
+        self.chronicle(super::living::DeedKind::Fell, format!("{} was struck down by {}", who, what), format!("{} fell to {} in {}, and woke in the temple.", who, what, place));
         self.say(Tone::Death, format!("You are dead, slain by {} in {}. You lose {} experience{}.", what, place, lost_xp, if gold > 0 { format!(" and drop {} gold where you fell", gold) } else { String::new() }));
         self.banner = Some(("You are dead.".into(), format!("Slain by {}. You wake in the temple, poorer and wiser.", what)));
         self.hero.hp = self.hero.max_hp();

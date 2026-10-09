@@ -811,6 +811,9 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
     else { g.say(Tone::Info, "Keys: arrows or WASD walk (Q E Z C diagonals), bump to strike, open and talk. ? for all the keys."); }
     let mut v = View::new(&g);
     take_effects(&mut g, &mut v);
+    // The history goes on beside the adventure (a loaded one is replayed to where it was).
+    let mut living = history.map(crate::adventure::living::Living::new);
+    if let Some(l) = living.as_mut() { l.sync(&mut g, world); }
     let (mut w, mut h) = (1280usize, 800usize);
     let mut window = Window::new("The Dark Tower — an adventure", w, h, WindowOptions { resize: true, ..WindowOptions::default() })?;
     window.set_target_fps(60);
@@ -925,11 +928,18 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
                 let _ = g.save(&g.save_path());
                 let lp = g.save_path().with_extension("html");
                 if std::fs::write(&lp, g.legend_html()).is_ok() { println!("The legend of {} written to {}", g.hero.name, lp.display()); }
+                // The world's legends as they stand now, the adventurer among its figures.
+                if let Some(l) = living.as_ref() {
+                    let dir = g.save_path().with_extension("legends");
+                    let gaz = crate::lore::build_gazetteer(world, Some(&l.history), seed);
+                    if let Ok(r) = crate::lore::legends::write_legends(world, &l.history, &gaz, &[], None, &dir) { println!("The world's legends written to {}: {}", dir.display(), r.line()); }
+                }
                 break;
             }
             esc_once = true;
             g.say(Tone::Info, "Press Esc again to leave the adventure (it is saved).");
         } else if window.get_keys_pressed(KeyRepeat::No).iter().any(|k| *k != Key::Escape) { esc_once = false; }
+        if let Some(l) = living.as_mut() { if l.sync(&mut g, world) { v.plan = None; } }
         // Draw.
         let map_w = w.saturating_sub(PANEL_W);
         if g.here.is_none() {
@@ -1024,7 +1034,7 @@ pub fn gallery(world: &crate::world::WorldData, history: Option<&crate::history:
         let floors = if *kind == SiteKind::Wilds { 1 } else { 3 };
         let boss = BossSpec { def: "troll".into(), name: "the Gallery Boss".into(), scale: 1.4, legend: None, hoard: vec![], story: String::new() };
         g.sites.push(SiteSpec { id, kind: *kind, name: format!("{:?}", kind), tile: g.tile, seed: seed ^ (n as u64 * 7919), tier: 3, cause: String::new(), boss: Some(boss), treasures: vec![],
-            surface: crate::adventure::map::Ground::Grass, rock: "granite".into(), floors, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None });
+            surface: crate::adventure::map::Ground::Grass, rock: "granite".into(), floors, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None });
         g.enter_site(id, true);
         let z = if floors > 1 { 1 } else { 0 };
         g.z = z;

@@ -233,6 +233,7 @@ fn style(kind: &EventType) -> (char, u32, Option<MarkKind>, bool) {
         ShadowAlliance => ('*', GOLD, Some(MarkKind::Battle), true),
         ShadowBane => ('$', GOLD, None, true),
         Marriage => ('&', GOLD, None, false),
+        AdventurerDeed => ('*', GOLD, None, true),
     }
 }
 

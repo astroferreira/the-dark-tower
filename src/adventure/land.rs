@@ -122,7 +122,7 @@ impl Game {
         let k = t.1 * self.world.w + t.0;
         let danger = self.world.danger.get(k).copied().unwrap_or(0) as u32;
         SiteSpec { id: LAND, kind: SiteKind::Wilds, name: self.region_name(t), tile: t, seed: 0, tier: (1 + danger * 3 / 255).clamp(1, 5), cause: String::new(), boss: None, treasures: Vec::new(),
-            surface: self.world.ground.get(k).copied().unwrap_or(Ground::Grass), rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None }
+            surface: self.world.ground.get(k).copied().unwrap_or(Ground::Grass), rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -669,9 +669,9 @@ mod tests {
         i.battles = vec![0; w * h];
         let town = SiteSpec { id: 1, kind: SiteKind::Town, name: "Greenburg".into(), tile: (3, 2), seed: 7, tier: 1, cause: String::new(), boss: None, treasures: vec![],
             surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "Balorn".into(), news: Vec::new(), lord: None,
-            town: Some(TownShape { size: 1, walls: 1, arch: "wood".into(), population: 500, port: false, roads: 0b0100_0100, sea: 0 }) };
+            town: Some(TownShape { size: 1, walls: 1, arch: "wood".into(), population: 500, port: false, roads: 0b0100_0100, sea: 0, razed: None }), settlement: None, creature: None };
         let cave = SiteSpec { id: 2, kind: SiteKind::Cave, name: "the Bat Hole".into(), tile: (6, 3), seed: 11, tier: 1, cause: String::new(), boss: None, treasures: vec![],
-            surface: Ground::Grass, rock: "granite".into(), floors: 2, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None };
+            surface: Ground::Grass, rock: "granite".into(), floors: 2, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None };
         (i, vec![town, cave])
     }
 
