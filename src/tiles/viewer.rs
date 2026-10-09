@@ -271,6 +271,8 @@ fn draw_box(buf: &mut [u32], w: usize, h: usize, cx: f32, cy: f32, half: f32, co
     for y in y0..=y1 { put(x0, y); put(x1, y); }
 }
 
+pub(crate) fn save_rgb_png_pub(path: &str, w: usize, h: usize, pixel: impl Fn(usize, usize) -> [u8; 3]) -> String { save_rgb_png(path, w, h, pixel) }
+
 fn save_rgb_png(path: &str, w: usize, h: usize, pixel: impl Fn(usize, usize) -> [u8; 3]) -> String {
     let img = image::RgbImage::from_fn(w as u32, h as u32, |x, y| image::Rgb(pixel(x as usize, y as usize)));
     match img.save(path) {
@@ -308,7 +310,7 @@ pub fn colony_code(colony: &crate::colony::Colony) -> String {
 fn code_file(code: &str) -> String { code.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' }).collect() }
 
 /// The playable area and seed for a colony at a world tile's centre, or at a global cell.
-fn colony_site(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), cell: Option<(u64, u64)>) -> (crate::local::LocalMap, u64, (f64, f64)) {
+pub(crate) fn colony_site(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), cell: Option<(u64, u64)>) -> (crate::local::LocalMap, u64, (f64, f64)) {
     let s = cells_per_tile() as f64;
     let zs = load_region(world, history, tile, world.seed());
     // With no cell given: on the bank of the world's river where the world map has one on the
@@ -2520,7 +2522,7 @@ pub fn ways_trial(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
 /// Found the colony on an embark at world `tile`: with a history, the settlers come out of it
 /// (`history::settlers::roster`: survivors, veterans, kin); without one they are nameless
 /// wanderers with stock names.
-fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, tile: (usize, usize), seed: u64, n: usize) -> crate::colony::Colony {
+pub(crate) fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, tile: (usize, usize), seed: u64, n: usize) -> crate::colony::Colony {
     match history {
         Some(h) => {
             // Those who may come later as migrants are the same roster drawn further.

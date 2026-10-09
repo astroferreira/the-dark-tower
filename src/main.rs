@@ -48,6 +48,11 @@ struct Args {
     #[arg(long)]
     sim_snapshot: Option<String>,
 
+    /// Every simulated kind rendered in the game's own frame on a test camp (dev embark): writes
+    /// <PREFIX>_inventory.png (labelled crops) and <PREFIX>_inventory_camp.png
+    #[arg(long, value_name = "PREFIX")]
+    inventory: Option<String>,
+
     /// Drive the colony's ledger by script through the window's own click handling (headless,
     /// dev embark): writes <PREFIX>_ui_drive_NN.png and reports each step
     #[arg(long, value_name = "PREFIX")]
@@ -611,7 +616,7 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
@@ -2115,6 +2120,13 @@ fn main() {
             match tiles::viewer::save_province_snapshot(&world_data, history.as_ref(), tile, prefix) {
                 Ok(file) => println!("Saved the province map: {file}"),
                 Err(e) => eprintln!("Province snapshot failed: {e}"),
+            }
+            return;
+        }
+        if let (Some(prefix), Some(tile)) = (&args.inventory, center) {
+            match tiles::inventory::save_inventory(&world_data, history.as_ref(), &atlas, tile, prefix) {
+                Ok((n, missing)) => { println!("Inventory: {} kinds drawn in the game's frame; {} could not be placed{}", n, missing.len(), if missing.is_empty() { String::new() } else { format!(": {}", missing.join("; ")) }); }
+                Err(e) => { eprintln!("Inventory failed: {e}"); std::process::exit(1); }
             }
             return;
         }

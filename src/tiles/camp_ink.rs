@@ -709,7 +709,11 @@ pub fn draw_relic(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i
     pen.ellipse_f(0.0, 0.15, 0.35, 0.15, [120.0, 100.0, 76.0], Finish::Paint);
     let g = super::glyphs::Glyph::of_thing(&format!("{} {}", r.what, r.name));
     drop(pen);
-    let t = (c.t * 0.75).max(8.0);
+    let t = (c.t * 1.1).max(10.0);
+    {
+        let mut pen = c.pen(put, r.at.0 as f32 + 0.5, r.at.1 as f32 + 0.45);
+        pen.glow(0.0, 0.0, 0.9, [255.0, 226.0, 140.0], 0.45);
+    }
     super::glyphs::draw(put, if g == super::glyphs::Glyph::Work { super::glyphs::Glyph::Chest } else { g }, c.x0 + (r.at.0 as f32 + 0.5) * c.t, c.y0 + (r.at.1 as f32 + 0.45) * c.t, t, Some([214.0, 176.0, 70.0]));
     let mut pen = c.pen(put, r.at.0 as f32 + 0.5, r.at.1 as f32 + 0.5);
     let tw = (colony.clock.tick / 7) % 4;

@@ -79,7 +79,7 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
     ];
     let arts = ["a figurine", "a chest", "pipes", "a drum", "a harp", "a crown", "a ring", "a goblet", "a sword", "a book", "a carved stone"];
     let glyph_all = super::glyphs::Glyph::ALL;
-    let n = emblems.len() + folk.len() + 5 + furn.len() + arts.len() + glyph_all.len();
+    let n = emblems.len() + folk.len() + 10 + furn.len() + arts.len() + glyph_all.len();
     let cols = 9;
     let mut sheet = Sheet::new(cols, (n + cols - 1) / cols, 150, 130);
     sheet.title("People and things: what settlers go through, strangers, furniture below, artifacts");
@@ -102,6 +102,26 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
         let (hx, hy, hr) = (cx, cy + 10.0 - 2.0 * sc + (-0.32) * size / 2.0, 0.38 * size / 2.0);
         let mut pen = super::ink::Pen::new(&mut put, hx, hy, hr * 2.0);
         super::status_ink::guest_marks(&mut pen, calling);
+    }
+    for office in ["Lord of the camp", "Keeps the temple of Ishra", "Speaks for the camp", "Tends the wounded", "Cooks for the camp"] {
+        let (cx, cy) = sheet.cell(office);
+        let mut put = sheet.put();
+        let mut f = super::folk::trader(office, 6);
+        f.arm = super::folk::Arm::None; f.helm = super::folk::Helm::None;
+        let sc = 3.0;
+        super::folk::draw(&mut put, &f, cx, cy + 10.0, sc, false, false, 1.0);
+        let size = 22.0 * sc;
+        let (hx, hy, hr) = (cx, cy + 10.0 - 2.0 * sc + (-0.32) * size / 2.0, 0.38 * size / 2.0);
+        let mut pen = super::ink::Pen::new(&mut put, hx, hy, hr * 2.0);
+        super::status_ink::office_marks(&mut pen, office);
+        drop(pen);
+        // And at the size the camp draws it.
+        let sc = 1.25;
+        super::folk::draw(&mut put, &f, cx + 70.0, cy + 30.0, sc, false, false, 1.0);
+        let size = 22.0 * sc;
+        let (hx, hy, hr) = (cx + 70.0, cy + 30.0 - 2.0 * sc + (-0.32) * size / 2.0, 0.38 * size / 2.0);
+        let mut pen = super::ink::Pen::new(&mut put, hx, hy - (hr.max(7.0) - hr) * 0.5, hr.max(7.0) * 2.0);
+        super::status_ink::office_marks(&mut pen, office);
     }
     for (label, f) in &folk {
         let (cx, cy) = sheet.cell(label);

@@ -891,6 +891,9 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
         _ if colony.attackers_out() && colony.arms.iter().any(|a| a.holder == Some(i)) => glyph(put, Gl::Spear),
         _ => {}
     }
+    // (Headgear rises above the head: the name goes above it, not over it.)
+    let hat = s.office.is_some() || (s.visitor.is_some() && s.guest_until > colony.clock.tick) || colony.stocks.map_or(false, |st| st.0 == i);
+    if hat { return hy - hr * 2.4; }
     hy - hr
 }
 

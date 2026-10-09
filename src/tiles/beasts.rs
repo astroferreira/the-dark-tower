@@ -293,7 +293,8 @@ pub fn draw(put: &mut dyn FnMut(i64, i64, Rgb, f32), look: &Look, x: f32, y: f32
     // The sprite's ground line is v = 0.8 for profile bodies; top-down ones sit centred on the spot.
     let top_down = matches!(look.base, Base::Spider | Base::Insect | Base::Crab | Base::Lizard | Base::Serpent | Base::Worm);
     let cy = if top_down { y } else { y - 0.8 * px / 2.0 };
-    let lift = if look.flies { px * 0.35 } else { 0.0 };
+    // A flier hangs a little above its shadow (no more than a few metres at any size).
+    let lift = if look.flies { (px * 0.35).min(18.0) } else { 0.0 };
     {
         // The shadow on the ground (under a flier, apart from it).
         let mut pen = Pen::new(put, x, cy, px).facing_left(left).faint(alpha);

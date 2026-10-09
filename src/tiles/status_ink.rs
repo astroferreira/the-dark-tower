@@ -124,24 +124,11 @@ pub fn figure_marks(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::col
         pen.shape([240.0, 236.0, 226.0], Finish::Plain, [-1.05, -0.55, 1.05, 0.0], &|u, v| (u * u + v * v) <= 1.1 && v > -0.55 && v < -0.12);
         pen.dot(0.45, -0.32, BLOOD);
     }
-    let office = s.office.as_deref().unwrap_or("");
-    if office.starts_with("Lord") {
-        for k in 0..3 { let u = -0.5 + k as f32 * 0.5; pen.poly(&[(u - 0.2, -0.75), (u, -1.3), (u + 0.2, -0.75)], [214.0, 176.0, 70.0]); }
-        pen.rect(-0.8, -0.95, 0.8, -0.65, [214.0, 176.0, 70.0]);
-    } else if office.starts_with("Keeps the temple") {
-        pen.ellipse_f(0.0, -1.35, 0.7, 0.18, [226.0, 196.0, 90.0], Finish::Plain);
-        pen.ellipse_f(0.0, -1.35, 0.45, 0.08, mix([244.0, 236.0, 216.0], [226.0, 196.0, 90.0], 0.3), Finish::Paint);
-    } else if office.starts_with("Speaks") {
-        pen.path(&[(-0.8, 1.0), (0.0, 1.45), (0.8, 1.0)], [214.0, 176.0, 70.0], (pen.half * 0.12).max(1.0));
-        pen.ellipse(0.0, 1.5, 0.22, 0.22, [214.0, 176.0, 70.0]);
-    } else if office.starts_with("Tends") {
-        pen.rect_f(0.95, 0.9, 1.45, 1.4, [240.0, 236.0, 226.0], Finish::Plain);
-        pen.rect_f(1.15, 0.95, 1.25, 1.35, BLOOD, Finish::Paint);
-        pen.rect_f(1.0, 1.1, 1.4, 1.2, BLOOD, Finish::Paint);
-    } else if office.starts_with("Cooks") {
-        pen.ellipse(0.0, -1.25, 0.62, 0.36, [244.0, 240.0, 230.0]);
-        pen.rect(-0.55, -1.05, 0.55, -0.75, [244.0, 240.0, 230.0]);
-    }
+    // Headgear and badges keep a readable size on a small figure (at least 7 px a unit; at the
+    // camp's usual zoom the head's radius is ~5 px, and a crown 2 px wide could not be seen).
+    drop(pen);
+    let mut pen = Pen::new(put, hx, hy - (hr.max(7.0) - hr) * 0.5, hr.max(7.0) * 2.0);
+    if let Some(office) = s.office.as_deref() { office_marks(&mut pen, office); }
     if let (Some(calling), true) = (s.visitor.as_deref(), s.guest_until > tick) { guest_marks(&mut pen, calling); }
     // A vampire, once the sharp-eyed have noticed (`night.rs`): a pallor and red eyes at night.
     if colony.vampire_noticed && colony.vampire.map_or(false, |v| v.0 == i) && colony.clock.is_night() {
@@ -180,3 +167,24 @@ pub fn guest_marks(pen: &mut Pen, calling: &str) {
             pen.line((1.4, 1.1), (2.0, 1.3), INK, lw);
         }
     }
+
+/// An office's headgear or badge by its words, on a pen whose unit is the head's radius.
+pub fn office_marks(pen: &mut Pen, office: &str) {
+    if office.starts_with("Lord") {
+        for k in 0..3 { let u = -0.5 + k as f32 * 0.5; pen.poly(&[(u - 0.2, -0.75), (u, -1.3), (u + 0.2, -0.75)], [214.0, 176.0, 70.0]); }
+        pen.rect(-0.8, -0.95, 0.8, -0.65, [214.0, 176.0, 70.0]);
+    } else if office.starts_with("Keeps the temple") {
+        pen.ellipse_f(0.0, -1.35, 0.7, 0.18, [226.0, 196.0, 90.0], Finish::Plain);
+        pen.ellipse_f(0.0, -1.35, 0.45, 0.08, mix([244.0, 236.0, 216.0], [226.0, 196.0, 90.0], 0.3), Finish::Paint);
+    } else if office.starts_with("Speaks") {
+        pen.path(&[(-0.8, 1.0), (0.0, 1.45), (0.8, 1.0)], [214.0, 176.0, 70.0], (pen.half * 0.12).max(1.0));
+        pen.ellipse(0.0, 1.5, 0.22, 0.22, [214.0, 176.0, 70.0]);
+    } else if office.starts_with("Tends") {
+        pen.rect_f(0.95, 0.9, 1.45, 1.4, [240.0, 236.0, 226.0], Finish::Plain);
+        pen.rect_f(1.15, 0.95, 1.25, 1.35, BLOOD, Finish::Paint);
+        pen.rect_f(1.0, 1.1, 1.4, 1.2, BLOOD, Finish::Paint);
+    } else if office.starts_with("Cooks") {
+        pen.ellipse(0.0, -1.25, 0.62, 0.36, [244.0, 240.0, 230.0]);
+        pen.rect(-0.55, -1.05, 0.55, -0.75, [244.0, 240.0, 230.0]);
+    }
+}
