@@ -307,14 +307,14 @@ fn water_wash(levels: f32) -> Rgb {
 
 /// Draw the playable area's surface in ink. Same camera and buffer layout as `render_local`.
 pub fn render_local_ink(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
-    render_ground(map, None, cam, buf, w, h);
+    render_ground(map, None, None, cam, buf, w, h);
 }
 
 /// The colony's ground: the ink surface with the camp's worn paths on it, kept between frames
 /// like the surface (`render_local_ink`). `draw_colony_on_ground` then draws the rest.
 pub fn render_colony_ground(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
     let worn = (colony.steps.len() == colony.map.width * colony.map.height).then_some(colony.steps.as_slice());
-    render_ground(&colony.map, worn, cam, buf, w, h);
+    render_ground(&colony.map, worn, None, cam, buf, w, h);
 }
 
 /// `draw_colony` over ground drawn by `render_colony_ground` (the worn paths already on it).
@@ -335,9 +335,11 @@ fn worn_level(map: &LocalMap, worn: Option<&[u16]>, x: usize, y: usize) -> u8 {
     1 + ((n as u32 - 15) * 7 / 105).min(7) as u8
 }
 
-fn render_ground(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
+/// The ground kept between frames; with `level` the slice at that level drawn over it
+/// (`level_pixel`), kept likewise.
+fn render_ground(map: &LocalMap, worn: Option<&[u16]>, level: Option<i32>, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
     let tg0 = std::time::Instant::now();
-    render_ground_inner(map, worn, cam, buf, w, h);
+    render_ground_inner(map, worn, level, cam, buf, w, h);
     if std::env::var("PLANET_TIME_INK").is_ok() {
         let ms = tg0.elapsed().as_secs_f64() * 1000.0;
         if ms > 15.0 { INK_STATS.with(|st| eprintln!("INK slow {:.1} ms: {}", ms, st.borrow())); }
@@ -349,7 +351,7 @@ thread_local! {
     static INK_STATS: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
 }
 
-fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
+fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, level: Option<i32>, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
     let t = cam.tile_px;
     let ts = std::time::Instant::now();
     // The camera on whole pixels: the world pixel at the screen's top-left. Hatching and grain
@@ -360,10 +362,10 @@ fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, 
     let win = ink_window(map, t, ox, oy, w, h);
     let (x0, y0, x1, y1) = win;
     if x1 <= x0 || y1 <= y0 { buf.iter_mut().for_each(|p| *p = OFF_MAP); return; }
-    let snap = column_snaps(map, x0, y0, x1, y1);
+    let snap = column_snaps(map, x0, y0, x1, y1, level);
     let gw0 = x1 - x0;
     let wear: Vec<u8> = (0..gw0 * (y1 - y0)).map(|i| worn_level(map, worn, x0 + i % gw0, y0 + i / gw0)).collect();
-    let key = InkKey { t: t.to_bits(), w, h, map: map as *const LocalMap as usize, mw: map.width, tile: map.world_tile };
+    let key = InkKey { t: t.to_bits(), w, h, map: map as *const LocalMap as usize, mw: map.width, tile: map.world_tile, level: level.unwrap_or(i32::MIN) };
     INK_CACHE.with(|cell| {
         let mut cache = cell.borrow_mut();
         // (Debug: PLANET_INK_NOCACHE=1 draws every frame afresh, to time and profile that.)
@@ -374,7 +376,7 @@ fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, 
             let coarse = w * h >= PREVIEW_PIXELS && std::env::var("PLANET_INK_NOCACHE").is_err() && std::env::var("PLANET_INK_CHECK").is_err();
             INK_STATS.with(|st| *st.borrow_mut() = if coarse { "coarse".into() } else { "full".into() });
             let t0 = std::time::Instant::now();
-            if coarse { draw_ink_coarse(map, t, ox, oy, buf, w, h, win, &wear); } else { draw_ink(map, t, ox, oy, buf, w, h, win, &wear, &|_, _| true); }
+            if coarse { draw_ink_coarse(map, t, ox, oy, buf, w, h, win, &wear, level); } else { draw_ink(map, t, ox, oy, buf, w, h, win, &wear, level, &|_, _| true); }
             // How fast this machine draws the ground (pixels a millisecond), for the refining.
             let px = if coarse { w * h / 4 } else { w * h } as f64;
             INK_RATE.with(|r| r.set(px / (t0.elapsed().as_secs_f64() * 1000.0).max(0.1)));
@@ -438,7 +440,7 @@ fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, 
                 let (vy0, vy1) = clamp_win(cell_of(oy + r0 as i64), cell_of(oy + r1 as i64 - 1), y0, y1);
                 let need = |_: i64, sy: i64| sy >= r0 as i64 && sy < r1 as i64;
                 let row_need = |sy: usize| sy >= r0 && sy < r1;
-                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (x0, vy0, x1, vy1), &wear, &need, &row_need, (r1 - r0) * w, 0..w);
+                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (x0, vy0, x1, vy1), &wear, level, &need, &row_need, (r1 - r0) * w, 0..w);
             }
             if !cols.is_empty() {
                 let (c0, c1) = (cols.start, cols.end);
@@ -446,7 +448,7 @@ fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, 
                 let (r0, r1) = (rows.start, rows.end);
                 let need = |sx: i64, sy: i64| sx >= c0 as i64 && sx < c1 as i64 && !(sy >= r0 as i64 && sy < r1 as i64);
                 let row_need = |sy: usize| !(sy >= r0 && sy < r1);
-                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (vx0, y0, vx1, y1), &wear, &need, &row_need, (c1 - c0) * h, c0..c1);
+                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (vx0, y0, vx1, y1), &wear, level, &need, &row_need, (c1 - c0) * h, c0..c1);
             }
             if any {
                 let (mut bx0, mut by0, mut bx1, mut by1) = (usize::MAX, usize::MAX, 0usize, 0usize);
@@ -470,7 +472,7 @@ fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, 
                 // (Only the screen columns over the dirty cells' box.)
                 let sx0 = (((bx0 as f32) * t) as i64 - ox).clamp(0, w as i64) as usize;
                 let sx1 = ((((bx1 as f32) * t).ceil()) as i64 - ox + 1).clamp(0, w as i64) as usize;
-                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, view_win, &wear, &need, &row_need, ndirty * (t * t) as usize, sx0..sx1);
+                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, view_win, &wear, level, &need, &row_need, ndirty * (t * t) as usize, sx0..sx1);
             }
         }
         // Refine rows still coarse: about six milliseconds' worth a frame (at the rate the coarse
@@ -483,7 +485,7 @@ fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, 
             let vy1 = (cell_of(oy + r1 as i64 - 1) + 4).clamp(y0 as i64, y1 as i64) as usize;
             let need = |_: i64, sy: i64| sy >= r0 as i64 && sy < r1 as i64;
             let row_need = |sy: usize| sy >= r0 && sy < r1;
-            draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (x0, vy0, x1, vy1.max(vy0 + 1)), &wear, &need, &row_need, (r1 - r0) * w, 0..w);
+            draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (x0, vy0, x1, vy1.max(vy0 + 1)), &wear, level, &need, &row_need, (r1 - r0) * w, 0..w);
             for r in r0..r1 { c.coarse[r] = false; }
         }
         INK_STATS.with(|st| *st.borrow_mut() = format!("snap {:.1} ms, dirty cells {} of {}, pan {},{}, draw {:.1} ms", snap_ms, ndirty, gw * gh, dx, dy, td.elapsed().as_secs_f64() * 1000.0));
@@ -492,7 +494,7 @@ fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, 
         // (Debug: PLANET_INK_CHECK=1 draws the whole frame afresh and counts pixels that differ.)
         if std::env::var("PLANET_INK_CHECK").is_ok() && !c.coarse.iter().any(|&b| b) {
             let mut fresh = vec![0u32; w * h];
-            draw_ink(map, t, ox, oy, &mut fresh, w, h, win, &c.wear, &|_, _| true);
+            draw_ink(map, t, ox, oy, &mut fresh, w, h, win, &c.wear, level, &|_, _| true);
             let bad = fresh.iter().zip(buf.iter()).filter(|(a, b)| a != b).count();
             if bad > 0 { eprintln!("INK CHECK: {} pixels differ (pan {},{})", bad, dx, dy); }
         }
@@ -526,7 +528,7 @@ const INK_REACH: i64 = 5;
 /// What the ink surface of a column is drawn from: its ground level, roof and mark, and the
 /// cells from just below the ground to ten above it (water, walls, plants, buildings).
 #[derive(Clone, PartialEq)]
-struct ColumnSnap { sz: i32, roof: u32, feature: crate::local::wildlife::Feature, cells: [crate::local::Cell; 12] }
+struct ColumnSnap { sz: i32, roof: u32, feature: crate::local::wildlife::Feature, cells: [crate::local::Cell; 12], lv: [crate::local::Cell; 3] }
 
 impl ColumnSnap {
     /// How far (cells) a change from `old` to this can show: a plant grown or felled (or a mark
@@ -535,13 +537,13 @@ impl ColumnSnap {
     /// redrawn a third of the screen.
     fn reach(&self, old: &ColumnSnap) -> i64 {
         // (A mark on the ground, a stump or a trail, is drawn inside its own cell.)
-        let plants_only = self.sz == old.sz && self.roof == old.roof
+        let plants_only = self.sz == old.sz && self.roof == old.roof && self.lv == old.lv
             && self.cells.iter().zip(old.cells.iter()).all(|(a, b)| a.shape == b.shape && a.material == b.material && a.water == b.water && a.boulder == b.boulder);
         if plants_only { CROWN_REACH + 1 } else { INK_REACH }
     }
 }
 
-fn column_snaps(map: &LocalMap, x0: usize, y0: usize, x1: usize, y1: usize) -> Vec<ColumnSnap> {
+fn column_snaps(map: &LocalMap, x0: usize, y0: usize, x1: usize, y1: usize, level: Option<i32>) -> Vec<ColumnSnap> {
     let gw = x1 - x0;
     // (On this thread: a few thousand columns, and the pool's hand-off had stalled for twenty
     // milliseconds when the machine was busy.)
@@ -554,12 +556,17 @@ fn column_snaps(map: &LocalMap, x0: usize, y0: usize, x1: usize, y1: usize) -> V
             let z = sz - 1 + j as i32;
             *c = if z >= 0 && (z as usize) < map.depth { *map.cell(x, y, z as usize) } else { *map.cell(x, y, 0) };
         }
-        ColumnSnap { sz, roof: map.roofs[k], feature: map.features[k], cells }
+        // (A level slice also reads the floor at its level and the two cells over it.)
+        let mut lv = [*map.cell(x, y, 0); 3];
+        if let Some(z) = level {
+            for (j, c) in lv.iter_mut().enumerate() { let zz = z as usize + j; if zz < map.depth { *c = *map.cell(x, y, zz); } }
+        }
+        ColumnSnap { sz, roof: map.roofs[k], feature: map.features[k], cells, lv }
     }).collect()
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct InkKey { t: u32, w: usize, h: usize, map: usize, mw: usize, tile: (usize, usize) }
+struct InkKey { t: u32, w: usize, h: usize, map: usize, mw: usize, tile: (usize, usize), level: i32 }
 
 /// The last surface drawn: its zoom and map, where the screen stood (world pixels), the window
 /// of columns it was drawn from and their state, its pixels.
@@ -582,18 +589,18 @@ thread_local! {
 /// Draw the ink surface into `buf` for the screen whose top-left world pixel is (ox, oy): the
 /// pixels `need` asks for. Hatching and grain are keyed on world pixels.
 #[allow(clippy::too_many_arguments)]
-fn draw_ink(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), wear: &[u8], need: &(dyn Fn(i64, i64) -> bool + Sync)) {
-    draw_ink_rows(map, t, ox, oy, buf, w, h, win, win, wear, need, &|_| true, w * h, 0..w);
+fn draw_ink(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), wear: &[u8], level: Option<i32>, need: &(dyn Fn(i64, i64) -> bool + Sync)) {
+    draw_ink_rows(map, t, ox, oy, buf, w, h, win, win, wear, level, need, &|_| true, w * h, 0..w);
 }
 
 /// `draw_ink` at half resolution: one pixel computed for each 2x2 block (its top-left, exactly
 /// as the full image has it), copied to the rest.
 #[allow(clippy::too_many_arguments)]
-fn draw_ink_coarse(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), wear: &[u8]) {
+fn draw_ink_coarse(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), wear: &[u8], level: Option<i32>) {
     let mut scratch = vec![0u32; w * h];
     let need = |sx: i64, sy: i64| sx % 2 == 0 && sy % 2 == 0;
     let row_need = |sy: usize| sy % 2 == 0;
-    draw_ink_rows(map, t, ox, oy, &mut scratch, w, h, win, win, wear, &need, &row_need, w * h / 4, 0..w);
+    draw_ink_rows(map, t, ox, oy, &mut scratch, w, h, win, win, wear, level, &need, &row_need, w * h / 4, 0..w);
     buf.par_chunks_mut(w).enumerate().for_each(|(sy, row)| {
         let src = &scratch[(sy & !1) * w..(sy & !1) * w + w];
         for (sx, out) in row.iter_mut().enumerate() { *out = src[sx & !1]; }
@@ -604,7 +611,7 @@ fn draw_ink_coarse(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w:
 /// will be drawn: a small redraw (under 150,000) is drawn on this thread, a large one in parallel (a parallel pass over
 /// every row for a few dirty cells waited on every worker, and stalled when the machine was busy).
 #[allow(clippy::too_many_arguments)]
-fn draw_ink_rows(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), view_win: (usize, usize, usize, usize), wear: &[u8], need: &(dyn Fn(i64, i64) -> bool + Sync), row_need: &(dyn Fn(usize) -> bool + Sync), est_pixels: usize, cols: std::ops::Range<usize>) {
+fn draw_ink_rows(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), view_win: (usize, usize, usize, usize), wear: &[u8], level: Option<i32>, need: &(dyn Fn(i64, i64) -> bool + Sync), row_need: &(dyn Fn(usize) -> bool + Sync), est_pixels: usize, cols: std::ops::Range<usize>) {
     let (x0, y0, x1, y1) = win;
     // (The view is read only where pixels are drawn, and three cells round: `view_win`.)
     let v = View::window(map, view_win.0, view_win.1, view_win.2, view_win.3);
@@ -657,6 +664,7 @@ fn draw_ink_rows(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: u
                 }
             }
             *out = pack(c);
+            if let Some(z) = level { *out = level_pixel(map, z, t, fx, fy, *out); }
         }
     };
     if est_pixels < 150_000 { buf.chunks_mut(w).enumerate().for_each(draw_row); }
@@ -1020,11 +1028,17 @@ fn stair_mark(u: f32, v: f32, up: bool, down: bool) -> bool {
 }
 
 pub fn render_level_ink(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
-    use crate::local::Shape;
-    let surface = LocalCamera { surface_view: true, ..*cam };
-    render_local_ink(map, &surface, buf, w, h);
-    let t = cam.tile_px;
+    // (Kept between frames with the ground under it: `render_ground`.)
     let z = cam.z.clamp(0, map.depth as i32 - 2);
+    let surface = LocalCamera { surface_view: true, ..*cam };
+    render_ground(map, None, Some(z), &surface, buf, w, h);
+}
+
+/// A pixel of the level slice at `z` (clamped by the caller) at map point (fx, fy), over the
+/// ground pixel `p` drawn there.
+#[inline]
+fn level_pixel(map: &LocalMap, z: i32, t: f32, fx: f32, fy: f32, p: u32) -> u32 {
+    use crate::local::Shape;
     let zu = z as usize;
     let paper: Rgb = [234.0, 222.0, 196.0];
     // What a cell of the slice is: 0 rock at standing height, 1 a floor to stand on, 2 open dark.
@@ -1035,114 +1049,105 @@ pub fn render_level_ink(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: u
         let body = map.cell(x, y, zu + 1);
         Some(if matches!(body.shape, Shape::Empty | Shape::Stair) { 2 } else { 0 })
     };
-    buf.par_chunks_mut(w).enumerate().for_each(|(sy, row)| {
-        let fy = cam.cy + (sy as f32 + 0.5 - h as f32 / 2.0) / t;
-        for sx in 0..w {
-            let fx = cam.cx + (sx as f32 + 0.5 - w as f32 / 2.0) / t;
-            if fx < 0.0 || fy < 0.0 || fx >= map.width as f32 || fy >= map.height as f32 { continue; }
-            let (x, y) = (fx as usize, fy as usize);
-            let sz = map.surface_z[y * map.width + x];
-            let k = sx;
-            let p = row[k];
-            let here: Rgb = [((p >> 16) & 255) as f32, ((p >> 8) & 255) as f32, (p & 255) as f32];
-            let floor = map.cell(x, y, zu);
-            let body = map.cell(x, y, zu + 1);
-            let (u, v) = (fx.fract(), fy.fract());
-            let e = 1.2 / t;
-            let c: Rgb = if z == sz && floor.shape != Shape::Stair {
-                // The ground at this level: the surface as drawn.
-                here
-            } else if z > sz {
-                // Above the ground: what was built up to this level (a tower's platform, the walls
-                // of a hut or a tower at standing height), else open air with the land faint below.
-                let kd = kind(x as i64, y as i64).unwrap_or(2);
-                let open_near = |want: u8| (u < e && kind(x as i64 - 1, y as i64) == Some(want)) || (u > 1.0 - e && kind(x as i64 + 1, y as i64) == Some(want))
-                    || (v < e && kind(x as i64, y as i64 - 1) == Some(want)) || (v > 1.0 - e && kind(x as i64, y as i64 + 1) == Some(want));
-                if kd == 1 {
-                    // A platform built up to this level (a tower's top): planks or flags, a
-                    // parapet of merlons along its open edges, its stair as steps with the way
-                    // marked, as on the levels below. (It had been a bare square.)
-                    let mut c = mix(paper, wash(floor), 0.55);
-                    let lw = 1.1 / t;
-                    if matches!(floor.material, Material::Wood) { if (fy * 4.0).fract() < lw * 4.0 { c = mix(c, INK, 0.3); } }
-                    else if (fx * 2.0).fract() < lw * 2.0 || (fy * 2.0 + if (fx * 2.0) as i64 % 2 == 0 { 0.0 } else { 0.5 }).fract() < lw * 2.0 { c = mix(c, INK, 0.25); }
-                    let side = |dx: i64, dy: i64| kind(x as i64 + dx, y as i64 + dy) == Some(2);
-                    let d = edge_distance(u, v, side(-1, 0), side(1, 0), side(0, -1), side(0, 1));
-                    if d < 0.18 && ((fx + fy) * 3.0).fract() < 0.5 { c = mix(c, INK, 0.45); }
-                    let (up, down) = (body.shape == Shape::Stair, floor.shape == Shape::Stair);
-                    if up || down {
-                        if (v * 5.0).fract() < 0.28 && u > 0.12 && u < 0.88 { c = mix(c, INK, 0.5); }
-                        if stair_mark(u, v, up, down) { c = [150.0, 40.0, 30.0]; }
-                    }
-                    if open_near(2) { INK } else { c }
-                } else if kd == 0 {
-                    let base = mix(wash(body), INK, 0.3);
-                    if ((fx + fy) * 5.0).fract() < 0.3 { mix(base, INK, 0.3) } else { base }
-                } else if floor.water > 0 { mix(water_wash(floor.water as f32), paper, 0.3) }
-                else {
-                    // Ground below this level, seen through the open air: the surface as drawn,
-                    // paling with the depth (a level down nearly as it is, so the camp's ground
-                    // and a ditch or a lower bank still read as the same land; from five levels
-                    // up a faint ghost). Trees reach up through the levels over the ground (DF),
-                    // and fade with it. (It had been 72% pale at once, with each tree's cell and
-                    // its neighbours kept darker: square halos round every crown.)
-                    let d = (z - sz) as f32;
-                    mix(here, paper, (0.1 + 0.14 * (d - 1.0)).clamp(0.1, 0.72))
-                }
-            } else if sz - z <= 2 && floor.shape == Shape::Wall && !crate::colony::nav::standable(map, x, y, z) && map.cavern_at(x, y, z + 1).is_none() {
-                // Ground a level or two above this one (a slope, the bank of a rise): the surface
-                // as drawn, shaded with hachures, inked where it meets this level's ground. (Cut
-                // rock hatching here made a gentle slope look like a quarry face.)
-                let mut c = mix(here, INK, 0.12 + 0.06 * (sz - z) as f32);
-                if ((fx - fy) * 5.0).fract() < 0.18 { c = mix(c, INK, 0.25); }
-                let lower = |dx: i64, dy: i64| { let (qx, qy) = (x as i64 + dx, y as i64 + dy); qx >= 0 && qy >= 0 && (qx as usize) < map.width && (qy as usize) < map.height && map.surface_z[qy as usize * map.width + qx as usize] <= z };
-                if (u < e && lower(-1, 0)) || (u > 1.0 - e && lower(1, 0)) || (v < e && lower(0, -1)) || (v > 1.0 - e && lower(0, 1)) { c = INK; }
-                c
-            } else {
-                let kd = kind(x as i64, y as i64).unwrap_or(0);
-                let edge_to = |want: u8| (u < e && kind(x as i64 - 1, y as i64) == Some(want)) || (u > 1.0 - e && kind(x as i64 + 1, y as i64) == Some(want))
-                    || (v < e && kind(x as i64, y as i64 - 1) == Some(want)) || (v > 1.0 - e && kind(x as i64, y as i64 + 1) == Some(want));
-                if body.material == Material::Magma {
-                    // The magma sea: a slow orange glow, darker crust in thin veins across it
-                    // (the section's look; the veins had been blocky dark squares).
-                    let vein = (mottle(fx * 1.6, fy * 1.6, 1.0, 0x3A8) - 0.5).abs() < 0.03;
-                    if vein { [140.0, 52.0, 24.0] } else { mix([238.0, 132.0, 36.0], [196.0, 56.0, 22.0], mottle(fx, fy, 1.6, 0x3A7)) }
-                } else if body.water > 0 && kd != 0 {
-                    water_wash(body.water as f32)
-                } else if kd == 0 {
-                    // Rock or soil at standing height, hatched in its colour.
-                    let c = cut_rock(map, body, x, y, zu + 1, fx, fy, 1.1 / t);
-                    if edge_to(1) || edge_to(2) { INK } else { c }
-                } else if kd == 1 {
-                    // A floor to stand on: a pale wash of its stone (a cavern's darker), a stair's
-                    // steps across it.
-                    let cavern = map.cavern_at(x, y, z + 1).is_some();
-                    let mut c = if cavern { mix(paper, [96.0, 88.0, 100.0], 0.55) } else { mix(paper, wash(floor), 0.22) };
-                    if floor.plant == crate::local::Plant::Tree(TreeKind::Fungus) {
-                        let d = ((u - 0.5).powi(2) + (v - 0.5).powi(2)).sqrt();
-                        if d < 0.38 { c = if d > 0.3 { INK } else { [150.0, 110.0, 140.0] }; }
-                    }
-                    let up = body.shape == Shape::Stair;
-                    let down = floor.shape == Shape::Stair;
-                    if up || down {
-                        // Steps: bars across the cell, darker toward the way down.
-                        let bar = ((v * 5.0) as i32).clamp(0, 4);
-                        let in_bar = (v * 5.0).fract() < 0.28 && u > 0.12 && u < 0.88;
-                        if in_bar { c = mix(c, INK, 0.45 + 0.1 * bar as f32); }
-                        // The way: a chevron up (^), down (v), or both (X).
-                        if stair_mark(u, v, up, down) { c = [150.0, 40.0, 30.0]; }
-                    }
-                    if edge_to(0) { c = INK; }
-                    c
-                } else {
-                    // Open dark: a cavern's air, a shaft, the space over a lower floor.
-                    let c = mix(paper, [62.0, 54.0, 66.0], 0.75);
-                    if edge_to(0) { INK } else { c }
-                }
-            };
-            row[k] = pack(c);
+    let (x, y) = (fx as usize, fy as usize);
+    let sz = map.surface_z[y * map.width + x];
+    let here: Rgb = [((p >> 16) & 255) as f32, ((p >> 8) & 255) as f32, (p & 255) as f32];
+    let floor = map.cell(x, y, zu);
+    let body = map.cell(x, y, zu + 1);
+    let (u, v) = (fx.fract(), fy.fract());
+    let e = 1.2 / t;
+    let c: Rgb = if z == sz && floor.shape != Shape::Stair {
+        // The ground at this level: the surface as drawn.
+        here
+    } else if z > sz {
+        // Above the ground: what was built up to this level (a tower's platform, the walls
+        // of a hut or a tower at standing height), else open air with the land faint below.
+        let kd = kind(x as i64, y as i64).unwrap_or(2);
+        let open_near = |want: u8| (u < e && kind(x as i64 - 1, y as i64) == Some(want)) || (u > 1.0 - e && kind(x as i64 + 1, y as i64) == Some(want))
+            || (v < e && kind(x as i64, y as i64 - 1) == Some(want)) || (v > 1.0 - e && kind(x as i64, y as i64 + 1) == Some(want));
+        if kd == 1 {
+            // A platform built up to this level (a tower's top): planks or flags, a
+            // parapet of merlons along its open edges, its stair as steps with the way
+            // marked, as on the levels below. (It had been a bare square.)
+            let mut c = mix(paper, wash(floor), 0.55);
+            let lw = 1.1 / t;
+            if matches!(floor.material, Material::Wood) { if (fy * 4.0).fract() < lw * 4.0 { c = mix(c, INK, 0.3); } }
+            else if (fx * 2.0).fract() < lw * 2.0 || (fy * 2.0 + if (fx * 2.0) as i64 % 2 == 0 { 0.0 } else { 0.5 }).fract() < lw * 2.0 { c = mix(c, INK, 0.25); }
+            let side = |dx: i64, dy: i64| kind(x as i64 + dx, y as i64 + dy) == Some(2);
+            let d = edge_distance(u, v, side(-1, 0), side(1, 0), side(0, -1), side(0, 1));
+            if d < 0.18 && ((fx + fy) * 3.0).fract() < 0.5 { c = mix(c, INK, 0.45); }
+            let (up, down) = (body.shape == Shape::Stair, floor.shape == Shape::Stair);
+            if up || down {
+                if (v * 5.0).fract() < 0.28 && u > 0.12 && u < 0.88 { c = mix(c, INK, 0.5); }
+                if stair_mark(u, v, up, down) { c = [150.0, 40.0, 30.0]; }
+            }
+            if open_near(2) { INK } else { c }
+        } else if kd == 0 {
+            let base = mix(wash(body), INK, 0.3);
+            if ((fx + fy) * 5.0).fract() < 0.3 { mix(base, INK, 0.3) } else { base }
+        } else if floor.water > 0 { mix(water_wash(floor.water as f32), paper, 0.3) }
+        else {
+            // Ground below this level, seen through the open air: the surface as drawn,
+            // paling with the depth (a level down nearly as it is, so the camp's ground
+            // and a ditch or a lower bank still read as the same land; from five levels
+            // up a faint ghost). Trees reach up through the levels over the ground (DF),
+            // and fade with it. (It had been 72% pale at once, with each tree's cell and
+            // its neighbours kept darker: square halos round every crown.)
+            let d = (z - sz) as f32;
+            mix(here, paper, (0.1 + 0.14 * (d - 1.0)).clamp(0.1, 0.72))
         }
-    });
+    } else if sz - z <= 2 && floor.shape == Shape::Wall && !crate::colony::nav::standable(map, x, y, z) && map.cavern_at(x, y, z + 1).is_none() {
+        // Ground a level or two above this one (a slope, the bank of a rise): the surface
+        // as drawn, shaded with hachures, inked where it meets this level's ground. (Cut
+        // rock hatching here made a gentle slope look like a quarry face.)
+        let mut c = mix(here, INK, 0.12 + 0.06 * (sz - z) as f32);
+        if ((fx - fy) * 5.0).fract() < 0.18 { c = mix(c, INK, 0.25); }
+        let lower = |dx: i64, dy: i64| { let (qx, qy) = (x as i64 + dx, y as i64 + dy); qx >= 0 && qy >= 0 && (qx as usize) < map.width && (qy as usize) < map.height && map.surface_z[qy as usize * map.width + qx as usize] <= z };
+        if (u < e && lower(-1, 0)) || (u > 1.0 - e && lower(1, 0)) || (v < e && lower(0, -1)) || (v > 1.0 - e && lower(0, 1)) { c = INK; }
+        c
+    } else {
+        let kd = kind(x as i64, y as i64).unwrap_or(0);
+        let edge_to = |want: u8| (u < e && kind(x as i64 - 1, y as i64) == Some(want)) || (u > 1.0 - e && kind(x as i64 + 1, y as i64) == Some(want))
+            || (v < e && kind(x as i64, y as i64 - 1) == Some(want)) || (v > 1.0 - e && kind(x as i64, y as i64 + 1) == Some(want));
+        if body.material == Material::Magma {
+            // The magma sea: a slow orange glow, darker crust in thin veins across it
+            // (the section's look; the veins had been blocky dark squares).
+            let vein = (mottle(fx * 1.6, fy * 1.6, 1.0, 0x3A8) - 0.5).abs() < 0.03;
+            if vein { [140.0, 52.0, 24.0] } else { mix([238.0, 132.0, 36.0], [196.0, 56.0, 22.0], mottle(fx, fy, 1.6, 0x3A7)) }
+        } else if body.water > 0 && kd != 0 {
+            water_wash(body.water as f32)
+        } else if kd == 0 {
+            // Rock or soil at standing height, hatched in its colour.
+            let c = cut_rock(map, body, x, y, zu + 1, fx, fy, 1.1 / t);
+            if edge_to(1) || edge_to(2) { INK } else { c }
+        } else if kd == 1 {
+            // A floor to stand on: a pale wash of its stone (a cavern's darker), a stair's
+            // steps across it.
+            let cavern = map.cavern_at(x, y, z + 1).is_some();
+            let mut c = if cavern { mix(paper, [96.0, 88.0, 100.0], 0.55) } else { mix(paper, wash(floor), 0.22) };
+            if floor.plant == crate::local::Plant::Tree(TreeKind::Fungus) {
+                let d = ((u - 0.5).powi(2) + (v - 0.5).powi(2)).sqrt();
+                if d < 0.38 { c = if d > 0.3 { INK } else { [150.0, 110.0, 140.0] }; }
+            }
+            let up = body.shape == Shape::Stair;
+            let down = floor.shape == Shape::Stair;
+            if up || down {
+                // Steps: bars across the cell, darker toward the way down.
+                let bar = ((v * 5.0) as i32).clamp(0, 4);
+                let in_bar = (v * 5.0).fract() < 0.28 && u > 0.12 && u < 0.88;
+                if in_bar { c = mix(c, INK, 0.45 + 0.1 * bar as f32); }
+                // The way: a chevron up (^), down (v), or both (X).
+                if stair_mark(u, v, up, down) { c = [150.0, 40.0, 30.0]; }
+            }
+            if edge_to(0) { c = INK; }
+            c
+        } else {
+            // Open dark: a cavern's air, a shaft, the space over a lower floor.
+            let c = mix(paper, [62.0, 54.0, 66.0], 0.75);
+            if edge_to(0) { INK } else { c }
+        }
+    };
+    pack(c)
 }
 
 pub fn settler_looks(colony: &crate::colony::Colony, history: Option<&crate::history::world_state::WorldHistory>) -> Vec<(Rgb, Rgb, Rgb)> {
@@ -1939,6 +1944,8 @@ pub fn draw_level(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [
     let zc = colony.map.surface_z[colony.camp.1 as usize * colony.map.width + colony.camp.0 as usize];
     let near_ground = (cam.z - zc).abs() <= 2;
     let mut placed = Vec::new();
+    let tl0 = std::time::Instant::now();
+    let mut tl1 = tl0;
     if near_ground {
         // The camp's marks, night and winter only where this level shows the surface: not on
         // the rock cut through below it, nor on the rooms dug there.
@@ -1948,18 +1955,25 @@ pub fn draw_level(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [
         let (x1, y1) = (((cam.cx + w as f32 / 2.0 / t) as usize + 1).min(map.width), ((cam.cy + h as f32 / 2.0 / t) as usize + 1).min(map.height));
         let gw = x1.saturating_sub(x0);
         let cells: Vec<bool> = (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).map(|(x, y)| level_shows_surface(map, x, y, cam.z)).collect();
+        // (Each screen column's cell found once: a float test per pixel had cost several
+        // milliseconds a frame at 2560x1440.)
+        let colx: Vec<Option<usize>> = (0..w).map(|sx| {
+            let fx = cam.cx + (sx as f32 + 0.5 - w as f32 / 2.0) / t;
+            (fx >= x0 as f32 && fx < x1 as f32).then(|| fx as usize - x0)
+        }).collect();
         let mut mask = vec![true; w * h];
-        for sy in 0..h {
+        for (sy, row) in mask.chunks_mut(w).enumerate() {
             let fy = cam.cy + (sy as f32 + 0.5 - h as f32 / 2.0) / t;
-            for sx in 0..w {
-                let fx = cam.cx + (sx as f32 + 0.5 - w as f32 / 2.0) / t;
-                if fx < x0 as f32 || fy < y0 as f32 || fx >= x1 as f32 || fy >= y1 as f32 { continue; }
-                mask[sy * w + sx] = cells[(fy as usize - y0) * gw + (fx as usize - x0)];
-            }
+            if fy < y0 as f32 || fy >= y1 as f32 { continue; }
+            let line = &cells[(fy as usize - y0) * gw..(fy as usize - y0 + 1) * gw];
+            for (m, cx) in row.iter_mut().zip(&colx) { if let Some(cx) = cx { *m = line[*cx]; } }
         }
+        tl1 = std::time::Instant::now();
         draw_colony_inner(colony, cam, buf, w, h, history, Some(&mask), &mut placed, false);
     }
+    let tl2 = std::time::Instant::now();
     draw_delve_inner(colony, cam, buf, w, h, history, near_ground, &mut placed);
+    if std::env::var("PLANET_TIME_DRAW").is_ok() { eprintln!("LEVEL mask {:.2} camp {:.2} delve {:.2}", (tl1 - tl0).as_secs_f64() * 1e3, (tl2 - tl1).as_secs_f64() * 1e3, tl2.elapsed().as_secs_f64() * 1e3); }
 }
 
 /// Settlers in a level view (`draw_delve` without the portraits' colours).
