@@ -188,5 +188,8 @@ crust/climate) after each named stage and can stop early (the lab's metrics hook
 5. Only report completion after confirming the feature works as expected
 
 Debug tools:
+- Frame budget: `--frame-bench SPEED`, `--frame-bench-world`, `--frame-bench-watch` (headless,
+  the window's per-frame work; see "Frame budget" in `src/tiles/CLAUDE.md`). The colony's ground
+  and the world map are kept between frames and redrawn only where they change.
 - `src/multiscale/debug_export.rs` - Export chunk data for analysis
 - The tile viewer's window title shows the hovered tile and what is on it

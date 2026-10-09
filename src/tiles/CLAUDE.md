@@ -306,3 +306,44 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   (was sky). `PLANET_FRAMES` also writes `_foot.png` (stair's foot) and `_magma.png` (the pipe)
   and prints best-of-three frame times (~12-13 ms each at 1280x800, 16 px, unloaded M4 Pro).
   Not done: `--local-snapshot`'s `_section.png` is still the old pixel cross-section.
+
+## Frame budget (2026-10-08, branch `profiling`)
+- Benches (headless, the window's work per frame at 1280x800 or `PLANET_BENCH_SIZE=WxH`):
+  `--frame-bench SPEED [--frame-days N] [--frame-mode surface|pan|level|section]` (the colony:
+  `SPEED` ticks a frame, then `render_colony_ground` + `draw_colony_on_ground` / the level / the
+  section, then the HUD; prints wall and CPU time per frame, the costliest frames by CPU and the
+  slowest ticks), `--frame-bench-world` (world map at 4-32 px a tile, walking at 2-8 px a cell),
+  `--frame-bench-watch` (the history watcher playing a step a frame, then panning). On a busy
+  machine wall time counts waits: run with `RAYON_NUM_THREADS=1` and read the CPU line for one
+  core's worth of work.
+- The colony's ground is kept between frames (`local_ink::render_ground`, thread-local
+  `INK_CACHE`): each visible column (and a 7-cell margin) is snapshotted (`ColumnSnap`: ground
+  level, roof, mark, the cells from one below to ten above; the worn level in eight steps); only
+  cells that changed are redrawn, with the pixels they can reach (`ColumnSnap::reach`: plants
+  and marks 3 cells, anything else 5, wear 1). The camera is on whole pixels (`snap_camera`; the
+  viewer snaps before drawing) and hatching/grain are keyed on world pixels, so a pan shifts the
+  last frame and draws only the strips that came into view. Each pass builds the `View` only
+  where it draws (`View::window`, three cells round) and small redraws stay on the calling thread
+  (`build`, `draw_ink_rows`' pixel estimate: a parallel pass over every row stalled on a busy
+  machine). Windows of 1.5 Mpx and more draw a coarse frame first (`draw_ink_coarse`) and refine
+  about 6 ms of rows a frame (`INK_RATE`). The worn paths are drawn in the kept ground
+  (`render_colony_ground`); `draw_colony` (old path, snapshots, level views) still draws them.
+- The world map likewise (`render::render_world_cached`, `snap_world_camera`; `WORLD_CACHE`,
+  `WORLD_RATE`): key = zoom, window, the `TileWorld` and its `revision` (bumped by
+  `set_season`, `apply_history`, `apply_overlay`, and by the viewer when it sets
+  `show_resources` or the overlay). The Shadow's hatching is keyed on world pixels there.
+- Night and winter washes: one parallel pass in whole numbers (a table for the snow by
+  brightness), the glow reckoned only near the fire and the watch.
+- Checks: `PLANET_INK_CHECK=1` / `PLANET_WORLD_CHECK=1` draw each frame afresh and count pixels
+  that differ from the kept one (0 over 160 days at 10x, standing and panning);
+  `PLANET_INK_NOCACHE` / `PLANET_WORLD_NOCACHE` turn the keeping off; `PLANET_TIME_INK=1` prints
+  slow ground frames with what they redrew; `PLANET_TIME_DRAW=1` the worn and wash passes.
+- Results (this 14-core machine, busy, load 15-55): colony at 10x over 400 days, frame median
+  1.5 ms, 99th percentile ~5 ms (it had been 34 ms median); panning 1.7 ms (4.0 at 2560x1440);
+  level view 3.1 ms (8.5); world map 1-2.5 ms (17-24 before); walking 1 ms; watcher 8-9 ms. One
+  core's worth of work for the colony: median 2.6 ms, 7 frames of 57,600 over 16.7 ms (the first
+  frame and the season's regrowth across the screen). Spikes left in wall time on this machine
+  are the scheduler (they fall on different frames each run and vanish in CPU time).
+- Not done: the level view (`render_level_ink`) and the watcher are still drawn afresh (3-9 ms
+  with all cores, 10-35 ms on one); the world shader costs ~150 ns a pixel on one core, so fast
+  pans at 2560x1440 on a single core miss frames.
