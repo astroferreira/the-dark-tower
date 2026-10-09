@@ -1231,6 +1231,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     super::camp_ink::draw_works(colony, cam, &mut put, w, h);
     super::fx_ink::draw_siege(colony, cam, &mut put, w, h);
     super::camp_ink::draw_relic(colony, cam, &mut put, w, h, None);
+    super::camp_ink::draw_mandate(colony, cam, &mut put, w, h);
     super::fx_ink::draw_clash(colony, cam, &mut put, w, h);
     // Buildings going up, drawn by the share of loads laid: pegs and a line (a quarter), a
     // timber frame (to three fifths), then walls rising round the ring.

@@ -765,3 +765,29 @@ pub fn draw_scorch(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w
         pen.dot(u + 0.05, v - 0.36, [220.0, 110.0, 50.0]);
     }
 }
+
+/// The speaker's mandate (`society.rs`) nailed to a post by the fire: a board with its sign (a
+/// hammer for the workshop, a sapling for the spared trees, a spear for the watch, pipes for the
+/// songs, a pick for no idle hands, a joint for the feasts).
+pub fn draw_mandate(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i64, Rgb, f32), w: usize, h: usize) {
+    use crate::colony::society::Mandate;
+    let Some(m) = colony.mandate else { return };
+    let c = Cells::new(cam, w, h);
+    // On open ground near the fire, off the roofs and the store's heaps.
+    let map = &colony.map;
+    let taken: Vec<(f32, f32)> = super::local_ink::store_heaps(colony).iter().map(|hp| hp.cell).collect();
+    let spot = [(-1, -2), (1, -2), (-2, -1), (2, -1), (-2, 2), (2, 2), (0, -3), (-3, 0), (3, 0)].iter().map(|&(dx, dy)| (colony.camp.0 as i32 + dx, colony.camp.1 as i32 + dy))
+        .find(|&(qx, qy)| qx > 0 && qy > 0 && (qx as usize) < map.width && (qy as usize) < map.height && map.roofs[qy as usize * map.width + qx as usize] == 0
+            && crate::colony::nav::passable(map, (qx as u16, qy as u16)) && !taken.iter().any(|t| t.0 as i32 == qx && t.1 as i32 == qy))
+        .unwrap_or((colony.camp.0 as i32 - 1, colony.camp.1 as i32 - 2));
+    let (x, y) = (spot.0 as f32 + 0.5, spot.1 as f32 + 0.6);
+    if !c.visible(x, y, w, h, 2.0) { return; }
+    let mut pen = c.pen(put, x, y);
+    pen.bone(&[(0.0, 0.4), (0.0, -0.6)], DARK_WOOD, (pen.half * 0.07).max(1.5));
+    pen.rect(-0.42, -0.85, 0.42, -0.2, [226.0, 214.0, 180.0]);
+    pen.rect_f(-0.42, -0.85, 0.42, -0.78, [150.0, 40.0, 30.0], Finish::Plain);
+    drop(pen);
+    let g = match m { Mandate::Works => super::glyphs::Glyph::Mace, Mandate::SpareTrees => super::glyphs::Glyph::Herbs, Mandate::Watch => super::glyphs::Glyph::Spear,
+        Mandate::Songs => super::glyphs::Glyph::Pipes, Mandate::NoIdleHands => super::glyphs::Glyph::Tool, Mandate::Feasts => super::glyphs::Glyph::Meat };
+    super::glyphs::draw(put, g, c.x0 + x * c.t, c.y0 + (y - 0.5) * c.t, (c.t * 0.55).max(7.0), None);
+}
