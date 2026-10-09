@@ -143,6 +143,10 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     arms_sheet: Option<String>,
 
+    /// Draw the start screen to FILE (headless) and exit
+    #[arg(long, value_name = "FILE")]
+    start_snapshot: Option<String>,
+
     /// Draw every sprite (creatures, buildings, things, marks) on one sheet to FILE and exit
     #[arg(long, value_name = "FILE")]
     sprite_sheet: Option<String>,
@@ -718,6 +722,15 @@ const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 fn main() {
     let mut args = parse_args();
     if let Some(px) = args.tiles_zoom { tiles::viewer::set_start_zoom(px); }
+    if let Some(path) = &args.start_snapshot {
+        let initial = tiles::start::StartConfig {
+            width: args.width, height: args.height, seed: args.seed.unwrap_or(42),
+            style: plates::WorldStyle::from_str(&args.world_style).unwrap_or_default(), plates: args.plates, tectonic_myr: args.tectonic_myr,
+            fantasy: args.fantasy, history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
+            civilizations: args.civilizations, shadow: !args.no_shadow, watch: true,
+        };
+        match tiles::start::save_start_snapshot(initial, path) { Ok(()) => { println!("Start screen drawn to {}", path); std::process::exit(0); } Err(e) => { eprintln!("--start-snapshot: {e}"); std::process::exit(1); } }
+    }
     // The sprite sheet needs no world.
     if let Some(path) = &args.sprite_sheet {
         match tiles::sprite_sheet::save(path) {
