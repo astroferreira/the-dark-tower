@@ -250,3 +250,34 @@ pub fn draw_clash(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i
         }
     }
 }
+
+/// A prisoner held by the camp (`prisoners.rs`): one of their people, unarmed, bound to a post
+/// near the fire with their name over them.
+pub fn draw_prisoner(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i64, Rgb, f32), w: usize, h: usize, scale: f32, labels: &mut Vec<(f32, f32, String)>) {
+    let Some(pr) = colony.prisoner.as_ref() else { return };
+    let c = Cells::new(cam, w, h);
+    let (x, y) = (colony.camp.0 as f32 - 2.5, colony.camp.1 as f32 + 2.5);
+    if !c.visible(x, y, w, h, 2.0) { return; }
+    let (sx, sy) = (c.x0 + x * c.t, c.y0 + y * c.t);
+    {
+        let mut pen = Pen::new(put, sx, sy, 22.0 * scale);
+        pen.bone(&[(0.0, 0.7), (0.0, -1.1)], [122.0, 86.0, 54.0], (scale * 2.0).max(1.5));
+    }
+    let mut f = super::folk::raider(None, &format!("a war band of {}", pr.people), 9, None);
+    f.arm = super::folk::Arm::None;
+    f.shield = None;
+    f.helm = super::folk::Helm::None;
+    let top = super::folk::draw(put, &f, sx, sy, scale, false, false, 1.0);
+    let mut pen = Pen::new(put, sx, sy, 22.0 * scale);
+    for v in [0.05f32, 0.3] { pen.line((-0.6, v), (0.6, v + 0.05), [196.0, 170.0, 120.0], (scale * 1.4).max(1.0)); }
+    labels.push((sx, top - 4.0, format!("{}, a prisoner", pr.name)));
+}
+
+/// The stocks round a settler serving their sentence: a plank with holes over their shoulders on
+/// two posts.
+pub fn draw_stocks(put: &mut dyn FnMut(i64, i64, Rgb, f32), x: f32, y: f32, scale: f32) {
+    let mut pen = Pen::new(put, x, y, 22.0 * scale);
+    for u in [-0.75f32, 0.75] { pen.bone(&[(u, 0.75), (u, -0.15)], [122.0, 86.0, 54.0], (scale * 2.0).max(1.5)); }
+    pen.rect(-0.85, -0.12, 0.85, 0.08, [164.0, 120.0, 78.0]);
+    for u in [-0.45f32, 0.45] { pen.ellipse_f(u, -0.02, 0.08, 0.06, INK, Finish::Paint); }
+}

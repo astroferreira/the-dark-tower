@@ -788,6 +788,9 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
     let (skin, hair, dress) = look;
     let ill = s.ill_until > colony.clock.tick;
     let dress = if ill { mix(dress, [150.0, 150.0, 140.0], 0.5) } else { dress };
+    // Clothes wear out (`clothes.rs`): faded and patched from 120 days, rags from 180.
+    let worn = if s.guest_until == 0 { colony.clothes_worn(i) } else { 0 };
+    let dress = if worn >= 120 { mix(dress, [168.0, 160.0, 146.0], 0.3) } else { dress };
     // Shoulders: a half ellipse; the head above, hair on its crown.
     let (sw, sh) = (7.0 * scale, 6.0 * scale);
     let base = y + 5.0 * scale;
@@ -795,6 +798,22 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
         for dx in -(sw as i64 + 1)..=(sw as i64 + 1) {
             let e = (dx as f32 / sw).powi(2) + (dy as f32 / sh).powi(2);
             if e <= 1.0 { put(x as i64 + dx, base as i64 + dy, if e > 0.72 { INK } else { dress }, 0.97); }
+        }
+    }
+    if worn >= 120 {
+        // Patches of another cloth, and a ragged hem when they are rags.
+        let patch = mix(dress, [120.0, 96.0, 70.0], 0.5);
+        for (px, py) in [(-0.4f32, -0.35f32), (0.35, -0.55)] {
+            let (cx, cy) = (x + sw * px, base + sh * py);
+            let r = (1.4 * scale).max(1.0) as i64;
+            for dy in -r..=r { for dx in -r..=r { put(cx as i64 + dx, cy as i64 + dy, if dx.abs() == r || dy.abs() == r { mix(patch, INK, 0.4) } else { patch }, 0.9); } }
+        }
+        if worn >= 180 {
+            for k in 0..5 {
+                let u = -0.8 + k as f32 * 0.4;
+                let (tx, ty) = (x + sw * u, base);
+                for d in 0..(2.0 * scale).max(1.0) as i64 { put(tx as i64 + d / 2, ty as i64 + 1 + d, INK, 0.8); }
+            }
         }
     }
     // Armour worn: mail rings or a leather coat's seams over the dress.
@@ -832,6 +851,7 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
     // A bandage, an office's headgear, a visitor's hat; and a bubble with what they are going
     // through (`status_ink`).
     super::status_ink::figure_marks(put, colony, i, hx, hy, hr);
+    if colony.stocks.map_or(false, |(who, until)| who == i && until > colony.clock.tick) { super::fx_ink::draw_stocks(put, x, base - sh * 0.9, scale); }
     if let Some(e) = super::status_ink::emblem_of(colony, i) {
         super::status_ink::draw_bubble(put, e, x - sw - 2.0 * scale, hy - hr - 1.0, scale * 0.85);
     }
@@ -1256,6 +1276,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     super::fx_ink::draw_fights(colony, cam, &mut put, w, h);
     let mut ghost_names = Vec::new();
     super::fx_ink::draw_ghosts(colony, cam, &mut put, w, h, scale, &mut ghost_names);
+    super::fx_ink::draw_prisoner(colony, cam, &mut put, w, h, scale, &mut ghost_names);
     super::fx_ink::draw_bell(colony, cam, &mut put, w, h);
     masking.set(true);
     // Labels that must show come first (the attackers' band, the patron's names, a roof's count,
