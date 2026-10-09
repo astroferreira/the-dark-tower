@@ -270,6 +270,9 @@ impl Bot {
                 return r;
             }
         }
+        if !self.errands.contains("innkeeper") && g.companion.is_none() && g.hero.level >= 10 && g.hero.gold() > 80 * g.hero.level * 4 {
+            if let Some(r) = self.talk_to(g, Role::Innkeeper, &|t| matches!(t, Topic::Hire(_)), &|_| false) { return r; }
+        }
         for role in [Role::Lord, Role::Guard, Role::Sage] {
             let w = role.word().to_string();
             if self.errands.contains(&w) { continue; }
@@ -535,6 +538,7 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     let gear: Vec<String> = g.hero.equipped.iter().flatten().map(|i| i.describe()).collect();
     println!("Wears: {}", gear.join(", "));
     println!("Quests: {}", g.quests.iter().map(|q| format!("{} [{}]", q.title, q.progress())).collect::<Vec<_>>().join("; "));
+    if let Some(c) = &g.companion { println!("Companion: {} ({} of {} life, {} slain)", c.name, c.hp, c.max_hp, c.kills); }
     println!("{} acts in {:.1} s ({:.0} µs an act)", acts, t1.elapsed().as_secs_f64(), t1.elapsed().as_secs_f64() * 1e6 / acts.max(1) as f64);
     println!("Last of the log:");
     for l in g.log.iter().rev().take(25).collect::<Vec<_>>().into_iter().rev() { println!("  {}", l.text); }

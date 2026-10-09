@@ -12,7 +12,7 @@ use super::quest::{self, Quest, State};
 pub enum Topic {
     Name, Job, Trade, Buy(String, u32, u32), SellLoot, SellGear, SellOne(usize), Quest, Accept, Report(usize), Rumours, Places,
     Heal, Calling, Become(String), Spells, Learn(String, u32), Rest(u32), Bye, Back,
-    Bless(u32), Improve, Refine(super::hero::Slot, u32),
+    Bless(u32), Improve, Refine(super::hero::Slot, u32), Hire(u32),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -42,7 +42,10 @@ fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
         Role::Sage => v.push(("Places".into(), Topic::Places)),
         _ => {}
     }
-    if role == Role::Innkeeper { v.push(("A bed (10 gold)".into(), Topic::Rest(10))); }
+    if role == Role::Innkeeper {
+        v.push(("A bed (10 gold)".into(), Topic::Rest(10)));
+        if g.companion.is_none() { let p = 80 * g.hero.level.max(1); v.push((format!("A sellsword to go with you ({} gold)", p), Topic::Hire(p))); }
+    }
     if matches!(role, Role::Lord | Role::Guard | Role::Priest | Role::Sage | Role::Trader) {
         let mine: Vec<usize> = g.quests.iter().enumerate().filter(|(_, q)| q.town == town_id(g) && q.giver == g.place().map(|p| p.npcs.get(g.talk.as_ref().map_or(usize::MAX, |t| t.npc)).map(|n| n.name.clone()).unwrap_or_default()).unwrap_or_default() && q.state == State::Done).map(|(i, _)| i).collect();
         for i in mine { v.push((format!("Report: {}", g.quests[i].title), Topic::Report(i))); }
@@ -63,7 +66,7 @@ pub fn greet(g: &mut Game, k: usize) {
         Role::Smith => format!("Hello, {}. Iron and steel, sharp and true. Looking for a blade?", hero),
         Role::Trader => format!("Welcome, {}! Potions, food, torches, rope, arrows. And I buy what you drag out of the dark.", hero),
         Role::Innkeeper => format!("Come in, {}, sit by the fire. A meal, a bed, the news of the road.", hero),
-        Role::Lord => format!("You stand before the lord of {}. Speak, {}.", town, hero),
+        Role::Lord => if g.place().map_or(false, |p| p.spec.lord.is_some()) { format!("You stand before {}, {}. Speak, {}.", n.name, n.of, hero) } else { format!("You stand before the lord of {}. Speak, {}.", town, hero) },
         Role::Guard => format!("Halt. Ah, {}. The roads are bad and the bounties are good.", hero),
         Role::Sage => format!("Ah, a visitor. I am {}, and I keep what is known of the old days. What would you learn, {}?", n.name, hero),
         Role::Townsfolk => format!("Good day, {}.", hero),
@@ -281,6 +284,18 @@ pub fn answer(g: &mut Game, i: usize) {
             if g.hero.take_gold(price) {
                 if let Some(it) = g.hero.equipped[slot as usize].as_mut() { it.quality = (it.quality + 1).min(5); said = format!("Hammer and file and a night at the forge: it is {} now.", it.describe()); }
             } else { said = format!("That is {} gold.", price); }
+        }
+        Topic::Hire(price) => {
+            if g.companion.is_some() { said = "You have a blade at your side already.".into(); }
+            else if g.hero.take_gold(price) {
+                let race = g.place().map(|p| p.spec.people.clone()).filter(|r| !r.is_empty()).unwrap_or_else(|| "human".into());
+                let name = super::town::person_name(&race, g.seed ^ g.turn ^ 0x5E11);
+                let lvl = g.hero.level as i32;
+                g.companion = Some(super::game::Companion { name: name.clone(), race, hp: 50 + 12 * lvl, max_hp: 50 + 12 * lvl, x: g.x, y: g.y, energy: 0, left: false, kills: 0, struck_at: 0 });
+                g.companion_follow(true);
+                said = format!("{} drains the cup, takes your coin and picks up a spear. \"Lead on.\"", name);
+                g.say(Tone::Level, format!("{} goes with you now.", name));
+            } else { said = format!("A good blade costs {} gold.", price); }
         }
         Topic::Back => {}
         Topic::Bye => { g.say(Tone::Talk, format!("{}: \"Good bye, {}.\"", n.name, g.hero.name)); g.talk = None; return; }

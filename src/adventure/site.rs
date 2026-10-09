@@ -81,6 +81,9 @@ pub struct SiteSpec {
     pub god: String,
     /// What a town has heard of the world (its people's accounts), for rumours.
     pub news: Vec<String>,
+    /// A capital's ruler in the history (their name and title), who holds court in its hall.
+    #[serde(default)]
+    pub lord: Option<(String, String)>,
 }
 
 /// A realized place.
@@ -789,7 +792,7 @@ mod tests {
 
     pub fn spec(kind: SiteKind, floors: usize, tier: u32, seed: u64) -> SiteSpec {
         SiteSpec { id: 1, kind, name: "Testplace".into(), tile: (0, 0), seed, tier, cause: String::new(), boss: Some(BossSpec { def: "troll".into(), name: "Gnash the Old".into(), scale: 1.5, legend: None, hoard: vec![Item::new("gold", 200)], story: String::new() }),
-            treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors, people: "human".into(), god: "the gods".into(), news: Vec::new() }
+            treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors, people: "human".into(), god: "the gods".into(), news: Vec::new(), lord: None }
     }
 
     /// Every floor's way down is reachable from where one arrives (doors and gates passable,

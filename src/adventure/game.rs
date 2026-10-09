@@ -33,6 +33,17 @@ pub enum Effect {
     Puff { x: i32, y: i32, z: usize },
 }
 
+/// A sellsword hired at an inn (DF's companions): follows the adventurer between floors and
+/// places, strikes what is beside them, and can die.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Companion { pub name: String, pub race: String, pub hp: i32, pub max_hp: i32, pub x: i32, pub y: i32, pub energy: i32, pub left: bool, pub kills: u32, pub struck_at: u64 }
+
+impl Companion {
+    pub fn attack(&self, level: u32) -> i32 { 10 + level as i32 }
+    pub fn defense(&self, level: u32) -> i32 { 8 + level as i32 / 2 }
+    pub fn armor(&self, level: u32) -> i32 { 3 + level as i32 / 3 }
+}
+
 /// A body left where something fell (drawn until it rots).
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Corpse { pub x: i32, pub y: i32, pub z: usize, pub def: String, pub name: String, pub turn: u64 }
@@ -104,6 +115,11 @@ pub struct Game {
     pub stats: Stats,
     /// Named enemies slain (bosses do not come back, and no one asks for them again).
     pub slain: Vec<String>,
+    #[serde(default)]
+    pub companion: Option<Companion>,
+    /// The Shadow's lord broken: the great deed (the adventure's end, though one may go on).
+    #[serde(default)]
+    pub victory: bool,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -114,7 +130,7 @@ impl Game {
         let mut g = Game {
             seed, hero, world, sites, places: HashMap::new(), here: None, z: 0, x: 0, y: 0, tile: (0, 0), turn: 0, log: Vec::new(), effects: Vec::new(),
             corpses: HashMap::new(), known: Vec::new(), respawn: Vec::new(), quests: Vec::new(), talk: None, chosen: Vec::new(), facing: (0, 1),
-            rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(),
+            rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false,
         };
         g.hero.temple = start_town;
         if let Some(s) = g.site(start_town) { g.tile = s.tile; }
@@ -170,8 +186,10 @@ impl Game {
         if self.site(id).map_or(false, |s| s.kind != SiteKind::Wilds) { self.stats.sites_entered += 1; }
         if !quiet {
             let (name, kind, cause, floor) = (p.spec.name.clone(), p.spec.kind, p.spec.cause.clone(), p.floors[0].name.clone());
+            let _ = &name;
             self.say(Tone::Info, format!("You come to {}{} ({}).{}", name, if kind == SiteKind::Town { String::new() } else { format!(", {}", kind.word()) }, floor, if cause.is_empty() { String::new() } else { format!(" {}", cause) }));
         }
+        self.companion_follow(true);
         self.look();
     }
 
@@ -198,6 +216,19 @@ impl Game {
         self.here = None;
         self.talk = None;
         self.say(Tone::Info, format!("You leave {} and take to the road.", name));
+    }
+
+    /// Bring the companion beside the adventurer (after a change of floor or place, or when left
+    /// behind).
+    pub fn companion_follow(&mut self, force: bool) {
+        let (hx, hy) = (self.x, self.y);
+        let Some(f) = self.floor() else { return };
+        let occupied = |x: i32, y: i32| self.place().map_or(false, |p| p.monsters.iter().any(|m| m.z == self.z && m.x == x && m.y == y && m.hp > 0) || p.npcs.iter().any(|n| n.z == self.z && n.x == x && n.y == y));
+        let Some(c) = self.companion.as_ref() else { return };
+        let far = (c.x - hx).abs().max((c.y - hy).abs()) > 6 || !f.walkable(c.x, c.y);
+        if !force && !far { return; }
+        let spot = DIRS8.iter().map(|(dx, dy)| (hx + dx, hy + dy)).find(|&(x, y)| f.walkable(x, y) && !occupied(x, y) && f.at(x, y).feature == Feature::None);
+        if let (Some((x, y)), Some(c)) = (spot, self.companion.as_mut()) { c.x = x; c.y = y; }
     }
 
     /// What the adventurer sees now.
@@ -260,6 +291,13 @@ impl Game {
             return self.melee(uid);
         }
         if let Some(k) = self.npc_at(nx, ny) { super::npc::greet(self, k); return None; }
+        if self.companion.as_ref().map_or(false, |c| (c.x, c.y) == (nx, ny)) {
+            let (ox, oy) = (self.x, self.y);
+            if let Some(c) = self.companion.as_mut() { c.x = ox; c.y = oy; }
+            self.x = nx; self.y = ny;
+            self.look();
+            return Some(self.hero.step_time());
+        }
         let z = self.z;
         let f = self.floor()?;
         if !f.inside(nx, ny) { return None; }
@@ -370,6 +408,7 @@ impl Game {
         let verb = match how { Feature::Hole => "You drop through the hole", Feature::Grate => "You lift the grate and climb down", Feature::LadderDown => "You climb down the ladder", Feature::LadderUp | Feature::RopeSpot => "You climb up", Feature::StairsUp => "You go up the stairs", _ => "You go down the stairs" };
         self.say(Tone::Info, format!("{} to {}.", verb, name));
         if dz > 0 { self.stats.floors_seen = self.stats.floors_seen.max(self.z as u32 + 1); }
+        self.companion_follow(true);
         // Arriving: wherever one stands must be open (the matching way up or down is here).
         self.look();
     }
@@ -743,6 +782,12 @@ impl Game {
         self.stats.kills += 1;
         self.hero.kills += 1;
         if dead.boss { self.stats.bosses += 1; self.slain.push(dead.name.clone()); }
+        if dead.boss && self.place().map_or(false, |p| p.spec.kind == SiteKind::DarkFortress) && !self.victory {
+            self.victory = true;
+            let who = self.hero.name.clone();
+            self.banner = Some(("The Shadow is broken.".into(), format!("{} has slain {} in the seat of its power. The land will tell of it for an age. (You may go on.)", who, dead.name)));
+            self.say(Tone::Quest, format!("{} has broken the Shadow.", who));
+        }
         let lead = if dead.boss { format!("{} falls, and does not rise.", cap(&name)) } else { format!("You slay {}.", name) };
         self.say(if dead.boss { Tone::Quest } else { Tone::Hit }, format!("{} ({} experience)", lead, xp));
         if !loot.is_empty() {
@@ -819,6 +864,7 @@ impl Game {
             let f = &p.floors[z];
             f.distances(hx, hy, 30, |x, y| f.at(x, y).walkable() || matches!(f.at(x, y).feature, Feature::Door { lock: 0, .. }))
         };
+        self.companion_act(id, cost, &dist);
         let n = self.places[&id].monsters.len();
         let mut k = 0;
         while k < n.min(self.places[&id].monsters.len()) {
@@ -903,6 +949,27 @@ impl Game {
             self.monster_strikes(id, k);
             return;
         }
+        // Beside the companion (and not the adventurer): strike them.
+        if let Some(c) = self.companion.clone() { if (c.x - m.x).abs() <= 1 && (c.y - m.y).abs() <= 1 && !coward {
+            let mut r = self.roll(m.uid as u64 ^ 0xC0A);
+            let raw = r.gen_range(0..=m.attack().max(1));
+            let lvl = self.hero.level;
+            let block = r.gen_range(0..=c.defense(lvl));
+            let soak = r.gen_range(c.armor(lvl) / 2..=c.armor(lvl).max(1));
+            let dmg = if raw <= block / 2 { 0 } else { raw - soak };
+            self.places.get_mut(&id).unwrap().monsters[k].struck_at = self.turn;
+            if dmg > 0 {
+                self.effects.push(Effect::Number { x: c.x, y: c.y, z, value: dmg, tone: Tone::Hurt });
+                let dead = { let cc = self.companion.as_mut().unwrap(); cc.hp -= dmg; cc.hp <= 0 };
+                if dead {
+                    let name = c.name.clone();
+                    self.say(Tone::Death, format!("{} falls to {}. You fight on alone.", name, m.the()));
+                    self.corpses.entry(id).or_default().push(Corpse { x: c.x, y: c.y, z, def: "bandit".into(), name, turn: self.turn });
+                    self.companion = None;
+                }
+            }
+            return;
+        } }
         // Step toward (or away from) the adventurer along the distance map.
         let (best, cur, door) = {
             let f = &self.places[&id].floors[z];
@@ -939,8 +1006,56 @@ impl Game {
     }
 
     fn free(&self, id: u32, x: i32, y: i32) -> bool {
-        !(x == self.x && y == self.y) && !self.places[&id].monsters.iter().any(|m| m.z == self.z && m.x == x && m.y == y && m.hp > 0)
+        !(x == self.x && y == self.y) && !self.companion.as_ref().map_or(false, |c| (c.x, c.y) == (x, y)) && !self.places[&id].monsters.iter().any(|m| m.z == self.z && m.x == x && m.y == y && m.hp > 0)
             && !self.places[&id].npcs.iter().any(|n| n.z == self.z && n.x == x && n.y == y)
+    }
+
+    fn companion_act(&mut self, id: u32, cost: i32, dist: &[i32]) {
+        let Some(mut c) = self.companion.clone() else { return };
+        let z = self.z;
+        c.energy += cost;
+        let lvl = self.hero.level;
+        c.max_hp = 50 + 12 * lvl as i32;
+        while c.energy >= 100 {
+            c.energy -= 100;
+            // A slow mend.
+            if self.turn / 100 % 4 == 0 { c.hp = (c.hp + 1 + lvl as i32 / 8).min(c.max_hp); }
+            let p = &self.places[&id];
+            let f = &p.floors[z];
+            // Strike what is beside them (the weakest first).
+            let beside = p.monsters.iter().enumerate().filter(|(_, m)| m.z == z && m.hp > 0 && (m.x - c.x).abs() <= 1 && (m.y - c.y).abs() <= 1).min_by_key(|(_, m)| m.hp).map(|(i, m)| (i, m.clone()));
+            if let Some((i, m)) = beside {
+                let mut r = self.roll(m.uid as u64 ^ 0xC0B);
+                let raw = r.gen_range(0..=c.attack(lvl));
+                let block = r.gen_range(0..=(m.defense() / 2).max(0));
+                let soak = if m.armor() > 0 { r.gen_range(m.armor() / 2..=m.armor()) } else { 0 };
+                c.left = m.x < c.x;
+                c.struck_at = self.turn;
+                if raw > block && raw - soak > 0 {
+                    let d = raw - soak;
+                    if self.rng.gen_bool(0.35) { self.say(Tone::Hit, format!("{} strikes {}. ({})", c.name, m.the(), d)); }
+                    let before = self.stats.kills;
+                    self.companion = Some(c.clone());
+                    self.damage_monster(i, d);
+                    if let Some(cc) = self.companion.as_mut() { if self.stats.kills > before { cc.kills += 1; } c = cc.clone(); }
+                }
+                continue;
+            }
+            // Else keep close to the adventurer, or go at what is near and awake.
+            let foe = p.monsters.iter().filter(|m| m.z == z && m.hp > 0 && m.awake && (m.x - c.x).abs().max((m.y - c.y).abs()) <= 5 && self.visible(m.x, m.y)).min_by_key(|m| (m.x - c.x).abs() + (m.y - c.y).abs()).map(|m| (m.x, m.y));
+            let (tx, ty, near) = match foe { Some((x, y)) => (x, y, 1), None => (self.x, self.y, 2) };
+            if (tx - c.x).abs().max((ty - c.y).abs()) <= near { continue; }
+            let occupied = |x: i32, y: i32| (x, y) == (self.x, self.y) || p.monsters.iter().any(|m| m.z == z && m.x == x && m.y == y && m.hp > 0) || p.npcs.iter().any(|n| n.z == z && n.x == x && n.y == y);
+            let step = if foe.is_none() {
+                // Down the adventurer's distance map.
+                DIRS8.iter().map(|(dx, dy)| (c.x + dx, c.y + dy)).filter(|&(x, y)| f.inside(x, y) && f.at(x, y).walkable() && !occupied(x, y)).min_by_key(|&(x, y)| dist[y as usize * f.w + x as usize])
+            } else {
+                DIRS8.iter().map(|(dx, dy)| (c.x + dx, c.y + dy)).filter(|&(x, y)| f.inside(x, y) && f.at(x, y).walkable() && !occupied(x, y)).min_by_key(|&(x, y)| (x - tx).abs().max((y - ty).abs()))
+            };
+            if let Some((x, y)) = step { c.left = x < c.x || (x == c.x && c.left); c.x = x; c.y = y; }
+        }
+        if self.companion.is_some() { self.companion = Some(c); }
+        self.companion_follow(false);
     }
 
     fn monster_strikes(&mut self, id: u32, k: usize) {
@@ -1008,7 +1123,7 @@ impl Game {
             let tier = (1 + (danger * 4.0) as u32 + self.hero.level / 10).min(5);
             let id = 900_000 + self.turn as u32 % 100_000;
             let spec = SiteSpec { id, kind: SiteKind::Wilds, name: format!("the wilds near {},{}", nx, ny), tile: (nx, ny), seed: r.gen(), tier, cause: String::new(), boss: None, treasures: Vec::new(),
-                surface: self.world.ground[ny * self.world.w + nx], rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new() };
+                surface: self.world.ground[ny * self.world.w + nx], rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new(), lord: None };
             self.sites.retain(|s| !(s.kind == SiteKind::Wilds && s.id >= 900_000 && Some(s.id) != self.here));
             self.places.retain(|k, _| *k < 900_000);
             self.sites.push(spec);

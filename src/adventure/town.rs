@@ -100,8 +100,8 @@ pub fn realize(spec: &SiteSpec) -> Place {
         };
         let post = if f.walkable(post.0, post.1) { post } else { (ix, iy) };
         let female = b.rng.gen_bool(0.5);
-        let name = person_name(&race, spec.seed ^ (k as u64 * 0x9E37 + 11));
-        let of = match role { Role::Priest => spec.god.clone(), _ => spec.people.clone() };
+        let name = match (role, &spec.lord) { (Role::Lord, Some((n, _))) => n.clone(), _ => person_name(&race, spec.seed ^ (k as u64 * 0x9E37 + 11)) };
+        let of = match (role, &spec.lord) { (Role::Priest, _) => spec.god.clone(), (Role::Lord, Some((_, title))) => title.clone(), _ => spec.people.clone() };
         npcs.push(Npc { name, role, x: post.0, y: post.1, z: 0, post, race: race.clone(), female, of });
     }
     // Townsfolk in the street.
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn a_town_has_its_people_and_its_sewers() {
         let spec = SiteSpec { id: 1, kind: SiteKind::Town, name: "Greenburg".into(), tile: (0, 0), seed: 42, tier: 1, cause: String::new(), boss: None, treasures: vec![],
-            surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "Balorn".into(), news: Vec::new() };
+            surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "Balorn".into(), news: Vec::new(), lord: None };
         let p = super::super::site::realize(&spec);
         assert_eq!(p.floors.len(), 3);
         for role in [Role::Priest, Role::Smith, Role::Trader, Role::Innkeeper, Role::Lord] { assert!(p.npcs.iter().any(|n| n.role == role), "{:?}", role); }

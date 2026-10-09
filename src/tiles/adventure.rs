@@ -294,6 +294,20 @@ fn draw_place(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
         if Some(m.uid) == v.target { let mut pen = super::ink::Pen::new(&mut put, x, y, cs * 1.1); pen.line_a((-0.9, -0.9), (-0.5, -0.9), [190.0, 40.0, 30.0], 2.0, 1.0); pen.line_a((-0.9, -0.9), (-0.9, -0.5), [190.0, 40.0, 30.0], 2.0, 1.0); pen.line_a((0.9, 0.9), (0.5, 0.9), [190.0, 40.0, 30.0], 2.0, 1.0); pen.line_a((0.9, 0.9), (0.9, 0.5), [190.0, 40.0, 30.0], 2.0, 1.0); }
         if m.boss || Some(m.uid) == v.target { labels.push((x, by - 15.0, m.name.clone(), if m.boss { 0x0090_1010 } else { 0x0038_2A20 })); }
     }
+    // The companion, a sellsword in their people's look.
+    if let Some(c) = &g.companion {
+        let e = v.pos.entry(u32::MAX - 1).or_insert((c.x as f32, c.y as f32));
+        *e = ease(*e, (c.x as f32, c.y as f32));
+        let (x, y) = to_screen(e.0, e.1);
+        let (skin, tusks, pointed, beard) = race_skin(&c.race, 5);
+        let f = Folk { skin, hair: [70.0, 52.0, 40.0], dress: [96.0, 110.0, 140.0], helm: Helm::Nasal, arm: Arm::Spear, shield: Some(([62.0, 84.0, 128.0], [226.0, 224.0, 214.0])), tusks, pointed, beard, glow: None, pale: false };
+        folk::draw(&mut put, &f, x, y + cs * 0.32, cs / 22.0 * 1.25, c.left, turn.saturating_sub(c.struck_at) < 60, 1.0);
+        let share = c.hp as f32 / c.max_hp.max(1) as f32;
+        let bw = cs * 0.8;
+        let (bx, by) = (x - bw / 2.0, y - cs * 0.62);
+        for yy in 0..3 { for xx in 0..bw as i64 { let col = if (xx as f32) < bw * share { [60.0, 110.0, 170.0] } else { [40.0, 30.0, 24.0] }; put(bx as i64 + xx, by as i64 + yy, col, 0.9); } }
+        labels.push((x, by - 15.0, c.name.clone(), 0x0030_4A7A));
+    }
     // The adventurer.
     let (hxs, hys) = to_screen(v.hero_pos.0, v.hero_pos.1);
     let hf = hero_folk(g);
@@ -481,6 +495,8 @@ fn draw_panel(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     if hero.fed == 0 { status.push("hungry".into()); }
     if hero.torch > 0 { status.push("torch lit".into()); }
     if hero.hasted > 0 { status.push("hasted".into()); }
+    if hero.blessed { status.push("blessed".into()); }
+    if let Some(c) = &g.companion { status.push(format!("{} with you ({}/{})", c.name, c.hp, c.max_hp)); }
     fonts::draw(buf, w, h, x0 as f32, 114.0, &status.join(" · "), Face::Italic, 13.0, 0.0, 0x005A_4634, None);
     // The paper doll: eight slots.
     let slot_s = 40usize;
@@ -880,7 +896,7 @@ pub fn gallery(world: &crate::world::WorldData, history: Option<&crate::history:
         let floors = if *kind == SiteKind::Wilds { 1 } else { 3 };
         let boss = BossSpec { def: "troll".into(), name: "the Gallery Boss".into(), scale: 1.4, legend: None, hoard: vec![], story: String::new() };
         g.sites.push(SiteSpec { id, kind: *kind, name: format!("{:?}", kind), tile: g.tile, seed: seed ^ (n as u64 * 7919), tier: 3, cause: String::new(), boss: Some(boss), treasures: vec![],
-            surface: crate::adventure::map::Ground::Grass, rock: "granite".into(), floors, people: String::new(), god: String::new(), news: Vec::new() });
+            surface: crate::adventure::map::Ground::Grass, rock: "granite".into(), floors, people: String::new(), god: String::new(), news: Vec::new(), lord: None });
         g.enter_site(id, true);
         let z = if floors > 1 { 1 } else { 0 };
         g.z = z;

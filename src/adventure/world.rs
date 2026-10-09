@@ -148,7 +148,7 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
         let id = next;
         next += 1;
         let surface = ground[tile.1 * w + tile.0];
-        sites.push(SiteSpec { id, kind, name, tile, seed: h64(seed ^ id as u64, (tile.0 * 7919 + tile.1) as u64), tier, cause, boss, treasures: Vec::new(), surface, rock: "granite".into(), floors, people, god, news: Vec::new() });
+        sites.push(SiteSpec { id, kind, name, tile, seed: h64(seed ^ id as u64, (tile.0 * 7919 + tile.1) as u64), tier, cause, boss, treasures: Vec::new(), surface, rock: "granite".into(), floors, people, god, news: Vec::new(), lord: None });
         id
     };
     let year = history.map_or(0, |hh| hh.current_date.year);
@@ -166,7 +166,9 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
                 None => {
                     let id = add(&mut sites, SiteKind::Town, s.name.clone(), (x, y), 1, String::new(), None, 3, people, god);
                     let news: Vec<String> = knowledge.news_of_town(s.id, 40, 6).iter().map(|t| t.as_told()).collect();
-                    if let Some(sp) = sites.iter_mut().find(|q| q.id == id) { sp.news = news; }
+                    // The ruler of the people holds court in their capital.
+                    let lord = hist.factions.get(&s.faction).filter(|f| f.capital == Some(s.id)).and_then(|f| f.current_leader.and_then(|l| hist.figures.get(&l)).map(|fig| (fig.full_name(), fig.titles.first().cloned().unwrap_or_else(|| format!("ruler of {}", f.name)))));
+                    if let Some(sp) = sites.iter_mut().find(|q| q.id == id) { sp.news = news; sp.lord = lord; }
                 }
                 Some(d) => {
                     let big = matches!(s.settlement_type, crate::history::civilizations::settlement::SettlementType::Capital | crate::history::civilizations::settlement::SettlementType::Fort);
@@ -369,7 +371,7 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
     if built.start == 0 {
         let k = (0..w * h).find(|&k| built.info.land[k] && built.info.ground[k] == Ground::Grass).unwrap_or(0);
         let id = built.sites.iter().map(|s| s.id).max().unwrap_or(0) + 1;
-        built.sites.push(SiteSpec { id, kind: SiteKind::Town, name: "Hearthwater".into(), tile: (k % w, k / w), seed: h64(seed, 7), tier: 1, cause: String::new(), boss: None, treasures: Vec::new(), surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "the old gods".into(), news: Vec::new() });
+        built.sites.push(SiteSpec { id, kind: SiteKind::Town, name: "Hearthwater".into(), tile: (k % w, k / w), seed: h64(seed, 7), tier: 1, cause: String::new(), boss: None, treasures: Vec::new(), surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "the old gods".into(), news: Vec::new(), lord: None });
         built.start = id;
     }
     built
