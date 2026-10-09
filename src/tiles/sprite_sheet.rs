@@ -51,7 +51,8 @@ pub fn save(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
     sheet.save(path)?;
     let n2 = save_people_and_things(&path.replace(".png", "_folk.png"))?;
     let n3 = save_vignettes(&path.replace(".png", "_moments.png"))?;
-    Ok(n + n2 + n3)
+    let n4 = save_thoughts(&path.replace(".png", "_thoughts.png"))?;
+    Ok(n + n2 + n3 + n4)
 }
 
 /// The second page: the bubbles over settlers, strangers, furniture and fittings.
@@ -61,7 +62,8 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
         Emblem::Hurt, Emblem::Pray, Emblem::Talk, Emblem::Rest, Emblem::Watch, Emblem::Admire, Emblem::Walk, Emblem::Thrill, Emblem::Help, Emblem::Learn,
         Emblem::Think, Emblem::Merry, Emblem::Tale, Emblem::Martial, Emblem::Whittle, Emblem::Busy, Emblem::Drink, Emblem::Meal, Emblem::Gloom, Emblem::Love, Emblem::Grief, Emblem::Acquire, Emblem::Dreaming,
         Emblem::Argue, Emblem::TalkHome, Emblem::TalkAgree, Emblem::TalkMemory, Emblem::Joy, Emblem::Fear, Emblem::Cold, Emblem::Hunger, Emblem::Pride, Emblem::Anger,
-        Emblem::LifeChild, Emblem::LifeMaster, Emblem::LifeSlay, Emblem::LifeBook, Emblem::LifeRule, Emblem::LifeDiscover, Emblem::LifePeace];
+        Emblem::LifeChild, Emblem::LifeMaster, Emblem::LifeSlay, Emblem::LifeBook, Emblem::LifeRule, Emblem::LifeDiscover, Emblem::LifePeace,
+        Emblem::Lonely, Emblem::NoShrine, Emblem::BadNews, Emblem::Rags, Emblem::Unmet, Emblem::Thirst, Emblem::Grievance, Emblem::Sick, Emblem::HalfRation];
     let folk: Vec<(&str, super::folk::Folk)> = vec![
         ("the Shadow's raider", super::folk::raider(None, "raiders of the Shadow of Skullfang", 0, None)),
         ("the Shadow's axeman", super::folk::raider(None, "raiders of the Shadow of Skullfang", 2, None)),
@@ -171,4 +173,22 @@ fn save_vignettes(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
     }
     sheet.save(path)?;
     Ok(moments.len())
+}
+
+/// The fourth page: every thought a settler can have (`Feel`), with the sign the ledger draws
+/// beside it (`coverage::feel`), at the ledger's size and larger.
+fn save_thoughts(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
+    let feels = super::coverage::feels();
+    let cols = 9;
+    let mut sheet = Sheet::new(cols, (feels.len() + cols - 1) / cols, 170, 120);
+    sheet.title("Every thought, with its sign in the ledger (24 px and 56 px)");
+    for f in &feels {
+        let e = super::coverage::feel(f);
+        let (cx, cy) = sheet.cell(&super::coverage::feel_name(f));
+        let mut put = sheet.put();
+        super::status_ink::draw_icon(&mut put, e, cx - 30.0, cy, 56.0);
+        super::status_ink::draw_icon(&mut put, e, cx + 42.0, cy + 8.0, 24.0);
+    }
+    sheet.save(path)?;
+    Ok(feels.len())
 }

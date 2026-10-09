@@ -725,10 +725,13 @@ pub fn render_minimap(
     if mw + 12 > w || mh + 12 > h {
         return (0, 0, 0, 0);
     }
-    let (ox, oy) = (w - mw - 10, 10);
-    for y in oy - 2..oy + mh + 2 {
-        for x in ox - 2..ox + mw + 2 {
-            buf[y * w + x] = 0x00C8_C8C8;
+    let (ox, oy): (usize, usize) = (w - mw - 10, 10);
+    // A parchment mat inside a sepia rule, as the plates and cards are framed (was a grey slab).
+    for y in oy.saturating_sub(5)..(oy + mh + 5).min(h) {
+        for x in ox.saturating_sub(5)..(ox + mw + 5).min(w) {
+            let edge = y + 5 == oy || x + 5 == ox || y == oy + mh + 4 || x == ox + mw + 4;
+            let inner = y + 1 == oy || x + 1 == ox || y == oy + mh || x == ox + mw;
+            buf[y * w + x] = if edge || inner { 0x0038_2A20 } else { 0x00EA_DEC4 };
         }
     }
     for y in 0..mh {
@@ -768,9 +771,9 @@ pub fn render_minimap(
     };
     let vw = (w as f32 / cam.tile_px).min(tw.width as f32 - 1.0);
     let vh = (h as f32 / cam.tile_px).min(tw.height as f32 - 1.0);
-    rect(cam.cx - vw / 2.0, cam.cy - vh / 2.0, cam.cx + vw / 2.0, cam.cy + vh / 2.0, 0x00F0_D23C);
+    rect(cam.cx - vw / 2.0, cam.cy - vh / 2.0, cam.cx + vw / 2.0, cam.cy + vh / 2.0, 0x009A_3324);
     if let Some((mx, my, half)) = marker {
-        rect(mx - half, my - half, mx + half, my + half, 0x00FF_FFFF);
+        rect(mx - half, my - half, mx + half, my + half, 0x00EA_DEC4);
     }
     (ox, oy, mw, mh)
 }

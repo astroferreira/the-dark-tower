@@ -1573,6 +1573,80 @@ pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize,
             }
         }
     }
+    // The rooms cut by the row, in profile: what stands on each floor and its name (they had
+    // been bare boxes). Pixel pen: (u, v) are screen pixels.
+    {
+        use crate::colony::delve::RoomKind;
+        let mut names: Vec<(f32, f32, String)> = Vec::new();
+        {
+            let mut put = |px: i64, py: i64, c: Rgb, a: f32| {
+                if px < 0 || py < 0 || px as usize >= w || py as usize >= h { return; }
+                let k = py as usize * w + px as usize;
+                let p = buf[k];
+                let old = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
+                buf[k] = pack(mix(old, c, a));
+            };
+            for r in colony.rooms.iter().filter(|r| r.kind != RoomKind::Corridor) {
+                let xs: Vec<usize> = r.cells.iter().filter(|c| c.1 as usize == row && (c.0 as usize) >= x0 && (c.0 as usize) < x1).map(|c| c.0 as usize).collect();
+                let (Some(&a), Some(&b)) = (xs.iter().min(), xs.iter().max()) else { continue };
+                if r.z > ztop || r.z < ztop - levels as i32 { continue; }
+                let (l, rr) = (margin + (a - x0) as f32 * cw, margin + (b - x0 + 1) as f32 * cw);
+                let floor = top + (ztop - r.z) as f32 * ch;
+                let cx = (l + rr) / 2.0;
+                let u = ch.min((rr - l) * 0.45).max(4.0);
+                let mut pen = super::ink::Pen::new(&mut put, 0.0, 0.0, 2.0);
+                let wood: Rgb = [150.0, 108.0, 70.0];
+                let stone: Rgb = [196.0, 186.0, 168.0];
+                match r.kind {
+                    RoomKind::Bedroom => {
+                        let blanket = r.owner.and_then(|o| colony.settlers.get(o)).map(|_| [150.0, 96.0, 84.0]).unwrap_or([150.0, 120.0, 96.0]);
+                        pen.rect(cx - u * 0.9, floor - u * 0.35, cx + u * 0.9, floor - u * 0.05, wood);
+                        pen.rect(cx - u * 0.8, floor - u * 0.5, cx + u * 0.5, floor - u * 0.35, blanket);
+                        pen.ellipse(cx + u * 0.65, floor - u * 0.47, u * 0.2, u * 0.12, [232.0, 226.0, 212.0]);
+                    }
+                    RoomKind::GreatHall | RoomKind::Hall => {
+                        pen.rect(cx - u * 1.1, floor - u * 0.55, cx + u * 1.1, floor - u * 0.45, wood);
+                        for s in [-0.9f32, 0.9] { pen.rect(cx + s * u - u * 0.06, floor - u * 0.45, cx + s * u + u * 0.06, floor, wood); }
+                        for s in [-1.45f32, 1.45] { pen.rect(cx + s * u - u * 0.25, floor - u * 0.25, cx + s * u + u * 0.25, floor - u * 0.17, wood); }
+                    }
+                    RoomKind::Cellar => {
+                        for k in 0..3 { let bx = cx + (k as f32 - 1.0) * u * 0.7; pen.ellipse(bx, floor - u * 0.3, u * 0.28, u * 0.3, [146.0, 104.0, 66.0]); pen.rect_f(bx - u * 0.28, floor - u * 0.34, bx + u * 0.28, floor - u * 0.28, [80.0, 64.0, 50.0], super::ink::Finish::Plain); }
+                    }
+                    RoomKind::Farm => {
+                        for k in 0..4 { let bx = cx + (k as f32 - 1.5) * u * 0.55; pen.rect(bx - u * 0.04, floor - u * 0.35, bx + u * 0.04, floor, [222.0, 214.0, 196.0]); pen.ellipse(bx, floor - u * 0.38, u * 0.2, u * 0.1, [150.0, 112.0, 150.0]); }
+                    }
+                    RoomKind::Tomb => {
+                        pen.rect(cx - u * 0.9, floor - u * 0.35, cx + u * 0.9, floor, stone);
+                        pen.rect(cx - u * 0.75, floor - u * 0.5, cx + u * 0.75, floor - u * 0.35, [120.0, 90.0, 62.0]);
+                    }
+                    RoomKind::Workshop | RoomKind::Carpenter | RoomKind::Mason => {
+                        pen.rect(cx - u * 0.8, floor - u * 0.45, cx + u * 0.8, floor - u * 0.35, wood);
+                        for s in [-0.65f32, 0.65] { pen.rect(cx + s * u - u * 0.05, floor - u * 0.35, cx + s * u + u * 0.05, floor, wood); }
+                        if r.kind == RoomKind::Mason { pen.rect(cx - u * 0.3, floor - u * 0.75, cx + u * 0.2, floor - u * 0.45, stone); }
+                        else { pen.rect(cx - u * 0.5, floor - u * 0.55, cx + u * 0.3, floor - u * 0.45, [176.0, 140.0, 96.0]); }
+                    }
+                    RoomKind::Smelter | RoomKind::Forge | RoomKind::Kiln => {
+                        pen.glow(cx, floor - u * 0.3, u * 0.9, [240.0, 140.0, 60.0], 0.35);
+                        pen.poly(&[(cx - u * 0.6, floor), (cx - u * 0.45, floor - u * 0.7), (cx + u * 0.45, floor - u * 0.7), (cx + u * 0.6, floor)], [150.0, 96.0, 72.0]);
+                        pen.ellipse(cx, floor - u * 0.25, u * 0.2, u * 0.15, [236.0, 150.0, 60.0]);
+                        if r.kind == RoomKind::Forge { pen.rect(cx + u * 0.75, floor - u * 0.35, cx + u * 1.15, floor - u * 0.25, [90.0, 90.0, 96.0]); }
+                    }
+                    RoomKind::Corridor => {}
+                }
+                let name = match r.kind { RoomKind::Bedroom => r.owner.and_then(|o| colony.settlers.get(o)).map(|s| s.name.clone()).unwrap_or_else(|| "a bedroom".into()), RoomKind::GreatHall => "the great hall".into(), RoomKind::Hall => "the hall".into(), RoomKind::Cellar => "the cellar".into(), RoomKind::Farm => "the farm".into(), RoomKind::Tomb => "the tombs".into(), RoomKind::Workshop => "the workshops".into(), RoomKind::Mason => "the mason's".into(), RoomKind::Carpenter => "the carpenter's".into(), RoomKind::Smelter => "the smelter".into(), RoomKind::Forge => "the forge".into(), RoomKind::Kiln => "the kiln".into(), RoomKind::Corridor => String::new() };
+                // Beside the room, right of its far wall (above it, a name covered the room overhead).
+                if ch >= 6.0 { names.push((rr + 6.0, floor - ch * 0.5 + 5.0, name)); }
+            }
+        }
+        let mut placed: Vec<(f32, f32, f32, f32)> = Vec::new();
+        for (x, y, t) in names {
+            let tw = super::fonts::width(&t, super::fonts::Face::Italic, 11.0, 0.0);
+            let r = (x, y - 11.0, tw, 12.0);
+            if crowded(&placed, r) { continue; }
+            placed.push(r);
+            super::fonts::draw(buf, w, h, r.0, r.1, &t, super::fonts::Face::Italic, 11.0, 0.0, pack(INK), Some(0x00EE_E4CC));
+        }
+    }
     let title = format!("Section through row {} ({} levels; 0 is the camp's ground)", row, levels);
     // Top centre below the HUD's banner (at the left it ran under the camp's card).
     let tw = super::fonts::width(&title, super::fonts::Face::Italic, 16.0, 0.0);

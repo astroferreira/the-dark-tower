@@ -588,10 +588,10 @@ fn sheet_leaf(p: &mut Pane, colony: &Colony, i: usize, history: Option<&crate::h
     if !s.mind.thoughts.is_empty() || !s.mind.scars.is_empty() {
         p.heading("Thoughts");
         for t in s.mind.thoughts.iter().rev().take(7) {
-            p.icon_para(Some(super::status_ink::thought_emblem(&t.text, t.weight)), None, &format!("Day {}: {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text), Face::Roman, SMALL + 1.0, if t.weight < 0.0 { INK } else { SOFT });
+            p.icon_para(Some(t.feel.as_ref().map(super::coverage::feel).unwrap_or_else(|| super::status_ink::thought_emblem(&t.text, t.weight))), None, &format!("Day {}: {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text), Face::Roman, SMALL + 1.0, if t.weight < 0.0 { INK } else { SOFT });
         }
         for t in s.mind.scars.iter().rev().take(2) {
-            p.icon_para(Some(super::status_ink::thought_emblem(&t.text, t.weight)), None, &format!("Still weighs on them (day {}): {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text), Face::Italic, SMALL + 1.0, RUBRIC);
+            p.icon_para(Some(t.feel.as_ref().map(super::coverage::feel).unwrap_or_else(|| super::status_ink::thought_emblem(&t.text, t.weight))), None, &format!("Still weighs on them (day {}): {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text), Face::Italic, SMALL + 1.0, RUBRIC);
         }
     }
     p.heading("Kin and company");

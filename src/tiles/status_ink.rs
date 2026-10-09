@@ -19,6 +19,9 @@ pub enum Emblem {
     Joy, Fear, Cold, Hunger, Pride, Anger,
     /// A dream of a lifetime (`dreams::LifeDream`).
     LifeChild, LifeMaster, LifeSlay, LifeBook, LifeRule, LifeDiscover, LifePeace,
+    /// Thoughts that had shared a sign (`coverage::feel`): alone, no place to pray, ill news,
+    /// rags, a need long unmet, thirst, a grievance, sickness, half rations.
+    Lonely, NoShrine, BadNews, Rags, Unmet, Thirst, Grievance, Sick, HalfRation,
 }
 
 /// The sign over settler `i`, if any (most pressing first).
@@ -134,6 +137,62 @@ fn icon(pen: &mut Pen, e: Emblem) {
         Emblem::LifeBook => { pen.rect(-0.28, -0.3, 0.28, 0.3, [130.0, 58.0, 46.0]); pen.line((0.0, -0.3), (0.0, 0.3), INK, 1.0); }
         Emblem::LifeRule => { pen.path(&[(-0.35, -0.25), (0.0, 0.1), (0.35, -0.25)], gold, w * 1.2); pen.ellipse(0.0, 0.2, 0.12, 0.12, gold); }
         Emblem::LifeDiscover => { pen.ellipse(0.0, 0.0, 0.32, 0.32, [236.0, 226.0, 200.0]); pen.poly(&[(0.0, -0.3), (0.07, 0.0), (0.0, 0.3), (-0.07, 0.0)], BLOOD); }
+        Emblem::Lonely => {
+            // One small figure, and an empty place beside it (dashed).
+            pen.ellipse(0.16, -0.2, 0.11, 0.11, [214.0, 186.0, 156.0]);
+            pen.ellipse(0.16, 0.12, 0.15, 0.2, [96.0, 108.0, 130.0]);
+            for k in 0..8 { let a = k as f32 * 0.785; if k % 2 == 0 { pen.line((-0.2 + 0.15 * a.cos(), 0.0 + 0.2 * a.sin()), (-0.2 + 0.15 * (a + 0.5).cos(), 0.0 + 0.2 * (a + 0.5).sin()), INK, 1.0); } }
+        }
+        Emblem::NoShrine => {
+            pen.poly(&[(-0.05, 0.32), (-0.2, 0.0), (-0.02, -0.38), (0.0, 0.3)], [226.0, 196.0, 164.0]);
+            pen.poly(&[(0.05, 0.32), (0.2, 0.0), (0.02, -0.38), (0.0, 0.3)], [214.0, 184.0, 152.0]);
+            pen.path(&[(-0.36, 0.34), (0.36, -0.34)], BLOOD, w * 1.3);
+        }
+        Emblem::BadNews => {
+            // A letter sealed in black.
+            pen.rect(-0.34, -0.24, 0.34, 0.24, [238.0, 228.0, 204.0]);
+            pen.path(&[(-0.34, -0.24), (0.0, 0.04), (0.34, -0.24)], INK, 1.0);
+            pen.ellipse(0.0, 0.06, 0.11, 0.1, [40.0, 34.0, 36.0]);
+        }
+        Emblem::Rags => {
+            // A tunic, patched, its hem torn.
+            pen.poly(&[(-0.3, -0.3), (-0.12, -0.36), (0.12, -0.36), (0.3, -0.3), (0.38, -0.05), (0.22, 0.0), (0.22, 0.3), (0.12, 0.22), (0.02, 0.34), (-0.08, 0.22), (-0.2, 0.32), (-0.22, 0.0), (-0.38, -0.05)], [150.0, 128.0, 96.0]);
+            pen.rect(-0.12, -0.08, 0.04, 0.08, [120.0, 132.0, 110.0]);
+            pen.line((0.08, -0.2), (0.16, -0.1), INK, 1.0);
+        }
+        Emblem::Unmet => {
+            // An hourglass run out.
+            pen.rect_f(-0.26, -0.38, 0.26, -0.3, [132.0, 96.0, 62.0], Finish::Inked);
+            pen.rect_f(-0.26, 0.3, 0.26, 0.38, [132.0, 96.0, 62.0], Finish::Inked);
+            pen.poly(&[(-0.2, -0.3), (0.2, -0.3), (0.03, 0.0), (0.2, 0.3), (-0.2, 0.3), (-0.03, 0.0)], [226.0, 222.0, 210.0]);
+            pen.poly(&[(-0.16, 0.3), (0.16, 0.3), (0.0, 0.14)], gold);
+        }
+        Emblem::Thirst => {
+            // An empty cup, tipped over, a last drop gone.
+            pen.poly(&[(-0.34, 0.1), (0.14, -0.12), (0.26, 0.14), (-0.22, 0.34)], [176.0, 124.0, 70.0]);
+            pen.ellipse(0.2, 0.01, 0.07, 0.14, [96.0, 70.0, 46.0]);
+            pen.path(&[(0.3, -0.3), (0.36, -0.2)], [120.0, 150.0, 170.0], w);
+        }
+        Emblem::Grievance => {
+            // A proclamation with a red seal, torn across.
+            pen.rect(-0.28, -0.34, 0.28, 0.3, [238.0, 228.0, 204.0]);
+            for k in 0..3 { let v = -0.2 + k as f32 * 0.12; pen.line((-0.18, v), (0.18, v), INK, 1.0); }
+            pen.ellipse(0.12, 0.18, 0.1, 0.1, BLOOD);
+            pen.path(&[(-0.3, 0.06), (-0.1, 0.0), (0.04, 0.1), (0.3, 0.02)], INK, w);
+        }
+        Emblem::Sick => {
+            // A pale green face, eyes shut, a wavering mouth.
+            pen.ellipse(0.0, 0.0, 0.32, 0.34, [184.0, 196.0, 150.0]);
+            for s in [-1.0f32, 1.0] { pen.line((s * 0.16, -0.06), (s * 0.06, -0.04), INK, 1.0); }
+            pen.path(&[(-0.12, 0.16), (-0.04, 0.12), (0.04, 0.18), (0.12, 0.13)], INK, 1.0);
+            pen.ellipse_f(0.2, -0.22, 0.05, 0.07, [140.0, 170.0, 190.0], Finish::Paint);
+        }
+        Emblem::HalfRation => {
+            // Half a loaf.
+            pen.poly(&[(-0.34, 0.2), (-0.3, -0.06), (-0.1, -0.24), (0.06, -0.24), (0.06, 0.2)], [196.0, 150.0, 90.0]);
+            pen.rect_f(0.02, -0.24, 0.1, 0.2, [236.0, 214.0, 170.0], Finish::Inked);
+            for k in 0..3 { let u = -0.24 + k as f32 * 0.1; pen.line((u, -0.08), (u + 0.06, -0.16), INK, 1.0); }
+        }
         Emblem::LifePeace => { pen.path(&[(-0.35, 0.3), (0.0, 0.0), (0.35, -0.3)], [110.0, 120.0, 70.0], w); for k in 0..3 { let t = -0.2 + k as f32 * 0.2; pen.ellipse_rot(t + 0.08, -t - 0.06, 0.12, 0.05, -0.8, [130.0, 150.0, 80.0]); } }
         Emblem::Gloom => { pen.ellipse_f(0.0, 0.0, 0.42, 0.24, [70.0, 70.0, 80.0], Finish::Plain); pen.ellipse_f(-0.18, -0.08, 0.2, 0.16, [96.0, 96.0, 106.0], Finish::Paint); }
     }

@@ -182,23 +182,33 @@ pub fn feel(f: &Feel) -> Emblem {
         Feel::Death { .. } | Feel::Remembered { .. } => Emblem::Grief,
         Feel::ColdNight => Emblem::Cold,
         Feel::SleptWarm | Feel::Idle => Emblem::Rest,
-        Feel::Hungry | Feel::Rationed => Emblem::Hunger,
-        Feel::Ill | Feel::Wounded { .. } | Feel::Struck => Emblem::Hurt,
+        Feel::Hungry => Emblem::Hunger,
+        Feel::Rationed => Emblem::HalfRation,
+        Feel::Ill => Emblem::Sick,
+        Feel::Wounded { .. } | Feel::Struck => Emblem::Hurt,
         Feel::Saved { .. } | Feel::SavedBy { .. } | Feel::Reconciled { .. } => Emblem::Help,
         Feel::RaidNight | Feel::Breach { .. } | Feel::TheDeep { .. } | Feel::SawFall { .. } => Emblem::Fear,
         Feel::Quarrel { .. } | Feel::Envy { .. } | Feel::Punished { .. } | Feel::Torn { .. } => Emblem::Anger,
         Feel::Friend { .. } => Emblem::Talk,
         Feel::Built { .. } | Feel::Made { .. } | Feel::Found { .. } | Feel::Slew { .. } | Feel::FelledTree | Feel::LikedWork { .. } => Emblem::Pride,
-        Feel::Favoured | Feel::Festival { .. } | Feel::Mandate { .. } | Feel::OwnRoom { .. } => Emblem::Joy,
-        Feel::Lonely | Feel::NowhereToPray | Feel::Ragged | Feel::NeedUnmet { .. } => Emblem::Gloom,
+        Feel::Favoured | Feel::Festival { .. } | Feel::OwnRoom { .. } => Emblem::Joy,
+        Feel::Mandate { .. } => Emblem::Grievance,
+        Feel::Lonely => Emblem::Lonely,
+        Feel::NowhereToPray => Emblem::NoShrine,
+        Feel::Ragged => Emblem::Rags,
+        Feel::NeedUnmet { .. } => Emblem::Unmet,
         Feel::Prayed => Emblem::Pray,
         Feel::Busy => Emblem::Busy,
         Feel::KilledLiked { .. } => Emblem::Despair,
         Feel::SawLiked { .. } | Feel::Pet { .. } => Emblem::Watch,
+        // Ill news is heard as gloom, a hated people's caravan with anger.
+        Feel::News { good: false, .. } => Emblem::BadNews,
+        Feel::Caravan { hated: true, .. } => Emblem::Anger,
         Feel::News { .. } | Feel::Caravan { .. } => Emblem::TalkMemory,
         Feel::Admired { .. } => Emblem::Admire,
         Feel::Performed { .. } | Feel::Heard { .. } => Emblem::Merry,
-        Feel::Drank | Feel::Thirsty => Emblem::Drink,
+        Feel::Drank => Emblem::Drink,
+        Feel::Thirsty => Emblem::Thirst,
         Feel::AteWell { .. } => Emblem::Meal,
         Feel::Dreamt { .. } => Emblem::Dreaming,
         Feel::Acquired { .. } => Emblem::Acquire,
@@ -254,8 +264,32 @@ pub fn table() -> Vec<(&'static str, String, String)> {
     for k in [Shape::Empty, Shape::Floor, Shape::Ramp, Shape::Wall, Shape::Stair] { add("Shape", format!("{:?}", k), shape(k).into()); }
     for k in [TreeKind::Broadleaf, TreeKind::Conifer, TreeKind::Jungle, TreeKind::Palm, TreeKind::Acacia, TreeKind::Dead, TreeKind::Fungus] { add("TreeKind", format!("{:?}", k), tree(k).into()); }
     for k in [Plant::None, Plant::Grass, Plant::Shrub, Plant::Crop(0)] { add("Plant", format!("{:?}", k), plant(k).into()); }
-    // Feel's variants carry names and places; the match in `feel` is exhaustive, so each has its icon.
-    add("Feel", "every thought".into(), "status_ink icon by `feel` (the ledger's thoughts)".into());
+    for f in feels() { add("Feel", format!("{:?}", f).split([' ', '{']).next().unwrap_or("").to_string(), format!("status_ink::{:?} icon in the ledger", feel(&f))); }
     for g in super::glyphs::Glyph::ALL { add("Glyph", format!("{:?}", g), "glyphs::draw".into()); }
     t
 }
+
+/// One of every thought (`Feel`), with stand-in names, for the table and the thoughts page.
+/// `tests/sprites.rs` checks there are as many as the enum has variants.
+pub fn feels() -> Vec<Feel> {
+    let n = || "Gaunauth".to_string();
+    vec![
+        Feel::Death { whom: n(), close: true }, Feel::ColdNight, Feel::SleptWarm, Feel::Hungry, Feel::Ill, Feel::Struck,
+        Feel::Saved { whom: n() }, Feel::SavedBy { whom: n() }, Feel::RaidNight, Feel::Quarrel { with: n() }, Feel::Friend { with: n() },
+        Feel::Built { what: "the palisade".into() }, Feel::LikedWork { material: "oak".into() }, Feel::FelledTree, Feel::Favoured,
+        Feel::Envy { of: n() }, Feel::Lonely, Feel::Prayed, Feel::NowhereToPray, Feel::Idle, Feel::Busy,
+        Feel::Breach { what: "the first cavern".into() }, Feel::Wounded { what: "a broken arm".into() }, Feel::Festival { what: "spring".into() },
+        Feel::Punished { by: n() }, Feel::KilledLiked { what: "deer".into() }, Feel::SawLiked { what: "deer".into() },
+        Feel::News { what: "a town fell".into(), good: false }, Feel::Mandate { what: "the watch".into() }, Feel::Reconciled { by: n() },
+        Feel::Caravan { town: "Brolmdustoor".into(), hated: false, sold: true }, Feel::Made { what: "a bowl".into(), quality: 3 },
+        Feel::Admired { what: "a statue".into() }, Feel::Performed { what: "a dance".into() }, Feel::Heard { what: "a song".into(), own: true },
+        Feel::TheDeep { what: "the dead walk".into() }, Feel::Found { what: "the staff".into() }, Feel::Slew { what: "a beast".into() },
+        Feel::SawFall { what: "a beast".into() }, Feel::Pet { name: "Tha".into() }, Feel::Drank, Feel::Thirsty,
+        Feel::Torn { people: "the Git Clans".into() }, Feel::AteWell { dish: "a stew".into(), fine: true }, Feel::Ragged,
+        Feel::Dreamt { what: "a child".into() }, Feel::Rationed, Feel::OwnRoom { value: 6 },
+        Feel::NeedUnmet { what: "prayer".into(), level: 6, days: 9 }, Feel::Remembered { whom: n() }, Feel::Acquired { what: "a bowl".into() },
+    ]
+}
+
+/// The variant's name, for counting distinct kinds.
+pub fn feel_name(f: &Feel) -> String { format!("{:?}", f).split([' ', '{']).next().unwrap_or("").to_string() }

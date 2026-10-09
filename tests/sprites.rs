@@ -83,3 +83,18 @@ fn every_simulated_kind_names_its_drawing() {
     let uniq: std::collections::BTreeSet<_> = projects.iter().collect();
     assert_eq!(projects.len(), uniq.len());
 }
+
+#[test]
+fn every_thought_has_its_sign() {
+    use planet_generator::tiles::coverage::{feel_name, feels};
+    let all = feels();
+    let names: std::collections::BTreeSet<String> = all.iter().map(feel_name).collect();
+    // Every variant once: the source's enum, counted.
+    let src = std::fs::read_to_string("src/colony/mind.rs").unwrap();
+    let body = &src[src.find("pub enum Feel {").unwrap()..];
+    let body = &body[..body.find("\n}\n").unwrap()];
+    let variants = body.lines().skip(1).map(str::trim).filter(|l| !l.starts_with("///") && !l.is_empty())
+        .filter_map(|l| l.split([' ', ',', '{']).next()).filter(|w| w.chars().next().map_or(false, |c| c.is_ascii_uppercase())).count();
+    assert_eq!(names.len(), all.len(), "a thought listed twice");
+    assert_eq!(all.len(), variants, "feels() lists {} of {} thoughts", all.len(), variants);
+}

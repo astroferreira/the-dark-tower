@@ -194,7 +194,7 @@ fn minimap_box(world_w: usize, world_h: usize, w: usize, h: usize) -> (i64, i64,
     let mh = (mw * world_h / world_w).max(1);
     if mw + 12 > w || mh + 12 > h { return (0, 0, 0, 0); }
     let (ox, oy) = ((w - mw - 10) as i64, 10i64);
-    (ox - 4, oy - 4, ox + mw as i64 + 4, oy + mh as i64 + 4)
+    (ox - 7, oy - 7, ox + mw as i64 + 7, oy + mh as i64 + 7)
 }
 
 fn draw_labels_avoiding(labels: &[Label], cam: &Camera, world_w: usize, buf: &mut [u32], w: usize, h: usize, avoid: &[(i64, i64, i64, i64)]) {

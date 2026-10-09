@@ -432,3 +432,17 @@ the Claude Doc "Ink graphics: sprites and examples".
   and the section title under the camp card (both now top centre below the banner), the
   section's trees as thin poplars (now crowns as wide as the surface view's), and the sea titled
   "Unclaimed land" (now "Open water").
+- Thoughts by what was felt (2026-10-09): `Thought::feel` keeps the `Feel` (drawing only; the
+  colony hash is unchanged), and the ledger draws its sign through `coverage::feel` (the
+  exhaustive map), not by guessing from the text. `coverage::feels()` lists one of each of the 51
+  thoughts (the table now has a row each: 302 rows); `--sprite-sheet` writes a fourth page,
+  `_thoughts.png`; `tests/sprites.rs::every_thought_has_its_sign` counts the enum's variants in
+  the source. Nine signs were added where thoughts had shared one (alone, no shrine, ill news,
+  rags, a need unmet, thirst, a grievance (a mandate against their values had shown a smile),
+  sickness, half rations).
+- The section's dug rooms show their fittings in profile and their names beside them (bed,
+  table and benches, barrels, mushroom plots, coffin, benches, furnaces with their glow).
+- The minimap: a parchment mat in a sepia rule, the view a rubric box (was grey and yellow).
+- Live pass on a grown camp (`--code 76.96x48.earthlike.8.250@45,12 --day 200` with
+  `PLANET_UI_SCRIPT`): `]` steps through levels 52 (cellar, farm), 48 (great hall, workshops),
+  44 (bedrooms, kiln) and on; `[` comes back to the surface; the section and the minimap checked.
