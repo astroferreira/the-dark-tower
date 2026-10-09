@@ -1857,14 +1857,14 @@ pub fn save_province_snapshot(world: &WorldData, history: Option<&WorldHistory>,
         let days = (d * WINDING / KM_PER_DAY).ceil();
         let label = format!("{} days", days);
         let (mx, my) = ((sx + tx) / 2.0, (sy + ty) / 2.0);
-        let tw = super::text::text_width(&label, 1) as i64;
+        let tw = super::text::fell_width(&label, 1, true) as i64;
         for yy in -2..12i64 { for xx in -3..tw + 3 { blend(&mut buf, w, h, mx + xx as f32 - tw as f32 / 2.0, my + yy as f32, 0x00EF_E3C8, 0.85); } }
-        super::text::draw_ink(&mut buf, w, h, mx as i64 - tw / 2, my as i64, &label, 0x008A_2A1A, 1, true);
+        super::text::draw_fell(&mut buf, w, h, mx as i64 - tw / 2, my as i64, &label, 0x008A_2A1A, 1, true);
         lines.push(format!("{} ({:?}, {} souls): {:.0} km, {} days on foot", st.name, st.kind, st.population, d, days));
     }
     draw_box(&mut buf, w, h, sx, sy, 8.0, 0x009A_3324);
     let title = format!("The theatre of the embark at {},{}: 250 km ring, nearest places", tile.0, tile.1);
-    super::text::draw_ink(&mut buf, w, h, 12, 10, &title, 0x0030_1E14, 1, true);
+    super::text::draw_fell(&mut buf, w, h, 12, 10, &title, 0x0030_1E14, 1, true);
     let path = format!("{prefix}_province.png");
     save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
     println!("Province of the embark at {},{} ({:.1} km per region cell, {:.0} km per world tile):", tile.0, tile.1, km, km * s);
@@ -2871,7 +2871,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
             let mut t = vec![0x00EA_DEC4u32; 48 * 48];
             super::portraits::draw(&mut t, 48, 48, 0, 0, 48, &p);
             super::portraits::draw(&mut buf, fw, fh, (44 + k * 120) as i64, 112, 48, &p);
-            super::text::draw_ink(&mut buf, fw, fh, (20 + k * 120) as i64, 172, &super::ui::truncate(&super::ui::ascii(&st.name), 15), 0x0038_2A20, 1, false);
+            super::text::draw_fell(&mut buf, fw, fh, (20 + k * 120) as i64, 172, &super::ui::truncate(&super::ui::ascii(&st.name), 15), 0x0038_2A20, 1, false);
             tiles.push(t);
         }
         let mut least = f32::MAX;

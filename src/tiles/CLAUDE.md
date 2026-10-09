@@ -246,8 +246,9 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
 - The viewer's camera is clamped at the poles (`viewer::clamp_cy`, as the watcher's) and the
   world beyond the map is parchment (`render::OFF_MAP`), so 16 px frames and plates have no
   black band.
-- Still in the 8x8 bitmap font: the watcher's side panel (almanac, the Shadow, realms, keys) and
-  the start screen. The minimap's frame is unchanged.
+- Since the ui-graphics branch every surface is lettered in IM Fell: the watcher's side panel,
+  the start screen, plates, overlay legends, the debug sheets (province, faces, arms); the 8x8
+  bitmap font (`draw_ink`) is no longer called. The minimap is framed in parchment and sepia.
 
 ### Fewer freezes (card 'One window from Begin to the camp', partly)
 - Z on an unvisited tile surveys the region on a worker (`surveying` in the viewer loop): the
@@ -439,7 +440,12 @@ the Claude Doc "Ink graphics: sprites and examples".
   `_thoughts.png`; `tests/sprites.rs::every_thought_has_its_sign` counts the enum's variants in
   the source. Nine signs were added where thoughts had shared one (alone, no shrine, ill news,
   rags, a need unmet, thirst, a grievance (a mandate against their values had shown a smile),
-  sickness, half rations).
+  sickness, half rations), then 24 more (2026-10-09) so that every thought has its own sign
+  (a memorial, an empty basket, a red slash, a shield, clasped hands, a cave mouth, an eye in the
+  dark, a fallen horned head, a green eye, the stocks, a split shield, two cups, a wall being
+  laid, a key, a spear through a skull, a stump and axe, stone and log with a heart, bunting, a
+  bed, a paw, a letter with a green ribbon, a trader's sack, a drum, a star in a laurel); the
+  test fails if two thoughts share one.
 - The section's dug rooms show their fittings in profile and their names beside them (bed,
   table and benches, barrels, mushroom plots, coffin, benches, furnaces with their glow).
 - The minimap: a parchment mat in a sepia rule, the view a rubric box (was grey and yellow).

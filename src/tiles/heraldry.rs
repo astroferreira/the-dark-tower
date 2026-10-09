@@ -160,8 +160,8 @@ pub fn save_sheet(world: &WorldData, h: &WorldHistory, path: &str) -> Result<usi
         let a = arms_of(world, h, f.id);
         draw(&mut buf, w, ht, x as i64, y as i64, 96, &a);
         draw(&mut buf, w, ht, (x + 96) as i64, (y + 72) as i64, 24, &a);
-        super::text::draw_ink(&mut buf, w, ht, (x + 126) as i64, (y + 10) as i64, &super::ui::truncate(&super::ui::ascii(&f.name), 22), INK, 1, true);
-        super::text::draw_ink(&mut buf, w, ht, (x + 126) as i64, (y + 24) as i64, &format!("{:?}, {:?}", a.charge, a.shape), 0x0080_6A52, 1, false);
+        super::text::draw_fell(&mut buf, w, ht, (x + 126) as i64, (y + 10) as i64, &super::ui::truncate(&super::ui::ascii(&f.name), 22), INK, 1, true);
+        super::text::draw_fell(&mut buf, w, ht, (x + 126) as i64, (y + 24) as i64, &format!("{:?}, {:?}", a.charge, a.shape), 0x0080_6A52, 1, false);
     }
     image::RgbImage::from_fn(w as u32, ht as u32, |x, y| { let p = buf[y as usize * w + x as usize]; image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8]) }).save(path)?;
     Ok(realms.len())

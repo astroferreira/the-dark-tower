@@ -22,6 +22,9 @@ pub enum Emblem {
     /// Thoughts that had shared a sign (`coverage::feel`): alone, no place to pray, ill news,
     /// rags, a need long unmet, thirst, a grievance, sickness, half rations.
     Lonely, NoShrine, BadNews, Rags, Unmet, Thirst, Grievance, Sick, HalfRation,
+    /// One sign for each thought (`coverage::feel`): the rest of those that had shared one.
+    Memorial, Idle, Blow, Shield, Clasp, Cavern, DeepEye, Fallen, Envy, Stocks, Torn, Friends,
+    Raised, Key, Trophy, Stump, Material, Bunting, Bed, Paw, Tidings, Caravan, Drum, Fulfilled,
 }
 
 /// The sign over settler `i`, if any (most pressing first).
@@ -192,6 +195,156 @@ fn icon(pen: &mut Pen, e: Emblem) {
             pen.poly(&[(-0.34, 0.2), (-0.3, -0.06), (-0.1, -0.24), (0.06, -0.24), (0.06, 0.2)], [196.0, 150.0, 90.0]);
             pen.rect_f(0.02, -0.24, 0.1, 0.2, [236.0, 214.0, 170.0], Finish::Inked);
             for k in 0..3 { let u = -0.24 + k as f32 * 0.1; pen.line((u, -0.08), (u + 0.06, -0.16), INK, 1.0); }
+        }
+        Emblem::Memorial => {
+            // A slab with a flower laid at its foot.
+            pen.poly(&[(-0.22, 0.32), (-0.22, -0.18), (0.0, -0.34), (0.22, -0.18), (0.22, 0.32)], [196.0, 188.0, 172.0]);
+            pen.line((-0.1, -0.08), (0.1, -0.08), INK, 1.0);
+            pen.line((0.0, -0.18), (0.0, 0.04), INK, 1.0);
+            pen.ellipse(0.28, 0.28, 0.08, 0.08, [200.0, 90.0, 96.0]);
+            pen.path(&[(0.28, 0.34), (0.16, 0.38)], [100.0, 130.0, 70.0], 1.0);
+        }
+        Emblem::Idle => {
+            // An empty basket.
+            pen.poly(&[(-0.34, -0.06), (0.34, -0.06), (0.24, 0.3), (-0.24, 0.3)], [176.0, 140.0, 90.0]);
+            for k in 0..3 { let u = -0.18 + k as f32 * 0.18; pen.line((u, -0.04), (u * 0.8, 0.28), INK, 1.0); }
+            pen.path(&[(-0.28, -0.06), (-0.2, -0.32), (0.2, -0.32), (0.28, -0.06)], INK, w);
+        }
+        Emblem::Blow => {
+            // A blade's red slash.
+            pen.path(&[(-0.34, 0.3), (0.3, -0.32)], BLOOD, w * 1.8);
+            pen.path(&[(-0.2, 0.36), (0.36, -0.18)], mix(BLOOD, INK, 0.3), w);
+            for (u, v) in [(-0.1f32, 0.3f32), (0.2, 0.22)] { pen.ellipse_f(u, v, 0.04, 0.06, BLOOD, Finish::Paint); }
+        }
+        Emblem::Shield => {
+            pen.poly(&[(-0.3, -0.3), (0.3, -0.3), (0.28, 0.06), (0.0, 0.36), (-0.28, 0.06)], [150.0, 160.0, 176.0]);
+            pen.path(&[(0.0, -0.3), (0.0, 0.34)], INK, 1.0);
+            pen.path(&[(-0.29, -0.06), (0.29, -0.06)], INK, 1.0);
+        }
+        Emblem::Clasp => {
+            // Two hands clasped.
+            pen.ellipse_rot(-0.14, 0.02, 0.24, 0.12, -0.5, [222.0, 190.0, 156.0]);
+            pen.ellipse_rot(0.14, 0.02, 0.24, 0.12, 0.5, [196.0, 160.0, 126.0]);
+            pen.rect(-0.42, 0.06, -0.26, 0.24, [130.0, 110.0, 150.0]);
+            pen.rect(0.26, 0.06, 0.42, 0.24, [120.0, 140.0, 110.0]);
+        }
+        Emblem::Cavern => {
+            // A dark mouth in the rock with hanging stone.
+            pen.ellipse(0.0, 0.04, 0.38, 0.32, [170.0, 158.0, 140.0]);
+            pen.ellipse_f(0.0, 0.1, 0.24, 0.22, [34.0, 30.0, 34.0], Finish::Paint);
+            for u in [-0.12f32, 0.02, 0.14] { pen.poly(&[(u - 0.04, -0.1), (u + 0.04, -0.1), (u, 0.06)], [150.0, 140.0, 124.0]); }
+        }
+        Emblem::DeepEye => {
+            // An eye opening in the dark.
+            pen.ellipse_f(0.0, 0.0, 0.4, 0.4, [30.0, 26.0, 32.0], Finish::Paint);
+            pen.ellipse_f(0.0, 0.0, 0.3, 0.13, [214.0, 196.0, 120.0], Finish::Paint);
+            pen.ellipse_f(0.0, 0.0, 0.05, 0.12, [20.0, 16.0, 18.0], Finish::Paint);
+        }
+        Emblem::Fallen => {
+            // A great horned head laid low.
+            pen.ellipse(0.0, 0.14, 0.3, 0.18, [120.0, 100.0, 86.0]);
+            pen.bone(&[(-0.2, 0.06), (-0.36, -0.12), (-0.3, -0.32)], [222.0, 206.0, 176.0], w * 1.6);
+            pen.bone(&[(0.2, 0.06), (0.36, -0.12), (0.3, -0.32)], [222.0, 206.0, 176.0], w * 1.6);
+            for s2 in [-1.0f32, 1.0] { pen.line((s2 * 0.14 - 0.04, 0.1), (s2 * 0.14 + 0.04, 0.18), INK, 1.0); pen.line((s2 * 0.14 + 0.04, 0.1), (s2 * 0.14 - 0.04, 0.18), INK, 1.0); }
+        }
+        Emblem::Envy => {
+            // A green eye, narrowed.
+            pen.ellipse_f(0.0, 0.0, 0.36, 0.16, [236.0, 232.0, 214.0], Finish::Inked);
+            pen.ellipse_f(0.0, 0.0, 0.12, 0.12, [96.0, 150.0, 70.0], Finish::Paint);
+            pen.path(&[(-0.38, -0.12), (0.0, -0.22), (0.38, -0.12)], INK, w);
+        }
+        Emblem::Stocks => {
+            pen.rect(-0.38, -0.1, 0.38, 0.1, [150.0, 108.0, 70.0]);
+            for u in [-0.2f32, 0.0, 0.2] { pen.ellipse_f(u, 0.0, 0.06, 0.06, [40.0, 30.0, 26.0], Finish::Paint); }
+            pen.rect(-0.04, 0.1, 0.04, 0.36, [130.0, 94.0, 60.0]);
+        }
+        Emblem::Torn => {
+            // A shield split down the middle.
+            pen.poly(&[(-0.3, -0.3), (-0.04, -0.3), (0.02, -0.1), (-0.06, 0.08), (0.0, 0.34), (-0.28, 0.06)], [140.0, 110.0, 150.0]);
+            pen.poly(&[(0.06, -0.3), (0.32, -0.3), (0.3, 0.06), (0.06, 0.32), (0.08, 0.1), (0.0, -0.08)], [150.0, 160.0, 176.0]);
+        }
+        Emblem::Friends => {
+            // Two cups raised together.
+            for (u, a, c) in [(-0.16f32, 0.3f32, [176.0, 124.0, 70.0]), (0.16, -0.3, [150.0, 110.0, 76.0])] {
+                pen.ellipse_rot(u, 0.06, 0.12, 0.24, a, c);
+            }
+            pen.path(&[(-0.06, -0.3), (0.0, -0.4), (0.06, -0.3)], gold, 1.0);
+        }
+        Emblem::Raised => {
+            // A wall of stone, a course still being laid.
+            for row in 0..3 { let v = 0.24 - row as f32 * 0.16; let off = if row % 2 == 0 { 0.0 } else { 0.1 }; for k in 0..3 { let u = -0.34 + off + k as f32 * 0.22; if row == 2 && k == 2 { continue; } pen.rect(u, v - 0.14, u + 0.2, v, [196.0, 186.0, 168.0]); } }
+            pen.poly(&[(0.2, -0.36), (0.38, -0.26), (0.28, -0.18)], [120.0, 120.0, 128.0]);
+        }
+        Emblem::Key => {
+            pen.ellipse(-0.18, -0.12, 0.16, 0.16, gold);
+            pen.ellipse_f(-0.18, -0.12, 0.06, 0.06, [244.0, 236.0, 216.0], Finish::Plain);
+            pen.path(&[(-0.06, 0.0), (0.32, 0.3)], gold, w * 1.3);
+            pen.path(&[(0.2, 0.2), (0.12, 0.3)], gold, w);
+            pen.path(&[(0.28, 0.27), (0.2, 0.37)], gold, w);
+        }
+        Emblem::Trophy => {
+            // A spear through a beast's skull.
+            pen.path(&[(-0.38, 0.36), (0.36, -0.36)], [140.0, 104.0, 66.0], w * 1.1);
+            pen.poly(&[(0.36, -0.36), (0.22, -0.3), (0.3, -0.22)], [120.0, 120.0, 128.0]);
+            pen.ellipse(0.0, 0.04, 0.2, 0.17, [232.0, 222.0, 200.0]);
+            for s2 in [-1.0f32, 1.0] { pen.ellipse_f(s2 * 0.08, 0.02, 0.04, 0.05, INK, Finish::Paint); }
+        }
+        Emblem::Stump => {
+            pen.rect(-0.24, -0.02, 0.24, 0.3, [140.0, 104.0, 70.0]);
+            pen.ellipse(0.0, -0.02, 0.24, 0.09, [214.0, 184.0, 140.0]);
+            pen.ellipse_f(0.0, -0.02, 0.1, 0.04, [180.0, 146.0, 104.0], Finish::Plain);
+            pen.path(&[(0.1, -0.34), (0.3, -0.1)], [140.0, 104.0, 66.0], w);
+            pen.poly(&[(0.04, -0.4), (0.2, -0.36), (0.12, -0.24)], [120.0, 120.0, 128.0]);
+        }
+        Emblem::Material => {
+            // A block of stone and a log, a heart over them.
+            pen.rect(-0.36, 0.0, -0.02, 0.3, [196.0, 186.0, 168.0]);
+            pen.ellipse(0.2, 0.16, 0.18, 0.12, [160.0, 120.0, 80.0]);
+            pen.ellipse_f(0.32, 0.16, 0.05, 0.09, [214.0, 184.0, 140.0], Finish::Plain);
+            pen.ellipse_f(-0.06, -0.24, 0.08, 0.07, [200.0, 70.0, 70.0], Finish::Paint);
+            pen.ellipse_f(0.06, -0.24, 0.08, 0.07, [200.0, 70.0, 70.0], Finish::Paint);
+            pen.poly_f(&[(-0.13, -0.22), (0.13, -0.22), (0.0, -0.08)], [200.0, 70.0, 70.0], Finish::Paint);
+        }
+        Emblem::Bunting => {
+            pen.path(&[(-0.4, -0.24), (0.0, -0.08), (0.4, -0.24)], INK, 1.0);
+            for (k, c) in [(0, [190.0, 70.0, 60.0]), (1, gold), (2, [80.0, 120.0, 150.0]), (3, [110.0, 140.0, 80.0])] {
+                let u = -0.3 + k as f32 * 0.2; let v = -0.2 + if k == 1 || k == 2 { 0.08 } else { 0.03 };
+                pen.poly(&[(u - 0.07, v), (u + 0.07, v), (u, v + 0.22)], c);
+            }
+        }
+        Emblem::Bed => {
+            pen.rect(-0.38, 0.0, 0.38, 0.18, [150.0, 108.0, 70.0]);
+            pen.rect(-0.3, -0.1, 0.2, 0.02, [150.0, 96.0, 84.0]);
+            pen.ellipse(0.26, -0.06, 0.1, 0.07, [236.0, 230.0, 214.0]);
+            for u in [-0.36f32, 0.36] { pen.rect(u - 0.03, 0.18, u + 0.03, 0.32, [130.0, 94.0, 60.0]); }
+        }
+        Emblem::Paw => {
+            pen.ellipse_f(0.0, 0.12, 0.17, 0.14, [96.0, 76.0, 60.0], Finish::Paint);
+            for (u, v) in [(-0.22f32, -0.06f32), (-0.08, -0.2), (0.08, -0.2), (0.22, -0.06)] { pen.ellipse_f(u, v, 0.07, 0.08, [96.0, 76.0, 60.0], Finish::Paint); }
+        }
+        Emblem::Tidings => {
+            // Good news: a letter tied with a green ribbon.
+            pen.rect(-0.34, -0.24, 0.34, 0.24, [238.0, 228.0, 204.0]);
+            pen.rect_f(-0.04, -0.24, 0.04, 0.24, [110.0, 150.0, 80.0], Finish::Plain);
+            pen.ellipse(0.0, 0.0, 0.09, 0.07, [110.0, 150.0, 80.0]);
+        }
+        Emblem::Caravan => {
+            // A trader's sack and a coin.
+            pen.poly(&[(-0.26, 0.32), (-0.3, 0.04), (-0.12, -0.2), (0.06, -0.2), (0.2, 0.04), (0.16, 0.32)], [176.0, 150.0, 104.0]);
+            pen.path(&[(-0.14, -0.2), (-0.04, -0.3), (0.06, -0.2)], INK, 1.0);
+            pen.ellipse(0.28, 0.2, 0.12, 0.12, gold);
+        }
+        Emblem::Drum => {
+            pen.rect(-0.26, -0.12, 0.26, 0.26, [170.0, 90.0, 70.0]);
+            pen.ellipse(0.0, -0.12, 0.26, 0.09, [232.0, 218.0, 190.0]);
+            for k in 0..3 { let u = -0.2 + k as f32 * 0.2; pen.line((u, -0.06), (u + 0.1, 0.22), [240.0, 220.0, 170.0], 1.0); }
+            pen.path(&[(0.1, -0.24), (0.36, -0.38)], [140.0, 104.0, 66.0], w);
+        }
+        Emblem::Fulfilled => {
+            // A dream come true: a gold star in a laurel.
+            for s2 in [-1.0f32, 1.0] { for k in 0..3 { let t = k as f32 * 0.2; pen.ellipse_rot(s2 * (0.3 - t * 0.2), 0.2 - t * 1.1, 0.1, 0.05, s2 * (0.9 - t), [120.0, 150.0, 80.0]); } }
+            let pts: Vec<(f32, f32)> = (0..10).map(|k| { let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 5.0; let r = if k % 2 == 0 { 0.22 } else { 0.09 }; (r * a.cos(), -0.04 + r * a.sin()) }).collect();
+            pen.poly(&pts, gold);
         }
         Emblem::LifePeace => { pen.path(&[(-0.35, 0.3), (0.0, 0.0), (0.35, -0.3)], [110.0, 120.0, 70.0], w); for k in 0..3 { let t = -0.2 + k as f32 * 0.2; pen.ellipse_rot(t + 0.08, -t - 0.06, 0.12, 0.05, -0.8, [130.0, 150.0, 80.0]); } }
         Emblem::Gloom => { pen.ellipse_f(0.0, 0.0, 0.42, 0.24, [70.0, 70.0, 80.0], Finish::Plain); pen.ellipse_f(-0.18, -0.08, 0.2, 0.16, [96.0, 96.0, 106.0], Finish::Paint); }

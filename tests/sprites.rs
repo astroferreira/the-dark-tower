@@ -97,4 +97,7 @@ fn every_thought_has_its_sign() {
         .filter_map(|l| l.split([' ', ',', '{']).next()).filter(|w| w.chars().next().map_or(false, |c| c.is_ascii_uppercase())).count();
     assert_eq!(names.len(), all.len(), "a thought listed twice");
     assert_eq!(all.len(), variants, "feels() lists {} of {} thoughts", all.len(), variants);
+    // Each thought its own sign.
+    let signs: std::collections::BTreeSet<String> = all.iter().map(|f| format!("{:?}", planet_generator::tiles::coverage::feel(f))).collect();
+    assert_eq!(signs.len(), all.len(), "thoughts share a sign");
 }

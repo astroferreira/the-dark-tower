@@ -63,7 +63,9 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
         Emblem::Think, Emblem::Merry, Emblem::Tale, Emblem::Martial, Emblem::Whittle, Emblem::Busy, Emblem::Drink, Emblem::Meal, Emblem::Gloom, Emblem::Love, Emblem::Grief, Emblem::Acquire, Emblem::Dreaming,
         Emblem::Argue, Emblem::TalkHome, Emblem::TalkAgree, Emblem::TalkMemory, Emblem::Joy, Emblem::Fear, Emblem::Cold, Emblem::Hunger, Emblem::Pride, Emblem::Anger,
         Emblem::LifeChild, Emblem::LifeMaster, Emblem::LifeSlay, Emblem::LifeBook, Emblem::LifeRule, Emblem::LifeDiscover, Emblem::LifePeace,
-        Emblem::Lonely, Emblem::NoShrine, Emblem::BadNews, Emblem::Rags, Emblem::Unmet, Emblem::Thirst, Emblem::Grievance, Emblem::Sick, Emblem::HalfRation];
+        Emblem::Lonely, Emblem::NoShrine, Emblem::BadNews, Emblem::Rags, Emblem::Unmet, Emblem::Thirst, Emblem::Grievance, Emblem::Sick, Emblem::HalfRation,
+        Emblem::Memorial, Emblem::Idle, Emblem::Blow, Emblem::Shield, Emblem::Clasp, Emblem::Cavern, Emblem::DeepEye, Emblem::Fallen, Emblem::Envy, Emblem::Stocks, Emblem::Torn, Emblem::Friends,
+        Emblem::Raised, Emblem::Key, Emblem::Trophy, Emblem::Stump, Emblem::Material, Emblem::Bunting, Emblem::Bed, Emblem::Paw, Emblem::Tidings, Emblem::Caravan, Emblem::Drum, Emblem::Fulfilled];
     let folk: Vec<(&str, super::folk::Folk)> = vec![
         ("the Shadow's raider", super::folk::raider(None, "raiders of the Shadow of Skullfang", 0, None)),
         ("the Shadow's axeman", super::folk::raider(None, "raiders of the Shadow of Skullfang", 2, None)),
