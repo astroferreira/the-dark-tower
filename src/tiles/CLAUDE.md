@@ -382,4 +382,15 @@ the Claude Doc "Ink graphics: sprites and examples".
   the poster. `tests/sprites.rs` checks the sheet.
 - Speed: the camp's overlay costs ~3 ms at 1280x800 (sprites ~1 ms; worn ground ~2 ms; the night
   wash is row-parallel now). `PLANET_FRAMES` prints "the ground alone" beside the frame times.
-- Not done: driving the ledger by hand in a real window.
+- World map's living things (`world_ink.rs`, `world_life` once per world): monuments by type,
+  a war host at each active war's latest battle (the history never fills `armies`), siege
+  camps, outlaw camps (`bands::of`), caravans on active trade routes, creature populations (none
+  on the dev world), cult altars; up to five per tile, the living first. `--tiles-snapshot`
+  prints "World life: ...". Guests by calling (`status_ink::guest_marks`), the vampire noticed,
+  the lost relic, the hall in the hill's hearth, the lined shaft, cave and halls ends, a dream
+  bubble, the envoy's roundel, scorched ground, a cradle by an expecting mother's bed, a snatched
+  child on a raider's back, the mandate's notice post.
+- The ledger is verified by `--ui-drive PREFIX` (`apply_ui_action` / `apply_map_click` are the
+  window's own click code): 24 of 24 steps; `tests/sprites.rs`. Not yet tried by a person.
+- The full inventory (every simulated kind and its sprite) is in the Claude Doc "Ink graphics:
+  sprites and examples".
