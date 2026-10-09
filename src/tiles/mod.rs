@@ -28,6 +28,7 @@ mod ui;
 pub mod viewer;
 pub mod vignette;
 pub mod watcher;
+pub mod world_ink;
 
 pub use atlas::{Atlas, TileKind};
 pub use classify::TileWorld;

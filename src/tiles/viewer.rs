@@ -148,6 +148,14 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
             labels.push(Label { x: s.location.0 as f32 + 0.5, y: s.location.1 as f32 + 1.4, text, rank: base + (s.population / 2000).min(99), min_tile_px: min_px, color, style });
         }
     }
+    // Monuments, war hosts, sieges and outlaw bands, named under their sprites (`world_ink`).
+    if let Some(h) = history {
+        for t in super::world_ink::world_life(h) {
+            let (rank, min_px) = match t.kind { super::world_ink::Kind::Monument(_) => (520, 14.0), super::world_ink::Kind::WarHost { .. } | super::world_ink::Kind::Siege { .. } => (640, 10.0), super::world_ink::Kind::Outlaws => (500, 14.0), _ => continue };
+            if t.name.is_empty() || !t.first { continue; }
+            labels.push(Label { x: t.tile.0 as f32 + 0.5, y: t.tile.1 as f32 + 1.3, text: t.name.clone(), rank, min_tile_px: min_px, color: if rank == 640 { 0x009A_2A1E } else { 0x0030_1E14 }, style: LabelStyle::Ruin });
+        }
+    }
     // The world's beasts, named in red above their sprites at the lair (`beasts::draw_world`).
     if let Some(h) = history {
         for b in super::beasts::world_beasts(h) {
@@ -401,6 +409,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
     let labels = build_labels(world, history, &gaz, &landmarks);
     // The world's beasts at their lairs (`beasts::world_beasts`).
     let world_beasts = history.map(super::beasts::world_beasts).unwrap_or_default();
+    let world_life = history.map(super::world_ink::world_life).unwrap_or_default();
     let mut show_labels = true;
     // Seasons: T steps through them, C toggles an automatic year cycle.
     let mut season = crate::seasons::Season::Summer;
@@ -1241,6 +1250,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     // A plate: the map without the interface, framed, captioned and numbered.
                     let mut plate = vec![0u32; w * h];
                     render_world(&tw, &atlas, &cam, &mut plate, w, h);
+                    super::world_ink::draw(&world_life, &cam, tw.width, &mut plate, w, h);
                     super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut plate, w, h, false);
                     if show_labels { draw_labels(&labels, &cam, tw.width, &mut plate, w, h); }
                     draw_notes(&notes, None, &cam, tw.width, &mut plate, w, h);
@@ -1401,6 +1411,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     draw_marker(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, (px_per_cell * 0.6).clamp(4.0, 10.0));
                 } else {
                     render_world(&tw, &atlas, &cam, &mut buf, w, h);
+                    super::world_ink::draw(&world_life, &cam, tw.width, &mut buf, w, h);
                     super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
                     if show_labels {
                         let avoid = if show_minimap { vec![minimap_box(tw.width, tw.height, w, h)] } else { Vec::new() };
@@ -1479,6 +1490,7 @@ pub fn save_inspect_snapshots(world: &WorldData, history: &WorldHistory, atlas: 
     let cam = Camera { cx: tile.0 as f32 + 0.5 + (panel.w as f32 / 2.0) / 16.0, cy: clamp_cy(tile.1 as f32 + 0.5, 16.0, 800, world.height), tile_px: 16.0 };
     let mut map = vec![0u32; w * h];
     render_world(&tw, atlas, &cam, &mut map, w, h);
+    super::world_ink::draw(&super::world_ink::world_life(history), &cam, tw.width, &mut map, w, h);
     super::beasts::draw_world(&super::beasts::world_beasts(history), &cam, tw.width, &mut map, w, h, false);
     draw_labels(&labels, &cam, tw.width, &mut map, w, h);
     let (mx, my) = ((w - panel.w) as f32 / 2.0, h as f32 / 2.0);
@@ -1566,7 +1578,7 @@ pub fn save_poster(world: &WorldData, history: Option<&WorldHistory>, atlas: &At
     let cam = Camera { cx: world.width as f32 / 2.0, cy: world.height as f32 / 2.0, tile_px };
     let mut buf = vec![0u32; w * h];
     render_world(&tw, atlas, &cam, &mut buf, w, h);
-    if let Some(hh) = history { super::beasts::draw_world(&super::beasts::world_beasts(hh), &cam, tw.width, &mut buf, w, h, false); }
+    if let Some(hh) = history { super::world_ink::draw(&super::world_ink::world_life(hh), &cam, tw.width, &mut buf, w, h); super::beasts::draw_world(&super::beasts::world_beasts(hh), &cam, tw.width, &mut buf, w, h, false); }
     let font_scale = w as f32 / 2200.0;
     let to_screen = |x: f32, y: f32| (w as f32 / 2.0 + (x - cam.cx) * tile_px, h as f32 / 2.0 + (y - cam.cy) * tile_px);
 
@@ -2923,6 +2935,16 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
     let landmarks = crate::lore::find_landmarks(world, &gaz);
     let labels = build_labels(world, history, &gaz, &landmarks);
     let world_beasts = history.map(super::beasts::world_beasts).unwrap_or_default();
+    let world_life = history.map(super::world_ink::world_life).unwrap_or_default();
+    {
+        use super::world_ink::Kind;
+        let n = |f: &dyn Fn(&Kind) -> bool| world_life.iter().filter(|t| f(&t.kind)).count();
+        println!("World life: {} monuments, {} war hosts, {} sieges, {} outlaw camps, {} caravans, {} wild populations, {} cult altars; {} beasts at their lairs",
+            n(&|k| matches!(k, Kind::Monument(_))), n(&|k| matches!(k, Kind::WarHost { .. })), n(&|k| matches!(k, Kind::Siege { .. })), n(&|k| matches!(k, Kind::Outlaws)),
+            n(&|k| matches!(k, Kind::Caravan)), n(&|k| matches!(k, Kind::Wild(_))), n(&|k| matches!(k, Kind::Cult)), world_beasts.len());
+        // The first of each kind, for checking its sprite (`PLANET_WORLD_LIFE=1`).
+        if std::env::var("PLANET_WORLD_LIFE").is_ok() { for t in &world_life { println!("  {:?} at {:?}: {}", std::mem::discriminant(&t.kind), t.tile, t.name); } }
+    }
     let (cx, cy) = center.unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
     let (w, h) = (1280usize, 800usize);
     let fit = (w as f32 / tw.width as f32).min(h as f32 / tw.height as f32);
@@ -2939,7 +2961,8 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         // A plate of the 16 px view, as P makes it.
         let cam = Camera { cx: cx as f32 + 0.5, cy: clamp_cy(cy as f32 + 0.5, 16.0, h, tw.height), tile_px: 16.0 };
         render_world(&tw, atlas, &cam, &mut buf, w, h);
-        super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
+        super::world_ink::draw(&world_life, &cam, tw.width, &mut buf, w, h);
+                    super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
         draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
         draw_notes(&crate::lore::notes::load(world.seed()), None, &cam, tw.width, &mut buf, w, h);
         let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
@@ -2954,7 +2977,8 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         for _ in 0..3 {
             let t0 = std::time::Instant::now();
             render_world(&tw, atlas, &cam, &mut buf, w, h);
-            super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
+            super::world_ink::draw(&world_life, &cam, tw.width, &mut buf, w, h);
+                    super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
             best = best.min(t0.elapsed().as_secs_f32() * 1000.0);
         }
         println!("render {name}: {best:.1} ms");
