@@ -20,6 +20,9 @@ pub struct Thought {
     pub tick: u64,
     pub text: String,
     pub weight: f32,
+    /// What was felt, kept for drawing the thought's sign (`tiles::coverage::feel`); the
+    /// simulation never reads it.
+    pub feel: Option<Feel>,
 }
 
 /// The way a mind breaks.
@@ -290,13 +293,13 @@ impl Colony {
         s.mind.stress = (s.mind.stress - weight).clamp(-0.8, 3.0);
         if weight <= -0.15 {
             s.mind.scars.retain(|t| tick.saturating_sub(t.tick) <= 30 * TICKS_PER_DAY);
-            s.mind.scars.push(Thought { tick, text: text.clone(), weight });
+            s.mind.scars.push(Thought { tick, text: text.clone(), weight, feel: Some(f.clone()) });
             if s.mind.scars.len() > 4 {
                 let k = s.mind.scars.iter().enumerate().max_by(|a, b| a.1.weight.total_cmp(&b.1.weight)).map(|x| x.0).unwrap_or(0);
                 s.mind.scars.remove(k);
             }
         }
-        s.mind.thoughts.push(Thought { tick, text, weight });
+        s.mind.thoughts.push(Thought { tick, text, weight, feel: Some(f) });
         if s.mind.thoughts.len() > KEEP { s.mind.thoughts.remove(0); }
     }
 

@@ -281,7 +281,7 @@ impl Colony {
         if matches!(m, Material::Rock(_) | Material::Ore(_)) {
             // Carried up to the mouth from below; left where it fell on the surface.
             let at = if self.below(i) { self.delve_mouth.unwrap_or(self.camp) } else { self.settlers[i].pos };
-            self.items.push(Item { kind: ItemKind::Stone, at, stored: false, reserved: false });
+            self.items.push(Item::new(ItemKind::Stone, at, false));
             self.stone_dug += 1;
         }
         if let Some(k) = self.projects.iter().position(|q| !q.done && super::projects::is_dig(q.kind)) {

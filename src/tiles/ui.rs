@@ -83,8 +83,8 @@ pub(crate) fn card(buf: &mut [u32], w: usize, r: Rect) {
 
 /// Small-caps style heading with a rule under it.
 pub(crate) fn heading(buf: &mut [u32], w: usize, h: usize, x: usize, y: i64, width: usize, text: &str) {
-    draw_ink(buf, w, h, x as i64, y, text, RUBRIC, 1, true);
-    let tx = x + text_width(text, 1) + 6;
+    super::text::draw_fell(buf, w, h, x as i64, y, text, RUBRIC, 1, true);
+    let tx = x + super::text::fell_width(text, 1, true) + 6;
     if tx < x + width {
         let ry = (y + 4) as usize;
         if ry < h { hline(buf, w, tx, x + width, ry, INK_FADED); }

@@ -53,7 +53,7 @@ impl Colony {
         if let Some(r) = p.ransom_day {
             if day >= r {
                 let pay = 2 * self.alive() as u32;
-                for _ in 0..pay { self.items.push(Item { kind: ItemKind::Food, at: self.camp, stored: true, reserved: false }); }
+                for _ in 0..pay { self.items.push(Item::food(Stuff::Provisions, self.camp, true)); }
                 self.note(format!("An envoy of {} comes for {} and pays {} meals in ransom; the prisoner walks home with them.", p.people, p.name, pay));
                 self.regard(p.faction, &p.people, p.from, "ransom", 3, format!("took ransom for {} and let them go on day {}", p.name, day));
                 self.prisoner = None;

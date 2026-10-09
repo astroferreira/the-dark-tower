@@ -136,7 +136,7 @@ impl Colony {
                 self.feel(c.who, mind::Feel::Punished { by: jn.clone() });
                 format!("{} puts {} in the stocks for a day: {} {}.", jn, cn, if self.settlers[c.who].persona.female { "she" } else { "he" }, c.what)
             } else if law > -26 {
-                for _ in 0..c.meals { self.items.push(Item { kind: ItemKind::Food, at: self.camp, stored: true, reserved: false }); }
+                for _ in 0..c.meals { self.items.push(Item::food(Stuff::Provisions, self.camp, true)); }
                 self.like(judge, c.who, -1);
                 if c.meals > 0 { format!("{} makes {} give back the {} {} {} took.", jn, cn, c.meals, if c.meals == 1 { "meal" } else { "meals" }, if self.settlers[c.who].persona.female { "she" } else { "he" }) }
                 else { format!("{} makes {} mend what {} broke.", jn, cn, if self.settlers[c.who].persona.female { "she" } else { "he" }) }

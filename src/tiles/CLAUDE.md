@@ -96,8 +96,11 @@ The default and only maintained front end (minifb window).
 ## Seasons in the tile viewer
 `T` steps Spring/Summer/Autumn/Winter, `C` cycles them automatically. Snow cover (cold + moisture),
 foliage colour (spring flush, summer drought, autumn orange), and frozen lakes/rivers/shallows
-come from the seasonal climate; `--season` picks the season for `--tiles-snapshot`. Not yet applied
-to zoomed regions or embarks.
+come from the seasonal climate; `--season` picks the season for `--tiles-snapshot`. The colony's
+embark has its own winter (snow wash, ice); the region walker takes the season too (T there:
+snow by the season's temperature and moisture, bare broadleaves, ice on lakes and rivers, autumn
+leaves; `region_ink::draw`'s `season`; `--local-snapshot` writes `_region_4px_autumn.png` and
+`_region_4px_winter.png`).
 
 ## Graphical tile viewer (`src/tiles/`)
 `cargo run --release -- --seed 42` opens a window (minifb) titled "The Dark Tower" that draws
@@ -164,7 +167,8 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   `--plate FILE` re-runs the game with those arguments plus `--tiles-center` and `--tiles-zoom`;
   with `--headless --tiles-snapshot P` it re-renders the plate (`P_plate.png`), byte-identical
   on the dev world. `--tiles-snapshot` always writes `<prefix>_plate.png` (16 px at the centre).
-- Not yet: typed captions, automatic plates at great events (an album).
+- Typed captions: Shift+P asks for the caption on the map (Enter saves the plate with it, Esc
+  drops it); plain P captions with the world's sentence. Not yet: automatic plates at great events.
 
 ### Heraldry (`tiles/heraldry.rs`)
 - `arms_of(world, history, faction)`: shield shape by race (heater, square for dwarves and
@@ -186,7 +190,11 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   lakes in blue italic, capitals in small caps, cities and towns in roman, ruins in italic.
 - Placement: highest rank first; a label must fit wholly on screen (never clipped), overlap no
   placed label or `avoid` rectangle (the minimap: `minimap_box`), and a name is shown once.
-  ~0.5 ms a frame. Not yet: ranges along their axis, rivers along their course.
+  ~0.5 ms a frame. Ranges are lettered along their long axis (when 1.8x longer than wide) and
+  rivers along their course near the label (`viewer::feature_angle`: principal axis of the
+  range's tiles or of the main stem within 6 tiles; within +-60 degrees, reading left to right;
+  `Label::angle`, drawn by `fonts::draw_rotated`, letters turned and sampled bilinearly; the
+  collision box is the turned box's bounds). Not curved along a bending course.
 
 ### Poster (`viewer::save_poster`)
 - `--poster FILE [--poster-width 6144]` renders the whole ink map at ~12 px/tile (seed 42:
@@ -195,7 +203,10 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   crossed swords with their year, a cartouche ("The Annals of <world>", the year, the world's
   sentence), a scale bar (round steps, 4 segments), a compass rose in the most open sea and the
   vintage ruled border (`cartography/decorations.rs`). Works with `--load-world`.
-- Not yet: the atlas of ages (four small maps at years 201, 280, 360, 451).
+- The atlas of ages (`--watch-atlas FILE`, `watcher::watch_atlas`): the world at the dawn of
+  history, a third and two thirds through, and the present (dev: 201, 284, 367, 451), two by two
+  on one ruled parchment plate, each map with its realms, roads and towns and captioned with the
+  year, the age (the timeline's era) and its towns and realms.
 
 ### Portraits (`tiles/portraits.rs`)
 - `of_settler` builds an ink head from parts: skin, ears, tusks and beards by race (orcs green
@@ -246,8 +257,9 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
 - The viewer's camera is clamped at the poles (`viewer::clamp_cy`, as the watcher's) and the
   world beyond the map is parchment (`render::OFF_MAP`), so 16 px frames and plates have no
   black band.
-- Still in the 8x8 bitmap font: the watcher's side panel (almanac, the Shadow, realms, keys) and
-  the start screen. The minimap's frame is unchanged.
+- Since the ui-graphics branch every surface is lettered in IM Fell: the watcher's side panel,
+  the start screen, plates, overlay legends, the debug sheets (province, faces, arms); the 8x8
+  bitmap font (`draw_ink`) is no longer called. The minimap is framed in parchment and sepia.
 
 ### Fewer freezes (card 'One window from Begin to the camp', partly)
 - Z on an unvisited tile surveys the region on a worker (`surveying` in the viewer loop): the
@@ -256,7 +268,12 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
 - Walking: the site line ("what an embark here would hold") is read only once the walker has
   stopped for 0.35 s ("the site is read when you stop"); generating it near a town costs up to
   a second and stalled walking past one.
-- Not done: keeping the start window open during world generation (generation runs on the main
+- The world being made (`tiles/making.rs`): from the start screen's Begin a window stays up while
+  the world is made: the pipeline's steps ticked as `generate_terrain`'s stages, water and biomes
+  finish, the one under way in rubric, and the land inked small after each stage. It closes for
+  the watcher, or after the history. `PLANET_MAKING_FRAMES=PREFIX` saves its frames (headless
+  too); `PLANET_START_BEGIN=N` presses Begin on frame N (the whole flow checked in a real window
+  with macOS captures). Earlier note: keeping the start window open during world generation (generation runs on the main
   thread in `main`), bucketing river segments and houses, writing the timelapse on a worker.
   Not tried in a real window.
 
@@ -305,7 +322,176 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   down the left, settlers as inked figures in their colours, deep rock under the last level
   (was sky). `PLANET_FRAMES` also writes `_foot.png` (stair's foot) and `_magma.png` (the pipe)
   and prints best-of-three frame times (~12-13 ms each at 1280x800, 16 px, unloaded M4 Pro).
-  Not done: `--local-snapshot`'s `_section.png` is still the old pixel cross-section.
+  `--local-snapshot`'s `_section.png` is the ink section too, down through the strata and caverns
+  to the magma (`render_section_ink_to`, a camp founded on a copy of the map for its ground).
+
+### The colony's ledger and things on the ground (2026-10-08, half-done)
+- `colony_ui.rs`: a parchment panel on the right (40% of the window, 400-600 px) with five tabs
+  (Settlers C, Stocks I, Works O, Annals L, Camp T) and a settler sheet; a button bar along the
+  bottom for the patron's verbs, stones, names and the clock. Leaves scroll in their own buffer
+  (`Pane`), every click is an `Action` hit for the viewer to carry out. `--sim-snapshot` writes
+  `<prefix>_ui_settlers/_stocks/_works/_annals/_camp/_sheet.png` and `_ui_store.png` (the store
+  close up with the hover chip and every glyph in a strip) and prints "UI leaf: N things to
+  click"; `tests/colony.rs::the_ledger_leaves_render`.
+- Wired into the window (2026-10-08, not yet tried by hand): `viewer.rs` keeps a `UiState`,
+  draws `colony_ui::draw` after the HUD (`right: reserve_right`, `selected`, `hide_chip` over
+  the UI, `bar: false`), C/I/O/L/T toggle the tabs, the wheel over `body_rect` scrolls the leaf
+  (and does not zoom), a press on the UI starts no drag, clicks run `Action`s through the same
+  calls as the keys (Space/skip by flags into the existing code), armed `Tool`s apply on the next
+  map click (bless/forbid stay armed; the hint chip shows the prompt), a click on a settler on
+  the map opens their sheet (`actions_sheet`: the clock stops, `paused_by_sheet` restarts it),
+  `dream_buttons` under the dream card, Esc order: inspector/card/dream first, then tool, sheet,
+  panel, then leave. `Tool::NamePlace` asks for the name (`place_input`) and calls `name_place`,
+  which is NOT recorded in `interventions` (a replay loses the name). The refugees' card carries
+  its two answers as buttons (`choice_buttons`); `--ui-drive` clicks "take them in" (step 25,
+  `_ui_drive_refugees.png`).
+- Items: `colony::Item` carries `what: Stuff` (berries, fish, meat, grain, cave fungus,
+  provisions, timber, stone; set where the load is made, kept through hauling; the simulation
+  never reads it: the colony hash is unchanged). `glyphs.rs` draws 24 ink glyphs (one stamp:
+  wash, ink rim, lit side pale, far side hatched from 9 px). The map shows loose things as their
+  glyph (piled per cell, a count past 3) and the store as one heap per kind round the fire
+  (`local_ink::store_heaps`, fixed slots; counts lettered from 10 px); carriers show the load's
+  glyph; the hover chip names a heap or a thing on the ground.
+
+### A sprite for everything (branch ui-graphics, 2026-10-08)
+One ink treatment for every sprite (`ink.rs`: `Pen` draws shapes in a unit box with the atlas's
+wash, sepia rim, lit top-left edge and hatched far side; `facing_left` turns a sprite while the
+light stays top-left; `bone` = a pale stroke with an ink rim, for horns, poles, ropes). Review
+everything with `--sprite-sheet FILE.png` (bestiary; `FILE_folk.png` bubbles, strangers,
+furniture, artifacts; `FILE_moments.png` the moment roundels). The progress doc with images is
+the Claude Doc "Ink graphics: sprites and examples".
+- `beasts.rs`: body plans (profile quadruped with species proportions; spider, insect, crab,
+  lizard, serpent, worm from above; bat, fish, bird, blob, great two-legged) + parts.
+  `of_name` (game, herds, pets, cave life, the risen dead, werebeasts; whole-word match, "ox"
+  is not in "fox"), `of_monster` (base, tweaks, colour or substance, eyes, glow), `px_for` (56 px
+  per settler-width at the figures' scale), `world_beasts`/`draw_world` (legendary beasts at
+  their lairs on the world map from 6 px a tile; names via `build_labels`, rank 650).
+- `folk.rs`: raiders by race and threat kind (Shadow: horned, red-eyed; war band: helms, spears,
+  shields in `band_colours`; outlaws: hoods, clubs, bows), traders; drawn at 1.2x a settler.
+- `local_ink::draw_creature`/`creature_look`: Beast -> the arc's or a cavern's or an
+  expedition's monster; faces its next step, legs step by cell parity, game grazes; traders lead
+  a laden mule.
+- `camp_ink.rs`: fire, palisade stakes (wall cells within the ring not in a footprint), each
+  work's sprite (earth painted over stamped wall blocks first), jetty, chimneys, bell-cote,
+  banners, signboards (`emblem`), graves, standing/hall stones, stone marks by title, cages.
+  Store heaps step off roofs and the fire's ring (`store_heaps`).
+- `furniture.rs`: level-view fittings (beds in the owner's dress colour, table, coffins,
+  workshops, cellar, hatch, lair, ore cart, artifacts by kind).
+- `status_ink.rs`: `emblem_of` (break > strange mood > wound > need act > meal > drink > gloom)
+  drawn as a bubble by the head; `figure_marks` (bandage, office headgear, visitor's hat).
+  Children are drawn smaller by `past.age`.
+- `fx_ink.rs`: blows and blood (attacker within 1.6 cells), beast breath by its attack's effect,
+  the clash's melee and aftermath (`Colony::clash_tick`, cosmetic), siege tents, ghosts at night,
+  the bell, evil weather (`Colony::evil_weather_over`, read only) and snow.
+- `vignette.rs`: the moment card's roundel (`draw_moment` takes the colony; cards are 640 px with
+  it); a raid's beast from `Colony::foes_seen` (cosmetic, filled in `send_attackers`).
+- `--sim-snapshot` adds `_raidclose.png`, `_clash.png`, `_wild.png`. The colony hash (chronicle +
+  log) is unchanged by all of this.
+- Later the same day: job pictograms are glyphs (axe, pick, hammer, berries, rod and fish,
+  spear); worn armour over the dress; clothes fade and patch at 120 days, rags at 180; the stocks;
+  role badges with the role's glyph; children smaller. The pen's beasts amble (`colony.pen` is a
+  count); crops by season; timber walls rising (`camp_ink::draw_rising`); a woodshed's lean-to;
+  a head-frame over the mine; haunts (cairn, bench, carved post); engravings as carved panels with
+  a scene (`draw_engraving`); kept works by their keeper's bed; a prisoner bound to a post; a
+  signpost for those away. Glyphs: 46 (`Glyph::ALL`, `Glyph::of_thing`), animals in the ledger
+  as sprites (`ledger_beast`). Section view: trees, roofs, creatures. Watcher: ink event icons
+  (`watcher::draw_event_icon`), panel/banner in IM Fell; start screen in IM Fell with a picture
+  per row (`--start-snapshot FILE`); plates/overlay legend in IM Fell (`text::draw_fell`);
+  inspector pages carry a `Picture` (a beast's sprite, an artifact's glyph); beasts on plates and
+  the poster. `tests/sprites.rs` checks the sheet.
+- Speed: the camp's overlay costs ~3 ms at 1280x800 (sprites ~1 ms; worn ground ~2 ms; the night
+  wash is row-parallel now). `PLANET_FRAMES` prints "the ground alone" beside the frame times.
+- World map's living things (`world_ink.rs`, `world_life` once per world): monuments by type,
+  a war host at each active war's latest battle (the history never fills `armies`), siege
+  camps, outlaw camps (`bands::of`), caravans on active trade routes, creature populations (none
+  on the dev world), cult altars; up to five per tile, the living first. `--tiles-snapshot`
+  prints "World life: ...". Guests by calling (`status_ink::guest_marks`), the vampire noticed,
+  the lost relic, the hall in the hill's hearth, the lined shaft, cave and halls ends, a dream
+  bubble, the envoy's roundel, scorched ground, a cradle by an expecting mother's bed, a snatched
+  child on a raider's back, the mandate's notice post.
+- The ledger is verified by `--ui-drive PREFIX` (`apply_ui_action` / `apply_map_click` are the
+  window's own click code): 24 of 24 steps; `tests/sprites.rs`. Not yet tried by a person.
+- The full inventory (every simulated kind and its sprite) is in the Claude Doc "Ink graphics:
+  sprites and examples".
+- `--inventory PREFIX` renders every simulated kind in the game's own frame (a test camp, works
+  raised by `project_step`; `<prefix>_inventory.png`); tested. It found legibility bugs the sprite
+  sheet hid (office headgear 2 px wide at the camp's zoom, names over hats, fliers too high).
+- The real window can be driven by `PLANET_UI_SCRIPT=FILE` (with `--dev-embark`): lines
+  `<frame> click X Y | key K | act <Action> | clicksettler | report | shot FILE | quit`; `act`
+  clicks the centre of the hit area the window returned for that action. A full session
+  (welcome card, tabs, sheet and pause, shrine and bless tools on the map, bell, speed, a
+  settler clicked on the map, Esc order) runs as it should; it found the hover chip running
+  under the open panel (now clamped beside it). Needs a desktop session; not in the tests.
+- Thoughts, the dream of a lifetime, a vow, the patron's dream and the trading town's request
+  have icons in the ledger (`status_ink::thought_emblem`, `life_emblem`, `draw_icon`); the talk
+  bubble shows its topic. `PatronStyle` is a test harness (`raid_trial`), not game state.
+- Coverage the compiler checks (`coverage.rs`, `--coverage`): every variant of 25 simulated enums
+  (creatures, works, rooms, marks, stones, stuff, items, jobs, needs, breaks, moods, dreams, life
+  dreams, mandates, visits, threats, places, talk topics, wants, thoughts (`Feel`), monuments,
+  shapes, plants, trees) maps to the routine that draws it in a match with no wildcard arm, so a
+  new kind without a sprite does not compile; `--coverage` prints the 251 rows;
+  `tests/sprites.rs::every_simulated_kind_names_its_drawing`.
+- `--inventory` also writes `<prefix>_zooms.png`: the snatched child, office headgear, a bandage,
+  a bubble, the guest's hat, the beast and the fire drawn afresh at 8, 12, 16, 24 and 32 px a
+  cell. It showed the snatched child drawn larger than the raider carrying them (28 px at
+  scale 1); the child is now 19 px, sat on the raider's head (`folk::draw` returns its top).
+- The region walker in ink (`region_ink.rs`, 2026-10-09): Z's zoomed region had been
+  `render_rgb` blown up (flat climate colours, pixel rivers), the one view out of style. Now per
+  pixel from the region's fields sampled between cells: washes muted toward parchment, hatching
+  on the far side of slopes, contours every 100 m (500 m heavier), sea/lakes/rivers as one water
+  field with an ink bank on its 0.5 contour, an offshore line and wave marks, tree symbols on a
+  jittered 14 px grid (broadleaf/fir by temperature, nearer trees over farther), the lore's
+  fields and roads muted. ~7-11 ms at 1280x800. The marker and the embark box are rubric ink
+  (dashed box). `--local-snapshot` writes `_region.png` (1 px a cell), `_region_4px.png`,
+  `_region_12px.png` and prints the frame times.
+- `PLANET_UI_SCRIPT` keys: any letter or digit, Space, Escape, Enter, Tab, Backspace, `<`, `>`,
+  `[`, `]` (`viewer::script_key`). A full pass (tabs, sheet, bell, speed, a settler clicked,
+  level view, `[`/`]`, section, leave to the region, the world map, the inspector on a town and on
+  the sea, overlays) runs in the real window. It found the level caption under the moment banner
+  and the section title under the camp card (both now top centre below the banner), the
+  section's trees as thin poplars (now crowns as wide as the surface view's), and the sea titled
+  "Unclaimed land" (now "Open water").
+- Thoughts by what was felt (2026-10-09): `Thought::feel` keeps the `Feel` (drawing only; the
+  colony hash is unchanged), and the ledger draws its sign through `coverage::feel` (the
+  exhaustive map), not by guessing from the text. `coverage::feels()` lists one of each of the 51
+  thoughts (the table now has a row each: 302 rows); `--sprite-sheet` writes a fourth page,
+  `_thoughts.png`; `tests/sprites.rs::every_thought_has_its_sign` counts the enum's variants in
+  the source. Nine signs were added where thoughts had shared one (alone, no shrine, ill news,
+  rags, a need unmet, thirst, a grievance (a mandate against their values had shown a smile),
+  sickness, half rations), then 24 more (2026-10-09) so that every thought has its own sign
+  (a memorial, an empty basket, a red slash, a shield, clasped hands, a cave mouth, an eye in the
+  dark, a fallen horned head, a green eye, the stocks, a split shield, two cups, a wall being
+  laid, a key, a spear through a skull, a stump and axe, stone and log with a heart, bunting, a
+  bed, a paw, a letter with a green ribbon, a trader's sack, a drum, a star in a laurel); the
+  test fails if two thoughts share one.
+- The section's dug rooms show their fittings in profile and their names beside them (bed,
+  table and benches, barrels, mushroom plots, coffin, benches, furnaces with their glow).
+- The minimap: a parchment mat in a sepia rule, the view a rubric box (was grey and yellow).
+- Live pass on a grown camp (`--code 76.96x48.earthlike.8.250@45,12 --day 200` with
+  `PLANET_UI_SCRIPT`): `]` steps through levels 52 (cellar, farm), 48 (great hall, workshops),
+  44 (bedrooms, kiln) and on; `[` comes back to the surface; the section and the minimap checked.
+- Overlays all checked (2026-10-09): plates and biomes recoloured into the map's palette
+  (`PLATE_WASHES`, oceanic plates toward the sea's ink; biomes half-saturated with the sea in its
+  washes); they had been golden-angle hues and the biome table's saturated colours.
+- `--inspect-gallery PREFIX`: one inspector page of each kind (town, realm, beast, event,
+  artifact, monument, person) over the map at its place. A person's page carries a face drawn
+  from their persona, race and age (`portraits::of_figure`; a scar for a battle they fought);
+  governments read as words ("tribal council"); the marker sits on the place even when the
+  camera is held off a pole.
+- Every control driven (2026-10-09): `PLANET_UI_SCRIPT` (viewer) and `PLANET_WATCH_SCRIPT`
+  (watcher) take `key`, `mouse X Y` (point without clicking), `click`, `status` (mode, window,
+  pointer and status line in any mode), `shot`, `quit`; typing (notes, names, captions) reads
+  scripted keys too. Sweeps in real windows of every bound key on the world map (O x8 cycles back,
+  N, T, R, Minus/Plus, P, M + typing, Z, Q), the region walker (T seasons, Plus/Minus, F, X, Escape),
+  the camp (C I O L T, 1-4, M, B, F, X, H, K, V, U, [ ], < >, G, R, P, N + typing, Escape, Enter
+  to leave) and the watcher (Space, < >, L, [ ], P, N, G, A). Found and fixed: the camp card opened
+  with the world map's key hints; [ / ] said nothing when there was no level to go to; typed names
+  were all lowercase (now title case); the watcher's pace change was invisible while paused (the
+  label now names it, and [ ] say it); < > in the watcher ignored scripted keys. Not driven: J (it
+  opens the browser) and the held pan keys (WASD/arrows).
+- The album: `--watch-album DIR`, or A in the watcher window, saves a plate for each great event
+  with a place (one per title; lesser ones five years apart): the world that season, about forty
+  tiles across, centred on the place and ringed in rubric, the event as its caption. Dev: 49 plates.
 
 ## Frame budget (2026-10-08, branch `profiling`)
 - Benches (headless, the window's work per frame at 1280x800 or `PLANET_BENCH_SIZE=WxH`):
@@ -333,7 +519,9 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   `set_season`, `apply_history`, `apply_overlay`, and by the viewer when it sets
   `show_resources` or the overlay). The Shadow's hatching is keyed on world pixels there.
 - Night and winter washes: one parallel pass in whole numbers (a table for the snow by
-  brightness), the glow reckoned only near the fire and the watch.
+  brightness), the glow reckoned only near the fire and the watch. Under evil weather or in a
+  deep freeze the snow, the weather (`fx_ink::draw_weather`) and the night are three passes, in
+  that order.
 - Checks: `PLANET_INK_CHECK=1` / `PLANET_WORLD_CHECK=1` draw each frame afresh and count pixels
   that differ from the kept one (0 over 160 days at 10x, standing and panning);
   `PLANET_INK_NOCACHE` / `PLANET_WORLD_NOCACHE` turn the keeping off; `PLANET_TIME_INK=1` prints

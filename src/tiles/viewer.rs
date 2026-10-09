@@ -23,6 +23,32 @@ use super::render::{render_local, render_minimap, render_world, render_world_cac
 use crate::local::{generate_local, LocalMap, Plant, Shape, LOCAL_SIZE, TILE_M};
 
 const MIN_TILE_PX: f32 = 1.0;
+/// A typed name with each word capitalised ("ember fall" -> "Ember Fall"); small words inside
+/// stay small ("the ford of ash" -> "The Ford of Ash").
+fn title_case(t: &str) -> String {
+    t.split(' ').enumerate().map(|(i, w)| {
+        if i > 0 && matches!(w, "of" | "the" | "and" | "by" | "in" | "on") { return w.to_string(); }
+        let mut c = w.chars();
+        match c.next() { Some(f) => f.to_uppercase().collect::<String>() + c.as_str(), None => String::new() }
+    }).collect::<Vec<_>>().join(" ")
+}
+
+/// The world map's key hints, the status line until something else is said.
+const WORLD_HINTS: &str = "click: inspect | wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | J: journal | P: screenshot | Q: quit";
+
+/// A key named in a `PLANET_UI_SCRIPT` line: a letter, a digit, or Space, Escape, Enter, Tab,
+/// Backspace, `<` (Comma), `>` (Period), `[`, `]`.
+pub(crate) fn script_key_pub(n: &str) -> Option<Key> { script_key(n) }
+
+fn script_key(n: &str) -> Option<Key> {
+    const LETTERS: [Key; 26] = [Key::A, Key::B, Key::C, Key::D, Key::E, Key::F, Key::G, Key::H, Key::I, Key::J, Key::K, Key::L, Key::M, Key::N, Key::O, Key::P, Key::Q, Key::R, Key::S, Key::T, Key::U, Key::V, Key::W, Key::X, Key::Y, Key::Z];
+    const DIGITS: [Key; 10] = [Key::Key0, Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5, Key::Key6, Key::Key7, Key::Key8, Key::Key9];
+    let b = n.as_bytes();
+    if b.len() == 1 && b[0].is_ascii_alphabetic() { return Some(LETTERS[(b[0].to_ascii_uppercase() - b'A') as usize]); }
+    if b.len() == 1 && b[0].is_ascii_digit() { return Some(DIGITS[(b[0] - b'0') as usize]); }
+    Some(match n { "Space" => Key::Space, "Escape" => Key::Escape, "Enter" => Key::Enter, "Tab" => Key::Tab, "Backspace" => Key::Backspace, "Shift" => Key::LeftShift, "PageUp" => Key::PageUp, "PageDown" => Key::PageDown, "Plus" => Key::Equal, "Minus" => Key::Minus, "<" | "Comma" => Key::Comma, ">" | "Period" => Key::Period, "[" => Key::LeftBracket, "]" => Key::RightBracket, _ => return None })
+}
+
 /// Seconds per season when the automatic year cycle is on.
 const SEASON_SECONDS: f32 = 3.0;
 const MAX_TILE_PX: f32 = 64.0;
@@ -36,6 +62,8 @@ const RUN_PX_PER_FRAME: f64 = 12.0;
 struct ZoomState {
     region: ZoomRegion,
     rgb: Vec<[u8; 3]>,
+    /// The region's fields for drawing it in ink (`region_ink`).
+    ink: super::region_ink::Ink,
     /// Global cell coordinate of the region's local cell (0, 0).
     origin: (i64, i64),
     /// World tile the region is centred on.
@@ -65,7 +93,8 @@ fn load_region(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, 
     if let Some(l) = &lore { crate::lore::paint_region(l, &region, &mut rgb); }
     let s = cells_per_tile();
     let origin = (region.world_x0 * s, region.world_y0 * s);
-    ZoomState { region, rgb, origin, tile, lore }
+    let ink = super::region_ink::Ink::new(&region, &rgb);
+    ZoomState { region, rgb, ink, origin, tile, lore }
 }
 
 /// Names of the settlements in a zoomed region.
@@ -86,11 +115,49 @@ fn draw_region_labels(l: &crate::lore::RegionLore, cam: &ZoomCamera, buf: &mut [
             (_, SettlementType::City | SettlementType::Port) => LabelStyle::City,
             _ => LabelStyle::Town,
         };
-        Label { x: site.x as f32, y: site.y as f32 + 9.0, text, rank, min_tile_px: min_px, color, style }
+        Label { x: site.x as f32, y: site.y as f32 + 9.0, text, rank, min_tile_px: min_px, color, style, angle: 0.0 }
     }).collect();
     place_labels(&labels, cam.px_per_cell, w, h, buf, &[], |x, y| {
         (w as f32 / 2.0 + (x - cam.cx) * cam.px_per_cell, h as f32 / 2.0 + (y - cam.cy) * cam.px_per_cell)
     });
+}
+
+/// The angle a feature's name is lettered at: a range along its long axis (when it is clearly
+/// longer than wide), a river along its course near the label. Kept within a quarter turn of
+/// level so it reads left to right, and at most 60 degrees so it reads at all.
+fn feature_angle(gaz: &Gazetteer, f: &crate::lore::gazetteer::Feature) -> f32 {
+    let fit = |pts: &[(f32, f32)]| -> Option<(f32, f32)> {
+        if pts.len() < 4 { return None; }
+        let n = pts.len() as f32;
+        let (mx, my) = (pts.iter().map(|p| p.0).sum::<f32>() / n, pts.iter().map(|p| p.1).sum::<f32>() / n);
+        let (mut sxx, mut syy, mut sxy) = (0.0f32, 0.0f32, 0.0f32);
+        for p in pts { let (dx, dy) = (p.0 - mx, p.1 - my); sxx += dx * dx; syy += dy * dy; sxy += dx * dy; }
+        let tr = sxx + syy;
+        let det = sxx * syy - sxy * sxy;
+        let disc = ((tr * tr / 4.0) - det).max(0.0).sqrt();
+        let (l1, l2) = (tr / 2.0 + disc, (tr / 2.0 - disc).max(1e-3));
+        Some((0.5 * (2.0 * sxy).atan2(sxx - syy), (l1 / l2).sqrt()))
+    };
+    let tame = |a: f32| -> f32 {
+        let mut a = a;
+        while a > std::f32::consts::FRAC_PI_2 { a -= std::f32::consts::PI; }
+        while a < -std::f32::consts::FRAC_PI_2 { a += std::f32::consts::PI; }
+        a.clamp(-1.05, 1.05)
+    };
+    match f.kind {
+        FeatureKind::MountainRange => {
+            let (w, h) = (gaz.relief.width, gaz.relief.height);
+            let mut pts = Vec::new();
+            for y in 0..h { for x in 0..w { if *gaz.relief.get(x, y) == f.id { pts.push((x as f32, y as f32)); } } }
+            match fit(&pts) { Some((a, elong)) if elong > 1.8 => tame(a), _ => 0.0 }
+        }
+        FeatureKind::River => {
+            // The stretch of the main course within 6 tiles of the label.
+            let near: Vec<(f32, f32)> = f.path.iter().filter(|p| (p.0 as i64 - f.anchor.0 as i64).abs() <= 6 && (p.1 as i64 - f.anchor.1 as i64).abs() <= 6).map(|p| (p.0 as f32, p.1 as f32)).collect();
+            match fit(&near) { Some((a, elong)) if elong > 1.5 => tame(a), _ => 0.0 }
+        }
+        _ => 0.0,
+    }
 }
 
 /// Everything named on the world map: geographic features and settlements, highest rank first.
@@ -121,10 +188,11 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
             FeatureKind::Peak => LabelStyle::Feature,
             _ => LabelStyle::Region,
         };
-        labels.push(Label { x: f.anchor.0 as f32 + 0.5, y: f.anchor.1 as f32 + 0.5, text, rank, min_tile_px, color, style });
+        let angle = feature_angle(gaz, f);
+        labels.push(Label { x: f.anchor.0 as f32 + 0.5, y: f.anchor.1 as f32 + 0.5, text, rank, min_tile_px, color, style, angle });
     }
     for l in landmarks.iter().filter(|l| l.feature.is_none()) {
-        labels.push(Label { x: l.x as f32 + 0.5, y: l.y as f32 + 0.5, text: l.name.clone(), rank: 600, min_tile_px: 6.0, color: 0x0030_1E14, style: LabelStyle::Feature });
+        labels.push(Label { x: l.x as f32 + 0.5, y: l.y as f32 + 0.5, text: l.name.clone(), rank: 600, min_tile_px: 6.0, color: 0x0030_1E14, style: LabelStyle::Feature, angle: 0.0 });
     }
     if let Some(h) = history {
         for s in h.settlements.values() {
@@ -145,7 +213,22 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
                 SettlementType::City | SettlementType::Port => LabelStyle::City,
                 _ => LabelStyle::Town,
             } };
-            labels.push(Label { x: s.location.0 as f32 + 0.5, y: s.location.1 as f32 + 1.4, text, rank: base + (s.population / 2000).min(99), min_tile_px: min_px, color, style });
+            labels.push(Label { x: s.location.0 as f32 + 0.5, y: s.location.1 as f32 + 1.4, text, rank: base + (s.population / 2000).min(99), min_tile_px: min_px, color, style, angle: 0.0 });
+        }
+    }
+    // Monuments, war hosts, sieges and outlaw bands, named under their sprites (`world_ink`).
+    if let Some(h) = history {
+        for t in super::world_ink::world_life(h) {
+            let (rank, min_px) = match t.kind { super::world_ink::Kind::Monument(_) => (520, 14.0), super::world_ink::Kind::WarHost { .. } | super::world_ink::Kind::Siege { .. } => (640, 10.0), super::world_ink::Kind::Outlaws => (500, 14.0), _ => continue };
+            if t.name.is_empty() || !t.first { continue; }
+            labels.push(Label { x: t.tile.0 as f32 + 0.5, y: t.tile.1 as f32 + 1.3, text: t.name.clone(), rank, min_tile_px: min_px, color: if rank == 640 { 0x009A_2A1E } else { 0x0030_1E14 }, style: LabelStyle::Ruin, angle: 0.0 });
+        }
+    }
+    // The world's beasts, named in red above their sprites at the lair (`beasts::draw_world`).
+    if let Some(h) = history {
+        for b in super::beasts::world_beasts(h) {
+            let up = 0.6 * (1.6 + b.look.len * 0.5) + 0.2;
+            labels.push(Label { x: b.tile.0 as f32 + 0.5, y: b.tile.1 as f32 + 0.5 - up, text: b.name, rank: 650, min_tile_px: 12.0, color: 0x009A_2A1E, style: LabelStyle::Ruin, angle: 0.0 });
         }
     }
     let _ = world;
@@ -164,7 +247,7 @@ fn minimap_box(world_w: usize, world_h: usize, w: usize, h: usize) -> (i64, i64,
     let mh = (mw * world_h / world_w).max(1);
     if mw + 12 > w || mh + 12 > h { return (0, 0, 0, 0); }
     let (ox, oy) = ((w - mw - 10) as i64, 10i64);
-    (ox - 4, oy - 4, ox + mw as i64 + 4, oy + mh as i64 + 4)
+    (ox - 7, oy - 7, ox + mw as i64 + 7, oy + mh as i64 + 7)
 }
 
 fn draw_labels_avoiding(labels: &[Label], cam: &Camera, world_w: usize, buf: &mut [u32], w: usize, h: usize, avoid: &[(i64, i64, i64, i64)]) {
@@ -234,12 +317,13 @@ fn draw_marker(buf: &mut [u32], w: usize, h: usize, cx: f32, cy: f32, r: f32) {
             if x < 0 || y < 0 || x >= w as i64 || y >= h as i64 { continue; }
             let d = ((dx * dx + dy * dy) as f32).sqrt();
             let k = y as usize * w + x as usize;
-            if d <= r - 1.2 {
-                buf[k] = 0x00E0_3030;
+            // In the map's ink: a rubric dot in a parchment ring, rimmed in sepia.
+            if d <= r - 1.6 {
+                buf[k] = 0x009A_3324;
             } else if d <= r {
-                buf[k] = 0x00FF_FFFF;
-            } else if d <= r + 1.0 {
-                buf[k] = 0x0010_1010;
+                buf[k] = 0x00EA_DEC4;
+            } else if d <= r + 1.2 {
+                buf[k] = 0x0038_2A20;
             }
         }
     }
@@ -252,9 +336,12 @@ fn draw_box(buf: &mut [u32], w: usize, h: usize, cx: f32, cy: f32, half: f32, co
     let mut put = |x: i64, y: i64| {
         if x >= 0 && y >= 0 && x < w as i64 && y < h as i64 { buf[y as usize * w + x as usize] = color; }
     };
-    for x in x0..=x1 { put(x, y0); put(x, y1); }
-    for y in y0..=y1 { put(x0, y); put(x1, y); }
+    // Dashed, as a boundary is on the map (5 on, 3 off).
+    for x in x0..=x1 { if (x - x0) % 8 < 5 { put(x, y0); put(x, y1); } }
+    for y in y0..=y1 { if (y - y0) % 8 < 5 { put(x0, y); put(x1, y); } }
 }
+
+pub(crate) fn save_rgb_png_pub(path: &str, w: usize, h: usize, pixel: impl Fn(usize, usize) -> [u8; 3]) -> String { save_rgb_png(path, w, h, pixel) }
 
 fn save_rgb_png(path: &str, w: usize, h: usize, pixel: impl Fn(usize, usize) -> [u8; 3]) -> String {
     let img = image::RgbImage::from_fn(w as u32, h as u32, |x, y| image::Rgb(pixel(x as usize, y as usize)));
@@ -293,7 +380,7 @@ pub fn colony_code(colony: &crate::colony::Colony) -> String {
 fn code_file(code: &str) -> String { code.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' }).collect() }
 
 /// The playable area and seed for a colony at a world tile's centre, or at a global cell.
-fn colony_site(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), cell: Option<(u64, u64)>) -> (crate::local::LocalMap, u64, (f64, f64)) {
+pub(crate) fn colony_site(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), cell: Option<(u64, u64)>) -> (crate::local::LocalMap, u64, (f64, f64)) {
     let s = cells_per_tile() as f64;
     let zs = load_region(world, history, tile, world.seed());
     // With no cell given: on the bank of the world's river where the world map has one on the
@@ -376,6 +463,86 @@ fn write_sagas(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas,
     out
 }
 
+/// Carry out a click on the ledger or its bar (`colony_ui::Action`) through the same `Colony`
+/// calls as the keys. Returns whether it asked for Space (pause / go on) and for a skip, which
+/// the caller's clock code carries out. Shared by the window and `--ui-drive`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_ui_action(a: super::colony_ui::Action, colony: &mut crate::colony::Colony, lcam: &mut LocalCamera, ui: &mut super::colony_ui::UiState, speed: &mut u32, speed_before: &mut u32,
+    moment_card: &mut Option<crate::colony::Moment>, dream_for: &mut Option<usize>, name_input: &mut Option<String>, inspect: &mut Vec<super::inspector::Subject>, status: &mut String,
+    cam_target: &mut Option<(f32, f32)>, body_h: f32) -> (bool, bool) {
+    use super::colony_ui::Action;
+    let resume = |ui: &mut super::colony_ui::UiState, speed: &mut u32, speed_before: u32| { if ui.paused_by_sheet { ui.paused_by_sheet = false; if *speed == 0 { *speed = speed_before.max(1); } } };
+    match a {
+        Action::Tab(t) => { if ui.open == Some(t) && ui.sheet.is_none() { ui.open = None; } else { ui.open = Some(t); } if ui.sheet.take().is_some() { resume(ui, speed, *speed_before); } }
+        Action::Close => { ui.open = None; if ui.sheet.take().is_some() { resume(ui, speed, *speed_before); } }
+        Action::Select(i) => {
+            if ui.selected == Some(i) { actions_sheet(ui, i, speed, speed_before); }
+            else { ui.selected = Some(i); let p = colony.draw_pos(i); *cam_target = Some((p.0 + 0.5, p.1 + 0.5)); }
+        }
+        Action::Sheet(i) => actions_sheet(ui, i, speed, speed_before),
+        Action::Back => { ui.sheet = None; resume(ui, speed, *speed_before); }
+        Action::Arm(t) => { if ui.tool == Some(t) { ui.tool = None; *status = "Put down.".into(); } else { ui.tool = Some(t); *status = t.prompt().into(); } }
+        Action::Bell => { *status = match colony.ring_bell() { Ok(l) => l, Err(e) => e }; }
+        Action::NameCamp => { *name_input = Some(String::new()); *status = "Name the settlement: type, Enter to keep, Esc to drop".into(); }
+        Action::Favour(i) => { *status = match colony.favour_settler(i) { Ok(l) => l, Err(e) => e }; }
+        Action::DreamFor(i) => { if colony.patron.favour == 0 { *status = "no favour left today; it returns at dawn".into(); } else { *dream_for = Some(i); *status = format!("A dream for {}: choose below (or 1-4)", colony.settlers[i].name); } }
+        Action::SendDream(i, d) => { *status = match colony.send_dream(i, d) { Ok(l) => l, Err(e) => e }; *dream_for = None; }
+        Action::NoDream => { *dream_for = None; *status = "No dream sent.".into(); }
+        Action::Speed(sp) => { *speed = sp; *speed_before = sp; *moment_card = None; }
+        Action::Pause => return (true, false),
+        Action::Skip => return (false, true),
+        Action::Filter(f) => ui.annals = f,
+        Action::Event(id) => *inspect = vec![super::inspector::Subject::Event(id)],
+        Action::Refugees(take) => { *status = match colony.answer_refugees(take) { Ok(l) => l, Err(e) => e }; *moment_card = None; *speed = (*speed_before).max(1); }
+        Action::Look(x, y) => { lcam.surface_view = true; *cam_target = Some((x as f32 + 0.5, y as f32 + 0.5)); }
+        Action::Top => ui.scroll_by(-1.0e9, body_h),
+    }
+    (false, false)
+}
+
+/// A click on the map at cell (mx, my): the verb held from the bar carried out there (bless and
+/// forbid stay in hand; stones, favour, a dream and a name are used once), else a settler under
+/// it opens their sheet. Returns whether the click was taken.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_map_click(colony: &mut crate::colony::Colony, lcam: &LocalCamera, ui: &mut super::colony_ui::UiState, mx: f32, my: f32, speed: &mut u32, speed_before: &mut u32,
+    dream_for: &mut Option<usize>, place_input: &mut Option<((u16, u16), String)>, status: &mut String) -> bool {
+    use super::colony_ui::{Tab, Tool};
+    let at = (mx.max(0.0) as u16, my.max(0.0) as u16);
+    let who = colony.settler_at(mx, my, 0.9, if lcam.surface_view { None } else { Some(lcam.z) });
+    if let Some(tool) = ui.tool {
+        let said: Result<String, String> = match tool {
+            Tool::Bless => colony.mark_place(at, 6, false),
+            Tool::Forbid => colony.mark_place(at, 6, true),
+            Tool::Hall => colony.place_stone(crate::colony::StoneKind::Hall, at),
+            Tool::Grove => colony.place_stone(crate::colony::StoneKind::Grove, at),
+            Tool::Shrine => colony.place_stone(crate::colony::StoneKind::Shrine, at),
+            Tool::Favour => who.map(|i| colony.favour_settler(i)).unwrap_or_else(|| Err("click a settler to favour them".into())),
+            Tool::Dream => match who { Some(i) if colony.patron.favour > 0 => { *dream_for = Some(i); Ok(format!("A dream for {}: choose below (or 1-4)", colony.settlers[i].name)) } Some(_) => Err("no favour left today; it returns at dawn".into()), None => Err("click a settler to send them a dream".into()) },
+            Tool::NamePlace => { *place_input = Some((at, String::new())); Ok("Name the place: type, Enter to keep, Esc to drop".into()) }
+        };
+        let ok = said.is_ok();
+        *status = match said { Ok(l) => l, Err(e) => e };
+        if ok && !matches!(tool, Tool::Bless | Tool::Forbid) { ui.tool = None; }
+        return true;
+    }
+    if let Some(i) = who {
+        ui.open = Some(Tab::Settlers);
+        ui.selected = Some(i);
+        actions_sheet(ui, i, speed, speed_before);
+        return true;
+    }
+    false
+}
+
+/// Open settler `i`'s sheet in the ledger, stopping the clock while it is read (it starts again
+/// when the sheet is closed).
+fn actions_sheet(ui: &mut super::colony_ui::UiState, i: usize, speed: &mut u32, speed_before: &mut u32) {
+    ui.sheet = Some(i);
+    ui.selected = Some(i);
+    if ui.open.is_none() { ui.open = Some(super::colony_ui::Tab::Settlers); }
+    if *speed > 0 { *speed_before = *speed; *speed = 0; ui.paused_by_sheet = true; }
+}
+
 pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas: Atlas, start: Option<(usize, usize)>, embark: bool) -> Result<(), Box<dyn Error>> {
     println!("Building tile map...");
     let mut tw = TileWorld::build(world, &atlas);
@@ -383,6 +550,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
     let gaz = build_gazetteer(world, history, world.seed());
     let landmarks = crate::lore::find_landmarks(world, &gaz);
     let labels = build_labels(world, history, &gaz, &landmarks);
+    // The world's beasts at their lairs (`beasts::world_beasts`).
+    let world_beasts = history.map(super::beasts::world_beasts).unwrap_or_default();
+    let world_life = history.map(super::world_ink::world_life).unwrap_or_default();
     let mut show_labels = true;
     // Seasons: T steps through them, C toggles an automatic year cycle.
     let mut season = crate::seasons::Season::Summer;
@@ -466,6 +636,10 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         // The player's notes on the map, and one being written (the tile, the text so far).
         let mut notes = crate::lore::notes::load(seed);
         let mut note_input: Option<((usize, usize), String)> = None;
+        // Shift+P: the plate's caption being typed; `plate_now` asks for a plate this frame (with
+        // the typed caption, or the world's sentence).
+        let mut caption_input: Option<String> = None;
+        let mut plate_now: Option<Option<String>> = None;
         // The site report for the embark box: (where it was computed, the line).
         let mut site_line: (Option<(i64, i64)>, String) = (None, String::new());
         // The walker's box last moved at (the site line waits until it rests).
@@ -487,7 +661,14 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut stash = false;
         // The colony's own prompts: its name being typed, a dream being chosen, leaving asked.
         let mut name_input: Option<String> = None;
+        // A place being named (the patron's "name a place"): where, and the name typed so far.
+        let mut place_input: Option<((u16, u16), String)> = None;
         let mut dream_for: Option<usize> = None;
+        // The colony's ledger and the patron's buttons (`colony_ui`), and what can be clicked on it.
+        let mut ui = super::colony_ui::UiState::default();
+        let mut ui_hits: Vec<super::colony_ui::Hit> = Vec::new();
+        let mut dream_hits: Vec<super::colony_ui::Hit> = Vec::new();
+        let mut press_over_ui = false;
         // U: the camp cut open from the side (a section through the row at the view's centre).
         let mut section_view = false;
         let mut leave_asked = false;
@@ -495,9 +676,18 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut was_down = false;
         let mut was_right = false;
         let mut minimap_rect = (0usize, 0usize, 0usize, 0usize);
-        let mut status = String::from("click: inspect | wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | J: journal | P: screenshot | Q: quit");
+        let mut status = String::from(WORLD_HINTS);
         let mut last_title = String::new();
 
+        // PLANET_UI_SCRIPT=FILE: input fed into this very loop by frame, for testing the window
+        // without hands: "<frame> click <x> <y>", "<frame> key <C|I|O|L|T|Space|Escape|1|2|3|B|F>",
+        // "<frame> shot <file.png>" (saves the frame as shown), "<frame> quit". A click presses on
+        // its frame and releases on the next, so the loop's own click detection sees it.
+        let ui_script: Vec<(u64, String, Vec<String>)> = std::env::var("PLANET_UI_SCRIPT").ok().and_then(|f| std::fs::read_to_string(f).ok())
+            .map(|t| t.lines().filter_map(|l| { let mut it = l.split_whitespace(); let f = it.next()?.parse().ok()?; let v = it.next()?.to_string(); Some((f, v, it.map(String::from).collect())) }).collect()).unwrap_or_default();
+        let mut ui_frame: u64 = 0;
+        let mut script_mouse: Option<(f32, f32)> = None;
+        let mut script_shot: Option<String> = None;
         while window.is_open() {
             let (w, h) = window.get_size();
             if (w, h) != size {
@@ -505,22 +695,87 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 buf = vec![0; w * h];
                 dirty = true;
             }
-            let mouse = window.get_mouse_pos(MouseMode::Clamp).unwrap_or((w as f32 / 2.0, h as f32 / 2.0));
+            ui_frame += 1;
+            let mut script_keys: Vec<Key> = Vec::new();
+            let mut script_down = false;
+            let mut script_quit = false;
+            for (f, verb, args) in ui_script.iter().filter(|e| e.0 == ui_frame) {
+                let _ = f;
+                match verb.as_str() {
+                    "click" => { if let (Some(x), Some(y)) = (args.first().and_then(|v| v.parse().ok()), args.get(1).and_then(|v| v.parse().ok())) { script_mouse = Some((x, y)); script_down = true; } }
+                    "key" => { if let Some(k) = args.first().and_then(|n| script_key(n)) { script_keys.push(k); } else { println!("UI script frame {}: no key {:?}", ui_frame, args.first()); } }
+                    // Click the centre of the hit area the window drew for an action (by its name).
+                    "act" => {
+                        let want = args.join(" ");
+                        if let Some(hh) = dream_hits.iter().chain(ui_hits.iter()).find(|hh| format!("{:?}", hh.action).contains(&want)) {
+                            script_mouse = Some((hh.rect.x as f32 + hh.rect.w as f32 / 2.0, hh.rect.y as f32 + hh.rect.h as f32 / 2.0));
+                            script_down = true;
+                        } else { println!("UI script frame {}: no button for {}", ui_frame, want); }
+                    }
+                    // Click the first settler standing in the open, where the window draws them.
+                    "clicksettler" => {
+                        if let Some((colony, lcam)) = local.as_ref() {
+                            if let Some(i) = (0..colony.settlers.len()).find(|&i| colony.settlers[i].alive && !colony.below(i) && colony.roof_over(colony.settlers[i].pos).is_none()) {
+                                let p = colony.draw_pos(i);
+                                script_mouse = Some(((p.0 + 0.5 - lcam.cx) * lcam.tile_px + w as f32 / 2.0, (p.1 + 0.5 - lcam.cy) * lcam.tile_px + h as f32 / 2.0));
+                                script_down = true;
+                                println!("UI script frame {}: clicking {} on the map", ui_frame, colony.settlers[i].name);
+                            }
+                        }
+                    }
+                    "mouse" => { if let (Some(x), Some(y)) = (args.first().and_then(|v| v.parse().ok()), args.get(1).and_then(|v| v.parse().ok())) { script_mouse = Some((x, y)); } }
+                    "shot" => script_shot = args.first().cloned(),
+                    // The mode and status line in any mode (the key sweep reads it).
+                    "status" => println!("UI script frame {}: mode {} {} | window {}x{} mouse {:?} | {}", ui_frame, if local_active { "camp" } else if zoom_active { "region" } else { "world" }, args.join(" "), w, h, script_mouse, status),
+                    "quit" => script_quit = true,
+                    "report" => {
+                        if let Some((colony, _)) = local.as_ref() {
+                            println!("UI script frame {}: speed {} open {:?} sheet {:?} tool {:?} favour {} marks {} stones {} bell {} status \"{}\"", ui_frame, speed, ui.open, ui.sheet, ui.tool, colony.patron.favour, colony.patron.marks.len(), colony.stones.len(), colony.bell_rung(), status);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if script_quit { break; }
+            if !ui_script.is_empty() { dirty = true; }
+            let mouse = script_mouse.unwrap_or_else(|| window.get_mouse_pos(MouseMode::Clamp).unwrap_or((w as f32 / 2.0, h as f32 / 2.0)));
             let wheel = window.get_scroll_wheel().map(|s| s.1).unwrap_or(0.0);
-            let down = window.get_mouse_down(MouseButton::Left);
+            let down = window.get_mouse_down(MouseButton::Left) || script_down;
             let right = window.get_mouse_down(MouseButton::Right);
             // A click is a press and release without moving (a drag pans instead).
-            if down && !was_down { press_at = Some(mouse); }
+            if down && !was_down { press_at = Some(mouse); press_over_ui = local_active && super::colony_ui::over_ui(&ui, w, h, mouse); }
             let clicked = !down && was_down && press_at.map_or(false, |p| (p.0 - mouse.0).abs() < 4.0 && (p.1 - mouse.1).abs() < 4.0);
             let right_clicked = !right && was_right;
             was_down = down;
             was_right = right;
             // Writing a note (M): the keys write until Enter pins it or Esc drops it.
-            let typing = note_input.is_some() || name_input.is_some();
+            let typing = note_input.is_some() || name_input.is_some() || place_input.is_some() || caption_input.is_some();
+            if let (Some((at, text)), true) = (place_input.as_mut(), local_active) {
+                let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+                let mut done = None;
+                for k in window.get_keys_pressed(KeyRepeat::Yes).into_iter().chain(script_keys.iter().copied()) {
+                    match k {
+                        Key::Enter => { done = Some(true); break; }
+                        Key::Escape => { done = Some(false); break; }
+                        Key::Backspace => { text.pop(); }
+                        _ => if let Some(c) = key_char(k, shift) { if text.len() < 40 { text.push(c); } },
+                    }
+                }
+                if let Some(keep) = done {
+                    let (at, name) = (*at, title_case(text.trim()));
+                    place_input = None;
+                    if keep && !name.is_empty() {
+                        let (colony, _) = local.as_mut().unwrap();
+                        colony.name_place(at, &name);
+                        status = format!("The place at {},{} is called {}.", at.0, at.1, name);
+                    }
+                }
+                dirty = true;
+            }
             if let (Some(text), true) = (name_input.as_mut(), local_active) {
                 let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
                 let mut done = None;
-                for k in window.get_keys_pressed(KeyRepeat::Yes) {
+                for k in window.get_keys_pressed(KeyRepeat::Yes).into_iter().chain(script_keys.iter().copied()) {
                     match k {
                         Key::Enter => { done = Some(true); break; }
                         Key::Escape => { done = Some(false); break; }
@@ -532,14 +787,27 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let name = name_input.take().unwrap_or_default();
                     if keep && !name.trim().is_empty() {
                         let (colony, _) = local.as_mut().unwrap();
-                        colony.name_colony(name.trim());
-                        status = format!("The settlement is called {}.", name.trim());
+                        let name = title_case(name.trim());
+                        colony.name_colony(&name);
+                        status = format!("The settlement is called {}.", name);
+                    }
+                }
+                dirty = true;
+            } else if caption_input.is_some() {
+                let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+                for k in window.get_keys_pressed(KeyRepeat::Yes).into_iter().chain(script_keys.iter().copied()) {
+                    let text = caption_input.as_mut().unwrap();
+                    match k {
+                        Key::Enter => { let t = text.trim().to_string(); plate_now = Some(if t.is_empty() { None } else { Some(t) }); caption_input = None; break; }
+                        Key::Escape => { caption_input = None; status = "no plate".into(); break; }
+                        Key::Backspace => { text.pop(); }
+                        _ => if let Some(c) = key_char(k, shift) { if text.len() < 160 { text.push(c); } },
                     }
                 }
                 dirty = true;
             } else if note_input.is_some() {
                 let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-                for k in window.get_keys_pressed(KeyRepeat::Yes) {
+                for k in window.get_keys_pressed(KeyRepeat::Yes).into_iter().chain(script_keys.iter().copied()) {
                     let (at, text) = note_input.as_mut().unwrap();
                     match k {
                         Key::Enter => {
@@ -557,7 +825,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
                 dirty = true;
             }
-            let pressed = |k: Key| !typing && window.is_key_pressed(k, KeyRepeat::No);
+            let pressed = |k: Key| !typing && (window.is_key_pressed(k, KeyRepeat::No) || script_keys.contains(&k));
             let held = |k: Key| !typing && window.is_key_down(k);
             let pan_x = (held(Key::Right) || held(Key::D)) as i32 - (held(Key::Left) || held(Key::A)) as i32;
             let pan_y = (held(Key::Down) || held(Key::S)) as i32 - (held(Key::Up) || held(Key::W)) as i32;
@@ -590,6 +858,37 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     });
                     dirty = true;
                 }
+                // The ledger (`colony_ui`): tab keys, the wheel over the panel, clicks on its
+                // buttons and lines; every act goes through the same `Colony` method as its key.
+                use super::colony_ui::{Action, Tab, Tool};
+                let over_ui_now = super::colony_ui::over_ui(&ui, w, h, mouse);
+                let mut space_now = false;
+                let mut skip_now = false;
+                let mut ui_esc = false;
+                let mut ui_clicked = false;
+                let mut actions: Vec<Action> = Vec::new();
+                for (k, t) in [(Key::C, Tab::Settlers), (Key::I, Tab::Stocks), (Key::O, Tab::Works), (Key::L, Tab::Annals), (Key::T, Tab::Camp)] {
+                    if pressed(k) { actions.push(Action::Tab(t)); }
+                }
+                let body = super::colony_ui::body_rect(w, h);
+                let wheel_on_panel = wheel != 0.0 && ui.open.is_some() && body.contains(mouse.0, mouse.1);
+                if wheel_on_panel { ui.scroll_by(-wheel * 40.0, body.h as f32); dirty = true; }
+                if clicked {
+                    if let Some(hit) = dream_hits.iter().chain(ui_hits.iter()).find(|hh| hh.rect.contains(mouse.0, mouse.1)) { actions.push(hit.action); ui_clicked = true; }
+                    else if over_ui_now { ui_clicked = true; }
+                }
+                if pressed(Key::Escape) && inspect.is_empty() && moment_card.is_none() && dream_for.is_none() && !leave_asked {
+                    if ui.tool.take().is_some() { ui_esc = true; status = "Put down.".into(); }
+                    else if ui.sheet.is_some() { ui_esc = true; actions.push(Action::Back); }
+                    else if ui.open.is_some() { ui_esc = true; actions.push(Action::Close); }
+                    if ui_esc { dirty = true; }
+                }
+                for a in actions {
+                    dirty = true;
+                    let fx = apply_ui_action(a, colony, lcam, &mut ui, &mut speed, &mut speed_before, &mut moment_card, &mut dream_for, &mut name_input, &mut inspect, &mut status, &mut cam_target, body.h as f32);
+                    space_now |= fx.0;
+                    skip_now |= fx.1;
+                }
                 // Choosing a dream: 1-4 pick it, Esc lets it go.
                 if let Some(i) = dream_for {
                     let pick = [(Key::Key1, crate::colony::Dream::Hut), (Key::Key2, crate::colony::Dream::Plenty), (Key::Key3, crate::colony::Dream::Rest), (Key::Key4, crate::colony::Dream::Watch)]
@@ -618,7 +917,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     speed = speed_before.max(1);
                     dirty = true;
                 }
-                if pressed(Key::Space) && !leave_asked && !choosing && !answering {
+                if (pressed(Key::Space) || space_now) && !leave_asked && !choosing && !answering {
                     if moment_card.take().is_some() { speed = speed_before.max(1); }
                     else if speed == 0 { speed = speed_before.max(1); }
                     else { speed_before = speed; speed = 0; }
@@ -628,7 +927,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     if !choosing && pressed(key) { speed = sp; speed_before = sp; moment_card = None; dirty = true; }
                 }
                 // Skip (4 or Tab): run on to the next line of the log, or to the dawn.
-                if !choosing && !leave_asked && (pressed(Key::Key4) || pressed(Key::Tab)) {
+                if !choosing && !leave_asked && (pressed(Key::Key4) || pressed(Key::Tab) || skip_now) {
                     moment_card = None;
                     let lines = colony.log.len();
                     let t0 = colony.clock.tick;
@@ -690,7 +989,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 // The inspector: click a settler to read who they are; Esc closes it first.
                 let panel = super::inspector::panel_rect(w, h);
                 let over_panel = !inspect.is_empty() && panel.contains(mouse.0, mouse.1);
-                let esc = pressed(Key::Escape) && !choosing && !leave_asked;
+                let esc = pressed(Key::Escape) && !choosing && !leave_asked && !ui_esc;
                 if esc && !inspect.is_empty() {
                     inspect.clear();
                     dirty = true;
@@ -725,15 +1024,18 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     inspect.pop();
                     dirty = true;
                 }
-                if clicked {
+                if clicked && !ui_clicked {
+                    let (mx, my) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
                     if over_panel {
                         if let Some(hit) = inspect_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1)) {
                             inspect.push(hit.to);
                             dirty = true;
                         }
-                    } else if let Some(hit) = log_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1)) {
+                    } else if let (None, Some(hit)) = (ui.tool, log_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1))) {
                         // A line of the log opens the settler it names.
                         inspect = vec![super::inspector::Subject::Settler(hit.settler)];
+                        dirty = true;
+                    } else if (ui.tool.is_some() || inspect.is_empty()) && apply_map_click(colony, lcam, &mut ui, mx, my, &mut speed, &mut speed_before, &mut dream_for, &mut place_input, &mut status) {
                         dirty = true;
                     } else {
                         let (hx, hy) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
@@ -784,7 +1086,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     if let Some(f) = files.last() { status = format!("{}: saga written, {}", colony.milestones_hit.last().cloned().unwrap_or_default(), f); }
                 }
                 let map = &colony.map;
-                if step != 0.0 {
+                if step != 0.0 && !wheel_on_panel {
                     let before = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
                     lcam.tile_px = (lcam.tile_px * 1.25f32.powf(step)).clamp(3.0, 48.0);
                     lcam.cx = before.0 - (mouse.0 - w as f32 / 2.0) / lcam.tile_px;
@@ -798,7 +1100,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     dirty = true;
                 }
                 match (down, drag) {
-                    (true, None) => drag = Some((mouse, (lcam.cx, lcam.cy))),
+                    (true, None) if !press_over_ui => drag = Some((mouse, (lcam.cx, lcam.cy))),
+                    (true, None) => {}
                     (true, Some((start, c0))) => {
                         lcam.cx = (c0.0 - (mouse.0 - start.0) / lcam.tile_px).clamp(0.0, map.width as f32);
                         lcam.cy = (c0.1 - (mouse.1 - start.1) / lcam.tile_px).clamp(0.0, map.height as f32);
@@ -807,8 +1110,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     (false, _) => drag = None,
                 }
                 // DF keys: '<' goes up a level, '>' goes down.
-                let up = window.is_key_pressed(Key::Comma, KeyRepeat::Yes) || window.is_key_pressed(Key::PageUp, KeyRepeat::Yes);
-                let dn = window.is_key_pressed(Key::Period, KeyRepeat::Yes) || window.is_key_pressed(Key::PageDown, KeyRepeat::Yes);
+                let up = window.is_key_pressed(Key::Comma, KeyRepeat::Yes) || window.is_key_pressed(Key::PageUp, KeyRepeat::Yes) || script_keys.contains(&Key::Comma);
+                let dn = window.is_key_pressed(Key::Period, KeyRepeat::Yes) || window.is_key_pressed(Key::PageDown, KeyRepeat::Yes) || script_keys.contains(&Key::Period);
                 if up || dn {
                     // From the surface view, start from the ground's level under the view's centre.
                     if lcam.surface_view {
@@ -827,8 +1130,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let next = if jump_dn { levels.iter().copied().find(|&z| z < cur) } else { levels.iter().rev().copied().find(|&z| z > cur) };
                     match next {
                         Some(z) => { lcam.z = z; lcam.surface_view = false; }
-                        None if jump_up => { lcam.surface_view = true; }
-                        None => {}
+                        None if jump_up && !lcam.surface_view => { lcam.surface_view = true; }
+                        None if jump_up => { status = "Already at the surface: nothing raised above the camp yet (a lookout tower would be).".into(); }
+                        None => { status = if colony.spine.is_none() { "Nothing dug below the camp yet: ] goes down once they cut a cellar or a hall.".into() } else { "This is the deepest level dug.".into() }; }
                     }
                     dirty = true;
                 }
@@ -891,6 +1195,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 if mouse != last_hud_mouse { last_hud_mouse = mouse; dirty = true; }
                 if title != last_title { window.set_title(&title); last_title = title; }
             } else if zoom_active {
+                // T steps the season here too: the region in ink shows snow, autumn leaves, ice.
+                if pressed(Key::T) { season = season.next(); tw.set_season(world, season); dirty = true; }
                 // Swap in the background-generated region once it is ready.
                 if pending.as_ref().map(|p| p.is_finished()).unwrap_or(false) {
                     let next = pending.take().unwrap().join().expect("region loader panicked");
@@ -1109,12 +1415,21 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     status = "write a note: Enter pins it, Esc drops it".into();
                 }
                 if pressed(Key::P) {
+                    if window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift) || script_keys.contains(&Key::LeftShift) {
+                        caption_input = Some(String::new());
+                        status = "write the plate's caption: Enter saves the plate, Esc drops it".into();
+                    } else { plate_now = Some(None); }
+                }
+                if let Some(caption) = plate_now.take() {
                     // A plate: the map without the interface, framed, captioned and numbered.
                     let mut plate = vec![0u32; w * h];
                     render_world(&tw, &atlas, &cam, &mut plate, w, h);
+                    super::world_ink::draw(&world_life, &cam, tw.width, &mut plate, w, h);
+                    super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut plate, w, h, false);
                     if show_labels { draw_labels(&labels, &cam, tw.width, &mut plate, w, h); }
                     draw_notes(&notes, None, &cam, tw.width, &mut plate, w, h);
-                    let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
+                    let mut info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
+                    if let Some(c) = caption { info.caption = c; }
                     super::plates::decorate(&mut plate, w, h, &info);
                     let path = super::plates::next_path(seed);
                     status = match super::plates::save(&path, &plate, w, h, (cam.cx, cam.cy, cam.tile_px), &info) {
@@ -1233,17 +1548,31 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                             else { super::local_ink::draw_level(colony, lcam, &mut buf, w, h, history); }
                         }
                     }
-                    log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: &status, mouse }, &mut buf, w, h);
-                    if let Some(m) = &moment_card { super::colony_hud::draw_moment(m, &mut buf, w, h); }
+                    let right = super::colony_ui::reserve_right(&ui, w);
+                    let hide_chip = super::colony_ui::over_ui(&ui, w, h, mouse);
+                    // (The world map's key hints mean nothing in the camp: its card starts empty.)
+                    let camp_status = if status == WORLD_HINTS { "" } else { status.as_str() };
+                    log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: camp_status, mouse, right, selected: ui.selected, hide_chip, bar: false }, &mut buf, w, h);
+                    ui_hits = super::colony_ui::draw(colony, &mut ui, history, speed as u32, mouse, &mut buf, w, h);
+                    let card = moment_card.as_ref().and_then(|m| super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h));
+                    dream_hits = match dream_for { Some(i) => super::colony_ui::dream_buttons(i, &mut buf, w, h, mouse, right), None => Vec::new() };
+                    // The refugees' question: its two answers as buttons on the card.
+                    if let (Some(r), true) = (card, moment_card.as_ref().map_or(false, |m| m.choice) && colony.refugees_waiting()) {
+                        let r = if r.w >= 600 { super::ui::Rect { x: r.x + 120, w: r.w - 120, ..r } } else { r };
+                        dream_hits.extend(super::colony_ui::choice_buttons(r, &mut buf, w, h, mouse));
+                    }
+                    if let Some(tool) = ui.tool { super::colony_hud::draw_hint(tool.prompt(), &mut buf, w, h.saturating_sub(36)); }
                     let prompt = if leave_asked {
                         Some((format!("Leave {}?", colony.name.clone().unwrap_or_else(|| "the camp".into())), "Enter to leave (the patron's acts are saved). Esc to stay.".to_string()))
                     } else if let Some(t) = &name_input {
                         Some(("Name the settlement".to_string(), format!("{}|", t)))
+                    } else if let Some((at, t)) = &place_input {
+                        Some((format!("Name the place at {},{}", at.0, at.1), format!("{}|", t)))
                     } else if let Some(i) = dream_for {
                         Some((format!("A dream for {}", colony.settlers[i].name), "1 the hut finished   2 plenty   3 rest   4 the watch   (Esc: none)".to_string()))
                     } else { None };
                     if let Some((title, text)) = prompt {
-                        super::colony_hud::draw_moment(&crate::colony::Moment { tick: 0, title, text, because: String::new(), at: (0, 0), choice: false }, &mut buf, w, h);
+                        let _ = super::colony_hud::draw_moment(&crate::colony::Moment { tick: 0, title, text, because: String::new(), at: (0, 0), choice: false }, None, &mut buf, w, h);
                     }
                     inspect_hits.clear();
                     if let Some(&subject) = inspect.last() {
@@ -1261,21 +1590,26 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         cy: (player.1 - z.origin.1 as f64) as f32,
                         px_per_cell,
                     };
-                    render_zoom(&z.rgb, z.region.width, z.region.height, &cam_z, &mut buf, w, h);
+                    // (Kept between frames: a walk shifts the last frame, on whole pixels.)
+                    let cam_z = super::region_ink::snap_camera(&cam_z, w, h);
+                    super::region_ink::draw_kept(&z.ink, &cam_z, season, &mut buf, w, h);
                     if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h); }
                     // The playable area an embark here would cover.
                     let half = (LOCAL_SIZE as f32 * TILE_M / z.region.cell_m * px_per_cell / 2.0).max(6.0);
-                    draw_box(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, half, 0x00F0_D23C);
+                    draw_box(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, half, 0x009A_3324);
                     draw_marker(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, (px_per_cell * 0.6).clamp(4.0, 10.0));
                 } else {
                     // (Kept between frames, shifted when panned; on whole pixels.)
                     render_world_cached(&tw, &atlas, &cam, &mut buf, w, h);
                     let cam = snap_world_camera(&cam, w, h);
+                    super::world_ink::draw(&world_life, &cam, tw.width, &mut buf, w, h);
+                    super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
                     if show_labels {
                         let avoid = if show_minimap { vec![minimap_box(tw.width, tw.height, w, h)] } else { Vec::new() };
                         draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &avoid);
                     }
                     draw_notes(&notes, note_input.as_ref(), &cam, tw.width, &mut buf, w, h);
+                    if let Some(t) = &caption_input { super::colony_hud::draw_hint(&format!("The plate's caption: {}_   (Enter saves, Esc drops)", t), &mut buf, w, h); }
                     overlays::draw_legend(&mut buf, w, h, overlay);
                     // Colonies left behind: a gold ring and their name.
                     for (c, _) in &left {
@@ -1320,6 +1654,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                 }
                 window.update_with_buffer(&buf, w, h)?;
+                if let Some(path) = script_shot.take() { save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] }); println!("UI script frame {}: saved {}", ui_frame, path); }
                 dirty = false;
             } else {
                 window.update();
@@ -1335,6 +1670,49 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
 /// Headless check of the inspector as the window shows it: the map at 16 px/tile around `tile`
 /// with the panel open on it, then one frame per followed link (`follow`: clickable line
 /// numbers, 0 = the first). Writes `<prefix>_0.png`, `<prefix>_1.png`, ...
+/// One inspector page of each kind the history has (a town, a realm, a beast, an event with its
+/// causes, an artifact, a monument, a person), each over the map at its place: `<prefix>_<kind>.png`.
+pub fn save_inspector_gallery(world: &WorldData, history: &WorldHistory, atlas: &Atlas, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    use super::inspector::{draw, page, Subject};
+    let h = history;
+    let mut tw = TileWorld::build(world, atlas);
+    tw.apply_history(world, h, atlas);
+    let gaz = build_gazetteer(world, Some(h), world.seed());
+    let landmarks = crate::lore::find_landmarks(world, &gaz);
+    let labels = build_labels(world, Some(h), &gaz, &landmarks);
+    let life = super::world_ink::world_life(h);
+    let beasts = super::beasts::world_beasts(h);
+    let mut picks: Vec<(&str, Subject, Option<(usize, usize)>)> = Vec::new();
+    if let Some((id, s)) = h.settlements.iter().filter(|(_, s)| !s.is_destroyed()).max_by_key(|(id, s)| (s.population, std::cmp::Reverse(id.0))) { picks.push(("town", Subject::Settlement(*id), Some(s.location))); }
+    if let Some((id, f)) = h.factions.iter().max_by_key(|(id, f)| (h.settlements.values().filter(|s| s.faction == **id && !s.is_destroyed()).count(), std::cmp::Reverse(id.0))) { let _ = f; let at = h.settlements.values().find(|s| s.faction == *id && !s.is_destroyed()).map(|s| s.location); picks.push(("realm", Subject::Faction(*id), at)); }
+    if let Some((id, c)) = h.legendary_creatures.iter().filter(|(_, c)| c.is_alive()).max_by_key(|(id, c)| (c.lair_location.is_some(), std::cmp::Reverse(id.0))) { picks.push(("beast", Subject::Beast(*id), c.lair_location)); }
+    if let Some(e) = h.chronicle.events.iter().rev().find(|e| !e.causes.is_empty() && e.location.is_some()) { picks.push(("event", Subject::Event(e.id), e.location)); }
+    if let Some((id, a)) = h.artifacts.iter().min_by_key(|(id, _)| id.0) { picks.push(("artifact", Subject::Artifact(*id), a.creation_location)); }
+    if let Some((id, m)) = h.monuments.iter().min_by_key(|(id, _)| id.0) { picks.push(("monument", Subject::Monument(*id), Some(m.location))); }
+    if let Some((id, _)) = h.figures.iter().filter(|(_, f)| f.death_date.is_none()).min_by_key(|(id, _)| id.0) { picks.push(("person", Subject::Figure(*id), None)); }
+    let (w, hh) = (1280usize, 800usize);
+    let panel = super::inspector::panel_rect(w, hh);
+    let mut written = Vec::new();
+    for (kind, subject, at) in picks {
+        let tile = at.unwrap_or((world.width / 2, world.height / 2));
+        let cam = Camera { cx: tile.0 as f32 + 0.5 + (panel.w as f32 / 2.0) / 16.0, cy: clamp_cy(tile.1 as f32 + 0.5, 16.0, hh, world.height), tile_px: 16.0 };
+        let mut buf = vec![0u32; w * hh];
+        render_world(&tw, atlas, &cam, &mut buf, w, hh);
+        super::world_ink::draw(&life, &cam, tw.width, &mut buf, w, hh);
+        super::beasts::draw_world(&beasts, &cam, tw.width, &mut buf, w, hh, false);
+        draw_labels(&labels, &cam, tw.width, &mut buf, w, hh);
+        // Where the place is on screen (the camera may be held off a pole, so not always the middle).
+        if at.is_some() { draw_marker(&mut buf, w, hh, (tile.0 as f32 + 0.5 - cam.cx) * cam.tile_px + w as f32 / 2.0, (tile.1 as f32 + 0.5 - cam.cy) * cam.tile_px + hh as f32 / 2.0, 7.0); }
+        let p = page(world, h, subject);
+        let hits = draw(&p, &mut buf, w, hh, 1);
+        let path = format!("{prefix}_{kind}.png");
+        save_rgb_png(&path, w, hh, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("Inspector {}: {} ({} lines, {} links)", kind, p.title, p.lines.len(), hits.len());
+        written.push(path);
+    }
+    Ok(written)
+}
+
 pub fn save_inspect_snapshots(world: &WorldData, history: &WorldHistory, atlas: &Atlas, tile: (usize, usize), follow: &[usize], prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
     use super::inspector::{draw, page, Subject};
     let mut tw = TileWorld::build(world, atlas);
@@ -1348,8 +1726,10 @@ pub fn save_inspect_snapshots(world: &WorldData, history: &WorldHistory, atlas: 
     let cam = Camera { cx: tile.0 as f32 + 0.5 + (panel.w as f32 / 2.0) / 16.0, cy: clamp_cy(tile.1 as f32 + 0.5, 16.0, 800, world.height), tile_px: 16.0 };
     let mut map = vec![0u32; w * h];
     render_world(&tw, atlas, &cam, &mut map, w, h);
+    super::world_ink::draw(&super::world_ink::world_life(history), &cam, tw.width, &mut map, w, h);
+    super::beasts::draw_world(&super::beasts::world_beasts(history), &cam, tw.width, &mut map, w, h, false);
     draw_labels(&labels, &cam, tw.width, &mut map, w, h);
-    let (mx, my) = ((w - panel.w) as f32 / 2.0, h as f32 / 2.0);
+    let (mx, my) = ((tile.0 as f32 + 0.5 - cam.cx) * cam.tile_px + w as f32 / 2.0, (tile.1 as f32 + 0.5 - cam.cy) * cam.tile_px + h as f32 / 2.0);
     draw_marker(&mut map, w, h, mx, my, 7.0);
     let mut subject = Subject::Tile(tile.0, tile.1);
     let mut written = Vec::new();
@@ -1434,6 +1814,7 @@ pub fn save_poster(world: &WorldData, history: Option<&WorldHistory>, atlas: &At
     let cam = Camera { cx: world.width as f32 / 2.0, cy: world.height as f32 / 2.0, tile_px };
     let mut buf = vec![0u32; w * h];
     render_world(&tw, atlas, &cam, &mut buf, w, h);
+    if let Some(hh) = history { super::world_ink::draw(&super::world_ink::world_life(hh), &cam, tw.width, &mut buf, w, h); super::beasts::draw_world(&super::beasts::world_beasts(hh), &cam, tw.width, &mut buf, w, h, false); }
     let font_scale = w as f32 / 2200.0;
     let to_screen = |x: f32, y: f32| (w as f32 / 2.0 + (x - cam.cx) * tile_px, h as f32 / 2.0 + (y - cam.cy) * tile_px);
 
@@ -1595,7 +1976,7 @@ pub fn save_province_snapshot(world: &WorldData, history: Option<&WorldHistory>,
     let (w, h) = (1100usize, 800usize);
     let cam = ZoomCamera { cx: ((x0 + x1) / 2.0) as f32, cy: ((y0 + y1) / 2.0) as f32, px_per_cell: (h as f64 / span) as f32 };
     let mut buf = vec![0u32; w * h];
-    render_zoom(&zs.rgb, zs.region.width, zs.region.height, &cam, &mut buf, w, h);
+    super::region_ink::draw(&zs.ink, &cam, crate::seasons::Season::Summer, &mut buf, w, h);
     draw_region_labels(lore, &cam, &mut buf, w, h);
     let to_screen = |x: f64, y: f64| ((w as f32 / 2.0 + (x as f32 - cam.cx) * cam.px_per_cell), (h as f32 / 2.0 + (y as f32 - cam.cy) * cam.px_per_cell));
     let (sx, sy) = to_screen(ex, ey);
@@ -1619,14 +2000,14 @@ pub fn save_province_snapshot(world: &WorldData, history: Option<&WorldHistory>,
         let days = (d * WINDING / KM_PER_DAY).ceil();
         let label = format!("{} days", days);
         let (mx, my) = ((sx + tx) / 2.0, (sy + ty) / 2.0);
-        let tw = super::text::text_width(&label, 1) as i64;
+        let tw = super::text::fell_width(&label, 1, true) as i64;
         for yy in -2..12i64 { for xx in -3..tw + 3 { blend(&mut buf, w, h, mx + xx as f32 - tw as f32 / 2.0, my + yy as f32, 0x00EF_E3C8, 0.85); } }
-        super::text::draw_ink(&mut buf, w, h, mx as i64 - tw / 2, my as i64, &label, 0x008A_2A1A, 1, true);
+        super::text::draw_fell(&mut buf, w, h, mx as i64 - tw / 2, my as i64, &label, 0x008A_2A1A, 1, true);
         lines.push(format!("{} ({:?}, {} souls): {:.0} km, {} days on foot", st.name, st.kind, st.population, d, days));
     }
-    draw_box(&mut buf, w, h, sx, sy, 8.0, 0x00F0_D23C);
+    draw_box(&mut buf, w, h, sx, sy, 8.0, 0x009A_3324);
     let title = format!("The theatre of the embark at {},{}: 250 km ring, nearest places", tile.0, tile.1);
-    super::text::draw_ink(&mut buf, w, h, 12, 10, &title, 0x0030_1E14, 1, true);
+    super::text::draw_fell(&mut buf, w, h, 12, 10, &title, 0x0030_1E14, 1, true);
     let path = format!("{prefix}_province.png");
     save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
     println!("Province of the embark at {},{} ({:.1} km per region cell, {:.0} km per world tile):", tile.0, tile.1, km, km * s);
@@ -1780,7 +2161,8 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
     }
     // The timeline: the camp's moments (each with its weight), and the founding, by day.
     let mut moments: Vec<(u64, String)> = Vec::new();
-    if let Some(first) = colony.log.first() { moments.push((1, first.splitn(2, "  ").nth(1).unwrap_or("").to_string())); }
+    let mut titles: Vec<String> = Vec::new();
+    if let Some(first) = colony.log.first() { moments.push((1, first.splitn(2, "  ").nth(1).unwrap_or("").to_string())); titles.push("The founding".into()); }
     let mut weights: Vec<u8> = vec![2];
     for m in &colony.moments {
         let t = m.title.as_str();
@@ -1793,6 +2175,7 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
                 || t.starts_with("The friendship of") || t.starts_with("A hall for") || t.ends_with(" is founded") || t.ends_with(" among the raiders") || t.ends_with("'s dream") || t.ends_with("'s vow") { 2 }
             else { 3 };
         moments.push((m.tick / crate::colony::TICKS_PER_DAY + 1, m.text.clone()));
+        titles.push(m.title.clone());
         weights.push(w);
     }
     let weight_of: Vec<u8> = weights;
@@ -1800,6 +2183,7 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
     ranked.sort_by_key(|(i, _)| (weight_of[*i], *i));
     ranked.truncate(10);
     ranked.sort_by_key(|(i, _)| *i);
+    let chosen_titles: Vec<String> = ranked.iter().map(|(i, _)| titles.get(*i).cloned().unwrap_or_default()).collect();
     let chosen: Vec<&(u64, String)> = ranked.into_iter().map(|(_, m)| m).collect();
     let (tx0, tx1, ty) = (40.0f32, w as f32 - 40.0, 900.0f32);
     for x in tx0 as usize..tx1 as usize { buf[ty as usize * w + x] = 0x0038_2A20; buf[(ty as usize + 1) * w + x] = 0x0038_2A20; }
@@ -1808,6 +2192,12 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
         let x = tx0 + (tx1 - tx0) * (k as f32 + 0.5) / n;
         let up = k % 2 == 0;
         for d in 0..14 { let y = if up { ty as usize - d } else { ty as usize + 2 + d }; buf[y * w + x as usize] = 0x0038_2A20; }
+        // The moment's roundel on the line (`vignette.rs`), as its card had it.
+        {
+            let m = crate::colony::Moment { tick: 0, title: chosen_titles[k].clone(), text: text.clone(), because: String::new(), at: (0, 0), choice: false };
+            let mut put = |px: i64, py: i64, c: [f32; 3], a: f32| super::ui::blend_px(&mut buf, w, h, px, py, super::ink::pack(c), a);
+            super::vignette::draw(&mut put, Some(colony), &m, x, ty, 13.0);
+        }
         fonts::draw(&mut buf, w, h, x - 6.0, if up { ty - 40.0 } else { ty + 18.0 }, &format!("Day {}", day), Face::SmallCaps, 13.0, 0.5, 0x009A_2A1E, None);
         // An arc line ("The raid: ...") shows what happened; others their first clause.
         let body = match text.split_once(": ") { Some((head, rest)) if head.len() < 12 => rest, _ => text.as_str() };
@@ -2001,7 +2391,10 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
             surface_ms = surface_ms.min(t0.elapsed().as_secs_f64() * 1000.0);
         }
         save_rgb_png(&format!("{prefix}_camp_surface.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
-        println!("Frame times ({w}x{h} at 16 px, best of three): the camp's level {:.1} ms, its surface {:.1} ms", level_ms, surface_ms);
+        // (The ground alone, to tell its cost from the camp drawn over it.)
+        let mut ground_ms = f64::MAX;
+        for _ in 0..3 { let t0 = std::time::Instant::now(); super::local_ink::render_local_ink(&colony.map, &cam, &mut buf, w, h); ground_ms = ground_ms.min(t0.elapsed().as_secs_f64() * 1000.0); }
+        println!("Frame times ({w}x{h} at 16 px, best of three): the camp's level {:.1} ms, its surface {:.1} ms (the ground alone {:.1} ms)", level_ms, surface_ms, ground_ms);
         println!("Frames: {prefix}_section.png, {}, {prefix}_above.png, {prefix}_camp_level.png, {prefix}_camp_surface.png", names.join(", "));
     }
     let deaths: Vec<String> = colony.log.iter().filter(|l| l.contains("died of") || l.contains("was killed") || l.contains("was the last")).map(|l| l.split("  ").next().unwrap_or("").to_string() + ": " + if l.contains("hunger") { "hunger" } else if l.contains("killed") { "raid" } else { "other" }).collect();
@@ -2339,7 +2732,7 @@ pub fn ways_trial(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
 /// Found the colony on an embark at world `tile`: with a history, the settlers come out of it
 /// (`history::settlers::roster`: survivors, veterans, kin); without one they are nameless
 /// wanderers with stock names.
-fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, tile: (usize, usize), seed: u64, n: usize) -> crate::colony::Colony {
+pub(crate) fn found_colony(map: crate::local::LocalMap, history: Option<&WorldHistory>, tile: (usize, usize), seed: u64, n: usize) -> crate::colony::Colony {
     match history {
         Some(h) => {
             // Those who may come later as migrants are the same roster drawn further.
@@ -2508,6 +2901,10 @@ pub fn frame_bench(world: &WorldData, history: Option<&WorldHistory>, atlas: &At
     let mut frame_no = 0usize;
     let mut parts: Vec<(f64, f64)> = Vec::with_capacity(frames);
     let mut cpu_ms: Vec<f64> = Vec::with_capacity(frames);
+    // The ledger's panel open on a tab (PLANET_BENCH_PANEL=settlers|stocks|works|annals|camp),
+    // else closed as a new camp opens.
+    let mut ui = super::colony_ui::UiState::default();
+    ui.open = std::env::var("PLANET_BENCH_PANEL").ok().and_then(|t| super::colony_ui::Tab::ALL.into_iter().find(|x| format!("{:?}", x).eq_ignore_ascii_case(&t)));
     for _ in 0..frames {
         let c0 = thread_cpu_ms();
         let t0 = std::time::Instant::now();
@@ -2540,7 +2937,10 @@ pub fn frame_bench(world: &WorldData, history: Option<&WorldHistory>, atlas: &At
             parts.push(((b - a).as_secs_f64() * 1e3, b.elapsed().as_secs_f64() * 1e3));
         }
         let c = std::time::Instant::now();
-        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed, status: "", mouse: (-100.0, -100.0) }, &mut buf, w, h);
+        // (As the window: the HUD beside the ledger's panel, then the panel.)
+        let right = super::colony_ui::reserve_right(&ui, w);
+        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed, status: "", mouse: (-100.0, -100.0), right, selected: ui.selected, hide_chip: false, bar: false }, &mut buf, w, h);
+        super::colony_ui::draw(&colony, &mut ui, history, speed, (-100.0, -100.0), &mut buf, w, h);
         stage[2] += c.elapsed().as_secs_f64();
         cpu_ms.push(thread_cpu_ms() - c0);
         tick_ms.push((t1 - t0).as_secs_f64() * 1000.0);
@@ -2583,7 +2983,12 @@ pub fn frame_bench(world: &WorldData, history: Option<&WorldHistory>, atlas: &At
 pub fn world_frame_bench(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize)) {
     let (w, h) = bench_size();
     let mut buf = vec![0u32; w * h];
-    let tw = TileWorld::build(world, atlas);
+    // (As the window builds it: the history on the land, the season, its beasts and life.)
+    let mut tw = TileWorld::build(world, atlas);
+    if let Some(hh) = history { tw.apply_history(world, hh, atlas); }
+    tw.set_season(world, crate::seasons::Season::Summer);
+    let world_beasts = history.map(super::beasts::world_beasts).unwrap_or_default();
+    let world_life = history.map(super::world_ink::world_life).unwrap_or_default();
     let gaz = build_gazetteer(world, history, world.seed());
     let landmarks = crate::lore::find_landmarks(world, &gaz);
     let labels = build_labels(world, history, &gaz, &landmarks);
@@ -2607,6 +3012,8 @@ pub fn world_frame_bench(world: &WorldData, history: Option<&WorldHistory>, atla
             let t0 = std::time::Instant::now();
             render_world_cached(&tw, atlas, &cam, &mut buf, w, h);
             let cam = snap_world_camera(&cam, w, h);
+            super::world_ink::draw(&world_life, &cam, tw.width, &mut buf, w, h);
+            super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
             let t1 = std::time::Instant::now();
             let avoid = vec![minimap_box(tw.width, tw.height, w, h)];
             draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &avoid);
@@ -2628,7 +3035,8 @@ pub fn world_frame_bench(world: &WorldData, history: Option<&WorldHistory>, atla
             let cam_z = ZoomCamera { cx: z.region.width as f32 / 2.0 + 0.25 * z.region.width as f32 * a.cos(), cy: z.region.height as f32 / 2.0 + 0.25 * z.region.height as f32 * a.sin(), px_per_cell: ppc };
             let c0 = thread_cpu_ms();
             let t0 = std::time::Instant::now();
-            render_zoom(&z.rgb, z.region.width, z.region.height, &cam_z, &mut buf, w, h);
+            let cam_z = super::region_ink::snap_camera(&cam_z, w, h);
+            super::region_ink::draw_kept(&z.ink, &cam_z, crate::seasons::Season::Summer, &mut buf, w, h);
             if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h); }
             ms.push(t0.elapsed().as_secs_f64() * 1000.0);
             cpu.push(thread_cpu_ms() - c0);
@@ -2712,7 +3120,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         let mouse = ((st.pos.0 as f32 + 0.5 - cam.cx) * cam.tile_px + w as f32 / 2.0, (st.pos.1 as f32 + 0.5 - cam.cy) * cam.tile_px + h as f32 / 2.0);
         let last = colony.log.iter().rev().find(|l| l.contains("(your doing)")).cloned().unwrap_or_default();
         let status = last.split_once("  ").map(|x| x.1.to_string()).unwrap_or_default();
-        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 1, status: &status, mouse }, &mut buf, w, h);
+        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 1, status: &status, mouse, right: 0, selected: None, hide_chip: false, bar: true }, &mut buf, w, h);
         let path = format!("{prefix}_hud.png");
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
         written.push(path);
@@ -2725,8 +3133,8 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         let cam = LocalCamera { cx: m.at.0 as f32 + 0.5, cy: m.at.1 as f32 + 0.5, tile_px: 16.0, z: 0, surface_view: true };
         render_local(&colony.map, atlas, &cam, &mut buf, w, h);
         draw_colony(&colony, &cam, &mut buf, w, h, history);
-        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 0, status: "", mouse: (-100.0, -100.0) }, &mut buf, w, h);
-        super::colony_hud::draw_moment(m, &mut buf, w, h);
+        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 0, status: "", mouse: (-100.0, -100.0), right: 0, selected: None, hide_chip: false, bar: true }, &mut buf, w, h);
+        let _ = super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h);
         let path = format!("{prefix}_moment.png");
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
         written.push(path);
@@ -2745,6 +3153,8 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
         written.push(path);
     }
+    // The ledger's leaves and a sheet, as the window will show them (`colony_ui`).
+    written.extend(super::colony_ui::save_ui_snapshots(&colony, history, atlas, prefix));
     let path = format!("{prefix}_log.txt");
     std::fs::write(&path, colony.log.join("\n") + "\n")?;
     written.push(path);
@@ -2785,7 +3195,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
             let mut t = vec![0x00EA_DEC4u32; 48 * 48];
             super::portraits::draw(&mut t, 48, 48, 0, 0, 48, &p);
             super::portraits::draw(&mut buf, fw, fh, (44 + k * 120) as i64, 112, 48, &p);
-            super::text::draw_ink(&mut buf, fw, fh, (20 + k * 120) as i64, 172, &super::ui::truncate(&super::ui::ascii(&st.name), 15), 0x0038_2A20, 1, false);
+            super::text::draw_fell(&mut buf, fw, fh, (20 + k * 120) as i64, 172, &super::ui::truncate(&super::ui::ascii(&st.name), 15), 0x0038_2A20, 1, false);
             tiles.push(t);
         }
         let mut least = f32::MAX;
@@ -2863,7 +3273,51 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
             let path = format!("{prefix}_raidnight.png");
             save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
             written.push(path);
+            // Close up as they reach the camp (the attackers as figures or as their beast).
+            let near = |c: &crate::colony::Colony| c.creatures.iter().filter(|k| matches!(k.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider))
+                .map(|k| (k.pos.0 as i32 - c.camp.0 as i32).abs().max((k.pos.1 as i32 - c.camp.1 as i32).abs())).min();
+            let mut guard = 0;
+            while near(&c2).map_or(false, |d| d > 9) && guard < 4000 { c2.tick(); guard += 1; }
+            if let Some(a) = c2.creatures.iter().filter(|c| matches!(c.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider)).min_by_key(|k| (k.pos.0 as i32 - c2.camp.0 as i32).abs().max((k.pos.1 as i32 - c2.camp.1 as i32).abs())).map(|c| c.pos) {
+                let (w, h) = (1024usize, 640usize);
+                let cam = LocalCamera { cx: (a.0 as f32 + c2.camp.0 as f32) / 2.0, cy: (a.1 as f32 + c2.camp.1 as f32) / 2.0, tile_px: 20.0, z: 0, surface_view: true };
+                let mut buf = vec![0u32; w * h];
+                render_local(&c2.map, atlas, &cam, &mut buf, w, h);
+                draw_colony(&c2, &cam, &mut buf, w, h, history);
+                let path = format!("{prefix}_raidclose.png");
+                save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+                written.push(path);
+            }
+            // The clash: an attacker at a settler, blows drawn.
+            let at_one = |c: &crate::colony::Colony| c.creatures.iter().filter(|k| matches!(k.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider) && !k.leaving)
+                .find_map(|k| c.settlers.iter().filter(|s| s.alive).find(|s| (s.pos.0 as i32 - k.pos.0 as i32).abs() <= 1 && (s.pos.1 as i32 - k.pos.1 as i32).abs() <= 1).map(|_| k.pos));
+            let mut guard = 0;
+            while at_one(&c2).is_none() && c2.attackers_out() && guard < 3000 { c2.tick(); guard += 1; }
+            // (The clash is fought in one moment where they meet the camp: show the melee there.)
+            for _ in 0..10 { c2.tick(); }
+            if let Some(a) = at_one(&c2).or(c2.clash_at) {
+                let (w, h) = (1024usize, 640usize);
+                let cam = LocalCamera { cx: a.0 as f32 + 0.5, cy: a.1 as f32 + 0.5, tile_px: 24.0, z: 0, surface_view: true };
+                let mut buf = vec![0u32; w * h];
+                render_local(&c2.map, atlas, &cam, &mut buf, w, h);
+                draw_colony(&c2, &cam, &mut buf, w, h, history);
+                let path = format!("{prefix}_clash.png");
+                save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+                written.push(path);
+            }
         }
+    }
+    // The wild: the game nearest the camp, close up.
+    if let Some(g) = colony.creatures.iter().filter(|c| c.z.is_none() && !matches!(c.kind, crate::colony::creatures::CreatureKind::Beast | crate::colony::creatures::CreatureKind::Raider))
+        .min_by_key(|k| (k.pos.0 as i32 - colony.camp.0 as i32).abs() + (k.pos.1 as i32 - colony.camp.1 as i32).abs()).map(|c| c.pos) {
+        let (w, h) = (1024usize, 640usize);
+        let cam = LocalCamera { cx: g.0 as f32, cy: g.1 as f32, tile_px: 24.0, z: 0, surface_view: true };
+        let mut buf = vec![0u32; w * h];
+        render_local(&colony.map, atlas, &cam, &mut buf, w, h);
+        draw_colony(&colony, &cam, &mut buf, w, h, history);
+        let path = format!("{prefix}_wild.png");
+        save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        written.push(path);
     }
     // The camp at noon and at midnight of the next day (after everything above is reckoned).
     let mut lum = Vec::new();
@@ -2897,6 +3351,17 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
     let gaz = build_gazetteer(world, history, world.seed());
     let landmarks = crate::lore::find_landmarks(world, &gaz);
     let labels = build_labels(world, history, &gaz, &landmarks);
+    let world_beasts = history.map(super::beasts::world_beasts).unwrap_or_default();
+    let world_life = history.map(super::world_ink::world_life).unwrap_or_default();
+    {
+        use super::world_ink::Kind;
+        let n = |f: &dyn Fn(&Kind) -> bool| world_life.iter().filter(|t| f(&t.kind)).count();
+        println!("World life: {} monuments, {} war hosts, {} sieges, {} outlaw camps, {} caravans, {} wild populations, {} cult altars; {} beasts at their lairs",
+            n(&|k| matches!(k, Kind::Monument(_))), n(&|k| matches!(k, Kind::WarHost { .. })), n(&|k| matches!(k, Kind::Siege { .. })), n(&|k| matches!(k, Kind::Outlaws)),
+            n(&|k| matches!(k, Kind::Caravan)), n(&|k| matches!(k, Kind::Wild(_))), n(&|k| matches!(k, Kind::Cult)), world_beasts.len());
+        // The first of each kind, for checking its sprite (`PLANET_WORLD_LIFE=1`).
+        if std::env::var("PLANET_WORLD_LIFE").is_ok() { for t in &world_life { println!("  {:?} at {:?}: {}", std::mem::discriminant(&t.kind), t.tile, t.name); } }
+    }
     let (cx, cy) = center.unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
     let (w, h) = (1280usize, 800usize);
     let fit = (w as f32 / tw.width as f32).min(h as f32 / tw.height as f32);
@@ -2913,6 +3378,8 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         // A plate of the 16 px view, as P makes it.
         let cam = Camera { cx: cx as f32 + 0.5, cy: clamp_cy(cy as f32 + 0.5, 16.0, h, tw.height), tile_px: 16.0 };
         render_world(&tw, atlas, &cam, &mut buf, w, h);
+        super::world_ink::draw(&world_life, &cam, tw.width, &mut buf, w, h);
+                    super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
         draw_labels(&labels, &cam, tw.width, &mut buf, w, h);
         draw_notes(&crate::lore::notes::load(world.seed()), None, &cam, tw.width, &mut buf, w, h);
         let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
@@ -2927,6 +3394,8 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         for _ in 0..3 {
             let t0 = std::time::Instant::now();
             render_world(&tw, atlas, &cam, &mut buf, w, h);
+            super::world_ink::draw(&world_life, &cam, tw.width, &mut buf, w, h);
+                    super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut buf, w, h, false);
             best = best.min(t0.elapsed().as_secs_f32() * 1000.0);
         }
         println!("render {name}: {best:.1} ms");
@@ -2969,7 +3438,7 @@ pub fn pick_embark_spot(region: &ZoomRegion) -> (f64, f64) {
 /// Render a playable area headlessly: surface view, the floor level at the centre, a level a few
 /// z below it, and a cross-section through the middle row.
 pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, center: Option<(usize, usize)>, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
-    use super::render::{render_cross_section, render_local, LocalCamera};
+    use super::render::{render_local, LocalCamera};
     // Default: the largest living settlement (else the most interesting terrain).
     let biggest = history.and_then(|h| h.settlements.values().filter(|s| !s.is_destroyed()).max_by_key(|s| s.population).map(|s| s.location));
     let tile = center.or(biggest).unwrap_or_else(|| crate::region::zoom::pick_interesting_window(world, ZoomParams::default().tiles));
@@ -2982,13 +3451,24 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
         let (vw, vh) = (1280usize, 800usize);
         let mut vbuf = vec![0u32; vw * vh];
         let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: 1.0 };
-        render_zoom(&zs.rgb, rw, rh, &cam, &mut vbuf, vw, vh);
+        super::region_ink::draw(&zs.ink, &cam, crate::seasons::Season::Summer, &mut vbuf, vw, vh);
         if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh); }
         image::RgbImage::from_fn(vw as u32, vh as u32, |x, y| {
             let p = vbuf[y as usize * vw + x as usize];
             image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
         }).save(&path)?;
         written.push(path);
+        // The walker's zooms: 4 px a cell (where it opens) and 12 px.
+        for (z, season, tag) in [(4.0f32, crate::seasons::Season::Summer, ""), (12.0, crate::seasons::Season::Summer, ""), (4.0, crate::seasons::Season::Autumn, "_autumn"), (4.0, crate::seasons::Season::Winter, "_winter")] {
+            let path = format!("{prefix}_region_{}px{}.png", z, tag);
+            let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: z };
+            let t0 = std::time::Instant::now();
+            super::region_ink::draw(&zs.ink, &cam, season, &mut vbuf, vw, vh);
+            println!("Region in ink at {} px a cell: {:.1} ms", z, t0.elapsed().as_secs_f64() * 1000.0);
+            if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh); }
+            save_rgb_png(&path, vw, vh, |x, y| { let p = vbuf[y * vw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+            written.push(path);
+        }
     }
     // Embark on the settlement in this tile if there is one, else by a river.
     let s = cells_per_tile() as f64;
@@ -3089,9 +3569,17 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
     }
     // The section's row: the middle, or PLANET_LOCAL_ROW.
     let row = std::env::var("PLANET_LOCAL_ROW").ok().and_then(|v| v.trim().parse::<usize>().ok()).filter(|&r| r < n).unwrap_or(n / 2);
-    let section = render_cross_section(&map, row, 4);
+    // In ink, down through the strata and caverns to the deepest one (a camp founded on a copy
+    // of the map gives the section its ground level; nothing is simulated).
     let path = format!("{prefix}_section.png");
-    section.save(&path)?;
+    {
+        let colony = crate::colony::Colony::found(map.clone(), &[], world.seed());
+        let floor = map.caverns.iter().filter_map(|c| (0..map.width).step_by(4).filter_map(|x| map.cavern_z.get(row * map.width + x).map(|z| z[c.layer as usize].0)).filter(|&f| f >= 0).min()).min().map(|f| f as i32 - 2).unwrap_or(0);
+        let (sw, sh) = (1600usize, 1000usize);
+        let mut sbuf = vec![0u32; sw * sh];
+        super::local_ink::render_section_ink_to(&colony, row, floor, &mut sbuf, sw, sh);
+        save_rgb_png(&path, sw, sh, |x, y| { let q = sbuf[y * sw + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+    }
     written.push(path);
     Ok(written)
 }
@@ -3192,4 +3680,160 @@ mod tests {
         println!("pixels differing across a region swap: {:.4}% of {}", frac * 100.0, total);
         assert!(frac < 0.002, "region swap should be visually seamless");
     }
+}
+
+/// `--ui-drive PREFIX`: the colony's ledger driven by script, headlessly, through the window's
+/// own code: each step renders the frame as the window does (map, camp, HUD, ledger), finds the
+/// hit area the ledger returned for the wanted action, and carries it out with
+/// `apply_ui_action` / `apply_map_click`, then checks what it should have changed. Writes
+/// `<prefix>_ui_drive_NN.png` per step and prints "UI drive: N of M steps did what they should".
+pub fn ui_drive(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize), prefix: &str) -> Result<(usize, usize), Box<dyn Error>> {
+    use super::colony_ui::{self, Action, Tab, Tool};
+    let cell = START_CELL.get().copied();
+    let (map, seed, _) = colony_site(world, history, tile, cell);
+    let mut colony = found_colony(map, history, tile, seed, 7);
+    colony.cell = cell;
+    let (w, h) = (1280usize, 800usize);
+    let mut lcam = LocalCamera { cx: colony.camp.0 as f32 + 0.5, cy: colony.camp.1 as f32 + 0.5, tile_px: 16.0, z: 0, surface_view: true };
+    let mut ui = colony_ui::UiState::default();
+    let (mut speed, mut speed_before) = (1u32, 1u32);
+    let mut moment_card: Option<crate::colony::Moment> = None;
+    let (mut dream_for, mut name_input, mut place_input): (Option<usize>, Option<String>, Option<((u16, u16), String)>) = (None, None, None);
+    let mut inspect: Vec<super::inspector::Subject> = Vec::new();
+    let mut status = String::new();
+    let mut cam_target: Option<(f32, f32)> = None;
+    let body_h = colony_ui::body_rect(w, h).h as f32;
+    // Render the frame as the window does and return the ledger's hit areas.
+    let frame = |colony: &crate::colony::Colony, ui: &mut colony_ui::UiState, lcam: &LocalCamera, speed: u32, status: &str| -> (Vec<u32>, Vec<colony_ui::Hit>) {
+        let mut buf = vec![0u32; w * h];
+        render_local(&colony.map, atlas, lcam, &mut buf, w, h);
+        super::local_ink::draw_colony(colony, lcam, &mut buf, w, h, history);
+        let right = colony_ui::reserve_right(ui, w);
+        super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed, status, mouse: (-100.0, -100.0), right, selected: ui.selected, hide_chip: true, bar: false }, &mut buf, w, h);
+        let hits = colony_ui::draw(colony, ui, history, speed, (-100.0, -100.0), &mut buf, w, h);
+        (buf, hits)
+    };
+    let mut results: Vec<(String, bool)> = Vec::new();
+    let mut step = 0usize;
+    // Find a hit for an action and click it; the check runs on the state after.
+    macro_rules! click {
+        ($desc:expr, $want:expr, $check:expr) => {{
+            let (_, hits) = frame(&colony, &mut ui, &lcam, speed, &status);
+            let found = hits.iter().find(|hh| $want(&hh.action)).map(|hh| (hh.action, hh.rect));
+            let ok = match found {
+                Some((a, r)) => {
+                    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
+                    // The click lands where the window's mouse would: inside the hit, on the UI.
+                    let inside = colony_ui::over_ui(&ui, w, h, (cx, cy)) || hits.iter().any(|hh| hh.rect.contains(cx, cy));
+                    let fx = apply_ui_action(a, &mut colony, &mut lcam, &mut ui, &mut speed, &mut speed_before, &mut moment_card, &mut dream_for, &mut name_input, &mut inspect, &mut status, &mut cam_target, body_h);
+                    if fx.0 { if speed == 0 { speed = speed_before.max(1); } else { speed_before = speed; speed = 0; } }
+                    inside && $check(&colony, &ui, speed)
+                }
+                None => false,
+            };
+            step += 1;
+            let (buf, _) = frame(&colony, &mut ui, &lcam, speed, &status);
+            save_rgb_png(&format!("{prefix}_ui_drive_{:02}.png", step), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+            println!("UI drive {:02}: {} - {}{}", step, $desc, if ok { "ok" } else { "FAILED" }, if status.is_empty() { String::new() } else { format!(" ({})", status) });
+            results.push(($desc.to_string(), ok));
+        }};
+    }
+    let first = colony.settlers.iter().position(|s| s.alive).unwrap_or(0);
+    // A free cell near the camp, for the stones and the blessing.
+    let free = |c: &crate::colony::Colony, dx: i32, dy: i32| -> (u16, u16) {
+        (0..12).flat_map(|r| (-r..=r).flat_map(move |a| (-r..=r).map(move |b| (a, b)))).map(|(a, b)| ((c.camp.0 as i32 + dx + a) as u16, (c.camp.1 as i32 + dy + b) as u16))
+            .find(|&p| crate::colony::nav::passable(&c.map, p) && c.roof_over(p).is_none()).unwrap_or(c.camp)
+    };
+    click!("the Settlers tab opens the ledger", |a: &Action| *a == Action::Tab(Tab::Settlers), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open == Some(Tab::Settlers));
+    click!("a settler's line selects them", |a: &Action| *a == Action::Select(first), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.selected == Some(first) && u.sheet.is_none());
+    click!("a second click (their line now opens the sheet) opens it and stops the clock", |a: &Action| *a == Action::Sheet(first), |_c: &crate::colony::Colony, u: &colony_ui::UiState, s: u32| u.sheet == Some(first) && s == 0 && u.paused_by_sheet);
+    click!("Back closes the sheet and the clock goes on", |a: &Action| *a == Action::Back, |_c: &crate::colony::Colony, u: &colony_ui::UiState, s: u32| u.sheet.is_none() && s == 1);
+    for (t, name) in [(Tab::Stocks, "Stocks"), (Tab::Works, "Works"), (Tab::Annals, "Annals"), (Tab::Camp, "Camp")] {
+        click!(format!("the {} tab", name), |a: &Action| *a == Action::Tab(t), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open == Some(t));
+    }
+    click!("the Camp tab again closes the panel", |a: &Action| *a == Action::Tab(Tab::Camp), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open.is_none());
+    click!("the Annals tab", |a: &Action| *a == Action::Tab(Tab::Annals), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open == Some(Tab::Annals));
+    click!("the annals' filter: the whole log", |a: &Action| *a == Action::Filter(1), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.annals == 1);
+    // The bar: a shrine stone set by a click on the map.
+    let stones0 = colony.stones.len();
+    click!("the shrine button arms the tool", |a: &Action| *a == Action::Arm(Tool::Shrine), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.tool == Some(Tool::Shrine));
+    {
+        let at = free(&colony, -6, 4);
+        let ok = apply_map_click(&mut colony, &lcam, &mut ui, at.0 as f32 + 0.5, at.1 as f32 + 0.5, &mut speed, &mut speed_before, &mut dream_for, &mut place_input, &mut status) && colony.stones.len() == stones0 + 1 && ui.tool.is_none();
+        step += 1;
+        println!("UI drive {:02}: a click on the map sets the shrine and puts the tool down - {} ({})", step, if ok { "ok" } else { "FAILED" }, status);
+        results.push(("shrine placed".into(), ok));
+    }
+    let favour0 = colony.patron.favour;
+    let marks0 = colony.patron.marks.len();
+    click!("the bless button arms the tool", |a: &Action| *a == Action::Arm(Tool::Bless), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.tool == Some(Tool::Bless));
+    {
+        let at = free(&colony, 8, -3);
+        let ok = apply_map_click(&mut colony, &lcam, &mut ui, at.0 as f32 + 0.5, at.1 as f32 + 0.5, &mut speed, &mut speed_before, &mut dream_for, &mut place_input, &mut status)
+            && colony.patron.marks.len() == marks0 + 1 && colony.patron.favour + 1 == favour0 && ui.tool == Some(Tool::Bless);
+        step += 1;
+        println!("UI drive {:02}: a click on the map blesses the ground (favour spent, the tool still in hand) - {} ({})", step, if ok { "ok" } else { "FAILED" }, status);
+        results.push(("ground blessed".into(), ok));
+    }
+    click!("bless again puts the tool down", |a: &Action| *a == Action::Arm(Tool::Bless), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.tool.is_none());
+    click!("the dream button (a settler selected) asks which dream", |a: &Action| *a == Action::DreamFor(first), |_c: &crate::colony::Colony, _u: &colony_ui::UiState, _s: u32| true);
+    let dream_asked = dream_for == Some(first);
+    {
+        // The dream card's buttons.
+        let mut buf = vec![0u32; w * h];
+        let hits = colony_ui::dream_buttons(first, &mut buf, w, h, (-100.0, -100.0), 0);
+        let dreams0 = colony.patron.dreams.len();
+        let ok = match hits.iter().find(|hh| matches!(hh.action, Action::SendDream(..))) {
+            Some(hh) => { let _ = apply_ui_action(hh.action, &mut colony, &mut lcam, &mut ui, &mut speed, &mut speed_before, &mut moment_card, &mut dream_for, &mut name_input, &mut inspect, &mut status, &mut cam_target, body_h); dream_asked && dream_for.is_none() && colony.patron.dreams.len() == dreams0 + 1 }
+            None => false,
+        };
+        step += 1;
+        println!("UI drive {:02}: the dream card's first button sends the dream - {} ({})", step, if ok { "ok" } else { "FAILED" }, status);
+        results.push(("dream sent".into(), ok));
+    }
+    click!("the bell rings", |a: &Action| *a == Action::Bell, |c: &crate::colony::Colony, _u: &colony_ui::UiState, _s: u32| c.bell_rung());
+    click!("3x speed", |a: &Action| *a == Action::Speed(3), |_c: &crate::colony::Colony, _u: &colony_ui::UiState, s: u32| s == 3);
+    click!("pause", |a: &Action| *a == Action::Pause, |_c: &crate::colony::Colony, _u: &colony_ui::UiState, s: u32| s == 0);
+    click!("go on", |a: &Action| *a == Action::Pause, |_c: &crate::colony::Colony, _u: &colony_ui::UiState, s: u32| s == 3);
+    click!("the close mark closes the panel", |a: &Action| *a == Action::Close, |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open.is_none());
+    {
+        // A settler clicked on the map opens their sheet.
+        colony.run_days(1);
+        let i = colony.settlers.iter().position(|s| s.alive && !colony.below(colony.settlers.iter().position(|x| std::ptr::eq(x, s)).unwrap_or(0)) && colony.roof_over(s.pos).is_none()).unwrap_or(first);
+        let p = colony.draw_pos(i);
+        let ok = apply_map_click(&mut colony, &lcam, &mut ui, p.0 + 0.5, p.1 + 0.5, &mut speed, &mut speed_before, &mut dream_for, &mut place_input, &mut status) && ui.sheet == Some(i) && ui.open == Some(Tab::Settlers) && speed == 0;
+        step += 1;
+        lcam.cx = p.0 + 0.5; lcam.cy = p.1 + 0.5;
+        let (buf, _) = frame(&colony, &mut ui, &lcam, speed, &status);
+        save_rgb_png(&format!("{prefix}_ui_drive_{:02}.png", step), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("UI drive {:02}: a settler clicked on the map opens their sheet - {}", step, if ok { "ok" } else { "FAILED" });
+        results.push(("map click opens a sheet".into(), ok));
+    }
+    {
+        // The refugees at the edge: their card carries two answers; "take them in" is clicked.
+        let mut guard = 0u64;
+        while !colony.refugees_waiting() && guard < 12 * crate::colony::TICKS_PER_DAY && colony.arc.as_ref().map_or(false, |a| a.stage < 5) { colony.tick(); guard += 1; }
+        let waiting = colony.refugees_waiting();
+        let card_m = colony.moments.iter().rev().find(|m| m.choice).cloned();
+        let mut ok = false;
+        if let (true, Some(m)) = (waiting, card_m) {
+            moment_card = Some(m.clone());
+            let (mut buf, _) = frame(&colony, &mut ui, &lcam, 0, &status);
+            let card = super::colony_hud::draw_moment(&m, Some(&colony), &mut buf, w, h);
+            let hits = card.map(|r| { let r = if r.w >= 600 { super::ui::Rect { x: r.x + 120, w: r.w - 120, ..r } } else { r }; colony_ui::choice_buttons(r, &mut buf, w, h, (-100.0, -100.0)) }).unwrap_or_default();
+            save_rgb_png(&format!("{prefix}_ui_drive_refugees.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+            let before = colony.settlers.len();
+            if let Some(hh) = hits.iter().find(|hh| hh.action == Action::Refugees(true)) {
+                let _ = apply_ui_action(hh.action, &mut colony, &mut lcam, &mut ui, &mut speed, &mut speed_before, &mut moment_card, &mut dream_for, &mut name_input, &mut inspect, &mut status, &mut cam_target, body_h);
+                ok = hits.len() == 2 && colony.settlers.len() == before + 2 && !colony.refugees_waiting() && moment_card.is_none();
+            }
+        }
+        step += 1;
+        println!("UI drive {:02}: the refugees' card has two answers; \"take them in\" takes them in - {} ({})", step, if ok { "ok" } else if waiting { "FAILED" } else { "no refugees came" }, status);
+        results.push(("refugees taken in by a click".into(), ok));
+    }
+    let good = results.iter().filter(|r| r.1).count();
+    println!("UI drive: {} of {} steps did what they should", good, results.len());
+    let _ = (cam_target, name_input, inspect, moment_card);
+    Ok((good, results.len()))
 }

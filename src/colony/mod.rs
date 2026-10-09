@@ -87,8 +87,8 @@ pub const TICKS_PER_DAY: u64 = 1440;
 /// Logs a hut takes.
 pub const HUT_LOGS: u32 = 24;
 /// Hut footprint (cells, 2 m each): walls on the ring, a door on the south side.
-const HUT_W: usize = 6;
-const HUT_H: usize = 5;
+pub(crate) const HUT_W: usize = 6;
+pub(crate) const HUT_H: usize = 5;
 /// Food the settlers try to keep at the camp, per settler.
 const FOOD_PER_SETTLER: u32 = 6;
 /// Days a foraged shrub takes to bear again.
@@ -124,7 +124,31 @@ impl Clock {
 pub enum ItemKind { Log, Food, Stone }
 
 #[derive(Clone, Debug)]
-pub struct Item { pub kind: ItemKind, pub at: Pos, pub stored: bool, pub reserved: bool }
+pub struct Item { pub kind: ItemKind, pub at: Pos, pub stored: bool, pub reserved: bool, /** What it is, for the eye. */ pub what: Stuff }
+
+/// What a load is, for the eye: the store and the map tell berries from fish and meat. The
+/// simulation reads only `ItemKind`; this is set where the thing is made and carried with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stuff { Berries, Fish, Meat, Grain, Fungus, Provisions, Timber, Stone }
+
+impl Stuff {
+    pub fn of(kind: ItemKind) -> Stuff { match kind { ItemKind::Log => Stuff::Timber, ItemKind::Stone => Stuff::Stone, ItemKind::Food => Stuff::Provisions } }
+    /// "berries", "fish", "logs": what a heap of them is called.
+    pub fn plural(self) -> &'static str {
+        match self { Stuff::Berries => "berries", Stuff::Fish => "fish", Stuff::Meat => "meat", Stuff::Grain => "grain", Stuff::Fungus => "cave fungus", Stuff::Provisions => "provisions", Stuff::Timber => "logs", Stuff::Stone => "stone" }
+    }
+    /// One of them: "a basket of berries", "a log".
+    pub fn one(self) -> &'static str {
+        match self { Stuff::Berries => "a basket of berries", Stuff::Fish => "a fish", Stuff::Meat => "a joint of meat", Stuff::Grain => "a sheaf of grain", Stuff::Fungus => "a basket of cave fungus", Stuff::Provisions => "a sack of provisions", Stuff::Timber => "a log", Stuff::Stone => "a stone" }
+    }
+    pub const ALL: [Stuff; 8] = [Stuff::Berries, Stuff::Fish, Stuff::Meat, Stuff::Grain, Stuff::Fungus, Stuff::Provisions, Stuff::Timber, Stuff::Stone];
+}
+
+impl Item {
+    pub fn new(kind: ItemKind, at: Pos, stored: bool) -> Item { Item { kind, at, stored, reserved: false, what: Stuff::of(kind) } }
+    /// A meal's worth of food of a kind.
+    pub fn food(what: Stuff, at: Pos, stored: bool) -> Item { Item { kind: ItemKind::Food, at, stored, reserved: false, what } }
+}
 
 /// What a settler is doing.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -463,6 +487,12 @@ pub struct Colony {
     pub creatures: Vec<creatures::Creature>,
     /// Where the last raid was fought (for its moment).
     pub(crate) clash_at: Option<Pos>,
+    /// When the last clash was fought (for the map: the melee and its aftermath; never read by
+    /// the simulation).
+    pub clash_tick: u64,
+    /// The beasts that came against the camp, as they were (for the map's pictures; never read by
+    /// the simulation).
+    pub foes_seen: Vec<(String, crate::monsters::Monster)>,
     /// The side the last raid came from ("the north-east").
     pub raid_side: String,
     /// When the attackers were first on the map and when they clashed (ticks).
@@ -847,13 +877,13 @@ impl Colony {
             }
         }).collect::<Vec<_>>();
         // They arrive with two days of food.
-        let items = (0..names.len() * 2).map(|_| Item { kind: ItemKind::Food, at: camp, stored: true, reserved: false }).collect();
+        let items = (0..names.len() * 2).map(|_| Item::food(Stuff::Provisions, camp, true)).collect();
         let mut c = Colony {
             map, clock: Clock { tick: 6 * 60 }, settlers, items, camp, hut: None,
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
             log: Vec::new(), decisions: Vec::new(), rng, seed, milestones: Default::default(), basket: Default::default(),
             patron: Patron { favour: FAVOUR_MAX, marks: Vec::new(), favourite: None, dreams: Vec::new(), last_refill_day: 1 },
-            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, cave_bites: 0, cavern_feet: Vec::new(), placed: Vec::new(), haunts: Vec::new(), talks_said: Vec::new(), gate_dirs: Vec::new(), mourning: Vec::new(), set_aside: Vec::new(), kept: Vec::new(), progress: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log, heard: Vec::new(), migrant_news: Vec::new(), industry: Default::default(), shrub_buckets: Vec::new(), tree_buckets: Vec::new(),
+            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, clash_tick: 0, foes_seen: Vec::new(), raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, cave_bites: 0, cavern_feet: Vec::new(), placed: Vec::new(), haunts: Vec::new(), talks_said: Vec::new(), gate_dirs: Vec::new(), mourning: Vec::new(), set_aside: Vec::new(), kept: Vec::new(), progress: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log, heard: Vec::new(), migrant_news: Vec::new(), industry: Default::default(), shrub_buckets: Vec::new(), tree_buckets: Vec::new(),
         };
         c.shrubs = (1..c.map.height - 1).flat_map(|y| (1..c.map.width - 1).map(move |x| (x as u16, y as u16))).filter(|&p| c.floor_plant(p) == Plant::Shrub).collect();
         let bw = c.map.width.div_ceil(SHRUB_BUCKET);
@@ -2356,9 +2386,9 @@ impl Colony {
                 if let Some(kind) = self.settlers[i].carrying.take() {
                     // Put it (and the rest of the basket) down where they stand.
                     let at = self.settlers[i].pos;
-                    self.items[k] = Item { kind, at, stored: at == self.camp, reserved: false };
+                    self.items[k] = Item { kind, at, stored: at == self.camp, reserved: false, what: self.items[k].what };
                     for e in self.basket.remove(&k).unwrap_or_default() {
-                        if e < self.items.len() { self.items[e] = Item { kind: self.items[e].kind, at, stored: at == self.camp, reserved: false }; }
+                        if e < self.items.len() { self.items[e] = Item { kind: self.items[e].kind, at, stored: at == self.camp, reserved: false, what: self.items[e].what }; }
                     }
                 } else if k < self.items.len() { self.items[k].reserved = false; }
             }
@@ -2561,7 +2591,7 @@ impl Colony {
                 self.claimed.remove(&t);
                 self.shrub_ready.insert(t, day + SHRUB_REGROW_DAYS);
                 let n = 3 + self.rng.gen_range(0..3);
-                for _ in 0..n { self.items.push(Item { kind: ItemKind::Food, at: self.settlers[i].pos, stored: false, reserved: false }); }
+                for _ in 0..n { self.items.push(Item::food(Stuff::Berries, self.settlers[i].pos, false)); }
                 self.once("forage", format!("{} brings in the first berries from the shrubs at {},{}.", name, t.0, t.1));
                 // Carry the basket home (what doesn't fit is left for others to fetch).
                 let n = self.eat_catch(i, n);
@@ -2572,7 +2602,7 @@ impl Colony {
                 let caught = self.rng.gen_range(1..4);
                 // (Carried up to the mouth from below.)
                 let at = if self.below(i) { self.delve_mouth.unwrap_or(self.camp) } else { self.settlers[i].pos };
-                for _ in 0..caught { self.items.push(Item { kind: ItemKind::Food, at, stored: false, reserved: false }); }
+                for _ in 0..caught { self.items.push(Item::food(Stuff::Fish, at, false)); }
                 if self.below(i) { self.once("cave fish", format!("{} brings up the first blind white fish from the still water of the cavern: they taste of nothing, and they keep the camp.", name)); }
                 else { self.once("fish", format!("{} catches the first fish from the river at {},{}.", name, t.0, t.1)); }
                 // A spot fished out for a while (not the jetty's, which reaches deep water).
@@ -2599,7 +2629,7 @@ impl Colony {
                     self.felled.push((t, kind, self.clock.day()));
                     // A stump marks where it stood.
                     self.map.features[y * self.map.width + x] = crate::local::wildlife::Feature::Stump;
-                    for _ in 0..2 { self.items.push(Item { kind: ItemKind::Log, at: t, stored: false, reserved: false }); }
+                    for _ in 0..2 { self.items.push(Item::new(ItemKind::Log, t, false)); }
                     let for_hut = if self.hut.as_ref().map_or(false, |h| !h.done && self.hut_material == ItemKind::Log) { " for the hut" } else { "" };
                     self.once("fell", format!("{} fells the first tree, at {},{}: two logs{}.", name, t.0, t.1, for_hut));
                     // They drag both logs home themselves (walking costs time now).
@@ -2613,7 +2643,7 @@ impl Colony {
                 if self.map.cells[k].boulder || matches!(self.map.cells[k].material, Material::Rock(_)) {
                     // A boulder is carried off; bare rock is broken down to gravel.
                     if self.map.cells[k].boulder { self.map.cells[k].boulder = false; } else { self.map.cells[k].material = Material::Gravel; }
-                    for _ in 0..2 { self.items.push(Item { kind: ItemKind::Stone, at: t, stored: false, reserved: false }); }
+                    for _ in 0..2 { self.items.push(Item::new(ItemKind::Stone, t, false)); }
                     self.once("quarry", format!("{} breaks the first stone, at {},{}: there is no timber to be had, so they will build in stone.", name, t.0, t.1));
                     if self.carry_home(i, 2) { return; }
                 }
@@ -2635,7 +2665,7 @@ impl Colony {
                 } else {
                     let kind = self.settlers[i].carrying.take().unwrap();
                     if k < self.items.len() {
-                        self.items[k] = Item { kind, at: self.camp, stored: true, reserved: false };
+                        self.items[k] = Item { kind, at: self.camp, stored: true, reserved: false, what: self.items[k].what };
                     }
                     for e in self.basket.remove(&k).unwrap_or_default() {
                         if e < self.items.len() { self.items[e].stored = true; self.items[e].reserved = false; self.items[e].at = self.camp; }

@@ -56,7 +56,13 @@ pub struct Page {
     pub emblem: Option<super::heraldry::Arms>,
     /// A face drawn by the title (a settler's page).
     pub portrait: Option<super::portraits::Portrait>,
+    /// A picture drawn by the title: a beast as its sprite, a thing as its glyph.
+    pub picture: Option<Picture>,
 }
+
+/// What a page's picture shows.
+#[derive(Clone, Debug)]
+pub enum Picture { Beast(super::beasts::Look), Thing(super::glyphs::Glyph) }
 
 /// Events to list per page.
 const RECENT: usize = 6;
@@ -98,7 +104,7 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             let owner = h.tile_history.get(x, y).current_owner;
             let mut p = match owner {
                 Some(f) => page(world, h, Subject::Faction(f)),
-                None => Page { title: "Unclaimed land".into(), lines: Vec::new(), emblem: None, portrait: None },
+                None => Page { title: if *world.heightmap.get(x, y) < 0.0 { "Open water".into() } else { "Unclaimed land".into() }, lines: Vec::new(), emblem: None, portrait: None, picture: None },
             };
             p.lines.insert(0, Line::faded(format!("Tile {},{}: {:?}, {:.0} m", x, y, world.biomes.get(x, y), world.heightmap.get(x, y))));
             let here = recent(h, |e| e.location == Some((x, y)));
@@ -109,7 +115,7 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             p
         }
         Subject::Settlement(id) => {
-            let Some(s) = h.settlements.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
+            let Some(s) = h.settlements.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None } };
             let mut lines = Vec::new();
             match s.destroyed {
                 Some(d) => {
@@ -150,13 +156,13 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             lines.extend(ev.into_iter().map(event_line));
             // What word has reached it, as its people tell it (`history::knowledge`).
             if s.destroyed.is_none() { lines.extend(knowledge_lines(h, Subject::Settlement(id))); }
-            Page { title: s.name.clone(), lines, emblem: None, portrait: None }
+            Page { title: s.name.clone(), lines, emblem: None, portrait: None, picture: None }
         }
         Subject::Faction(f) => {
-            let Some(fac) = h.factions.get(&f) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
+            let Some(fac) = h.factions.get(&f) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None } };
             let mut lines = Vec::new();
             let race = h.races.get(&fac.race_id).map(|r| r.name.clone()).unwrap_or_default();
-            lines.push(Line::plain(format!("{} {:?}, founded {}", race, fac.government, fac.founded.year)));
+            lines.push(Line::plain(format!("{}, {}, founded {}", race, spaced(&format!("{:?}", fac.government)).to_lowercase(), fac.founded.year)));
             match fac.dissolved {
                 Some(d) => lines.push(Line::plain(format!("Gone since year {}", d.year))),
                 None => {
@@ -193,11 +199,11 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             }
             lines.push(Line::section("Lately"));
             lines.extend(recent(h, |e| e.factions_involved.first() == Some(&f)).into_iter().map(event_line));
-            Page { title: fac.name.clone(), lines, emblem: Some(super::heraldry::arms_of(world, h, f)), portrait: None }
+            Page { title: fac.name.clone(), lines, emblem: Some(super::heraldry::arms_of(world, h, f)), portrait: None, picture: None }
         }
         Subject::Figure(id) => figure_page(h, id),
         Subject::Beast(c) => {
-            let Some(b) = h.legendary_creatures.get(&c) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
+            let Some(b) = h.legendary_creatures.get(&c) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None } };
             let mut lines = Vec::new();
             lines.push(Line::plain(match b.death_date {
                 Some(d) => format!("Slain in year {}", d.year),
@@ -211,10 +217,10 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             lines.push(Line::faded(format!("Its blood is {}{}.", m.blood, if m.flies { "; it flies" } else { "" })));
             lines.push(Line::section("Deeds"));
             lines.extend(recent(h, |e| e.primary_participants.contains(&EntityId::LegendaryCreature(c))).into_iter().map(event_line));
-            Page { title: b.full_name(), lines, emblem: None, portrait: None }
+            Page { title: b.full_name(), lines, emblem: None, portrait: None, picture: Some(Picture::Beast(super::beasts::of_monster(&m))) }
         }
         Subject::Event(id) => {
-            let Some(e) = h.chronicle.get(id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
+            let Some(e) = h.chronicle.get(id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None } };
             let mut lines = vec![Line::faded(format!("Year {}, {:?}", e.date.year, e.date.season))];
             // Where it belongs: its age, its war, its battle (`collections.rs`).
             for (what, opened) in crate::history::collections::context(h, e) {
@@ -263,10 +269,10 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
                 lines.push(Line::section("It led to"));
                 lines.extend(led.into_iter().map(event_line));
             }
-            Page { title: e.title.clone(), lines, emblem: None, portrait: None }
+            Page { title: e.title.clone(), lines, emblem: None, portrait: None, picture: None }
         }
         Subject::Artifact(id) => {
-            let Some(a) = h.artifacts.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
+            let Some(a) = h.artifacts.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None } };
             let mut lines = vec![Line::faded(format!("{:?} {:?}, made in year {}", a.quality, a.item_type, a.creation_date.year))];
             if !a.description.is_empty() { lines.push(Line::plain(a.description.clone())); }
             for i in &a.inscriptions { lines.push(Line::plain(format!("Inscribed: \"{}\"", i.text))); }
@@ -291,11 +297,12 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             ev.sort_by_key(|e| e.date);
             if ev.is_empty() { lines.push(Line::faded("Nothing recorded")); }
             lines.extend(ev.into_iter().take(RECENT * 2).map(event_line));
-            Page { title: a.name.clone(), lines, emblem: None, portrait: None }
+            let g = super::glyphs::Glyph::of_thing(&format!("{:?} {}", a.item_type, a.name));
+            Page { title: a.name.clone(), lines, emblem: None, portrait: None, picture: Some(Picture::Thing(if g == super::glyphs::Glyph::Work { super::glyphs::Glyph::Chest } else { g })) }
         }
-        Subject::Settler(_) | Subject::ColonyMark(_) => Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None },
+        Subject::Settler(_) | Subject::ColonyMark(_) => Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None },
         Subject::Monument(id) => {
-            let Some(m) = h.monuments.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
+            let Some(m) = h.monuments.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None } };
             let mut lines = vec![Line::faded(format!("{:?}, raised in year {}", m.monument_type, m.built_date.year))];
             lines.push(Line::link(format!("Raised by {}", faction_name(h, m.faction)), Subject::Faction(m.faction)));
             if !m.intact { lines.push(Line::plain(format!("In ruins since year {}", m.destruction_date.map_or(0, |d| d.year)))); }
@@ -308,7 +315,7 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
                 lines.push(Line::section("Its raising"));
                 lines.push(event_line(e));
             }
-            Page { title: m.name.clone(), lines, emblem: None, portrait: None }
+            Page { title: m.name.clone(), lines, emblem: None, portrait: None, picture: None }
         }
     }
 }
@@ -359,7 +366,7 @@ pub fn settler_page(h: Option<&WorldHistory>, s: &crate::colony::Settler) -> Pag
 /// A person of the history: born and died, people and home, kin (each a link), who they are
 /// (their persona, consistent with the personality the history acted on) and their deeds.
 pub fn figure_page(h: &WorldHistory, id: FigureId) -> Page {
-    let Some(f) = h.figures.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None } };
+    let Some(f) = h.figures.get(&id) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None } };
     let mut lines = Vec::new();
     let age = match f.death_date { Some(d) => f.age_at(&d), None => f.age_at(&h.current_date) };
     lines.push(Line::faded(match (f.death_date, &f.cause_of_death) {
@@ -391,7 +398,7 @@ pub fn figure_page(h: &WorldHistory, id: FigureId) -> Page {
         lines.push(Line::section("Deeds"));
         lines.extend(deeds.into_iter().rev().take(8).map(event_line));
     }
-    Page { title: f.full_name(), lines, emblem: None, portrait: None }
+    Page { title: f.full_name(), lines, emblem: None, portrait: Some(super::portraits::of_figure(h, f)), picture: None }
 }
 
 /// `settler_page` with the night they were wounded, if they were.
@@ -476,7 +483,7 @@ pub fn settler_page_with(h: Option<&WorldHistory>, s: &crate::colony::Settler, w
         let line = format!("Scar: {}{}", text, if face.eye_patch { "; it took an eye" } else { "" });
         lines.insert(1, match ev { Some(e) => Line::link(line, Subject::Event(*e)), None => Line::plain(line) });
     }
-    Page { title: s.name.clone(), lines, emblem: None, portrait: Some(face) }
+    Page { title: s.name.clone(), lines, emblem: None, portrait: Some(face), picture: None }
 }
 
 /// A colony mark's page: what it is, the day, and the words on it.
@@ -487,7 +494,7 @@ pub fn mark_page(m: &crate::colony::ColonyMark) -> Page {
         Line::faded(format!("{}, day {}, at {},{}", kind, m.day, m.at.0, m.at.1)),
         Line::section("The words on it"),
         Line::plain(m.text.clone()),
-    ], emblem: None, portrait: None }
+    ], emblem: None, portrait: None, picture: None }
 }
 
 fn capitalize(s: &str) -> String {
@@ -524,12 +531,22 @@ pub(crate) fn draw(page: &Page, buf: &mut [u32], w: usize, h: usize, depth: usiz
     } else if let Some(p) = &page.portrait {
         super::portraits::draw(buf, w, h, (r.x + r.w - 70) as i64, (r.y + 8) as i64, 60, p);
         full - 70.0
+    } else if let Some(pic) = &page.picture {
+        let (cx, cy) = ((r.x + r.w - 52) as f32, (r.y + 40) as f32);
+        match pic {
+            Picture::Beast(look) => {
+                let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| ui::blend_px(buf, w, h, x, y, super::ink::pack(c), a);
+                super::beasts::draw(&mut put, look, cx, cy + 30.0, if look.flies { 90.0 } else { 116.0 }, true, super::beasts::Pose::Stand, 1.0);
+            }
+            Picture::Thing(g) => super::glyphs::draw_u32(buf, w, h, *g, cx, cy, 44.0, None),
+        }
+        full - 96.0
     } else { full };
     for line in fonts::wrap(&page.title, Face::SmallCaps, 20.0, title_w) {
         fonts::draw(buf, w, h, x0 as f32, y as f32, &line, Face::SmallCaps, 20.0, 0.5, RUBRIC, None);
         y += 24;
     }
-    if page.portrait.is_some() { y = y.max(r.y + 74); }
+    if page.portrait.is_some() || page.picture.is_some() { y = y.max(r.y + 80); }
     y += 2;
     ui::hline(buf, w, x0, r.x + r.w - 16, y, INK_FADED);
     y += 8;
@@ -588,4 +605,11 @@ pub fn save_snapshots(world: &WorldData, h: &WorldHistory, tile: (usize, usize),
         subject = hit.to;
     }
     Ok(written)
+}
+
+/// "TribalCouncil" -> "Tribal Council".
+fn spaced(name: &str) -> String {
+    let mut o = String::new();
+    for (i, c) in name.chars().enumerate() { if i > 0 && c.is_uppercase() { o.push(' '); } o.push(c); }
+    o
 }

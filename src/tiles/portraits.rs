@@ -43,8 +43,28 @@ pub fn of_settler(s: &crate::colony::Settler, h: Option<&crate::history::world_s
     let race = s.past.as_ref().and_then(|p| p.people).and_then(|f| h.and_then(|h| h.factions.get(&f)))
         .and_then(|f| h.and_then(|h| h.races.get(&f.race_id))).map(|r| r.base_type.clone()).unwrap_or(RaceType::Human);
     let age = s.past.as_ref().map_or(30, |p| p.age);
-    let k = hash(&s.name, 0);
-    let pick = |salt: u64, n: u64| (hash(&s.name, salt) % n) as u8;
+    // Marks from the past: a scar from a named battle (a veteran) or the night of the raid; grey
+    // after the loss of a home; an eye lost by those who fought hardest.
+    let battle = s.past.as_ref().and_then(|p| p.lines.iter().find(|(t, _)| t.starts_with("Fought at")).map(|(t, e)| (t.trim_end_matches('.').replacen("Fought at", "From", 1), *e)));
+    let scar = wounded_in.map(|(w, _)| (w, None)).or(battle);
+    let lost_home = s.past.as_ref().map_or(false, |p| p.calling.starts_with("a survivor") || p.calling.starts_with("a refugee"));
+    from_parts(&s.name, race, age, &s.persona, scar, lost_home)
+}
+
+/// A face for a person of the history (the inspector's figure page): their people's race, their
+/// age, their rolled persona (`Persona::of_figure`), a scar when they fought and lived.
+pub fn of_figure(h: &crate::history::world_state::WorldHistory, f: &crate::history::entities::figures::Figure) -> Portrait {
+    let race = h.races.get(&f.race_id).map(|r| r.base_type.clone()).unwrap_or(RaceType::Human);
+    let age = match f.death_date { Some(d) => f.age_at(&d), None => f.age_at(&h.current_date) };
+    let persona = crate::persona::Persona::of_figure(h, f);
+    let fought = h.chronicle.events.iter().rev().find(|e| e.event_type == crate::history::events::types::EventType::BattleFought && e.primary_participants.contains(&crate::history::EntityId::Figure(f.id)))
+        .map(|e| (format!("From {}", e.title.trim_start_matches("The ")), Some(e.id)));
+    from_parts(&f.name, race, age, &persona, fought, false)
+}
+
+fn from_parts(name: &str, race: RaceType, age: u32, pc: &crate::persona::Persona, scar: Option<(String, Option<crate::history::EventId>)>, lost_home: bool) -> Portrait {
+    let k = hash(name, 0);
+    let pick = |salt: u64, n: u64| (hash(name, salt) % n) as u8;
     let skins: &[[f32; 3]] = match race {
         RaceType::Orc => &[[120.0, 150.0, 96.0], [104.0, 136.0, 88.0], [136.0, 156.0, 104.0]],
         RaceType::Goblin => &[[150.0, 160.0, 100.0], [130.0, 150.0, 90.0]],
@@ -55,14 +75,8 @@ pub fn of_settler(s: &crate::colony::Settler, h: Option<&crate::history::world_s
     };
     let hairs: [[f32; 3]; 6] = [[40.0, 30.0, 24.0], [96.0, 62.0, 36.0], [170.0, 120.0, 60.0], [200.0, 170.0, 100.0], [140.0, 50.0, 30.0], [70.0, 52.0, 40.0]];
     let dresses: [[f32; 3]; 6] = [[90.0, 110.0, 140.0], [150.0, 66.0, 52.0], [92.0, 120.0, 82.0], [170.0, 140.0, 70.0], [116.0, 84.0, 130.0], [120.0, 100.0, 80.0]];
-    // Marks from the past: a scar from a named battle (a veteran) or the night of the raid; grey
-    // after the loss of a home; an eye lost by those who fought hardest.
-    let battle = s.past.as_ref().and_then(|p| p.lines.iter().find(|(t, _)| t.starts_with("Fought at")).map(|(t, e)| (t.trim_end_matches('.').replacen("Fought at", "From", 1), *e)));
-    let scar = wounded_in.map(|(w, _)| (w, None)).or(battle);
-    let lost_home = s.past.as_ref().map_or(false, |p| p.calling.starts_with("a survivor") || p.calling.starts_with("a refugee"));
     let undead = matches!(race, RaceType::Undead);
     // The persona's colours, so the picture shows what the page says (`persona.rs`).
-    let pc = &s.persona;
     let hair_named = crate::persona::colour(&pc.hair);
     let mut hair = hair_named.unwrap_or(if undead { [[200.0, 200.0, 196.0], [120.0, 110.0, 100.0], [60.0, 56.0, 54.0]][(k % 3) as usize] } else { hairs[(k % 6) as usize] });
     let greying = pc.hair_at(age);

@@ -12,7 +12,6 @@ use minifb::{Key, KeyRepeat, MouseButton, MouseMode, Window, WindowOptions};
 
 use crate::plates::WorldStyle;
 
-use super::text::{draw_ink, text_width};
 use super::ui::*;
 
 /// The options a new world is made with.
@@ -216,11 +215,121 @@ fn compass(buf: &mut [u32], w: usize, h: usize, cx: f32, cy: f32, r: f32) {
         let a = k as f32 / 64.0 * std::f32::consts::TAU;
         blend_px(buf, w, h, (cx + a.cos() * ri) as i64, (cy + a.sin() * ri) as i64, INK, 0.8);
     }
-    draw_ink(buf, w, h, cx as i64 - 3, (cy - r - 12.0) as i64, "N", RUBRIC, 1, true);
+    super::fonts::draw(buf, w, h, cx - 5.0, cy - r - 18.0, "N", super::fonts::Face::SmallCaps, 15.0, 0.0, RUBRIC, None);
 }
 
 /// Show the start screen. Returns the chosen options, or None if the window was closed or Esc
 /// pressed.
+/// Draw the start screen into `buf` (the window's frame, or `--start-snapshot`'s): a parchment
+/// card on the desk with the compass, the title, one row a choice (its value between ink arrows,
+/// the selected row washed), the history's rows under their heading, Begin with the time it will
+/// take, the help for the selected row; lettered in IM Fell. Returns what can be clicked.
+fn draw_start(menu: &Menu, sel: usize, mouse: (f32, f32), buf: &mut [u32], w: usize, h: usize) -> Vec<Hit> {
+    use super::fonts::{self, Face};
+    let _ = mouse;
+    for (i, p) in buf.iter_mut().enumerate() {
+        let grain = ((hash(i % w / 2, i / w / 9) & 0x1F) as f32 / 31.0) * 0.08;
+        *p = mix(DESK, 0x0040_3428, grain);
+    }
+    let cw = 900.min(w - 32);
+    let ch = 620.min(h - 32);
+    let c = Rect { x: (w - cw) / 2, y: (h - ch) / 2, w: cw, h: ch };
+    card(buf, w, c);
+    compass(buf, w, h, (c.x + c.w - 70) as f32, (c.y + 74) as f32, 34.0);
+    let x = c.x + 36;
+    let mut y = c.y as f32 + 24.0;
+    fonts::draw(buf, w, h, x as f32, y, "The Dark Tower", Face::SmallCaps, 36.0, 1.5, RUBRIC, None);
+    y += 44.0;
+    fonts::draw(buf, w, h, x as f32, y, "A new world is drawn", Face::Italic, 20.0, 0.0, INK_FADED, None);
+    y += 32.0;
+    hline(buf, w, x, c.x + c.w - 140, y as usize, INK);
+    hline(buf, w, x, c.x + c.w - 140, y as usize + 2, INK_FADED);
+    y += 16.0;
+    let mut hits = Vec::new();
+    let label_w = 250;
+    let value_x = x + label_w;
+    let value_w = 300;
+    let help_x = value_x + value_w + 30;
+    let help_w = (c.x + c.w).saturating_sub(help_x + 30);
+    // A small inked arrow (a triangle) for the value's steppers.
+    let arrow = |buf: &mut [u32], cx: f32, cy: f32, left: bool, col: u32| {
+        for k in 0..9 {
+            let half = if left { k } else { 8 - k } as f32 * 0.6;
+            let xx = cx - 4.0 + k as f32;
+            for dy in -(half as i64)..=(half as i64) { blend_px(buf, w, h, xx as i64, cy as i64 + dy, col, 0.95); }
+        }
+    };
+    for (i, &row) in ROWS.iter().enumerate() {
+        if row == Row::Years {
+            y += 6.0;
+            fonts::draw(buf, w, h, x as f32, y - 2.0, "History", Face::SmallCaps, 17.0, 0.6, RUBRIC, None);
+            let tx = x + fonts::width("History", Face::SmallCaps, 17.0, 0.6) as usize + 8;
+            hline(buf, w, tx, x + label_w + value_w, (y + 8.0) as usize, INK_FADED);
+            y += 24.0;
+        }
+        if row == Row::Begin { y += 12.0; }
+        let line_h = 30.0;
+        let band = Rect { x: x - 12, y: y as usize - 5, w: label_w + value_w + 12, h: line_h as usize - 3 };
+        let selected = i == sel;
+        if row == Row::Begin {
+            let bw = 200;
+            let b = Rect { x, y: y as usize - 6, w: bw, h: 40 };
+            fill(buf, w, b, if selected { RUBRIC } else { mix(RUBRIC, PAPER, 0.15) });
+            outline(buf, w, b, INK);
+            let tw = fonts::width("Begin", Face::SmallCaps, 24.0, 1.0);
+            fonts::draw(buf, w, h, b.x as f32 + (bw as f32 - tw) / 2.0, b.y as f32 + 6.0, "Begin", Face::SmallCaps, 24.0, 1.0, PAPER, None);
+            hits.push(Hit { row: i, rect: b, delta: 0 });
+            let est = estimate(&menu.cfg);
+            fonts::draw(buf, w, h, (x + bw + 20) as f32, y + 4.0, &est, Face::Italic, 15.0, 0.0, INK_FADED, None);
+            continue;
+        }
+        if selected { fill(buf, w, band, PAPER_SHADE); arrow(buf, (x - 4) as f32, y + 10.0, false, RUBRIC); }
+        fonts::draw(buf, w, h, (x + 10) as f32, y, Menu::label(row), if selected { Face::SmallCaps } else { Face::Roman }, 18.0, if selected { 0.4 } else { 0.0 }, if selected { RUBRIC } else { INK }, None);
+        let v = menu.value(row);
+        let lx = value_x;
+        arrow(buf, (lx + 6) as f32, y + 10.0, true, if selected { RUBRIC } else { INK_FADED });
+        let shown = { let mut t = v.clone(); while fonts::width(&t, Face::Roman, 18.0, 0.0) > (value_w - 56) as f32 && !t.is_empty() { t.pop(); } t };
+        fonts::draw(buf, w, h, (lx + 22) as f32, y, &shown, Face::Roman, 18.0, 0.0, INK, None);
+        arrow(buf, (lx + value_w - 10) as f32, y + 10.0, false, if selected { RUBRIC } else { INK_FADED });
+        hits.push(Hit { row: i, rect: Rect { x: lx - 4, y: band.y, w: 24, h: band.h }, delta: -1 });
+        hits.push(Hit { row: i, rect: Rect { x: lx + value_w - 20, y: band.y, w: 24, h: band.h }, delta: 1 });
+        hits.push(Hit { row: i, rect: band, delta: 0 });
+        y += line_h;
+    }
+    // Help for the selected row.
+    let hy = c.y + 160;
+    if help_w > 120 {
+        let r = Rect { x: help_x - 14, y: hy - 12, w: help_w + 14, h: 250 };
+        outline(buf, w, r, INK_FADED);
+        let row = ROWS[sel];
+        fonts::draw(buf, w, h, help_x as f32, hy as f32 - 4.0, Menu::label(row), Face::SmallCaps, 16.0, 0.5, RUBRIC, None);
+        let mut ty = hy as f32 + 20.0;
+        for line in fonts::wrap(&menu.help(row), Face::Roman, 15.0, help_w as f32 - 6.0) {
+            fonts::draw(buf, w, h, help_x as f32, ty, &line, Face::Roman, 15.0, 0.0, INK, None);
+            ty += 19.0;
+        }
+        // A picture of the choice, under its words.
+        let (px, py) = (help_x as f32 + help_w as f32 / 2.0 - 7.0, (r.y + r.h) as f32 - 70.0);
+        if py > ty + 40.0 { row_picture(buf, w, h, row, px, py, 96.0); }
+    }
+    let keys = "Up/Down choose    Left/Right change    type digits for a seed    R a new seed    Enter begin    Esc quit";
+    let kw = fonts::width(keys, Face::Italic, 14.0, 0.0);
+    fonts::draw(buf, w, h, c.x as f32 + (c.w as f32 - kw) / 2.0, (c.y + c.h - 30) as f32, keys, Face::Italic, 14.0, 0.0, INK_FADED, None);
+    hits
+}
+
+/// The start screen drawn headlessly (`--start-snapshot FILE`), with `initial` and the first
+/// row selected.
+pub fn save_start_snapshot(initial: StartConfig, path: &str) -> Result<(), Box<dyn Error>> {
+    let (w, h) = (1100usize, 760usize);
+    let mut menu = Menu::new(initial);
+    menu.sync();
+    let mut buf = vec![0u32; w * h];
+    let _ = draw_start(&menu, 0, (-1.0, -1.0), &mut buf, w, h);
+    image::RgbImage::from_fn(w as u32, h as u32, |x, y| { let p = buf[y as usize * w + x as usize]; image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8]) }).save(path)?;
+    Ok(())
+}
+
 pub fn run_start_screen(initial: StartConfig) -> Result<Option<StartConfig>, Box<dyn Error>> {
     let mut window = Window::new("The Dark Tower", 1100, 760, WindowOptions { resize: true, ..WindowOptions::default() })?;
     window.set_target_fps(60);
@@ -231,8 +340,12 @@ pub fn run_start_screen(initial: StartConfig) -> Result<Option<StartConfig>, Box
     let mut size = (0, 0);
     let mut was_down = false;
     let mut hits: Vec<Hit> = Vec::new();
+    // PLANET_START_BEGIN=N: press Begin on frame N (testing the start -> making -> game flow).
+    let auto_begin: Option<u64> = std::env::var("PLANET_START_BEGIN").ok().and_then(|v| v.parse().ok());
+    let mut frame: u64 = 0;
 
     while window.is_open() {
+        frame += 1;
         let (w, h) = window.get_size();
         if (w, h) != size {
             size = (w, h);
@@ -248,7 +361,7 @@ pub fn run_start_screen(initial: StartConfig) -> Result<Option<StartConfig>, Box
         let row = ROWS[sel];
         if pressed(Key::Left) { menu.change(row, -1); }
         if pressed(Key::Right) { menu.change(row, 1); }
-        if window.is_key_pressed(Key::Enter, KeyRepeat::No) || window.is_key_pressed(Key::NumPadEnter, KeyRepeat::No) {
+        if window.is_key_pressed(Key::Enter, KeyRepeat::No) || window.is_key_pressed(Key::NumPadEnter, KeyRepeat::No) || auto_begin == Some(frame) {
             menu.sync();
             return Ok(Some(menu.cfg));
         }
@@ -287,88 +400,81 @@ pub fn run_start_screen(initial: StartConfig) -> Result<Option<StartConfig>, Box
         }
 
         // --- Draw ---
-        for (i, p) in buf.iter_mut().enumerate() {
-            let grain = ((hash(i % w / 2, i / w / 9) & 0x1F) as f32 / 31.0) * 0.08;
-            *p = mix(DESK, 0x0040_3428, grain);
-        }
-        let cw = 900.min(w - 32);
-        let ch = 600.min(h - 32);
-        let c = Rect { x: (w - cw) / 2, y: (h - ch) / 2, w: cw, h: ch };
-        card(&mut buf, w, c);
-        compass(&mut buf, w, h, (c.x + c.w - 70) as f32, (c.y + 74) as f32, 34.0);
-
-        let x = c.x + 36;
-        let mut y = c.y as i64 + 30;
-        draw_ink(&mut buf, w, h, x as i64, y, "THE DARK TOWER", RUBRIC, 3, true);
-        y += 32;
-        draw_ink(&mut buf, w, h, x as i64, y, "A new world is drawn", INK_FADED, 2, false);
-        y += 28;
-        hline(&mut buf, w, x, c.x + c.w - 140, y as usize, INK);
-        hline(&mut buf, w, x, c.x + c.w - 140, y as usize + 2, INK_FADED);
-        y += 18;
-
-        hits.clear();
-        let label_w = 290;
-        let value_x = x + label_w;
-        let value_w = 300;
-        let help_x = value_x + value_w + 30;
-        let help_w = (c.x + c.w).saturating_sub(help_x + 30);
-        for (i, &row) in ROWS.iter().enumerate() {
-            if row == Row::Years {
-                y += 6;
-                heading(&mut buf, w, h, x, y, label_w + value_w, "HISTORY");
-                y += 18;
-            }
-            if row == Row::Begin { y += 14; }
-            let line_h = 30;
-            let band = Rect { x: x - 12, y: y as usize - 6, w: label_w + value_w + 12, h: line_h - 4 };
-            let selected = i == sel;
-            if row == Row::Begin {
-                let bw = 200;
-                let b = Rect { x, y: y as usize - 8, w: bw, h: 40 };
-                fill(&mut buf, w, b, if selected { RUBRIC } else { mix(RUBRIC, PAPER, 0.15) });
-                outline(&mut buf, w, b, INK);
-                let t = "BEGIN";
-                draw_ink(&mut buf, w, h, (b.x + (bw - text_width(t, 2)) / 2) as i64, b.y as i64 + 12, t, PAPER, 2, true);
-                hits.push(Hit { row: i, rect: b, delta: 0 });
-                let est = estimate(&menu.cfg);
-                draw_ink(&mut buf, w, h, (x + bw + 20) as i64, y + 4, &est, INK_FADED, 1, false);
-                y += 40;
-                continue;
-            }
-            if selected { fill(&mut buf, w, band, PAPER_SHADE); }
-            if selected { draw_ink(&mut buf, w, h, (x - 10) as i64, y, ">", RUBRIC, 2, true); }
-            draw_ink(&mut buf, w, h, (x + 8) as i64, y, Menu::label(row), INK, 2, selected);
-            // Value with arrows.
-            let v = ascii(&menu.value(row));
-            let lx = value_x;
-            draw_ink(&mut buf, w, h, lx as i64, y, "<", if selected { RUBRIC } else { INK_FADED }, 2, true);
-            draw_ink(&mut buf, w, h, (lx + 22) as i64, y, &truncate(&v, (value_w - 50) / 14), INK, 2, false);
-            draw_ink(&mut buf, w, h, (lx + value_w - 16) as i64, y, ">", if selected { RUBRIC } else { INK_FADED }, 2, true);
-            hits.push(Hit { row: i, rect: Rect { x: lx - 4, y: band.y, w: 24, h: band.h }, delta: -1 });
-            hits.push(Hit { row: i, rect: Rect { x: lx + value_w - 20, y: band.y, w: 24, h: band.h }, delta: 1 });
-            hits.push(Hit { row: i, rect: band, delta: 0 });
-            y += line_h as i64;
-        }
-
-        // Help for the selected row.
-        let hy = c.y + 160;
-        if help_w > 120 {
-            let r = Rect { x: help_x - 14, y: hy - 12, w: help_w + 14, h: 230 };
-            outline(&mut buf, w, r, INK_FADED);
-            let row = ROWS[sel];
-            draw_ink(&mut buf, w, h, help_x as i64, hy as i64, &Menu::label(row).to_uppercase(), RUBRIC, 1, true);
-            let mut ty = hy as i64 + 18;
-            for line in wrap(&menu.help(row), help_w / 7) {
-                draw_ink(&mut buf, w, h, help_x as i64, ty, &line, INK, 1, false);
-                ty += 13;
-            }
-        }
-        let keys = "UP/DOWN choose   LEFT/RIGHT change   type digits for a seed   R new seed   ENTER begin   ESC quit";
-        let kx = c.x + (c.w.saturating_sub(text_width(keys, 1))) / 2;
-        draw_ink(&mut buf, w, h, kx as i64, (c.y + c.h - 26) as i64, keys, INK_FADED, 1, false);
-
+        hits = draw_start(&menu, sel, mouse, &mut buf, w, h);
         window.update_with_buffer(&buf, w, h)?;
     }
     Ok(None)
+}
+
+/// A small inked picture for a start-screen row (in the help box).
+fn row_picture(buf: &mut [u32], w: usize, h: usize, row: Row, cx: f32, cy: f32, size: f32) {
+    use super::ink::{Finish, Pen, INK as K};
+    let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| blend_px(buf, w, h, x, y, super::ink::pack(c), a);
+    let mut pen = Pen::new(&mut put, cx, cy, size);
+    let sea = [130.0, 160.0, 176.0];
+    let land = [170.0, 176.0, 120.0];
+    let stone = [178.0, 172.0, 160.0];
+    let lw = (size * 0.03).max(1.0);
+    match row {
+        Row::Size => {
+            pen.ellipse(0.0, 0.0, 0.8, 0.8, sea);
+            pen.ellipse_f(-0.25, -0.2, 0.3, 0.22, land, Finish::Plain);
+            pen.ellipse_f(0.3, 0.25, 0.25, 0.3, land, Finish::Plain);
+            for k in [-0.4f32, 0.0, 0.4] { pen.line_a((-(0.62 - k * k).max(0.0).sqrt(), k), ((0.62 - k * k).max(0.0).sqrt(), k), K, 1.0, 0.35); }
+            pen.line_a((0.0, -0.8), (0.0, 0.8), K, 1.0, 0.35);
+        }
+        Row::Seed => {
+            pen.poly(&[(-0.5, -0.3), (0.0, -0.6), (0.5, -0.3), (0.5, 0.35), (0.0, 0.65), (-0.5, 0.35)], [236.0, 228.0, 210.0]);
+            pen.line((-0.5, -0.3), (0.0, 0.0), K, lw); pen.line((0.5, -0.3), (0.0, 0.0), K, lw); pen.line((0.0, 0.0), (0.0, 0.65), K, lw);
+            for (u, v) in [(0.0, -0.3), (-0.3, 0.1), (-0.2, 0.35), (0.25, 0.1), (0.35, 0.35), (0.3, 0.22)] { pen.ellipse_f(u, v, 0.05, 0.05, K, Finish::Paint); }
+        }
+        Row::Style => {
+            pen.rect_f(-0.9, -0.6, 0.9, 0.6, sea, Finish::Plain);
+            pen.poly(&[(-0.7, -0.3), (-0.2, -0.45), (0.1, -0.1), (-0.1, 0.35), (-0.6, 0.3)], land);
+            pen.poly(&[(0.3, 0.0), (0.7, -0.2), (0.75, 0.3), (0.4, 0.45)], land);
+        }
+        Row::Plates => {
+            pen.rect(-0.85, -0.55, 0.85, 0.55, [196.0, 170.0, 130.0]);
+            pen.path(&[(-0.85, 0.1), (-0.3, -0.05), (0.1, 0.2), (0.85, 0.0)], [160.0, 50.0, 40.0], lw * 1.5);
+            pen.path(&[(-0.1, -0.55), (0.0, -0.1), (0.1, 0.2), (0.0, 0.55)], [160.0, 50.0, 40.0], lw * 1.5);
+            pen.path(&[(-0.6, -0.3), (-0.45, -0.3)], K, lw); pen.path(&[(0.5, 0.3), (0.65, 0.3)], K, lw);
+        }
+        Row::Myr => {
+            for (u, hh) in [(-0.45f32, 0.7f32), (0.1, 0.95), (0.55, 0.6)] {
+                pen.poly(&[(u - 0.4, 0.5), (u, 0.5 - hh), (u + 0.4, 0.5)], stone);
+                pen.poly_f(&[(u - 0.1, 0.5 - hh * 0.75), (u, 0.5 - hh), (u + 0.1, 0.5 - hh * 0.75)], [240.0, 238.0, 232.0], Finish::Paint);
+            }
+        }
+        Row::Fantasy => {
+            pen.poly(&[(0.0, -0.75), (0.25, -0.1), (0.1, 0.6), (-0.15, 0.6), (-0.25, -0.1)], [170.0, 150.0, 200.0]);
+            pen.poly(&[(0.35, -0.3), (0.5, 0.1), (0.42, 0.6), (0.25, 0.6), (0.2, 0.1)], [150.0, 190.0, 200.0]);
+            pen.glow(0.0, -0.1, 0.7, [220.0, 200.0, 250.0], 0.4);
+        }
+        Row::Years => {
+            pen.rect(-0.6, -0.45, 0.6, 0.45, [236.0, 226.0, 200.0]);
+            pen.ellipse(-0.6, 0.0, 0.12, 0.45, [214.0, 200.0, 170.0]);
+            pen.ellipse(0.6, 0.0, 0.12, 0.45, [214.0, 200.0, 170.0]);
+            for k in 0..5 { let v = -0.28 + k as f32 * 0.14; pen.line((-0.4, v), (0.4, v), K, 1.0); }
+        }
+        Row::Peoples => {
+            for (k, col) in [[150.0, 52.0, 44.0], [62.0, 84.0, 128.0], [70.0, 110.0, 70.0]].iter().enumerate() {
+                let u = -0.5 + k as f32 * 0.5;
+                pen.bone(&[(u, 0.7), (u, -0.7)], [122.0, 86.0, 54.0], lw * 1.3);
+                pen.poly(&[(u, -0.7), (u + 0.38, -0.6), (u + 0.3, -0.4), (u + 0.38, -0.2), (u, -0.25)], *col);
+            }
+        }
+        Row::Shadow => {
+            pen.ellipse_f(0.0, 0.0, 0.85, 0.6, [52.0, 46.0, 50.0], Finish::Plain);
+            pen.ellipse(0.0, 0.0, 0.55, 0.28, [214.0, 170.0, 60.0]);
+            pen.ellipse_f(0.0, 0.0, 0.08, 0.26, K, Finish::Paint);
+            pen.glow(0.0, 0.0, 0.7, [230.0, 100.0, 40.0], 0.35);
+        }
+        Row::Watch => {
+            pen.rect(-0.45, -0.75, 0.45, -0.65, [122.0, 86.0, 54.0]);
+            pen.rect(-0.45, 0.65, 0.45, 0.75, [122.0, 86.0, 54.0]);
+            pen.poly(&[(-0.38, -0.65), (0.38, -0.65), (0.05, 0.0), (0.38, 0.65), (-0.38, 0.65), (-0.05, 0.0)], [236.0, 232.0, 220.0]);
+            pen.poly_f(&[(-0.25, 0.62), (0.25, 0.62), (0.0, 0.3)], [206.0, 176.0, 110.0], Finish::Paint);
+        }
+        Row::Begin => {}
+    }
 }

@@ -599,6 +599,7 @@ impl Colony {
         let came = if sally { if threat.name.starts_with("a ") { "was met at their own fires at first light" } else { "were met at their own fires at first light" } } else { "came in the night" };
         let at = clash.unwrap_or_else(|| self.spot_from_camp(4 + 3 * chapter as i32, -5 + 2 * chapter as i32));
         self.clash_at = Some(at);
+        self.clash_tick = self.clock.tick;
         self.marks.push(ColonyMark { at, kind: MarkKind::Scorch, title: "Scorched ground".into(),
             text: format!("Burned in the raid of day {}, when {} came in the night.", self.clock.day(), who), day: self.clock.day() });
         // The refugees turned away were found first.

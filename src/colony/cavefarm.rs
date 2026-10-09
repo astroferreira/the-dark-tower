@@ -38,7 +38,7 @@ impl Colony {
         // Carried up to the mouth of the dig (the hall or cellar lies under the rock).
         let at = self.delve_mouth.or(self.farm_spot()).unwrap_or(p.at);
         let n = if self.breached.is_empty() { 12 } else { 20 };
-        for _ in 0..n { self.items.push(Item { kind: ItemKind::Food, at, stored: false, reserved: false }); }
+        for _ in 0..n { self.items.push(Item::food(Stuff::Fungus, at, false)); }
         let crop = self.cave_crop();
         if self.milestones.insert("first cave harvest") {
             let line = format!("They pick the first {} in the farm under the rock: {} meals, and winter or no winter, more in eight days.", crop, n);

@@ -252,7 +252,8 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   the attack's `deadly` to the danger, names it in a death ("It breathed fire on X, who was
   killed...") and leaves its wound on the struck (ill for the attack's days, "It had choked X
   with dust: the sickness of it lingers."). Tested (`beasts_are_generated_monsters`, unit test).
-  Not yet: forgotten beasts in the caverns (card df-caverns), creature colours on the map.
+  Forgotten beasts live in the caverns (`colony/cavelife.rs`, `deep_comes_up`), and beasts are
+  drawn on the world map at their lairs in their own colours (`tiles/beasts.rs::draw_world`).
 
 ## Named ages and collections (`ages.rs`, `collections.rs`; DF design guide ch. 05-06)
 - `ages::name_ages` (in `HistoryEngine::finish`, replacing the old 50-year `define_eras`) reads
@@ -284,7 +285,11 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   with CSS pins; a search box on every page (`legends.js`). Journal styling. No RNG, sorted ids:
   byte-identical per seed. Dev: 1,337 pages in ~0.3 s; seed 42: 7,439 pages, 78 MB.
   `tests/legends.rs`: links and anchors resolve, one entry per event, camps linked, two runs equal.
-- Not done: dynasties and deities have no pages of their own; no per-site map crops.
+- Each site's page opens with the country round it, cut from the same map in CSS (a 360x240
+  window, 14 tiles across, the site pinned; `Book::site_crop`). Houses and gods have pages of their
+  own (`house-N.html` with the family tree as an ink SVG, a line of heirs winding five to a row;
+  `god-N.html` with a seal by domain and alignment, faiths, sacred places, treasures, story);
+  `houses.html` in the menu; figures link their house, faiths their gods.
 
 ## Who knows what (`knowledge.rs`; DF's `local_known_events` / `known_info`, ch. 06)
 - A derived layer over the finished chronicle: no RNG, nothing saved, the history unchanged.

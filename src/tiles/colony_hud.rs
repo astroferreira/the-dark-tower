@@ -15,6 +15,14 @@ pub(crate) struct HudState<'a> {
     /// The answer to the player's last act ("The patron favours X; the others notice.").
     pub status: &'a str,
     pub mouse: (f32, f32),
+    /// Pixels taken on the right by the open ledger (`colony_ui`): the log stays clear of it.
+    pub right: usize,
+    /// The settler chosen in the ledger: an ink ring round them.
+    pub selected: Option<usize>,
+    /// No chip at the mouse (it is over the interface).
+    pub hide_chip: bool,
+    /// Draw the old key bar (the window, until `colony_ui`'s button bar is wired in).
+    pub bar: bool,
 }
 
 /// A clickable log line and the settler it names.
@@ -95,6 +103,10 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
             let c = to_screen_f(lcam, w, h, p);
             ring(buf, w, h, c, (lcam.tile_px * 0.9).max(7.0), GOLD, 1.6);
         }
+        if let Some(i) = st.selected.filter(|&i| colony.settlers.get(i).map_or(false, |s| s.alive) && !colony.below(i)) {
+            let c = to_screen_f(lcam, w, h, colony.draw_pos(i));
+            ring(buf, w, h, c, (lcam.tile_px * 1.1).max(9.0), RUBRIC, 1.2);
+        }
         for &(i, _, until) in &colony.patron.dreams {
             if until <= colony.clock.tick || !colony.settlers[i].alive { continue; }
             let c = to_screen_f(lcam, w, h, colony.draw_pos(i));
@@ -146,14 +158,14 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     // Bottom: the keys. The patron's verbs fade while there is no favour.
     let bar_h = 26usize;
     let bar = Rect { x: 10, y: h - bar_h - 8, w: w - 20, h: bar_h };
-    ui::card(buf, w, bar);
+    if st.bar { ui::card(buf, w, bar); }
     let spent = colony.patron.favour == 0;
     let keys: [(&str, bool); 16] = [
         ("F bless", true), ("X forbid", true), ("G favour", true), ("R dream", true), ("B bell", true),
         ("H/J/K stones", false), ("N name", false), ("Space pause", false), ("1/2/3 speed", false), ("4 skip", false), ("M stops", false), ("U section", false), ("</> levels", false), ("[/] delve", false), ("click to read", false), ("Esc leave", false),
     ];
     let mut x = 22.0;
-    for (text, costs) in keys {
+    for (text, costs) in keys.into_iter().filter(|_| st.bar) {
         let color = if costs && spent { ui::mix(INK_FADED, ui::PAPER, 0.5) } else if costs { INK } else { INK_FADED };
         let tw = fonts::width(text, Face::Roman, SMALL, 0.0);
         if x + tw > (bar.x + bar.w) as f32 - 12.0 { break; }
@@ -162,7 +174,7 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     }
 
     // Bottom left: the last six moments, newest darkest.
-    let log_w = 560usize.min(w.saturating_sub(40 + super::inspector::panel_rect(w, h).w.min(w / 3)));
+    let log_w = 560usize.min(w.saturating_sub(40 + super::inspector::panel_rect(w, h).w.min(w / 3).max(st.right)));
     let n = colony.log.len().min(6);
     if n > 0 && log_w > 200 {
         let line_h = 18usize;
@@ -186,16 +198,25 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     }
 
     // At the mouse: who this is, what they are doing and why.
-    if lcam.surface_view {
+    if lcam.surface_view && !st.hide_chip {
         let (hx, hy) = (lcam.cx + (st.mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (st.mouse.1 - h as f32 / 2.0) / lcam.tile_px);
         let reach = (0.8f32).max(8.0 / lcam.tile_px);
         let building = if hx >= 0.0 && hy >= 0.0 { colony.building_at((hx as u16, hy as u16)) } else { None };
         let under = colony.settler_at(hx, hy, reach, if lcam.surface_view { None } else { Some(lcam.z) });
+        // A thing on the ground or a heap of the store: what it is and how many.
+        let cell = (hx.floor() as i64, hy.floor() as i64);
+        let thing = if under.is_none() && cell.0 >= 0 && cell.1 >= 0 {
+            super::local_ink::store_heaps(colony).into_iter().find(|hp| hp.cell.0 as i64 == cell.0 && hp.cell.1 as i64 == cell.1)
+                .map(|hp| format!("The store: {} {}", hp.count, hp.stuff.plural()))
+                .or_else(|| super::local_ink::loose_piles(colony).into_iter().find(|p| p.0 .0 as i64 == cell.0 && p.0 .1 as i64 == cell.1)
+                    .map(|(_, s, n)| if n == 1 { format!("{}, lying here to be carried in", super::colony_ui::cap_pub(s.one())) } else { format!("{} {}, lying here to be carried in", n, s.plural()) }))
+        } else { None };
+        let building = thing.or(building);
         if let (Some(b), None) = (&building, under) {
             let chip_w = 320.0f32.min(w as f32 - 20.0);
             let lines = wrap_px(b, Face::Italic, SMALL, chip_w - 24.0);
             let chip_h = 16 + lines.len().min(5) * 16;
-            let x = (st.mouse.0 + 18.0).min(w as f32 - chip_w - 10.0).max(10.0) as usize;
+            let x = chip_x(st, w, chip_w);
             let y = (st.mouse.1 + 18.0).min((h - chip_h - 10) as f32).max(10.0) as usize;
             ui::card(buf, w, Rect { x, y, w: chip_w as usize, h: chip_h });
             for (k, l) in lines.iter().take(5).enumerate() {
@@ -210,7 +231,7 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
             if colony.patron.favourite.map_or(false, |f| colony.settlers[f].name == s.name) { head.push_str(", the patron's favourite"); }
             let feels = match s.mind.broken { Some((b, _)) => format!("{}  -  {}{}", s.job.verb(), if b.word().starts_with("wander") { "" } else { "in " }, b.word()), None => format!("{}  -  {}", s.job.verb(), crate::colony::mind::mood(s.mind.stress)) };
             let chip_h = 48 + why.len().min(4) * 16;
-            let x = (st.mouse.0 + 18.0).min(w as f32 - chip_w - 10.0).max(10.0) as usize;
+            let x = chip_x(st, w, chip_w);
             let y = (st.mouse.1 + 18.0).min((h - chip_h - 10) as f32).max(10.0) as usize;
             let r = Rect { x, y, w: chip_w as usize, h: chip_h };
             ui::card(buf, w, r);
@@ -224,17 +245,32 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     hits
 }
 
+/// Where a hover chip starts: right of the mouse, else left of it, never under the open panel
+/// on the right (`st.right`).
+fn chip_x(st: &HudState, w: usize, chip_w: f32) -> usize {
+    let edge = w as f32 - st.right as f32 - 10.0;
+    let x = if st.mouse.0 + 18.0 + chip_w <= edge { st.mouse.0 + 18.0 } else { st.mouse.0 - 18.0 - chip_w };
+    x.min(edge - chip_w).max(10.0) as usize
+}
+
 /// A great moment's card, across the top middle: its title, what happened and why, until Space.
-pub(crate) fn draw_moment(m: &crate::colony::Moment, buf: &mut [u32], w: usize, h: usize) {
-    let card_w = 520usize.min(w.saturating_sub(40));
-    if card_w < 200 || h < 200 { return; }
-    let inner = card_w as f32 - 40.0;
+pub(crate) fn draw_moment(m: &crate::colony::Moment, colony: Option<&crate::colony::Colony>, buf: &mut [u32], w: usize, h: usize) -> Option<Rect> {
+    // A roundel at the left with a picture of the moment (`vignette.rs`), when there is room.
+    let pic = w >= 700 && !m.because.is_empty();
+    let card_w = if pic { 640usize } else { 520 }.min(w.saturating_sub(40));
+    if card_w < 200 || h < 200 { return None; }
+    let pic_w = if pic { 120.0 } else { 0.0 };
+    let inner = card_w as f32 - 40.0 - pic_w;
     let text = wrap_px(&m.text, Face::Roman, 17.0, inner);
     let because = wrap_px(&m.because, Face::Italic, BODY, inner);
-    let card_h = 60 + text.len().min(6) * 22 + 8 + because.len().min(4) * 19 + 34;
+    let card_h = (60 + text.len().min(6) * 22 + 8 + because.len().min(4) * 19 + 34).max(if pic { 170 } else { 0 });
     let r = Rect { x: (w - card_w) / 2, y: 70.min(h.saturating_sub(card_h + 10)), w: card_w, h: card_h };
     ui::card(buf, w, r);
-    let x = (r.x + 20) as f32;
+    if pic {
+        let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| ui::blend_px(buf, w, h, x, y, super::ink::pack(c), a);
+        super::vignette::draw(&mut put, colony, m, (r.x + 72) as f32, (r.y + 20) as f32 + (card_h as f32 - 20.0) / 2.0, 52.0);
+    }
+    let x = (r.x + 20) as f32 + pic_w;
     let tw = fonts::width(&m.title, Face::SmallCaps, 24.0, 1.0);
     fonts::draw(buf, w, h, (r.x as f32 + (card_w as f32 - tw) / 2.0).max(x), (r.y + 16) as f32, &m.title, Face::SmallCaps, 24.0, 1.0, RUBRIC, None);
     let mut y = (r.y + 56) as f32;
@@ -247,10 +283,11 @@ pub(crate) fn draw_moment(m: &crate::colony::Moment, buf: &mut [u32], w: usize, 
         fonts::draw(buf, w, h, x, y, line, Face::Italic, BODY, 0.0, INK_FADED, None);
         y += 19.0;
     }
-    if m.because.is_empty() { return; }
-    let hint = if m.choice { "Y: take them in     N: turn them away" } else { "Space to go on   M: stop for moments on/off" };
+    if m.because.is_empty() { return Some(r); }
+    let hint = if m.choice { "or Y / N" } else { "Space to go on   M: stop for moments on/off" };
     let hw = fonts::width(hint, Face::Italic, SMALL, 0.0);
     fonts::draw(buf, w, h, (r.x + card_w) as f32 - 20.0 - hw, (r.y + card_h) as f32 - 26.0, hint, Face::Italic, SMALL, 0.0, GOLD, None);
+    Some(r)
 }
 
 /// One line of guidance in a parchment chip at the bottom middle of the screen.

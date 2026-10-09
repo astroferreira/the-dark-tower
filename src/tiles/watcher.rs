@@ -30,6 +30,7 @@ use crate::world::WorldData;
 use super::atlas::Atlas;
 use super::classify::{faction_color, HistoryOverlay, Site, TileWorld};
 use super::render::{render_world_cached, render_world_lod, screen_to_world, snap_world_camera, Camera};
+use super::fonts::{self, Face};
 use super::text::{draw_ink, place_labels, text_width, Label};
 use super::ui::*;
 
@@ -572,8 +573,8 @@ fn banner(buf: &mut [u32], w: usize, h: usize, map: Rect, text: &str, alpha: f32
     let lines = wrap(text, (map.w.saturating_sub(80)) / 14);
     let scale = if lines.len() <= 2 { 2 } else { 1 };
     let lines = if scale == 2 { lines } else { wrap(text, (map.w.saturating_sub(80)) / 7) };
-    let tw = lines.iter().map(|l| text_width(l, scale)).max().unwrap_or(0);
-    let bh = lines.len() * 10 * scale + 16;
+    let tw = lines.iter().map(|l| fell_width(l, scale)).max().unwrap_or(0);
+    let bh = lines.len() * if scale == 2 { 24 } else { 16 } + 18;
     let bw = tw + 40;
     let bx = map.x + map.w.saturating_sub(bw) / 2;
     let by = map.y + 14;
@@ -594,8 +595,8 @@ fn banner(buf: &mut [u32], w: usize, h: usize, map: Rect, text: &str, alpha: f32
     }
     if alpha > 0.5 {
         for (i, l) in lines.iter().enumerate() {
-            let lx = bx + (bw - text_width(l, scale)) / 2;
-            draw_ink(buf, w, h, lx as i64, (by + 8 + i * 10 * scale) as i64, l, RUBRIC, scale, false);
+            let lx = bx + (bw - fell_width(l, scale)) / 2;
+            fell(buf, w, h, lx as i64, (by + 10 + i * if scale == 2 { 24 } else { 16 }) as i64, l, RUBRIC, scale, false);
         }
     }
 }
@@ -668,6 +669,13 @@ struct View<'a> {
     timeline: Rect,
     /// Smooth zoom: the zoom the wheel asked for, eased towards each frame around `zoom_at`.
     zoom_target: f32,
+    /// Album recording (A): a plate is saved for each great event as it plays.
+    album: Option<(String, usize)>,
+    /// What the album has already shown (titles) and the year of its last plate.
+    album_seen: Vec<String>,
+    album_last: u32,
+    /// The largest continent's name, for plates ("the Lands of ...").
+    world_name: String,
     zoom_at: (f32, f32),
     /// Last time the view moved (pan, zoom, drag); the map is drawn at full quality again once
     /// it has been still for a moment.
@@ -692,7 +700,8 @@ impl<'a> View<'a> {
             bg: Vec::new(), map_buf: Vec::new(), map_dirty: true, lay, cam, fitted: true,
             last_render: Instant::now() - Duration::from_secs(1), entry_hits: Vec::new(),
             timeline: Rect::default(),
-            zoom_target: cam.tile_px, zoom_at: (0.0, 0.0), moved: Instant::now() - Duration::from_secs(1),
+            zoom_target: cam.tile_px, album: None, album_seen: Vec::new(), album_last: 0,
+            world_name: crate::lore::gazetteer::build_gazetteer(world, None, world.seed()).features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into()), zoom_at: (0.0, 0.0), moved: Instant::now() - Duration::from_secs(1),
             preview: false, full_ms: 0.0, last_frame: Instant::now(),
         }
     }
@@ -750,6 +759,16 @@ impl<'a> View<'a> {
             if self.log_scroll > 0 && (e.key || self.show_all) { self.log_scroll += 1; }
             let great = e.kind.is_major() || matches!(e.kind, EventType::Authored | EventType::SettlementDestroyed | EventType::LandScarred | EventType::ShadowRepelled);
             if great { self.banner_msg = Some((ascii(&e.title), now)); }
+            // The album keeps one plate a title, and lesser great events five years apart.
+            let worth = great && e.location.is_some() && !self.album_seen.contains(&e.title) && (e.kind.is_major() || e.year >= self.album_last + 5 || self.album_last == 0);
+            if worth { if let Some((dir, n)) = self.album.clone() {
+                let e = e.clone();
+                let path = album_plate(self, k, &e, &dir, n);
+                self.album = Some((dir, n + 1));
+                self.album_seen.push(e.title.clone());
+                self.album_last = e.year;
+                self.status = path;
+            } }
             self.log.push_front(e.clone());
         }
         self.log.truncate(LOG_CAP);
@@ -971,10 +990,10 @@ impl<'a> View<'a> {
                     let (tx, ty) = ((wx.floor() as i64).rem_euclid(world.width as i64) as usize, wy as usize);
                     let text = hover_text(step, &self.tw, tx, ty);
                     if !text.is_empty() {
-                        let r = Rect { x: lay.map.x + 8, y: lay.map.y + lay.map.h - 22, w: (text_width(&text, 1) + 12).min(lay.map.w - 16), h: 15 };
+                        let r = Rect { x: lay.map.x + 8, y: lay.map.y + lay.map.h - 24, w: (fell_width(&text, 1) + 12).min(lay.map.w - 16), h: 18 };
                         fill(buf, w, r, PAPER);
                         outline(buf, w, r, INK);
-                        draw_ink(buf, w, h, r.x as i64 + 6, r.y as i64 + 4, &truncate(&text, (r.w - 12) / 7), INK, 1, false);
+                        fell(buf, w, h, r.x as i64 + 6, r.y as i64 + 5, &truncate(&text, (r.w - 12) / 6), INK, 1, false);
                     }
                 }
             }
@@ -1073,8 +1092,25 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
     let mut drag: Option<((f32, f32), (f32, f32))> = None;
     let mut scrubbing = false;
     let mut was_down = false;
+    // PLANET_WATCH_SCRIPT=FILE: "<frame> key <K>", "<frame> shot <file>", "<frame> status",
+    // "<frame> quit" (keys by the viewer's names; the viewer after it reads PLANET_UI_SCRIPT).
+    let script: Vec<(u64, String, Vec<String>)> = std::env::var("PLANET_WATCH_SCRIPT").ok().and_then(|f| std::fs::read_to_string(f).ok())
+        .map(|t| t.lines().filter_map(|l| { let mut it = l.split_whitespace(); let f = it.next()?.parse().ok()?; let v = it.next()?.to_string(); Some((f, v, it.map(String::from).collect())) }).collect()).unwrap_or_default();
+    let mut frame: u64 = 0;
 
     while window.is_open() {
+        frame += 1;
+        let mut script_keys: Vec<Key> = Vec::new();
+        let mut script_shot: Option<String> = None;
+        for (_, verb, args) in script.iter().filter(|e| e.0 == frame) {
+            match verb.as_str() {
+                "key" => if let Some(k) = args.first().and_then(|n| super::viewer::script_key_pub(n)) { script_keys.push(k); },
+                "shot" => script_shot = args.first().cloned(),
+                "status" => println!("Watcher script frame {}: year {} | {}", frame, view.current().map_or(0, |s| s.year), view.status),
+                "quit" => return Ok(()),
+                _ => {}
+            }
+        }
         while let Ok(msg) = rx.try_recv() { view.receive(msg); }
         let (w, h) = window.get_size();
         view.resize(w, h);
@@ -1085,7 +1121,7 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         let down = window.get_mouse_down(MouseButton::Left);
         let clicked = down && !was_down;
         was_down = down;
-        let pressed = |k: Key| window.is_key_pressed(k, KeyRepeat::No);
+        let pressed = |k: Key| window.is_key_pressed(k, KeyRepeat::No) || script_keys.contains(&k);
         if pressed(Key::Escape) && !view.complete() { break; }
         if view.complete() && (pressed(Key::Enter) || pressed(Key::Escape) || pressed(Key::Q)) { break; }
         // A site chosen on the closing card: the viewer embarks there.
@@ -1106,16 +1142,18 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         if pressed(Key::LeftBracket) || pressed(Key::Minus) {
             let p = ctl.pace.load(Ordering::Relaxed);
             ctl.pace.store(p.saturating_sub(1), Ordering::Relaxed);
+            view.status = format!("pace: {}", PACES[p.saturating_sub(1)].1);
         }
         if pressed(Key::RightBracket) || pressed(Key::Equal) {
             let p = ctl.pace.load(Ordering::Relaxed);
             ctl.pace.store((p + 1).min(PACES.len() - 1), Ordering::Relaxed);
+            view.status = format!("pace: {}", PACES[(p + 1).min(PACES.len() - 1)].1);
         }
         // Step one season back or forward while paused.
-        if window.is_key_pressed(Key::Comma, KeyRepeat::Yes) {
+        if window.is_key_pressed(Key::Comma, KeyRepeat::Yes) || script_keys.contains(&Key::Comma) {
             if let Some(k) = view.shown { view.jump(k.saturating_sub(1)); }
         }
-        if window.is_key_pressed(Key::Period, KeyRepeat::Yes) { view.step_forward(); }
+        if window.is_key_pressed(Key::Period, KeyRepeat::Yes) || script_keys.contains(&Key::Period) { view.step_forward(); }
         if pressed(Key::L) { view.show_all = !view.show_all; view.log_scroll = 0; }
         if pressed(Key::H) || pressed(Key::Home) { view.fit(); }
         // Keyboard panning (Shift: faster), steady per second.
@@ -1129,6 +1167,13 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         if pressed(Key::P) {
             let path = format!("watch_{}_{}.png", world.seed(), view.current().map(|s| s.year).unwrap_or(0));
             view.status = save_png(&path, &view.buf, w, h);
+        }
+        // A: record an album: a plate for each great event from here on.
+        if pressed(Key::A) {
+            view.album = match view.album.take() {
+                Some((dir, n)) => { view.status = format!("album closed: {} plates in {}", n, dir); None }
+                None => { let dir = format!("plates/album_{}", world.seed()); let _ = std::fs::create_dir_all(&dir); view.status = format!("recording an album in {}: a plate at each great event", dir); Some((dir, 0)) }
+            };
         }
         // G: the history recorded so far as a timelapse GIF.
         if pressed(Key::G) {
@@ -1180,6 +1225,7 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         view.play(ctl);
         view.draw(mouse, drag.is_none() && !scrubbing, ctl);
         window.update_with_buffer(&view.buf, w, h)?;
+        if let Some(path) = script_shot.take() { println!("Watcher script frame {}: {}", frame, save_png(&path, &view.buf, w, h)); }
     }
     Ok(())
 }
@@ -1304,6 +1350,141 @@ pub fn watch_timelapse(world: &WorldData, game_data: &GameData, config: HistoryC
             Err(e) => eprintln!("Timelapse failed: {e}"),
         }
         sim.join().expect("history simulation panicked")
+    })
+}
+
+/// An atlas of ages (`--watch-atlas FILE`): simulate the history as `--watch` does, then draw the
+/// world at four moments, the dawn of history, a third and two thirds through, and the present,
+/// two by two on one parchment plate. Each map has the realms, roads and towns of its year and
+/// is captioned with the year and the age it fell in.
+pub fn watch_atlas(world: &WorldData, game_data: &GameData, config: HistoryConfig, engine: HistoryEngine, atlas: &Atlas, path: &str) -> WorldHistory {
+    let mut base = TileWorld::build(world, atlas);
+    base.set_season(world, Season::Summer);
+    let ctl = Control { paused: AtomicBool::new(true), pace: AtomicUsize::new(PACES.len() - 1), detached: AtomicBool::new(false) };
+    let (tx, rx) = mpsc::channel();
+    std::thread::scope(|scope| {
+        let sim = {
+            let ctl = &ctl;
+            scope.spawn(move || simulate(world, game_data, config, engine, ctl, tx))
+        };
+        let mut view = View::new(world, atlas, base.clone());
+        view.resize(LAPSE_SIZE.0, LAPSE_SIZE.1);
+        for msg in rx.iter() { view.receive(msg); }
+        let history = sim.join().expect("history simulation panicked");
+        let total = view.steps.len();
+        if total == 0 { eprintln!("Atlas: nothing recorded"); return history; }
+        // The plate: 2x2 maps with margins, a title band.
+        let (mw, mh) = (760usize, (760 * world.height / world.width).max(200));
+        let (gap, top, margin) = (28usize, 92usize, 30usize);
+        let (pw, ph) = (margin * 2 + mw * 2 + gap, top + (mh + 44) * 2 + gap + margin);
+        let mut plate = vec![0u32; pw * ph];
+        for y in 0..ph { for x in 0..pw { let n = (super::ui::hash(x / 3, y / 3) & 0xFF) as f32 / 255.0; plate[y * pw + x] = super::ui::mix(super::ui::PAPER, 0x00D8_C8A0, 0.35 * n); } }
+        let gaz = crate::lore::gazetteer::build_gazetteer(world, Some(&history), world.seed());
+        let name = gaz.features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
+        let title = format!("An Atlas of Ages: the Lands of {}", name);
+        let tw_ = super::fonts::width(&title, super::fonts::Face::SmallCaps, 30.0, 2.0);
+        super::fonts::draw(&mut plate, pw, ph, (pw as f32 - tw_) / 2.0, 26.0, &title, super::fonts::Face::SmallCaps, 30.0, 2.0, super::ui::RUBRIC, None);
+        for (i, k) in [0, total / 3, total * 2 / 3, total - 1].into_iter().enumerate() {
+            view.jump(k);
+            let mut tw = base.clone();
+            tw.apply_overlay(world, &view.cur, atlas);
+            let cam = Camera { cx: world.width as f32 / 2.0, cy: world.height as f32 / 2.0, tile_px: mw as f32 / world.width as f32 };
+            let mut buf = vec![0u32; mw * mh];
+            render_world_lod(&tw, atlas, &cam, &mut buf, mw, mh, 1);
+            overlay_realms(&tw, &cam, &mut buf, mw, mh);
+            let step = &*view.steps[k];
+            let labels = settlement_labels(step, &tw);
+            place_labels(&labels, cam.tile_px, mw, mh, &mut buf, &[], |x, y| (mw as f32 / 2.0 + (x - cam.cx) * cam.tile_px, mh as f32 / 2.0 + (y - cam.cy) * cam.tile_px));
+            let (ox, oy) = (margin + (i % 2) * (mw + gap), top + (i / 2) * (mh + 44 + gap));
+            for y in 0..mh { for x in 0..mw { plate[(oy + y) * pw + ox + x] = buf[y * mw + x]; } }
+            let r = Rect { x: ox, y: oy, w: mw, h: mh };
+            super::ui::outline(&mut plate, pw, r, super::ui::INK);
+            super::ui::outline(&mut plate, pw, Rect { x: ox - 4, y: oy - 4, w: mw + 8, h: mh + 8 }, super::ui::INK_FADED);
+            let year = step.year;
+            let age = history.timeline.eras.iter().find(|e| e.start.year <= year && e.end.map_or(true, |d| d.year >= year)).map(|e| e.name.clone()).unwrap_or_default();
+            let towns = step.places.values().filter(|p| !p.4).count();
+            let cap = if age.is_empty() { format!("Year {}: {} towns, {} realms", year, towns, step.realms.len()) } else { format!("Year {}, {}: {} towns, {} realms", year, age, towns, step.realms.len()) };
+            super::fonts::draw(&mut plate, pw, ph, ox as f32, (oy + mh + 10) as f32, &cap, super::fonts::Face::Italic, 18.0, 0.0, super::ui::INK, None);
+        }
+        let outer = Rect { x: 10, y: 10, w: pw - 20, h: ph - 20 };
+        super::ui::outline(&mut plate, pw, outer, super::ui::INK);
+        super::ui::outline(&mut plate, pw, Rect { x: 13, y: 13, w: pw - 26, h: ph - 26 }, super::ui::INK_FADED);
+        super::viewer::save_rgb_png_pub(path, pw, ph, |x, y| { let q = plate[y * pw + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("Atlas of ages: 4 maps (years {}), written to {}", [0, total / 3, total * 2 / 3, total - 1].iter().map(|&k| view.steps[k].year.to_string()).collect::<Vec<_>>().join(", "), path);
+        history
+    })
+}
+
+/// One plate of the album: the world at step `k` (as it stood that season), centred on the
+/// event's place at 12 px a tile, the place ringed in rubric, framed as a plate with the event
+/// as its caption. Returns what it says it saved.
+fn album_plate(view: &View, k: usize, e: &LogItem, dir: &str, n: usize) -> String {
+    let (world, atlas) = (view.world, view.atlas);
+    let Some((x, y)) = e.location else { return String::new() };
+    let mut tw = view.base.clone();
+    tw.apply_overlay(world, &view.cur, atlas);
+    let (w, h) = (1280usize, 800usize);
+    // About forty tiles across: close enough to read the place, wide enough for its country.
+    let tile_px = (w as f32 / 40.0).max(12.0);
+    let half_h = h as f32 / 2.0 / tile_px;
+    let cy = (y as f32 + 0.5).clamp(half_h.min(world.height as f32 / 2.0), (world.height as f32 - half_h).max(world.height as f32 / 2.0));
+    let cam = Camera { cx: x as f32 + 0.5, cy, tile_px };
+    let mut buf = vec![0u32; w * h];
+    render_world_lod(&tw, atlas, &cam, &mut buf, w, h, 1);
+    overlay_realms(&tw, &cam, &mut buf, w, h);
+    let step = &*view.steps[k];
+    let labels = settlement_labels(step, &tw);
+    let ww = world.width as f32;
+    place_labels(&labels, cam.tile_px, w, h, &mut buf, &[], |lx, ly| {
+        let mut dx = lx - cam.cx;
+        if dx > ww / 2.0 { dx -= ww; }
+        if dx < -ww / 2.0 { dx += ww; }
+        (w as f32 / 2.0 + dx * cam.tile_px, h as f32 / 2.0 + (ly - cam.cy) * cam.tile_px)
+    });
+    // The place: a rubric ring with a fine ink rim.
+    let (sx, sy) = (w as f32 / 2.0, h as f32 / 2.0 + (y as f32 + 0.5 - cy) * tile_px);
+    for py in (sy as i64 - 22).max(0)..(sy as i64 + 22).min(h as i64) {
+        for px in (sx as i64 - 22).max(0)..(sx as i64 + 22).min(w as i64) {
+            let d = (((px as f32 - sx).powi(2) + (py as f32 - sy).powi(2)) as f32).sqrt();
+            let k2 = py as usize * w + px as usize;
+            if (d - 16.0).abs() < 1.6 { buf[k2] = super::ui::mix(buf[k2], RUBRIC, 0.9); } else if (d - 18.4).abs() < 0.7 { buf[k2] = super::ui::mix(buf[k2], INK, 0.7); }
+        }
+    }
+    let info = super::plates::PlateInfo { world_name: view.world_name.clone(), year: Some(e.year), season: format!("{:?}", step.season), seed: world.seed(), caption: e.title.clone(), realms: Vec::new() };
+    super::plates::decorate(&mut buf, w, h, &info);
+    let slug: String = e.title.chars().filter(|c| c.is_ascii_alphanumeric() || *c == ' ').collect::<String>().split_whitespace().take(5).collect::<Vec<_>>().join("_").to_lowercase();
+    let path = format!("{}/{:03}_{}_{}.png", dir, n + 1, e.year, slug);
+    super::viewer::save_rgb_png_pub(&path, w, h, |px, py| { let q = buf[py * w + px]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+    format!("album: {}", path)
+}
+
+/// `--watch-album DIR`: simulate the history and play it through as the window would, saving a
+/// plate for each great event with a place (a falling town, a great battle, the Shadow's
+/// conquests and its check, beasts, scars) into DIR.
+pub fn watch_album(world: &WorldData, game_data: &GameData, config: HistoryConfig, engine: HistoryEngine, atlas: &Atlas, dir: &str) -> WorldHistory {
+    let mut base = TileWorld::build(world, atlas);
+    base.set_season(world, Season::Summer);
+    let ctl = Control { paused: AtomicBool::new(true), pace: AtomicUsize::new(PACES.len() - 1), detached: AtomicBool::new(false) };
+    let (tx, rx) = mpsc::channel();
+    let _ = std::fs::create_dir_all(dir);
+    std::thread::scope(|scope| {
+        let sim = {
+            let ctl = &ctl;
+            scope.spawn(move || simulate(world, game_data, config, engine, ctl, tx))
+        };
+        let mut view = View::new(world, atlas, base);
+        view.resize(LAPSE_SIZE.0, LAPSE_SIZE.1);
+        for msg in rx.iter() { view.receive(msg); }
+        let history = sim.join().expect("history simulation panicked");
+        let gaz = crate::lore::gazetteer::build_gazetteer(world, Some(&history), world.seed());
+        view.world_name = gaz.features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
+        view.album = Some((dir.to_string(), 0));
+        view.jump(0);
+        let total = view.steps.len();
+        while view.shown.map_or(false, |k| k + 1 < total) { view.step_forward(); }
+        let n = view.album.as_ref().map_or(0, |a| a.1);
+        println!("Album: {} plates of great events written to {}", n, dir);
+        history
     })
 }
 
@@ -1476,7 +1657,7 @@ fn settlement_labels(f: &Step, tw: &TileWorld) -> Vec<Label> {
             SettlementType::Town | SettlementType::Fort => (700, 10.0),
             _ => (400, 16.0),
         };
-        Some(Label { x: x as f32 + 0.5, y: y as f32 + 1.6, text: name.clone(), rank: rank + (*pop / 2000).min(99), min_tile_px: min_px, color: INK, style: super::text::LabelStyle::Town })
+        Some(Label { x: x as f32 + 0.5, y: y as f32 + 1.6, text: name.clone(), rank: rank + (*pop / 2000).min(99), min_tile_px: min_px, color: INK, style: super::text::LabelStyle::Town, angle: 0.0 })
     }).collect();
     labels.sort_by_key(|l| std::cmp::Reverse(l.rank));
     labels
@@ -1503,27 +1684,27 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
     let x = p.x + 16;
     let iw = p.w - 32;
     let mut y = p.y as i64 + 16;
-    draw_ink(buf, w, h, x as i64, y, "THE WORLD", RUBRIC, 2, true);
-    y += 18;
-    draw_ink(buf, w, h, x as i64, y, "TAKES SHAPE", RUBRIC, 2, true);
-    y += 24;
+    fell(buf, w, h, x as i64, y, "The World", RUBRIC, 2, true);
+    y += 22;
+    fell(buf, w, h, x as i64, y, "takes shape", RUBRIC, 2, true);
+    y += 26;
     hline(buf, w, x, x + iw, y as usize, INK);
     hline(buf, w, x, x + iw, y as usize + 2, INK_FADED);
     y += 12;
 
     let Some(f) = f else {
         for line in wrap(status, iw / 7) {
-            draw_ink(buf, w, h, x as i64, y, &line, INK, 1, false);
-            y += LINE;
+            fell(buf, w, h, x as i64, y, &line, INK, 1, false);
+            y += LINE + 4;
         }
         return Rect::default();
     };
 
     // Year and season, large.
     let year = format!("Year {}", f.year);
-    draw_ink(buf, w, h, x as i64, y, &year, INK, 3, true);
+    fell(buf, w, h, x as i64, y, &year, INK, 3, true);
     y += 28;
-    draw_ink(buf, w, h, x as i64, y, season_name(f.season), INK_FADED, 2, false);
+    fell(buf, w, h, x as i64, y, season_name(f.season), INK_FADED, 2, false);
     y += 22;
     // The timeline: written so far (pale), shown (gold), a tick every 50 years. Click or drag
     // it to jump.
@@ -1544,19 +1725,20 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         for ty in bar.y + bar.h..bar.y + bar.h + 3 { buf[ty * w + tx] = INK; }
     }
     y += 14;
-    draw_ink(buf, w, h, x as i64, y, &format!("{} of {} years", f.step / 4, years), INK_FADED, 1, false);
+    fell(buf, w, h, x as i64, y, &format!("{} of {} years", f.step / 4, years), INK_FADED, 1, false);
     let paused = ctl.paused.load(Ordering::Relaxed);
-    let state = if done { "complete" } else if paused { "- paused -" } else { PACES[ctl.pace.load(Ordering::Relaxed).min(PACES.len() - 1)].1 };
+    let paused_label = format!("- paused ({}) -", PACES[ctl.pace.load(Ordering::Relaxed).min(PACES.len() - 1)].1);
+    let state = if done { "complete" } else if paused { paused_label.as_str() } else { PACES[ctl.pace.load(Ordering::Relaxed).min(PACES.len() - 1)].1 };
     let sc = if paused { RUBRIC } else { INK_FADED };
-    draw_ink(buf, w, h, (x + iw - text_width(state, 1)) as i64, y, state, sc, 1, paused);
+    fell(buf, w, h, (x + iw - fell_width(state, 1)) as i64, y, state, sc, 1, paused);
     y += LINE + 4;
     if !done && !paused {
-        draw_ink(buf, w, h, x as i64, y, &truncate(status, iw / 7), INK_FADED, 1, false);
+        fell(buf, w, h, x as i64, y, &truncate(status, iw / 7), INK_FADED, 1, false);
     }
     y += LINE + 6;
 
     // Almanac.
-    heading(buf, w, h, x, y, iw, "ALMANAC");
+    fell_heading(buf, w, h, x, y, iw, "ALMANAC");
     y += 16;
     let s = &f.stats;
     let rows = [
@@ -1568,18 +1750,18 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         ("Treasures", format!("{}", s.artifacts), format!("{} monuments", s.monuments)),
     ];
     for (label, value, note) in rows {
-        draw_ink(buf, w, h, x as i64, y, label, INK, 1, false);
+        fell(buf, w, h, x as i64, y, label, INK, 1, false);
         let vx = x + 140;
-        draw_ink(buf, w, h, vx as i64, y, &value, if label == "Wars raging" && s.wars > 0 { RUBRIC } else { INK }, 1, true);
+        fell(buf, w, h, vx as i64, y, &value, if label == "Wars raging" && s.wars > 0 { RUBRIC } else { INK }, 1, true);
         if !note.is_empty() {
-            draw_ink(buf, w, h, (x + iw - text_width(&note, 1)) as i64, y, &note, INK_FADED, 1, false);
+            fell(buf, w, h, (x + iw - fell_width(&note, 1)) as i64, y, &note, INK_FADED, 1, false);
         }
-        y += LINE + 1;
+        y += LINE + 4;
     }
     y += 6;
 
     // Souls over the age, as an ink line over a pale wash.
-    heading(buf, w, h, x, y, iw, &format!("SOULS  {}", short_num(s.souls)));
+    fell_heading(buf, w, h, x, y, iw, &format!("SOULS  {}", short_num(s.souls)));
     y += 14;
     let chart = Rect { x, y: y as usize, w: iw, h: 44 };
     if souls_hist.len() >= 2 {
@@ -1606,14 +1788,14 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
 
     // The Shadow.
     if let Some(sh) = &s.shadow {
-        heading(buf, w, h, x, y, iw, if sh.broken { "THE SHADOW, BROKEN" } else { "THE SHADOW" });
+        fell_heading(buf, w, h, x, y, iw, if sh.broken { "THE SHADOW, BROKEN" } else { "THE SHADOW" });
         y += 16;
         let mut title = ascii(&sh.name);
         if let Some(c) = title.get_mut(0..1) { c.make_ascii_uppercase(); }
-        draw_ink(buf, w, h, x as i64, y, &truncate(&title, iw / 7), RUBRIC, 1, true);
-        y += LINE;
-        draw_ink(buf, w, h, x as i64, y, &truncate(&ascii(&sh.lord), iw / 7), INK_FADED, 1, false);
-        y += LINE + 3;
+        fell(buf, w, h, x as i64, y, &truncate(&title, iw / 7), RUBRIC, 1, true);
+        y += LINE + 4;
+        fell(buf, w, h, x as i64, y, &truncate(&ascii(&sh.lord), iw / 7), INK_FADED, 1, false);
+        y += LINE + 6;
         // Darkened land: a bar of reach with blight inside it.
         let bar = Rect { x, y: y as usize, w: iw, h: 7 };
         outline(buf, w, bar, INK);
@@ -1621,17 +1803,17 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         let bw = ((bar.w - 2) as f32 * sh.blight.min(1.0)) as usize;
         if rw > 0 { fill(buf, w, Rect { x: bar.x + 1, y: bar.y + 1, w: rw, h: bar.h - 2 }, 0x0090_8478); }
         if bw > 0 { fill(buf, w, Rect { x: bar.x + 1, y: bar.y + 1, w: bw, h: bar.h - 2 }, 0x001E_141A); }
-        y += 10;
+        y += 12;
         let line = format!("{:.0}% of the land darkened, {:.0}% blighted", sh.reach * 100.0, sh.blight * 100.0);
-        draw_ink(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK_FADED, 1, false);
-        y += LINE;
+        fell(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK_FADED, 1, false);
+        y += LINE + 4;
         let line = format!("holds {} towns   {} fallen   {} held out", sh.towns, sh.fallen, sh.held);
-        draw_ink(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK, 1, false);
+        fell(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK, 1, false);
         y += LINE + 8;
     }
 
     // The great realms.
-    heading(buf, w, h, x, y, iw, "GREAT REALMS");
+    fell_heading(buf, w, h, x, y, iw, "GREAT REALMS");
     y += 16;
     let top = f.realms.first().map(|r| r.population).unwrap_or(1).max(1);
     let footer_top = (p.y + p.h) as i64 - 80;
@@ -1639,27 +1821,27 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         if y + 22 > footer_top { break; }
         super::heraldry::draw(buf, w, h, x as i64, y - 2, 15, &r.arms);
         let pop = format!("{}  {}", r.towns, short_num(r.population));
-        let name_chars = (iw - 18 - text_width(&pop, 1) - 8) / 7;
+        let name_chars = (iw - 18 - fell_width(&pop, 1) - 8) / 7;
         let dark = s.shadow.as_ref().map_or(false, |sh| sh.faction == r.id && !sh.broken);
-        draw_ink(buf, w, h, (x + 16) as i64, y + 1, &truncate(&ascii(&r.name), name_chars), if dark { RUBRIC } else { INK }, 1, dark);
-        draw_ink(buf, w, h, (x + iw - text_width(&pop, 1)) as i64, y + 1, &pop, INK_FADED, 1, false);
+        fell(buf, w, h, (x + 16) as i64, y + 1, &truncate(&ascii(&r.name), name_chars), if dark { RUBRIC } else { INK }, 1, dark);
+        fell(buf, w, h, (x + iw - fell_width(&pop, 1)) as i64, y + 1, &pop, INK_FADED, 1, false);
         let bw = ((iw - 16) as f32 * r.population as f32 / top as f32) as usize;
-        if bw > 0 { hline(buf, w, x + 16, x + 16 + bw, (y + 12) as usize, mix(faction_color(r.id), INK, 0.2)); }
-        y += 18;
+        if bw > 0 { hline(buf, w, x + 16, x + 16 + bw, (y + 16) as usize, mix(faction_color(r.id), INK, 0.2)); }
+        y += 22;
     }
 
     // Controls.
-    let mut fy = footer_top + 6;
+    let mut fy = footer_top + 2;
     hline(buf, w, x, x + iw, fy as usize - 4, INK_FADED);
     for line in [
         "SPACE pause   [ ] pace   < > one season",
-        "drag the timeline to any year   L log   G gif",
+        "drag the timeline to any year   L log   G gif   A album",
         "wheel zoom   drag/WASD pan   H fit map",
         if done { "ENTER choose where to settle" } else { "click an entry: go there   ESC hurry" },
     ] {
         fy += 2;
-        draw_ink(buf, w, h, x as i64, fy, line, INK_FADED, 1, false);
-        fy += LINE + 2;
+        fell(buf, w, h, x as i64, fy, line, INK_FADED, 1, false);
+        fy += LINE + 3;
     }
     bar
 }
@@ -1702,7 +1884,7 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
             fonts::draw(buf, w, h, x as f32, y as f32, &format!("{}", e.year), Face::Italic, PX, 0.0, mix(RUBRIC, PAPER, age * 0.6), None);
             last_year = Some(e.year);
         }
-        draw_ink(buf, w, h, (x + 44) as i64, y + 4, &glyph.to_string(), mix(gcol, PAPER, age), 1, true);
+        draw_event_icon(buf, w, h, glyph, mix(gcol, PAPER, age), (x + 48) as f32, (y + 9) as f32, 16.0);
         let ink = if e.kind.is_major() || e.kind == EventType::Authored { INK } else { mix(INK, PAPER, age) };
         for (k, l) in lines.iter().enumerate() {
             fonts::draw(buf, w, h, text_x as f32, (y + k as i64 * ROW) as f32, l, face, PX, if face == Face::SmallCaps { 0.3 } else { 0.0 }, ink, None);
@@ -1711,11 +1893,88 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
         y += eh + 2;
     }
     if entries.is_empty() {
-        draw_ink(buf, w, h, text_x as i64, y, "The page is still blank.", INK_FADED, 1, false);
+        fell(buf, w, h, text_x as i64, y, "The page is still blank.", INK_FADED, 1, false);
     }
     if *scroll > 0 {
         let note = format!("({} newer above - scroll up)", scroll);
-        draw_ink(buf, w, h, (x + iw - text_width(&note, 1)) as i64, (r.y + r.h) as i64 - 14, &note, RUBRIC, 1, false);
+        fell(buf, w, h, (x + iw - fell_width(&note, 1)) as i64, (r.y + r.h) as i64 - 14, &note, RUBRIC, 1, false);
     }
     hits
+}
+
+/// The chronicle's mark for an event (by `style`'s key), drawn as a small ink icon in its colour:
+/// a star for a founding, a flame for a razing, a house for a settlement, crossed blades for war
+/// and battle, an olive branch for peace, linked rings for an alliance or a marriage, a crown for
+/// a ruler, a sun for faith, a horned skull for a beast, a chest or an obelisk for treasure, a
+/// spiral for magic, a tree for the wild, the Shadow's eye, footprints for a journey.
+pub(crate) fn draw_event_icon(buf: &mut [u32], w: usize, h: usize, key: char, colour: u32, cx: f32, cy: f32, size: f32) {
+    use super::ink::{Finish, Pen};
+    let rgb = |c: u32| [((c >> 16) & 255) as f32, ((c >> 8) & 255) as f32, (c & 255) as f32];
+    let col = rgb(colour);
+    let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| blend_px(buf, w, h, x, y, super::ink::pack(c), a);
+    let mut pen = Pen::new(&mut put, cx, cy, size);
+    let lw = (size * 0.08).max(1.0);
+    match key {
+        '*' => { let pts: Vec<(f32, f32)> = (0..10).map(|k| { let a = k as f32 * 0.6283 - 1.5708; let r = if k % 2 == 0 { 0.85 } else { 0.38 }; (a.cos() * r, a.sin() * r) }).collect(); pen.poly(&pts, col); }
+        'X' | '#' => {
+            if key == '#' { pen.rect(-0.55, 0.0, 0.55, 0.75, [176.0, 160.0, 140.0]); pen.poly(&[(-0.7, 0.05), (0.0, -0.45), (0.7, 0.05)], [150.0, 130.0, 110.0]); }
+            pen.poly(&[(-0.4, 0.75), (-0.5, 0.1), (-0.15, -0.3), (-0.05, -0.85), (0.25, -0.25), (0.5, 0.1), (0.4, 0.75)], col);
+            pen.poly_f(&[(-0.18, 0.7), (0.0, 0.0), (0.18, 0.7)], [250.0, 214.0, 120.0], Finish::Paint);
+        }
+        'o' => { pen.rect(-0.55, -0.05, 0.55, 0.75, col); pen.poly(&[(-0.75, 0.0), (0.0, -0.75), (0.75, 0.0)], super::ink::mix(col, [250.0, 244.0, 230.0], 0.3)); }
+        '!' | 'x' => {
+            if colour == VIOLET || (key == '!' && col[2] > col[0]) {
+                pen.poly(&[(0.15, -0.9), (-0.45, 0.1), (0.0, 0.1), (-0.2, 0.9), (0.5, -0.2), (0.05, -0.2), (0.3, -0.9)], col);
+            } else {
+                pen.bone(&[(-0.75, 0.75), (0.7, -0.7)], [200.0, 202.0, 210.0], lw * 1.5);
+                pen.bone(&[(0.75, 0.75), (-0.7, -0.7)], [200.0, 202.0, 210.0], lw * 1.5);
+                pen.line((-0.75, 0.75), (-0.45, 0.45), col, lw * 2.0);
+                pen.line((0.75, 0.75), (0.45, 0.45), col, lw * 2.0);
+            }
+        }
+        '=' => { pen.path(&[(-0.7, 0.7), (0.0, 0.0), (0.7, -0.7)], [110.0, 120.0, 70.0], lw * 1.5); for k in 0..4 { let t = -0.45 + k as f32 * 0.35; pen.ellipse_rot(t + 0.15, -t - 0.1, 0.22, 0.1, -0.8, [130.0, 150.0, 80.0]); } }
+        '&' => { pen.shape(col, Finish::Plain, [-0.9, -0.6, 0.9, 0.6], &|u, v| { let a = ((u + 0.3).powi(2) + v * v).sqrt(); let b = ((u - 0.3).powi(2) + v * v).sqrt(); (a - 0.45).abs() < 0.13 || (b - 0.45).abs() < 0.13 }); }
+        '^' => { pen.poly(&[(-0.75, 0.55), (-0.75, -0.3), (-0.38, 0.1), (0.0, -0.6), (0.38, 0.1), (0.75, -0.3), (0.75, 0.55)], col); }
+        '+' => { pen.ellipse(0.0, 0.0, 0.38, 0.38, col); for k in 0..8 { let a = k as f32 * 0.785; pen.line((a.cos() * 0.5, a.sin() * 0.5), (a.cos() * 0.85, a.sin() * 0.85), col, lw); } }
+        '~' => {
+            pen.ellipse(0.0, 0.05, 0.45, 0.5, [232.0, 224.0, 204.0]);
+            for u in [-0.17f32, 0.17] { pen.ellipse_f(u, 0.0, 0.11, 0.13, super::ink::INK, Finish::Paint); }
+            pen.bone(&[(-0.35, -0.3), (-0.7, -0.8)], col, lw * 1.4);
+            pen.bone(&[(0.35, -0.3), (0.7, -0.8)], col, lw * 1.4);
+        }
+        '$' => { pen.rect(-0.7, -0.1, 0.7, 0.65, [150.0, 104.0, 64.0]); pen.poly(&[(-0.7, -0.1), (-0.55, -0.55), (0.55, -0.55), (0.7, -0.1)], col); pen.rect_f(-0.12, 0.05, 0.12, 0.3, col, Finish::Plain); }
+        '%' => { let pts: Vec<(f32, f32)> = (0..16).map(|k| { let a = k as f32 * 0.7; let r = 0.08 + k as f32 * 0.05; (a.cos() * r, a.sin() * r) }).collect(); pen.path(&pts, col, lw * 1.3); }
+        '"' => { pen.rect(-0.08, 0.2, 0.08, 0.85, [120.0, 86.0, 54.0]); pen.ellipse(0.0, -0.15, 0.55, 0.5, [100.0, 136.0, 76.0]); }
+        '@' => {
+            if colour == GOLD { pen.poly(&[(0.7, -0.8), (-0.4, 0.5), (-0.55, 0.75), (-0.3, 0.6), (0.8, -0.7)], [236.0, 226.0, 200.0]); pen.line((-0.4, 0.5), (-0.6, 0.8), super::ink::INK, lw); }
+            else { pen.ellipse(0.0, 0.0, 0.8, 0.42, [236.0, 226.0, 200.0]); pen.ellipse_f(0.0, 0.0, 0.3, 0.35, col, Finish::Plain); pen.ellipse_f(0.0, 0.0, 0.08, 0.3, super::ink::INK, Finish::Paint); }
+        }
+        '>' => { for (u, v) in [(-0.35f32, 0.35f32), (0.3, -0.3)] { pen.ellipse_f(u, v, 0.16, 0.24, col, Finish::Paint); pen.ellipse_f(u, v - 0.32, 0.1, 0.08, col, Finish::Paint); } }
+        _ => { pen.ellipse(0.0, -0.45, 0.22, 0.22, col); pen.poly(&[(-0.35, 0.8), (-0.25, -0.15), (0.25, -0.15), (0.35, 0.8)], col); }
+    }
+}
+
+/// The watcher's panel lettering in IM Fell (it had been the 8x8 bitmap font): scale 1 = 14 px
+/// roman (bold: small caps), 2 = 21 px small caps, 3 = 30 px small caps; `y` as the bitmap's top.
+fn fell(buf: &mut [u32], w: usize, h: usize, x: i64, y: i64, text: &str, color: u32, scale: usize, bold: bool) {
+    let (face, px, track) = fell_face(scale, bold);
+    fonts::draw(buf, w, h, x as f32, y as f32 - 3.0, text, face, px, track, color, None);
+}
+
+fn fell_face(scale: usize, bold: bool) -> (Face, f32, f32) {
+    match scale { 0 | 1 => if bold { (Face::SmallCaps, 14.0, 0.3) } else { (Face::Roman, 14.0, 0.0) }, 2 => (Face::SmallCaps, 21.0, 0.6), _ => (Face::SmallCaps, 30.0, 0.8) }
+}
+
+fn fell_width(text: &str, scale: usize) -> usize {
+    let (face, px, track) = fell_face(scale, false);
+    fonts::width(text, face, px, track).ceil() as usize
+}
+
+/// A section heading in rubric small capitals, words capitalised, with a rule after it.
+fn fell_heading(buf: &mut [u32], w: usize, h: usize, x: usize, y: i64, width: usize, text: &str) {
+    let title: String = text.split(' ').map(|wd| { let l = wd.to_lowercase(); let mut c = l.chars(); match c.next() { Some(f) => f.to_uppercase().collect::<String>() + c.as_str(), None => String::new() } }).collect::<Vec<_>>().join(" ");
+    let title = title.replace(" Of ", " of ").replace(" The ", " the ");
+    fonts::draw(buf, w, h, x as f32, y as f32 - 4.0, &title, Face::SmallCaps, 15.0, 0.5, RUBRIC, None);
+    let tx = x + fonts::width(&title, Face::SmallCaps, 15.0, 0.5).ceil() as usize + 6;
+    if tx < x + width { let ry = (y + 5) as usize; if ry < h { hline(buf, w, tx, x + width, ry, INK_FADED); } }
 }

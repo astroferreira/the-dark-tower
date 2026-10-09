@@ -132,7 +132,7 @@ impl Colony {
                 self.regards[k].acted = Some(true);
                 self.regards[k].acted_day = day;
                 let n = (2 * self.alive() as u32).min(30);
-                for _ in 0..n { self.items.push(Item { kind: ItemKind::Food, at: self.camp, stored: true, reserved: false }); }
+                for _ in 0..n { self.items.push(Item::food(Stuff::Provisions, self.camp, true)); }
                 let mut dropped = false;
                 if let Some(a) = self.arc.as_mut() {
                     let before = a.later.len() + a.reserve.len();

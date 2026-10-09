@@ -48,6 +48,16 @@ struct Args {
     #[arg(long)]
     sim_snapshot: Option<String>,
 
+    /// Every simulated kind rendered in the game's own frame on a test camp (dev embark): writes
+    /// <PREFIX>_inventory.png (labelled crops) and <PREFIX>_inventory_camp.png
+    #[arg(long, value_name = "PREFIX")]
+    inventory: Option<String>,
+
+    /// Drive the colony's ledger by script through the window's own click handling (headless,
+    /// dev embark): writes <PREFIX>_ui_drive_NN.png and reports each step
+    #[arg(long, value_name = "PREFIX")]
+    ui_drive: Option<String>,
+
     /// Try the patron's verbs (favour/forbid a place, favour a settler, a dream) on the dev
     /// colony and print whether each changed behaviour within a game day
     #[arg(long)]
@@ -143,6 +153,18 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     arms_sheet: Option<String>,
 
+    /// Print every simulated kind and the sprite routine that draws it, and exit
+    #[arg(long)]
+    coverage: bool,
+
+    /// Draw the start screen to FILE (headless) and exit
+    #[arg(long, value_name = "FILE")]
+    start_snapshot: Option<String>,
+
+    /// Draw every sprite (creatures, buildings, things, marks) on one sheet to FILE and exit
+    #[arg(long, value_name = "FILE")]
+    sprite_sheet: Option<String>,
+
     /// Pin a note to the map ("X,Y:text"; repeatable). Notes are kept beside the world
     /// (notes_<seed>.json, or <world file>.notes.json) and shown on the map and in the journal
     #[arg(long, value_name = "X,Y:TEXT")]
@@ -203,6 +225,11 @@ struct Args {
     #[arg(long, default_value = "")]
     inspect_follow: String,
 
+    /// Render one inspector page of each kind (town, realm, beast, event, artifact, monument,
+    /// person) to PREFIX_<kind>.png and exit
+    #[arg(long, value_name = "PREFIX")]
+    inspect_gallery: Option<String>,
+
     /// Master seed (derives all other seeds if not overridden)
     #[arg(short, long)]
     seed: Option<u64>,
@@ -257,6 +284,14 @@ struct Args {
     /// animated GIF timelapse (~25 s; then the run continues as usual)
     #[arg(long, value_name = "FILE")]
     watch_timelapse: Option<String>,
+
+    /// Simulate the history and write an atlas of ages: the world at four moments on one plate
+    #[arg(long, value_name = "FILE")]
+    watch_atlas: Option<String>,
+
+    /// Simulate the history and save a plate for each great event into DIR (an album)
+    #[arg(long, value_name = "DIR")]
+    watch_album: Option<String>,
 
     /// Print where the world's ore, farmland, timber and fish are
     #[arg(long)]
@@ -619,7 +654,7 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
@@ -734,7 +769,33 @@ const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 
 fn main() {
     let mut args = parse_args();
+    // Begun from the start screen: the world's making is shown in a window (`tiles::making`).
+    let mut from_start = false;
     if let Some(px) = args.tiles_zoom { tiles::viewer::set_start_zoom(px); }
+    if args.coverage {
+        let t = tiles::coverage::table();
+        let mut types: Vec<&str> = t.iter().map(|r| r.0).collect();
+        types.dedup();
+        for (ty, k, d) in &t { println!("{:<14} {:<16} {}", ty, k, d); }
+        println!("Coverage: {} kinds of {} simulated types, each with its drawing (the matches are exhaustive: an undrawn kind does not compile)", t.len(), types.len());
+        std::process::exit(0);
+    }
+    if let Some(path) = &args.start_snapshot {
+        let initial = tiles::start::StartConfig {
+            width: args.width, height: args.height, seed: args.seed.unwrap_or(42),
+            style: plates::WorldStyle::from_str(&args.world_style).unwrap_or_default(), plates: args.plates, tectonic_myr: args.tectonic_myr,
+            fantasy: args.fantasy, history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
+            civilizations: args.civilizations, shadow: !args.no_shadow, watch: true,
+        };
+        match tiles::start::save_start_snapshot(initial, path) { Ok(()) => { println!("Start screen drawn to {}", path); std::process::exit(0); } Err(e) => { eprintln!("--start-snapshot: {e}"); std::process::exit(1); } }
+    }
+    // The sprite sheet needs no world.
+    if let Some(path) = &args.sprite_sheet {
+        match tiles::sprite_sheet::save(path) {
+            Ok(n) => { println!("{} sprites drawn to {}", n, path); std::process::exit(0); }
+            Err(e) => { eprintln!("--sprite-sheet: {e}"); std::process::exit(1); }
+        }
+    }
     // A colony to open at a given day: its code, the patron's acts and the day.
     if let (Some(_), Some(day)) = (&args.code, args.day) {
         let script: Vec<String> = args.interventions.as_ref().and_then(|f| std::fs::read_to_string(f).ok())
@@ -776,6 +837,7 @@ fn main() {
         };
         match tiles::start::run_start_screen(initial) {
             Ok(Some(cfg)) => {
+                from_start = true;
                 args.width = cfg.width;
                 args.height = cfg.height;
                 args.seed = Some(cfg.seed);
@@ -1026,10 +1088,11 @@ fn main() {
         legacy_erosion: args.legacy_erosion || args.legacy_tectonics,
         ..terrain::TerrainConfig::new(width, height, world_style)
     };
+    tiles::making::begin(width, height, master_seed, &args.world_style, from_start && !args.headless);
     let terrain::Terrain {
         plate_map, plates, stress_map, heightmap, climate: climate_sim, hardness: hardness_map,
         flow_accumulation, volcanoes, ..
-    } = terrain::generate_terrain(&terrain_config, &seeds, &mut |_| true).expect("terrain generation runs to the end");
+    } = terrain::generate_terrain(&terrain_config, &seeds, &mut |st| { tiles::making::stage(st.name, st.heightmap); true }).expect("terrain generation runs to the end");
     let moisture = climate_sim.mean_moisture.clone();
 
     // Generate lava for active volcanoes
@@ -1044,6 +1107,7 @@ fn main() {
     let (water_body_map, water_bodies_list, water_depth, flow_acc, flow_dir) =
         water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture, Some(&climate_sim.annual_precipitation));
     let lake_count = water_bodies::count_lakes(&water_bodies_list);
+    tiles::making::note("water");
     let wb_stats = water_bodies::water_body_stats(&water_bodies_list);
     println!("Found {} lakes, {} river tiles, {} ocean tiles",
         lake_count, wb_stats.river_tiles, wb_stats.ocean_tiles);
@@ -1067,6 +1131,7 @@ fn main() {
     // Seasonal climates: Mediterranean shrubland (winter rain) and monsoon forest (summer rain).
     let (med, mon) = biomes::apply_seasonal_biomes(&mut extended_biomes, &heightmap, &climate_sim);
     println!("Seasonal climates: {} Mediterranean, {} monsoon tiles", med, mon);
+    tiles::making::note("biomes");
 
     // Apply biome replacement rules (rare biomes replace common ones)
     println!("Applying rare biome replacements...");
@@ -1588,7 +1653,9 @@ fn main() {
     // in the legacy terminal explorer.
     let wants_tiles = (!args.legacy_explorer && !args.headless) || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
     // A saved world's history is reused unless --history-years (or --watch) asks for a fresh simulation.
-    if args.history_years > 0 || args.watch || args.frame_bench_watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() { loaded_history = None; }
+    if args.history_years > 0 || args.watch || args.frame_bench_watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() || args.watch_album.is_some() { loaded_history = None; }
+    // The watcher opens its own window for the history; otherwise the making window waits on it.
+    if args.watch && !args.headless { tiles::making::close(); }
     let mut history = if loaded_history.is_some() {
         loaded_history.take()
     } else if let Some(ref load_path) = args.load_history {
@@ -1604,7 +1671,7 @@ fn main() {
                 None
             }
         }
-    } else if args.history_years > 0 || args.frame_bench_watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || (wants_tiles && !args.no_history) {
+    } else if args.history_years > 0 || args.frame_bench_watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() || args.watch_album.is_some() || (wants_tiles && !args.no_history) {
         let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
         // The tile viewer shows history on the land, so it simulates some by default.
         let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
@@ -1644,6 +1711,12 @@ fn main() {
             let (h, files) = tiles::watcher::watch_snapshots(&world_data, &game_data, config, engine, &atlas, prefix);
             println!("Saved watcher snapshots: {}", files.join(", "));
             h
+        } else if let Some(dir) = &args.watch_album {
+            let atlas = load_atlas(args.tileset.as_deref());
+            tiles::watcher::watch_album(&world_data, &game_data, config, engine, &atlas, dir)
+        } else if let Some(path) = &args.watch_atlas {
+            let atlas = load_atlas(args.tileset.as_deref());
+            tiles::watcher::watch_atlas(&world_data, &game_data, config, engine, &atlas, path)
         } else if let Some(path) = &args.watch_timelapse {
             let atlas = load_atlas(args.tileset.as_deref());
             tiles::watcher::watch_timelapse(&world_data, &game_data, config, engine, &atlas, path)
@@ -1711,6 +1784,8 @@ fn main() {
     } else {
         None
     };
+    tiles::making::note("history");
+    tiles::making::close();
 
     // Scars history left on the land become part of the biome map.
     if let Some(eco) = history.as_mut().and_then(|h| h.ecology.as_mut()) {
@@ -1816,6 +1891,13 @@ fn main() {
         println!("  soils: {}", line.join(", "));
     }
 
+    if let (Some(prefix), Some(h)) = (&args.inspect_gallery, history.as_ref()) {
+        let atlas = load_atlas(args.tileset.as_deref());
+        match tiles::viewer::save_inspector_gallery(&world_data, h, &atlas, prefix) {
+            Ok(files) => println!("Saved inspector gallery: {} pages", files.len()),
+            Err(e) => eprintln!("Inspector gallery failed: {e}"),
+        }
+    }
     if let Some(spec) = &args.inspect {
         let tile = spec.split_once(',').and_then(|(a, b)| Some((a.trim().parse().ok()?, b.trim().parse().ok()?)));
         match (tile, history.as_ref()) {
@@ -2121,6 +2203,20 @@ fn main() {
             match tiles::viewer::save_province_snapshot(&world_data, history.as_ref(), tile, prefix) {
                 Ok(file) => println!("Saved the province map: {file}"),
                 Err(e) => eprintln!("Province snapshot failed: {e}"),
+            }
+            return;
+        }
+        if let (Some(prefix), Some(tile)) = (&args.inventory, center) {
+            match tiles::inventory::save_inventory(&world_data, history.as_ref(), &atlas, tile, prefix) {
+                Ok((n, missing)) => { println!("Inventory: {} kinds drawn in the game's frame; {} could not be placed{}", n, missing.len(), if missing.is_empty() { String::new() } else { format!(": {}", missing.join("; ")) }); }
+                Err(e) => { eprintln!("Inventory failed: {e}"); std::process::exit(1); }
+            }
+            return;
+        }
+        if let (Some(prefix), Some(tile)) = (&args.ui_drive, center) {
+            match tiles::viewer::ui_drive(&world_data, history.as_ref(), &atlas, tile, prefix) {
+                Ok((good, all)) => { if good < all { std::process::exit(2); } }
+                Err(e) => { eprintln!("UI drive failed: {e}"); std::process::exit(1); }
             }
             return;
         }
