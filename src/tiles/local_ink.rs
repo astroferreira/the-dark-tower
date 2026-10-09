@@ -1039,21 +1039,24 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
         }
         let night: Rgb = [34.0, 48.0, 74.0];
         let warm: Rgb = [250.0, 196.0, 120.0];
-        for y in 0..h {
+        // (Row-parallel: this pass touches every pixel of the frame.)
+        buf.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
             for x in 0..w {
-                let mut glow = 0.0f32;
-                for &(lx, ly, r) in &lights {
-                    let d = ((x as f32 - lx).powi(2) + (y as f32 - ly).powi(2)).sqrt() / r;
-                    if d < 1.0 { glow = glow.max((1.0 - d) * (1.0 - d) * (3.0 - 2.0 * (1.0 - d)).min(1.0)); }
-                }
                 let k = y * w + x;
                 if !shows(k) { continue; }
-                let p = buf[k];
+                let mut glow = 0.0f32;
+                for &(lx, ly, r) in &lights {
+                    let (dx, dy) = (x as f32 - lx, y as f32 - ly);
+                    if dx.abs() >= r || dy.abs() >= r { continue; }
+                    let d = (dx * dx + dy * dy).sqrt() / r;
+                    if d < 1.0 { glow = glow.max((1.0 - d) * (1.0 - d) * (3.0 - 2.0 * (1.0 - d)).min(1.0)); }
+                }
+                let p = row[x];
                 let old = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
                 let c = mix(old, night, dark * (1.0 - glow));
-                buf[k] = pack(mix(c, warm, 0.18 * dark * glow));
+                row[x] = pack(mix(c, warm, 0.18 * dark * glow));
             }
-        }
+        });
     }
     let masking = std::cell::Cell::new(true);
     let mut put = |x: i64, y: i64, c: Rgb, a: f32| {

@@ -2134,7 +2134,10 @@ pub fn projects_trial(world: &WorldData, history: Option<&WorldHistory>, tile: (
             surface_ms = surface_ms.min(t0.elapsed().as_secs_f64() * 1000.0);
         }
         save_rgb_png(&format!("{prefix}_camp_surface.png"), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
-        println!("Frame times ({w}x{h} at 16 px, best of three): the camp's level {:.1} ms, its surface {:.1} ms", level_ms, surface_ms);
+        // (The ground alone, to tell its cost from the camp drawn over it.)
+        let mut ground_ms = f64::MAX;
+        for _ in 0..3 { let t0 = std::time::Instant::now(); super::local_ink::render_local_ink(&colony.map, &cam, &mut buf, w, h); ground_ms = ground_ms.min(t0.elapsed().as_secs_f64() * 1000.0); }
+        println!("Frame times ({w}x{h} at 16 px, best of three): the camp's level {:.1} ms, its surface {:.1} ms (the ground alone {:.1} ms)", level_ms, surface_ms, ground_ms);
         println!("Frames: {prefix}_section.png, {}, {prefix}_above.png, {prefix}_camp_level.png, {prefix}_camp_surface.png", names.join(", "));
     }
     let deaths: Vec<String> = colony.log.iter().filter(|l| l.contains("died of") || l.contains("was killed") || l.contains("was the last")).map(|l| l.split("  ").next().unwrap_or("").to_string() + ": " + if l.contains("hunger") { "hunger" } else if l.contains("killed") { "raid" } else { "other" }).collect();
