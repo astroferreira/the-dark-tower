@@ -106,6 +106,9 @@ pub struct ItemDef {
     pub resist: Option<String>,
     #[serde(default)]
     pub burns: bool,
+    /// A rune's spell (cast once, by anyone, without mana).
+    #[serde(default)]
+    pub spell: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -195,5 +198,6 @@ mod tests {
             if let Some(a) = &i.ammo { assert!(d.item(a).is_some()); }
         }
         for s in &d.spells { for c in &s.callings { assert!(d.calling(c).is_some(), "{} for unknown {}", s.id, c); } }
+        for i in d.items.iter().filter(|i| i.kind == "rune") { assert!(i.spell.as_deref().and_then(|s| d.spell(s)).is_some(), "rune {} of no spell", i.id); }
     }
 }

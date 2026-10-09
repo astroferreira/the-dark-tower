@@ -101,12 +101,19 @@ death that costs experience). Turn-based and deterministic (`Game::act`).
   adventurer. Frames: 1-2.3 ms kept, ~15 ms the first frame of a floor.
 
 ## Balance (dev world, 2026-10-09)
-- Bot, 60,000 acts: knight 38, paladin 38, sorcerer 41, druid 41; 0-4 deaths. 150,000 acts:
-  level 53. Most experience comes from tasks (bounties, deliveries) and grinding returning
-  monsters; bosses ~6. Gold piles up (gold sinks: blessing, the smith, sellswords, spells).
+- Bot, 60,000 acts: knight, paladin, sorcerer and druid all level 25, no deaths (ambushes are
+  as dangerous as the land but never past the walker: tier <= 1 + level/7; before that cap,
+  cyclopes on the road killed mid-level heroes nine times). Most experience comes from tasks
+  (bounties, deliveries) and grinding returning monsters; bosses ~6. Gold sinks: blessing, the
+  smith, sellswords, spells, runes.
+- Runes (Tibia): one-use spells for anyone (`kind: rune`, `spell`), sold by the sage by level
+  and found in deep treasure: flame strike, divine missile, intense healing, stone shower, great
+  fireball. Level doors (`Feature::LevelDoor`) wall off a treasure room on the last floor of
+  places of tier 3+. Leaving writes the adventurer's legend (`Game::legend_html`, deeds kept in
+  `Game::deeds`; `PLANET_ADV_LEGEND=FILE` from the bot).
 - Exploits found and closed by the bot: parcels between two towns (one per pair, cooldown,
   small experience), the same quest for the same beast (slain bosses remembered).
 
 ## Not yet
-- Factions' regard (killing a people's soldiers angers their towns), level doors, runes,
-  houses, a bank, night and day, the world's wars and the Shadow moving while one plays.
+- Factions' regard (killing a people's soldiers angers their towns), houses, a bank, night and
+  day, the world's wars and the Shadow moving while one plays.

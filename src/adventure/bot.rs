@@ -354,7 +354,7 @@ impl Bot {
         let in_sight = g.monsters_in_sight();
         // Hurt: drink, heal, rest, or flee upward.
         if hp * 3 < max {
-            for p in ["strong_health_potion", "health_potion"] { if let Some(k) = g.hero.pack.iter().position(|i| i.id == p) { self.why = "drink"; return g.act(Action::UseItem(k)); } }
+            for p in ["rune_heal", "strong_health_potion", "health_potion"] { if let Some(k) = g.hero.pack.iter().position(|i| i.id == p) { self.why = "drink"; return g.act(Action::UseItem(k)); } }
             if let Some(k) = g.hero.spells.iter().position(|s| s == "wounds" || s == "heal" || s == "intense_heal") { if g.hero.mana >= 20 { return g.act(Action::Cast(k, None)); } }
         }
         if hp * 2 < max && in_sight == 0 && g.hero.fed > 0 { self.why = "rest"; return g.act(Action::Rest); }
@@ -395,6 +395,9 @@ impl Bot {
                     self.why = "shoot"; return g.act(Action::Attack(uid));
                 }
             }
+            // Crowded: a rune of fire or stones.
+            let crowd = g.place().map_or(0, |p| p.monsters.iter().filter(|m| m.z == g.z && m.hp > 0 && (m.x - mx).abs() <= 1 && (m.y - my).abs() <= 1).count());
+            if crowd >= 3 { for r in ["rune_fire", "rune_stones"] { if let Some(k) = g.hero.pack.iter().position(|i| i.id == r) { self.why = "rune"; return g.act(Action::UseItem(k)); } } }
             if (mx - g.x).abs() <= 1 && (my - g.y).abs() <= 1 {
                 // A strong blow when there is mana to spare.
                 if let Some(k) = g.hero.spells.iter().position(|s| s == "brutal") { if g.hero.mana >= 60 { return g.act(Action::Cast(k, Some(uid))); } }
@@ -540,6 +543,7 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     let gear: Vec<String> = g.hero.equipped.iter().flatten().map(|i| i.describe()).collect();
     println!("Wears: {}", gear.join(", "));
     println!("Quests: {}", g.quests.iter().map(|q| format!("{} [{}]", q.title, q.progress())).collect::<Vec<_>>().join("; "));
+    if std::env::var("PLANET_ADV_DEATHS").is_ok() { for l in g.log.iter().filter(|l| l.tone == super::game::Tone::Death) { println!("  death: {}", l.text); } }
     if let Ok(path) = std::env::var("PLANET_ADV_LEGEND") { let _ = std::fs::write(&path, g.legend_html()); println!("Legend written to {} ({} deeds)", path, g.deeds.len()); }
     if let Some(c) = &g.companion { println!("Companion: {} ({} of {} life, {} slain)", c.name, c.hp, c.max_hp, c.kills); }
     println!("{} acts in {:.1} s ({:.0} µs an act)", acts, t1.elapsed().as_secs_f64(), t1.elapsed().as_secs_f64() * 1e6 / acts.max(1) as f64);

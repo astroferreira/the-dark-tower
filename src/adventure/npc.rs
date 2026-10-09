@@ -39,7 +39,7 @@ fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
             v.push(("Spells".into(), Topic::Spells));
             if !g.hero.blessed { let p = g.hero.blessing_price(); v.push((format!("A blessing: your next death costs nothing ({} gold)", p), Topic::Bless(p))); }
         }
-        Role::Sage => v.push(("Places".into(), Topic::Places)),
+        Role::Sage => { v.push(("Places".into(), Topic::Places)); v.push(("Runes".into(), Topic::Trade)); }
         _ => {}
     }
     if role == Role::Innkeeper {
@@ -109,6 +109,7 @@ fn stock(role: Role, g: &Game) -> Vec<(&'static str, u32)> {
             v
         }
         Role::Innkeeper => vec![("bread", 1), ("cheese", 1), ("meat", 1), ("fish", 1)],
+        Role::Sage => { let mut v = vec![("rune_flame", 1), ("rune_holy", 1)]; if lvl >= 12 { v.extend([("rune_heal", 1), ("rune_stones", 1)]); } if lvl >= 20 { v.push(("rune_fire", 1)); } v }
         _ => Vec::new(),
     }
 }

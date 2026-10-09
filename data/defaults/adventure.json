@@ -124,7 +124,12 @@
     {"id": "gem_small", "name": "small amethyst", "kind": "loot", "value": 200, "glyph": "Gem", "stack": true},
     {"id": "gem_large", "name": "great ruby", "kind": "loot", "value": 900, "glyph": "Gem", "stack": true},
     {"id": "blood_goblet", "name": "blood goblet", "kind": "loot", "value": 500, "glyph": "Cup"},
-    {"id": "key", "name": "key", "kind": "key", "value": 0, "glyph": "Tool"}
+    {"id": "key", "name": "key", "kind": "key", "value": 0, "glyph": "Tool"},
+    {"id": "rune_fire", "name": "rune of the great fireball", "plural": "runes of the great fireball", "kind": "rune", "spell": "great_fireball", "value": 60, "glyph": "Plaque", "stack": true},
+    {"id": "rune_heal", "name": "rune of intense healing", "plural": "runes of intense healing", "kind": "rune", "spell": "intense_heal", "value": 50, "glyph": "Plaque", "stack": true},
+    {"id": "rune_stones", "name": "rune of the stone shower", "plural": "runes of the stone shower", "kind": "rune", "spell": "stones", "value": 50, "glyph": "Plaque", "stack": true},
+    {"id": "rune_holy", "name": "rune of the divine missile", "plural": "runes of the divine missile", "kind": "rune", "spell": "holy", "value": 30, "glyph": "Plaque", "stack": true},
+    {"id": "rune_flame", "name": "rune of the flame strike", "plural": "runes of the flame strike", "kind": "rune", "spell": "flame", "value": 20, "glyph": "Plaque", "stack": true}
   ],
   "materials": [
     {"name": "oak", "att": 0.8, "arm": 0.8, "colour": [150, 104, 62]},

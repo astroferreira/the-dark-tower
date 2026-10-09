@@ -173,7 +173,7 @@ pub fn draw(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize) {
     if g.talk.is_some() { draw_talk(g, v, buf, w, h, map_w); }
     else { draw_chest_choice(g, v, buf, w, h, map_w); }
     if let Some((title, text)) = &g.banner {
-        let r = Rect { x: map_w / 2 - 220, y: h / 2 - 60, w: 440, h: 110 };
+        let r = Rect { x: (map_w / 2).saturating_sub(220), y: (h / 2).saturating_sub(60), w: 440.min(w), h: 110 };
         card(buf, w, r);
         fonts::draw(buf, w, h, r.x as f32 + 24.0, r.y as f32 + 18.0, title, Face::SmallCaps, 28.0, 1.0, 0x0090_1010, None);
         for (k, l) in fonts::wrap(text, Face::Italic, 16.0, r.w as f32 - 48.0).iter().enumerate() { fonts::draw(buf, w, h, r.x as f32 + 24.0, r.y as f32 + 58.0 + k as f32 * 19.0, l, Face::Italic, 16.0, 0.0, 0x0038_2A20, None); }
@@ -623,7 +623,7 @@ fn draw_talk(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w:
     let said = fonts::wrap(&t.said, Face::Italic, 16.0, cw as f32 - 120.0);
     let opts: Vec<Vec<String>> = t.options.iter().enumerate().map(|(k, (s, _))| fonts::wrap(&format!("{}  {}", k + 1, s), Face::Roman, 15.0, cw as f32 - 60.0)).collect();
     let ch = 56 + said.len() * 20 + opts.iter().map(|o| o.len() * 18 + 4).sum::<usize>() + 16;
-    let r = Rect { x: (map_w - cw) / 2, y: 60, w: cw, h: ch.min(h - 80) };
+    let r = Rect { x: map_w.saturating_sub(cw) / 2, y: 60, w: cw, h: ch.min(h.saturating_sub(80)) };
     card(buf, w, r);
     // Their face (the figure) and name.
     if let Some(n) = g.place().and_then(|p| p.npcs.get(t.npc)) {
@@ -650,8 +650,8 @@ fn draw_chest_choice(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize
     let Some(f) = g.floor() else { return };
     if g.chosen.contains(&g.here.unwrap_or(0)) { return; }
     let Some(choices) = crate::adventure::map::DIRS8.iter().find_map(|(dx, dy)| match &f.at(g.x + dx, g.y + dy).feature { Feature::QuestChest { choices, taken: false, .. } => Some(choices.clone()), _ => None }) else { return };
-    let cw = 520usize;
-    let r = Rect { x: (map_w - cw) / 2, y: 70, w: cw, h: 70 + choices.len() * 54 };
+    let cw = 520usize.min(map_w.saturating_sub(20));
+    let r = Rect { x: map_w.saturating_sub(cw) / 2, y: 70, w: cw, h: (70 + choices.len() * 54).min(h.saturating_sub(80)) };
     card(buf, w, r);
     fonts::draw(buf, w, h, (r.x + 24) as f32, (r.y + 14) as f32, "You may take one thing", Face::SmallCaps, 20.0, 0.5, 0x009A_2A1E, None);
     fonts::draw(buf, w, h, (r.x + 24) as f32, (r.y + 38) as f32, "Whatever you leave stays in the chest for ever.", Face::Italic, 14.0, 0.0, 0x005A_4634, None);
@@ -710,6 +710,7 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
     let mut was_right = false;
     let mut esc_once = false;
     let mut show_help = false;
+    let mut mbuf: Vec<u32> = Vec::new();
     while window.is_open() {
         let (nw, nh) = window.get_size();
         if (nw, nh) != (w, h) && nw > PANEL_W + 200 && nh > 300 { w = nw; h = nh; buf = vec![0u32; w * h]; }
@@ -815,7 +816,7 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
         // Draw.
         let map_w = w.saturating_sub(PANEL_W);
         if g.here.is_none() {
-            let mut mbuf = vec![0u32; map_w * h];
+            if mbuf.len() != map_w * h { mbuf = vec![0u32; map_w * h]; }
             super::render::render_world_cached(&tw, atlas, &v.world_cam, &mut mbuf, map_w, h);
             for y in 0..h { buf[y * w..y * w + map_w].copy_from_slice(&mbuf[y * map_w..(y + 1) * map_w]); }
             v.world_cam = super::render::snap_world_camera(&v.world_cam, map_w, h);
@@ -948,7 +949,7 @@ fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
         ("Death", "costs a tenth of your experience and half your gold, unless you were blessed"),
     ];
     let cw = 720usize.min(map_w.saturating_sub(40));
-    let r = Rect { x: (map_w - cw) / 2, y: 40, w: cw, h: 60 + lines.len() * 24 };
+    let r = Rect { x: map_w.saturating_sub(cw) / 2, y: 40, w: cw, h: (60 + lines.len() * 24).min(h.saturating_sub(50)) };
     card(buf, w, r);
     fonts::draw(buf, w, h, (r.x + 24) as f32, (r.y + 14) as f32, "How to play", Face::SmallCaps, 22.0, 0.5, 0x009A_2A1E, None);
     for (k, (key, what)) in lines.iter().enumerate() {

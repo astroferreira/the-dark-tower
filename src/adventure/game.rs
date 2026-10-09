@@ -484,6 +484,12 @@ impl Game {
                 self.say(Tone::Info, format!("You eat {}. Munch.", super::item::article(&d.name)));
                 Some(80)
             }
+            "rune" => {
+                let Some(spell) = d.spell.clone() else { return None };
+                let r = self.cast_spell(&spell, None, true);
+                if r.is_some() { self.hero.spend(&it.id, 1); }
+                r
+            }
             "light" => {
                 self.hero.spend(&it.id, 1);
                 self.hero.torch += d.burn;
@@ -645,9 +651,15 @@ impl Game {
     /// Spells: a heal, a strike at a target, a wave before the caster, a ball, a ring of blows.
     fn cast(&mut self, k: usize, target: Option<u32>) -> Option<i32> {
         let id = self.hero.spells.get(k)?.clone();
-        let sp = data().spell(&id)?;
-        if self.hero.level < sp.level { self.say(Tone::Info, format!("You need level {} for {}.", sp.level, sp.name)); return None; }
-        if self.hero.mana < sp.mana { self.say(Tone::Info, "You do not have enough mana."); return None; }
+        self.cast_spell(&id, target, false)
+    }
+
+    /// Cast spell `id` (from a rune when `free`: no level or mana asked, no magic learned).
+    fn cast_spell(&mut self, id: &str, target: Option<u32>, free: bool) -> Option<i32> {
+        let sp = data().spell(id)?;
+        let k = 0usize;
+        if !free && self.hero.level < sp.level { self.say(Tone::Info, format!("You need level {} for {}.", sp.level, sp.name)); return None; }
+        if !free && self.hero.mana < sp.mana { self.say(Tone::Info, "You do not have enough mana."); return None; }
         let ml = self.hero.skill(Skill::Magic) as f32;
         let lvl = self.hero.level as f32;
         let mut r = self.roll(0x5BE11 + k as u64);
@@ -709,9 +721,11 @@ impl Game {
                 let f = self.floor()?;
                 let cells: Vec<(i32, i32)> = cells.into_iter().filter(|&(x, y)| f.inside(x, y) && f.at(x, y).wall == Wall::None).collect();
                 self.effects.push(Effect::Area { cells: cells.clone(), z: self.z, kind: if sp.kind == "around" { "blow".into() } else { element.clone() } });
-                let hit: Vec<usize> = self.place()?.monsters.iter().enumerate().filter(|(_, m)| m.z == self.z && m.hp > 0 && cells.contains(&(m.x, m.y))).map(|(i, _)| i).collect();
+                // (By uid: a monster slain leaves the list and moves the others' places in it.)
+                let hit: Vec<u32> = self.place()?.monsters.iter().filter(|m| m.z == self.z && m.hp > 0 && cells.contains(&(m.x, m.y))).map(|m| m.uid).collect();
                 self.say(Tone::Hit, format!("\"{}!\"", cap(&sp.words)));
-                for i in hit {
+                for uid in hit {
+                    let Some(i) = self.find_monster(uid) else { continue };
                     let m = self.place()?.monsters[i].clone();
                     if m.hp <= 0 { continue; }
                     let dmg = if sp.kind == "around" {
@@ -724,8 +738,10 @@ impl Game {
             }
             _ => {}
         }
-        self.hero.mana -= sp.mana;
-        if let Some(l) = self.hero.train(Skill::Magic, sp.mana as u32) { self.say(Tone::Level, format!("You advance to magic level {}.", l)); }
+        if !free {
+            self.hero.mana -= sp.mana;
+            if let Some(l) = self.hero.train(Skill::Magic, sp.mana as u32) { self.say(Tone::Level, format!("You advance to magic level {}.", l)); }
+        }
         Some(100)
     }
 
@@ -1134,7 +1150,8 @@ impl Game {
         let danger = self.world.danger[ny * self.world.w + nx] as f64 / 255.0;
         let mut r = self.roll(0x7A5E ^ (nx * 131 + ny) as u64);
         if r.gen_bool((0.02 + danger * 0.12).min(0.15)) {
-            let tier = (1 + (danger * 4.0) as u32 + self.hero.level / 10).min(5);
+            // As dangerous as the land, but never far past the one walking it.
+            let tier = (1 + (danger * 3.0) as u32).min(1 + self.hero.level / 7).clamp(1, 5);
             let id = 900_000 + self.turn as u32 % 100_000;
             let spec = SiteSpec { id, kind: SiteKind::Wilds, name: format!("the wilds near {},{}", nx, ny), tile: (nx, ny), seed: r.gen(), tier, cause: String::new(), boss: None, treasures: Vec::new(),
                 surface: self.world.ground[ny * self.world.w + nx], rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new(), lord: None };

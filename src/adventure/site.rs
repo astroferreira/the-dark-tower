@@ -447,6 +447,7 @@ pub fn treasure(b: &mut Builder, tier: u32) -> Vec<Item> {
     if b.chance(0.35) { v.push(gear(b, tier)); }
     if b.chance(0.25) { v.push(Item::new(*b.pick(&["bread", "cheese", "meat", "torch", "torch", "rope"]).as_ref().unwrap(), b.range(1, 3) as u32)); }
     if tier >= 3 && b.chance(0.3) { v.push(Item::new(if tier >= 5 { "gem_large" } else { "gem_small" }, 1)); }
+    if tier >= 2 && b.chance(0.25) { v.push(Item::new(*b.pick(&["rune_flame", "rune_holy", "rune_heal", "rune_stones", "rune_fire"][..(tier as usize + 1).min(5)]).as_ref().unwrap(), b.range(1, 3) as u32)); }
     v
 }
 
