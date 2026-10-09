@@ -391,6 +391,77 @@ fn write_sagas(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas,
     out
 }
 
+/// Carry out a click on the ledger or its bar (`colony_ui::Action`) through the same `Colony`
+/// calls as the keys. Returns whether it asked for Space (pause / go on) and for a skip, which
+/// the caller's clock code carries out. Shared by the window and `--ui-drive`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_ui_action(a: super::colony_ui::Action, colony: &mut crate::colony::Colony, lcam: &mut LocalCamera, ui: &mut super::colony_ui::UiState, speed: &mut u32, speed_before: &mut u32,
+    moment_card: &mut Option<crate::colony::Moment>, dream_for: &mut Option<usize>, name_input: &mut Option<String>, inspect: &mut Vec<super::inspector::Subject>, status: &mut String,
+    cam_target: &mut Option<(f32, f32)>, body_h: f32) -> (bool, bool) {
+    use super::colony_ui::Action;
+    let resume = |ui: &mut super::colony_ui::UiState, speed: &mut u32, speed_before: u32| { if ui.paused_by_sheet { ui.paused_by_sheet = false; if *speed == 0 { *speed = speed_before.max(1); } } };
+    match a {
+        Action::Tab(t) => { if ui.open == Some(t) && ui.sheet.is_none() { ui.open = None; } else { ui.open = Some(t); } if ui.sheet.take().is_some() { resume(ui, speed, *speed_before); } }
+        Action::Close => { ui.open = None; if ui.sheet.take().is_some() { resume(ui, speed, *speed_before); } }
+        Action::Select(i) => {
+            if ui.selected == Some(i) { actions_sheet(ui, i, speed, speed_before); }
+            else { ui.selected = Some(i); let p = colony.draw_pos(i); *cam_target = Some((p.0 + 0.5, p.1 + 0.5)); }
+        }
+        Action::Sheet(i) => actions_sheet(ui, i, speed, speed_before),
+        Action::Back => { ui.sheet = None; resume(ui, speed, *speed_before); }
+        Action::Arm(t) => { if ui.tool == Some(t) { ui.tool = None; *status = "Put down.".into(); } else { ui.tool = Some(t); *status = t.prompt().into(); } }
+        Action::Bell => { *status = match colony.ring_bell() { Ok(l) => l, Err(e) => e }; }
+        Action::NameCamp => { *name_input = Some(String::new()); *status = "Name the settlement: type, Enter to keep, Esc to drop".into(); }
+        Action::Favour(i) => { *status = match colony.favour_settler(i) { Ok(l) => l, Err(e) => e }; }
+        Action::DreamFor(i) => { if colony.patron.favour == 0 { *status = "no favour left today; it returns at dawn".into(); } else { *dream_for = Some(i); *status = format!("A dream for {}: choose below (or 1-4)", colony.settlers[i].name); } }
+        Action::SendDream(i, d) => { *status = match colony.send_dream(i, d) { Ok(l) => l, Err(e) => e }; *dream_for = None; }
+        Action::NoDream => { *dream_for = None; *status = "No dream sent.".into(); }
+        Action::Speed(sp) => { *speed = sp; *speed_before = sp; *moment_card = None; }
+        Action::Pause => return (true, false),
+        Action::Skip => return (false, true),
+        Action::Filter(f) => ui.annals = f,
+        Action::Event(id) => *inspect = vec![super::inspector::Subject::Event(id)],
+        Action::Refugees(take) => { *status = match colony.answer_refugees(take) { Ok(l) => l, Err(e) => e }; *moment_card = None; *speed = (*speed_before).max(1); }
+        Action::Look(x, y) => { lcam.surface_view = true; *cam_target = Some((x as f32 + 0.5, y as f32 + 0.5)); }
+        Action::Top => ui.scroll_by(-1.0e9, body_h),
+    }
+    (false, false)
+}
+
+/// A click on the map at cell (mx, my): the verb held from the bar carried out there (bless and
+/// forbid stay in hand; stones, favour, a dream and a name are used once), else a settler under
+/// it opens their sheet. Returns whether the click was taken.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_map_click(colony: &mut crate::colony::Colony, lcam: &LocalCamera, ui: &mut super::colony_ui::UiState, mx: f32, my: f32, speed: &mut u32, speed_before: &mut u32,
+    dream_for: &mut Option<usize>, place_input: &mut Option<((u16, u16), String)>, status: &mut String) -> bool {
+    use super::colony_ui::{Tab, Tool};
+    let at = (mx.max(0.0) as u16, my.max(0.0) as u16);
+    let who = colony.settler_at(mx, my, 0.9, if lcam.surface_view { None } else { Some(lcam.z) });
+    if let Some(tool) = ui.tool {
+        let said: Result<String, String> = match tool {
+            Tool::Bless => colony.mark_place(at, 6, false),
+            Tool::Forbid => colony.mark_place(at, 6, true),
+            Tool::Hall => colony.place_stone(crate::colony::StoneKind::Hall, at),
+            Tool::Grove => colony.place_stone(crate::colony::StoneKind::Grove, at),
+            Tool::Shrine => colony.place_stone(crate::colony::StoneKind::Shrine, at),
+            Tool::Favour => who.map(|i| colony.favour_settler(i)).unwrap_or_else(|| Err("click a settler to favour them".into())),
+            Tool::Dream => match who { Some(i) if colony.patron.favour > 0 => { *dream_for = Some(i); Ok(format!("A dream for {}: choose below (or 1-4)", colony.settlers[i].name)) } Some(_) => Err("no favour left today; it returns at dawn".into()), None => Err("click a settler to send them a dream".into()) },
+            Tool::NamePlace => { *place_input = Some((at, String::new())); Ok("Name the place: type, Enter to keep, Esc to drop".into()) }
+        };
+        let ok = said.is_ok();
+        *status = match said { Ok(l) => l, Err(e) => e };
+        if ok && !matches!(tool, Tool::Bless | Tool::Forbid) { ui.tool = None; }
+        return true;
+    }
+    if let Some(i) = who {
+        ui.open = Some(Tab::Settlers);
+        ui.selected = Some(i);
+        actions_sheet(ui, i, speed, speed_before);
+        return true;
+    }
+    false
+}
+
 /// Open settler `i`'s sheet in the ledger, stopping the clock while it is read (it starts again
 /// when the sheet is closed).
 fn actions_sheet(ui: &mut super::colony_ui::UiState, i: usize, speed: &mut u32, speed_before: &mut u32) {
@@ -673,32 +744,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
                 for a in actions {
                     dirty = true;
-                    let resume = |ui: &mut super::colony_ui::UiState, speed: &mut u32, speed_before: u32| { if ui.paused_by_sheet { ui.paused_by_sheet = false; if *speed == 0 { *speed = speed_before.max(1); } } };
-                    match a {
-                        Action::Tab(t) => { if ui.open == Some(t) && ui.sheet.is_none() { ui.open = None; } else { ui.open = Some(t); } if ui.sheet.take().is_some() { resume(&mut ui, &mut speed, speed_before); } }
-                        Action::Close => { ui.open = None; if ui.sheet.take().is_some() { resume(&mut ui, &mut speed, speed_before); } }
-                        Action::Select(i) => {
-                            if ui.selected == Some(i) { actions_sheet(&mut ui, i, &mut speed, &mut speed_before); }
-                            else { ui.selected = Some(i); let p = colony.draw_pos(i); cam_target = Some((p.0 + 0.5, p.1 + 0.5)); }
-                        }
-                        Action::Sheet(i) => actions_sheet(&mut ui, i, &mut speed, &mut speed_before),
-                        Action::Back => { ui.sheet = None; resume(&mut ui, &mut speed, speed_before); }
-                        Action::Arm(t) => { if ui.tool == Some(t) { ui.tool = None; status = "Put down.".into(); } else { ui.tool = Some(t); status = t.prompt().into(); } }
-                        Action::Bell => { status = match colony.ring_bell() { Ok(l) => l, Err(e) => e }; }
-                        Action::NameCamp => { name_input = Some(String::new()); status = "Name the settlement: type, Enter to keep, Esc to drop".into(); }
-                        Action::Favour(i) => { status = match colony.favour_settler(i) { Ok(l) => l, Err(e) => e }; }
-                        Action::DreamFor(i) => { if colony.patron.favour == 0 { status = "no favour left today; it returns at dawn".into(); } else { dream_for = Some(i); status = format!("A dream for {}: choose below (or 1-4)", colony.settlers[i].name); } }
-                        Action::SendDream(i, d) => { status = match colony.send_dream(i, d) { Ok(l) => l, Err(e) => e }; dream_for = None; }
-                        Action::NoDream => { dream_for = None; status = "No dream sent.".into(); }
-                        Action::Speed(sp) => { speed = sp; speed_before = sp; moment_card = None; }
-                        Action::Pause => space_now = true,
-                        Action::Skip => skip_now = true,
-                        Action::Filter(f) => ui.annals = f,
-                        Action::Event(id) => inspect = vec![super::inspector::Subject::Event(id)],
-                        Action::Refugees(take) => { status = match colony.answer_refugees(take) { Ok(l) => l, Err(e) => e }; moment_card = None; speed = speed_before.max(1); }
-                        Action::Look(x, y) => { lcam.surface_view = true; cam_target = Some((x as f32 + 0.5, y as f32 + 0.5)); }
-                        Action::Top => ui.scroll_by(-1.0e9, body.h as f32),
-                    }
+                    let fx = apply_ui_action(a, colony, lcam, &mut ui, &mut speed, &mut speed_before, &mut moment_card, &mut dream_for, &mut name_input, &mut inspect, &mut status, &mut cam_target, body.h as f32);
+                    space_now |= fx.0;
+                    skip_now |= fx.1;
                 }
                 // Choosing a dream: 1-4 pick it, Esc lets it go.
                 if let Some(i) = dream_for {
@@ -837,40 +885,16 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
                 if clicked && !ui_clicked {
                     let (mx, my) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
-                    let at = (mx.max(0.0) as u16, my.max(0.0) as u16);
-                    let who = colony.settler_at(mx, my, 0.9, if lcam.surface_view { None } else { Some(lcam.z) });
-                    if let (Some(tool), false) = (ui.tool, over_panel) {
-                        // A verb held from the buttons, carried out where the click fell.
-                        let said: Result<String, String> = match tool {
-                            Tool::Bless => colony.mark_place(at, 6, false),
-                            Tool::Forbid => colony.mark_place(at, 6, true),
-                            Tool::Hall => colony.place_stone(crate::colony::StoneKind::Hall, at),
-                            Tool::Grove => colony.place_stone(crate::colony::StoneKind::Grove, at),
-                            Tool::Shrine => colony.place_stone(crate::colony::StoneKind::Shrine, at),
-                            Tool::Favour => who.map(|i| colony.favour_settler(i)).unwrap_or_else(|| Err("click a settler to favour them".into())),
-                            Tool::Dream => match who { Some(i) if colony.patron.favour > 0 => { dream_for = Some(i); Ok(format!("A dream for {}: choose below (or 1-4)", colony.settlers[i].name)) } Some(_) => Err("no favour left today; it returns at dawn".into()), None => Err("click a settler to send them a dream".into()) },
-                            Tool::NamePlace => { place_input = Some((at, String::new())); Ok("Name the place: type, Enter to keep, Esc to drop".into()) }
-                        };
-                        let ok = said.is_ok();
-                        status = match said { Ok(l) => l, Err(e) => e };
-                        // One use (the stones and names); blessing and forbidding stay in hand.
-                        if ok && !matches!(tool, Tool::Bless | Tool::Forbid) { ui.tool = None; }
-                        dirty = true;
-                    } else if !over_panel && who.is_some() && inspect.is_empty() {
-                        // A settler on the map: their sheet in the ledger.
-                        let i = who.unwrap();
-                        ui.open = Some(Tab::Settlers);
-                        ui.selected = Some(i);
-                        actions_sheet(&mut ui, i, &mut speed, &mut speed_before);
-                        dirty = true;
-                    } else if over_panel {
+                    if over_panel {
                         if let Some(hit) = inspect_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1)) {
                             inspect.push(hit.to);
                             dirty = true;
                         }
-                    } else if let Some(hit) = log_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1)) {
+                    } else if let (None, Some(hit)) = (ui.tool, log_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1))) {
                         // A line of the log opens the settler it names.
                         inspect = vec![super::inspector::Subject::Settler(hit.settler)];
+                        dirty = true;
+                    } else if (ui.tool.is_some() || inspect.is_empty()) && apply_map_click(colony, lcam, &mut ui, mx, my, &mut speed, &mut speed_before, &mut dream_for, &mut place_input, &mut status) {
                         dirty = true;
                     } else {
                         let (hx, hy) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
@@ -3244,4 +3268,137 @@ mod tests {
         println!("pixels differing across a region swap: {:.4}% of {}", frac * 100.0, total);
         assert!(frac < 0.002, "region swap should be visually seamless");
     }
+}
+
+/// `--ui-drive PREFIX`: the colony's ledger driven by script, headlessly, through the window's
+/// own code: each step renders the frame as the window does (map, camp, HUD, ledger), finds the
+/// hit area the ledger returned for the wanted action, and carries it out with
+/// `apply_ui_action` / `apply_map_click`, then checks what it should have changed. Writes
+/// `<prefix>_ui_drive_NN.png` per step and prints "UI drive: N of M steps did what they should".
+pub fn ui_drive(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize), prefix: &str) -> Result<(usize, usize), Box<dyn Error>> {
+    use super::colony_ui::{self, Action, Tab, Tool};
+    let cell = START_CELL.get().copied();
+    let (map, seed, _) = colony_site(world, history, tile, cell);
+    let mut colony = found_colony(map, history, tile, seed, 7);
+    colony.cell = cell;
+    let (w, h) = (1280usize, 800usize);
+    let mut lcam = LocalCamera { cx: colony.camp.0 as f32 + 0.5, cy: colony.camp.1 as f32 + 0.5, tile_px: 16.0, z: 0, surface_view: true };
+    let mut ui = colony_ui::UiState::default();
+    let (mut speed, mut speed_before) = (1u32, 1u32);
+    let mut moment_card: Option<crate::colony::Moment> = None;
+    let (mut dream_for, mut name_input, mut place_input): (Option<usize>, Option<String>, Option<((u16, u16), String)>) = (None, None, None);
+    let mut inspect: Vec<super::inspector::Subject> = Vec::new();
+    let mut status = String::new();
+    let mut cam_target: Option<(f32, f32)> = None;
+    let body_h = colony_ui::body_rect(w, h).h as f32;
+    // Render the frame as the window does and return the ledger's hit areas.
+    let frame = |colony: &crate::colony::Colony, ui: &mut colony_ui::UiState, lcam: &LocalCamera, speed: u32, status: &str| -> (Vec<u32>, Vec<colony_ui::Hit>) {
+        let mut buf = vec![0u32; w * h];
+        render_local(&colony.map, atlas, lcam, &mut buf, w, h);
+        super::local_ink::draw_colony(colony, lcam, &mut buf, w, h, history);
+        let right = colony_ui::reserve_right(ui, w);
+        super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed, status, mouse: (-100.0, -100.0), right, selected: ui.selected, hide_chip: true, bar: false }, &mut buf, w, h);
+        let hits = colony_ui::draw(colony, ui, history, speed, (-100.0, -100.0), &mut buf, w, h);
+        (buf, hits)
+    };
+    let mut results: Vec<(String, bool)> = Vec::new();
+    let mut step = 0usize;
+    // Find a hit for an action and click it; the check runs on the state after.
+    macro_rules! click {
+        ($desc:expr, $want:expr, $check:expr) => {{
+            let (_, hits) = frame(&colony, &mut ui, &lcam, speed, &status);
+            let found = hits.iter().find(|hh| $want(&hh.action)).map(|hh| (hh.action, hh.rect));
+            let ok = match found {
+                Some((a, r)) => {
+                    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
+                    // The click lands where the window's mouse would: inside the hit, on the UI.
+                    let inside = colony_ui::over_ui(&ui, w, h, (cx, cy)) || hits.iter().any(|hh| hh.rect.contains(cx, cy));
+                    let fx = apply_ui_action(a, &mut colony, &mut lcam, &mut ui, &mut speed, &mut speed_before, &mut moment_card, &mut dream_for, &mut name_input, &mut inspect, &mut status, &mut cam_target, body_h);
+                    if fx.0 { if speed == 0 { speed = speed_before.max(1); } else { speed_before = speed; speed = 0; } }
+                    inside && $check(&colony, &ui, speed)
+                }
+                None => false,
+            };
+            step += 1;
+            let (buf, _) = frame(&colony, &mut ui, &lcam, speed, &status);
+            save_rgb_png(&format!("{prefix}_ui_drive_{:02}.png", step), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+            println!("UI drive {:02}: {} - {}{}", step, $desc, if ok { "ok" } else { "FAILED" }, if status.is_empty() { String::new() } else { format!(" ({})", status) });
+            results.push(($desc.to_string(), ok));
+        }};
+    }
+    let first = colony.settlers.iter().position(|s| s.alive).unwrap_or(0);
+    // A free cell near the camp, for the stones and the blessing.
+    let free = |c: &crate::colony::Colony, dx: i32, dy: i32| -> (u16, u16) {
+        (0..12).flat_map(|r| (-r..=r).flat_map(move |a| (-r..=r).map(move |b| (a, b)))).map(|(a, b)| ((c.camp.0 as i32 + dx + a) as u16, (c.camp.1 as i32 + dy + b) as u16))
+            .find(|&p| crate::colony::nav::passable(&c.map, p) && c.roof_over(p).is_none()).unwrap_or(c.camp)
+    };
+    click!("the Settlers tab opens the ledger", |a: &Action| *a == Action::Tab(Tab::Settlers), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open == Some(Tab::Settlers));
+    click!("a settler's line selects them", |a: &Action| *a == Action::Select(first), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.selected == Some(first) && u.sheet.is_none());
+    click!("a second click (their line now opens the sheet) opens it and stops the clock", |a: &Action| *a == Action::Sheet(first), |_c: &crate::colony::Colony, u: &colony_ui::UiState, s: u32| u.sheet == Some(first) && s == 0 && u.paused_by_sheet);
+    click!("Back closes the sheet and the clock goes on", |a: &Action| *a == Action::Back, |_c: &crate::colony::Colony, u: &colony_ui::UiState, s: u32| u.sheet.is_none() && s == 1);
+    for (t, name) in [(Tab::Stocks, "Stocks"), (Tab::Works, "Works"), (Tab::Annals, "Annals"), (Tab::Camp, "Camp")] {
+        click!(format!("the {} tab", name), |a: &Action| *a == Action::Tab(t), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open == Some(t));
+    }
+    click!("the Camp tab again closes the panel", |a: &Action| *a == Action::Tab(Tab::Camp), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open.is_none());
+    click!("the Annals tab", |a: &Action| *a == Action::Tab(Tab::Annals), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open == Some(Tab::Annals));
+    click!("the annals' filter: the whole log", |a: &Action| *a == Action::Filter(1), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.annals == 1);
+    // The bar: a shrine stone set by a click on the map.
+    let stones0 = colony.stones.len();
+    click!("the shrine button arms the tool", |a: &Action| *a == Action::Arm(Tool::Shrine), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.tool == Some(Tool::Shrine));
+    {
+        let at = free(&colony, -6, 4);
+        let ok = apply_map_click(&mut colony, &lcam, &mut ui, at.0 as f32 + 0.5, at.1 as f32 + 0.5, &mut speed, &mut speed_before, &mut dream_for, &mut place_input, &mut status) && colony.stones.len() == stones0 + 1 && ui.tool.is_none();
+        step += 1;
+        println!("UI drive {:02}: a click on the map sets the shrine and puts the tool down - {} ({})", step, if ok { "ok" } else { "FAILED" }, status);
+        results.push(("shrine placed".into(), ok));
+    }
+    let favour0 = colony.patron.favour;
+    let marks0 = colony.patron.marks.len();
+    click!("the bless button arms the tool", |a: &Action| *a == Action::Arm(Tool::Bless), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.tool == Some(Tool::Bless));
+    {
+        let at = free(&colony, 8, -3);
+        let ok = apply_map_click(&mut colony, &lcam, &mut ui, at.0 as f32 + 0.5, at.1 as f32 + 0.5, &mut speed, &mut speed_before, &mut dream_for, &mut place_input, &mut status)
+            && colony.patron.marks.len() == marks0 + 1 && colony.patron.favour + 1 == favour0 && ui.tool == Some(Tool::Bless);
+        step += 1;
+        println!("UI drive {:02}: a click on the map blesses the ground (favour spent, the tool still in hand) - {} ({})", step, if ok { "ok" } else { "FAILED" }, status);
+        results.push(("ground blessed".into(), ok));
+    }
+    click!("bless again puts the tool down", |a: &Action| *a == Action::Arm(Tool::Bless), |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.tool.is_none());
+    click!("the dream button (a settler selected) asks which dream", |a: &Action| *a == Action::DreamFor(first), |_c: &crate::colony::Colony, _u: &colony_ui::UiState, _s: u32| true);
+    let dream_asked = dream_for == Some(first);
+    {
+        // The dream card's buttons.
+        let mut buf = vec![0u32; w * h];
+        let hits = colony_ui::dream_buttons(first, &mut buf, w, h, (-100.0, -100.0), 0);
+        let dreams0 = colony.patron.dreams.len();
+        let ok = match hits.iter().find(|hh| matches!(hh.action, Action::SendDream(..))) {
+            Some(hh) => { let _ = apply_ui_action(hh.action, &mut colony, &mut lcam, &mut ui, &mut speed, &mut speed_before, &mut moment_card, &mut dream_for, &mut name_input, &mut inspect, &mut status, &mut cam_target, body_h); dream_asked && dream_for.is_none() && colony.patron.dreams.len() == dreams0 + 1 }
+            None => false,
+        };
+        step += 1;
+        println!("UI drive {:02}: the dream card's first button sends the dream - {} ({})", step, if ok { "ok" } else { "FAILED" }, status);
+        results.push(("dream sent".into(), ok));
+    }
+    click!("the bell rings", |a: &Action| *a == Action::Bell, |c: &crate::colony::Colony, _u: &colony_ui::UiState, _s: u32| c.bell_rung());
+    click!("3x speed", |a: &Action| *a == Action::Speed(3), |_c: &crate::colony::Colony, _u: &colony_ui::UiState, s: u32| s == 3);
+    click!("pause", |a: &Action| *a == Action::Pause, |_c: &crate::colony::Colony, _u: &colony_ui::UiState, s: u32| s == 0);
+    click!("go on", |a: &Action| *a == Action::Pause, |_c: &crate::colony::Colony, _u: &colony_ui::UiState, s: u32| s == 3);
+    click!("the close mark closes the panel", |a: &Action| *a == Action::Close, |_c: &crate::colony::Colony, u: &colony_ui::UiState, _s: u32| u.open.is_none());
+    {
+        // A settler clicked on the map opens their sheet.
+        colony.run_days(1);
+        let i = colony.settlers.iter().position(|s| s.alive && !colony.below(colony.settlers.iter().position(|x| std::ptr::eq(x, s)).unwrap_or(0)) && colony.roof_over(s.pos).is_none()).unwrap_or(first);
+        let p = colony.draw_pos(i);
+        let ok = apply_map_click(&mut colony, &lcam, &mut ui, p.0 + 0.5, p.1 + 0.5, &mut speed, &mut speed_before, &mut dream_for, &mut place_input, &mut status) && ui.sheet == Some(i) && ui.open == Some(Tab::Settlers) && speed == 0;
+        step += 1;
+        lcam.cx = p.0 + 0.5; lcam.cy = p.1 + 0.5;
+        let (buf, _) = frame(&colony, &mut ui, &lcam, speed, &status);
+        save_rgb_png(&format!("{prefix}_ui_drive_{:02}.png", step), w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("UI drive {:02}: a settler clicked on the map opens their sheet - {}", step, if ok { "ok" } else { "FAILED" });
+        results.push(("map click opens a sheet".into(), ok));
+    }
+    let good = results.iter().filter(|r| r.1).count();
+    println!("UI drive: {} of {} steps did what they should", good, results.len());
+    let _ = (cam_target, name_input, inspect, moment_card);
+    Ok((good, results.len()))
 }

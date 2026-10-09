@@ -48,6 +48,11 @@ struct Args {
     #[arg(long)]
     sim_snapshot: Option<String>,
 
+    /// Drive the colony's ledger by script through the window's own click handling (headless,
+    /// dev embark): writes <PREFIX>_ui_drive_NN.png and reports each step
+    #[arg(long, value_name = "PREFIX")]
+    ui_drive: Option<String>,
+
     /// Try the patron's verbs (favour/forbid a place, favour a settler, a dream) on the dev
     /// colony and print whether each changed behaviour within a game day
     #[arg(long)]
@@ -606,7 +611,7 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
@@ -2110,6 +2115,13 @@ fn main() {
             match tiles::viewer::save_province_snapshot(&world_data, history.as_ref(), tile, prefix) {
                 Ok(file) => println!("Saved the province map: {file}"),
                 Err(e) => eprintln!("Province snapshot failed: {e}"),
+            }
+            return;
+        }
+        if let (Some(prefix), Some(tile)) = (&args.ui_drive, center) {
+            match tiles::viewer::ui_drive(&world_data, history.as_ref(), &atlas, tile, prefix) {
+                Ok((good, all)) => { if good < all { std::process::exit(2); } }
+                Err(e) => { eprintln!("UI drive failed: {e}"); std::process::exit(1); }
             }
             return;
         }

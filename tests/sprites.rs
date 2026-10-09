@@ -22,3 +22,34 @@ fn the_sprite_sheet_draws_every_family() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The colony's ledger driven through the window's own click handling (`--ui-drive`): tabs, a
+/// settler's sheet stopping the clock, the bar's tools applied on the map, a dream sent from
+/// its card, the bell, the clock's buttons, a settler clicked on the map. Every step must do
+/// what it should.
+#[test]
+fn the_ledger_drives_by_clicks() {
+    let dir = std::env::temp_dir().join(format!("ui_drive_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--ui-drive", dir.join("d").to_str().unwrap()]).output().expect("run planet_generator");
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "the drive failed:\n{text}");
+    let line = text.lines().find(|l| l.starts_with("UI drive: ")).unwrap_or_else(|| panic!("no summary:\n{text}"));
+    let n: Vec<usize> = line.split_whitespace().filter_map(|w| w.parse().ok()).collect();
+    assert!(n.len() >= 2 && n[0] == n[1] && n[1] >= 20, "{line}\n{text}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The world map's living things: monuments, outlaw camps and a war host on the dev world.
+#[test]
+fn the_world_map_shows_its_living_things() {
+    let dir = std::env::temp_dir().join(format!("world_life_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--headless", "--tiles-snapshot", dir.join("w").to_str().unwrap()]).output().expect("run planet_generator");
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let line = text.lines().find(|l| l.starts_with("World life: ")).unwrap_or_else(|| panic!("no world life line:\n{text}"));
+    let n: Vec<usize> = line.split(|c: char| !c.is_ascii_digit()).filter_map(|w| w.parse().ok()).collect();
+    // monuments, war hosts, sieges, outlaw camps, caravans, wild, cults, beasts
+    assert!(n.len() >= 8 && n[0] >= 10 && n[3] >= 1 && n[7] >= 1, "{line}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
