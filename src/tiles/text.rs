@@ -130,6 +130,8 @@ pub struct Label {
     pub min_tile_px: f32,
     pub color: u32,
     pub style: LabelStyle,
+    /// Turned along the feature's axis (radians, screen; 0 = level): ranges and rivers.
+    pub angle: f32,
 }
 
 /// Greedy, collision-free label placement: highest rank first, skipping any label that would
@@ -150,9 +152,12 @@ pub fn place_labels_scaled(labels: &[Label], tile_px: f32, font_scale: f32, w: u
         let (face, px, tracking, caps) = l.style.set(tile_px / font_scale);
         let (px, tracking) = (px * font_scale, tracking * font_scale);
         let text = if caps { l.text.to_uppercase() } else { l.text.clone() };
-        let tw = super::fonts::width(&text, face, px, tracking).ceil() as i64;
+        let tw0 = super::fonts::width(&text, face, px, tracking);
         let (asc, desc) = super::fonts::line_metrics(face, px);
-        let th = (asc + desc).ceil() as i64;
+        let th0 = asc + desc;
+        // A turned name takes the bounds of its turned box.
+        let (ca, sa) = (l.angle.cos().abs(), l.angle.sin().abs());
+        let (tw, th) = ((tw0 * ca + th0 * sa).ceil() as i64, (tw0 * sa + th0 * ca).ceil() as i64);
         let (x0, y0) = (sx as i64 - tw / 2, sy as i64 - th / 2);
         // Whole or not at all: a label cut by the window edge reads as a mistake.
         let edge = 3;
@@ -162,7 +167,8 @@ pub fn place_labels_scaled(labels: &[Label], tile_px: f32, font_scale: f32, w: u
         if placed.iter().any(hits) || avoid.iter().any(hits) { continue; }
         // Names on the water get a pale sea halo, so they read on dark water without a parchment smear.
         let halo = if matches!(l.style, LabelStyle::Ocean | LabelStyle::Sea) { 0x00C8_D8DC } else { LABEL_HALO };
-        super::fonts::draw(buf, w, h, x0 as f32, y0 as f32, &text, face, px, tracking, l.color, Some(halo));
+        if l.angle.abs() < 0.03 { super::fonts::draw(buf, w, h, x0 as f32, y0 as f32, &text, face, px, tracking, l.color, Some(halo)); }
+        else { super::fonts::draw_rotated(buf, w, h, sx, sy, &text, face, px, tracking, l.color, Some(halo), l.angle); }
         placed.push((x0, y0, x0 + tw, y0 + th));
         names.push(&l.text);
     }

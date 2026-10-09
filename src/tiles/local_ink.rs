@@ -1330,20 +1330,48 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
         placed.push((lx, ly, lw, lh));
         super::fonts::draw(buf, w, h, lx, ly, &label, Face::Italic, px, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
     }
-    // A banner for a great moment, for half a game day.
+    // A banner for a moment: four real seconds from when it is first drawn, fading over the last
+    // (it had lasted 720 game minutes: a second at 10x, for ever while paused), within three
+    // game days of the moment. A parchment card with a double rule, as the other cards.
     if let Some((text, at)) = &colony.banner {
-        if colony.clock.tick < at + 720 {
+        let alpha = if colony.clock.tick < at + 3 * crate::colony::TICKS_PER_DAY { banner_alpha(text, *at) } else { 0.0 };
+        if alpha > 0.0 {
             let px = 26.0;
             let tw = super::fonts::width(text, super::fonts::Face::SmallCaps, px, 2.0);
-            let (bx, by) = (w as f32 / 2.0 - tw / 2.0 - 24.0, 18.0);
-            for y in by as usize..(by + px * 1.7) as usize {
-                for x in bx.max(0.0) as usize..((bx + tw + 48.0) as usize).min(w) {
-                    if y < h { let k = y * w + x; buf[k] = 0x00EA_DEC4; }
+            let (bx, by, bw, bh) = (w as f32 / 2.0 - tw / 2.0 - 24.0, 18.0f32, tw + 48.0, px * 1.7);
+            for y in by as usize..((by + bh) as usize).min(h) {
+                for x in bx.max(0.0) as usize..((bx + bw) as usize).min(w) {
+                    let k = y * w + x;
+                    let edge = y == by as usize || y + 1 == (by + bh) as usize || x == bx.max(0.0) as usize || x + 1 == (bx + bw) as usize;
+                    let inner = y == by as usize + 3 || y + 4 == (by + bh) as usize || x == bx.max(0.0) as usize + 3 || x + 4 == (bx + bw) as usize;
+                    let c = if edge { 0x0038_2A20 } else if inner { 0x0098_8468 } else { 0x00EA_DEC4 };
+                    buf[k] = blend_px(buf[k], c, alpha);
                 }
             }
-            super::fonts::draw(buf, w, h, bx + 24.0, by + 4.0, text, super::fonts::Face::SmallCaps, px, 2.0, 0x009A_2A1E, None);
+            if alpha >= 0.999 {
+                super::fonts::draw(buf, w, h, bx + 24.0, by + 4.0, text, super::fonts::Face::SmallCaps, px, 2.0, 0x009A_2A1E, None);
+            } else {
+                super::fonts::draw(buf, w, h, bx + 24.0, by + 4.0, text, super::fonts::Face::SmallCaps, px, 2.0, blend_px(0x00EA_DEC4, 0x009A_2A1E, alpha), None);
+            }
         }
     }
+}
+
+/// How opaque the moment's banner is now: 1 for three real seconds after it is first drawn,
+/// fading to 0 over the fourth. Headless renders draw it once, so they show it whole.
+fn banner_alpha(text: &str, at: u64) -> f32 {
+    use std::sync::Mutex;
+    static SEEN: Mutex<Option<(String, u64, std::time::Instant)>> = Mutex::new(None);
+    let mut g = match SEEN.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    let fresh = !matches!(g.as_ref(), Some((t, a, _)) if t == text && *a == at);
+    if fresh { *g = Some((text.to_string(), at, std::time::Instant::now())); }
+    let secs = g.as_ref().map(|(_, _, i)| i.elapsed().as_secs_f32()).unwrap_or(0.0);
+    (4.0 - secs).clamp(0.0, 1.0)
+}
+
+fn blend_px(a: u32, b: u32, t: f32) -> u32 {
+    let ch = |s: u32| ((a >> s) & 255) as f32 * (1.0 - t) + ((b >> s) & 255) as f32 * t;
+    ((ch(16) as u32) << 16) | ((ch(8) as u32) << 8) | ch(0) as u32
 }
 
 /// The camp cut open from the side, in ink: the row `row` of the map from `x0` to `x1`, levels
@@ -1352,6 +1380,16 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
 /// water blue; settlers on the row (or a cell beside it) stand at their level as small figures;
 /// a depth scale on the left counts levels from the camp's ground.
 pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize, x1: usize, buf: &mut [u32], w: usize, h: usize) {
+    section_ink(colony, row, x0, x1, buf, w, h, None)
+}
+
+/// The section down to level `floor` at least (the embark's whole column for
+/// `--local-snapshot`'s `_section.png`, which had been the old flat-pixel cross-section).
+pub fn render_section_ink_to(colony: &crate::colony::Colony, row: usize, floor: i32, buf: &mut [u32], w: usize, h: usize) {
+    section_ink(colony, row, 0, colony.map.width, buf, w, h, Some(floor))
+}
+
+fn section_ink(colony: &crate::colony::Colony, row: usize, x0: usize, x1: usize, buf: &mut [u32], w: usize, h: usize, floor: Option<i32>) {
     use crate::local::{Material, Shape};
     let map = &colony.map;
     let paper: Rgb = [234.0, 222.0, 196.0];
@@ -1368,7 +1406,8 @@ pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize,
     }
     // Down to the magma sea when the stair comes within reach of it.
     if let (Some(m), Some(sp)) = (map.magma_top, colony.spine) { if sp.bottom <= m + 3 { deepest = deepest.min(1); } }
-    let (ztop, levels) = (zc + 9, (zc + 9 - deepest + 3).clamp(19, 75));
+    if let Some(f) = floor { deepest = deepest.min(f.max(0)); }
+    let (ztop, levels) = (zc + 9, (zc + 9 - deepest + 3).clamp(19, if floor.is_some() { 400 } else { 75 }));
     let margin = 56.0f32;
     let cw = (w as f32 - margin - 12.0) / (x1 - x0).max(1) as f32;
     let ch = (h as f32 - 60.0) / levels as f32;

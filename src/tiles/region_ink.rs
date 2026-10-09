@@ -46,6 +46,9 @@ pub struct Ink {
     wood: Vec<u8>,
     /// The lore painted this cell (fields, roads, sites).
     lore: Vec<bool>,
+    /// Mean temperature (°C) and moisture, for the seasons.
+    temp: Vec<f32>,
+    moist: Vec<f32>,
     seed: u64,
 }
 
@@ -146,7 +149,7 @@ impl Ink {
                 }
             }
         }
-        Ink { w, h, wash, water, river, elev: region.elevation_m.clone(), shade, wood, lore, seed: region.params.seed }
+        Ink { w, h, wash, water, river, elev: region.elevation_m.clone(), shade, wood, lore, temp: region.temperature_c.clone(), moist: region.moisture.clone(), seed: region.params.seed }
     }
 
     #[inline]
@@ -205,7 +208,15 @@ impl Ink {
 fn sp_px(ppc: f32) -> f32 { (14.0 / ppc).max(1.6) * ppc }
 
 /// Draw the region at `cam` into `buf`.
-pub fn draw(ink: &Ink, cam: &ZoomCamera, buf: &mut [u32], w: usize, h: usize) {
+/// How far a season moves the mean temperature (°C): a winter 12 colder, a summer 7 warmer.
+fn season_shift(s: crate::seasons::Season) -> f32 {
+    use crate::seasons::Season::*;
+    match s { Spring => -2.0, Summer => 7.0, Autumn => -3.0, Winter => -12.0 }
+}
+
+pub fn draw(ink: &Ink, cam: &ZoomCamera, season: crate::seasons::Season, buf: &mut [u32], w: usize, h: usize) {
+    let shift = season_shift(season);
+    let autumn = season == crate::seasons::Season::Autumn;
     let ppc = cam.px_per_cell;
     let inv = 1.0 / ppc;
     let trees = ppc >= 1.5;
@@ -243,6 +254,12 @@ pub fn draw(ink: &Ink, cam: &ZoomCamera, buf: &mut [u32], w: usize, h: usize) {
                         if px.abs() < 4.0 && (py + 0.12 * px * px - 1.0).abs() < 0.6 { c = mix(c, SEA_INK, 0.45); }
                     }
                 }
+                // Ice on lakes and rivers in a hard season (the sea keeps open water).
+                let t_w = ink.bilinear(&ink.temp, rx, ry) + shift;
+                if t_w < -3.0 && (rv > wv || ink.elev[k] > 0.0) {
+                    c = mix([214.0, 224.0, 226.0], c, 0.25);
+                    if ((rx * ppc + ry * ppc * 0.4) as i64).rem_euclid(23) == 0 { c = mix(c, [130.0, 154.0, 166.0], 0.5); }
+                }
                 // Offshore line ~4 px out from the bank.
                 if wv > 0.5 && (edge_px - 4.0).abs() < 0.5 && ppc >= 1.0 { c = mix(c, SEA_INK, 0.28); }
             } else {
@@ -271,6 +288,11 @@ pub fn draw(ink: &Ink, cam: &ZoomCamera, buf: &mut [u32], w: usize, h: usize) {
                         c = mix(c, INK, if major { 0.42 } else { 0.18 });
                     }
                 }
+                // The season's snow: where the season's cold and the moisture allow, the ground
+                // whitens (more the colder), hatching and contours still showing through.
+                let t_here = ink.bilinear(&ink.temp, rx, ry) + shift;
+                let snow = if t_here < 0.0 { ((-t_here) / 6.0).clamp(0.0, 1.0) * (ink.bilinear(&ink.moist, rx, ry) * 2.5).clamp(0.3, 1.0) } else { 0.0 };
+                if snow > 0.0 { c = mix(c, [240.0, 242.0, 244.0], 0.75 * snow); }
                 // Woods.
                 if trees && !ink.lore[k] {
                     near.clear();
@@ -293,8 +315,11 @@ pub fn draw(ink: &Ink, cam: &ZoomCamera, buf: &mut [u32], w: usize, h: usize) {
                         };
                         if inside {
                             let lit = u + v2 < 0.0;
-                            let fill = if kind == 1 { [150.0, 164.0, 116.0] } else { [124.0, 146.0, 112.0] };
-                            c = if rim { mix(fill, INK, 0.75) } else if lit { mix(fill, PAPER, 0.25) } else { fill };
+                            let mut fill = if kind == 1 { [150.0, 164.0, 116.0] } else { [124.0, 146.0, 112.0] };
+                            // Autumn turns the broadleaves; winter bares them grey-brown, firs keep green.
+                            if kind == 1 && autumn { fill = [184.0, 142.0, 92.0]; }
+                            if kind == 1 && snow > 0.3 { fill = [150.0, 132.0, 112.0]; }
+                            c = if rim { mix(fill, INK, 0.75) } else if lit { mix(fill, if snow > 0.2 { [244.0, 246.0, 248.0] } else { PAPER }, if snow > 0.2 { 0.6 } else { 0.25 }) } else { fill };
                             drawn = true;
                             break;
                         }

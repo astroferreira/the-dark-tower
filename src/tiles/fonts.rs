@@ -89,6 +89,63 @@ pub fn draw(buf: &mut [u32], w: usize, h: usize, x: f32, y: f32, text: &str, fac
     }
 }
 
+/// Draw `text` centred on (cx, cy) along a line at `angle` radians (screen: positive turns
+/// clockwise), each letter turned with it: names of ranges and rivers follow their axis.
+pub fn draw_rotated(buf: &mut [u32], w: usize, h: usize, cx: f32, cy: f32, text: &str, face: Face, px: f32, tracking: f32, color: u32, halo: Option<u32>, angle: f32) {
+    if angle.abs() < 0.03 {
+        let tw = width(text, face, px, tracking);
+        let (a, d) = line_metrics(face, px);
+        return draw(buf, w, h, cx - tw / 2.0, cy - (a + d) / 2.0, text, face, px, tracking, color, halo);
+    }
+    let (ascent, descent) = line_metrics(face, px);
+    let (ca, sa) = (angle.cos(), angle.sin());
+    let tw = width(text, face, px, tracking);
+    // Baseline runs through the centre lowered by half the line's height difference.
+    let base_off = (ascent - descent) / 2.0;
+    let mut pen = -tw / 2.0;
+    let glyphs: Vec<(f32, std::sync::Arc<Glyph>)> = text.chars().map(|c| { let g = glyph(face, px, c); let at = pen; pen += g.0.advance_width + tracking; (at, g) }).collect();
+    for pass in 0..2 {
+        if pass == 0 && halo.is_none() { continue; }
+        for (at, g) in &glyphs {
+            let (m, bm) = (&g.0, &g.1);
+            if m.width == 0 || m.height == 0 { continue; }
+            // The glyph's box in text space (x along the line, y down), baseline at y = base_off.
+            let (gx0, gy0) = (at + m.xmin as f32, base_off - m.height as f32 - m.ymin as f32);
+            let (gw, gh) = (m.width as f32, m.height as f32);
+            // Screen bounds of the turned box.
+            let corners = [(gx0, gy0), (gx0 + gw, gy0), (gx0, gy0 + gh), (gx0 + gw, gy0 + gh)];
+            let pts: Vec<(f32, f32)> = corners.iter().map(|&(x, y)| (cx + x * ca - y * sa, cy + x * sa + y * ca)).collect();
+            let (x0, x1) = (pts.iter().map(|p| p.0).fold(f32::MAX, f32::min).floor() as i64 - 2, pts.iter().map(|p| p.0).fold(f32::MIN, f32::max).ceil() as i64 + 2);
+            let (y0, y1) = (pts.iter().map(|p| p.1).fold(f32::MAX, f32::min).floor() as i64 - 2, pts.iter().map(|p| p.1).fold(f32::MIN, f32::max).ceil() as i64 + 2);
+            let sample = |sx: f32, sy: f32| -> f32 {
+                // Screen -> text space -> glyph bitmap, bilinear.
+                let (dx, dy) = (sx - cx, sy - cy);
+                let (tx, ty) = (dx * ca + dy * sa, -dx * sa + dy * ca);
+                let (u, v) = (tx - gx0 - 0.5, ty - gy0 - 0.5);
+                let (ui, vi) = (u.floor(), v.floor());
+                let (fu, fv) = (u - ui, v - vi);
+                let at = |x: i64, y: i64| if x < 0 || y < 0 || x >= m.width as i64 || y >= m.height as i64 { 0.0 } else { bm[y as usize * m.width + x as usize] as f32 / 255.0 };
+                let (a, b, c2, d) = (at(ui as i64, vi as i64), at(ui as i64 + 1, vi as i64), at(ui as i64, vi as i64 + 1), at(ui as i64 + 1, vi as i64 + 1));
+                (a + (b - a) * fu) * (1.0 - fv) + (c2 + (d - c2) * fu) * fv
+            };
+            for yy in y0..=y1 {
+                for xx in x0..=x1 {
+                    let cov = sample(xx as f32 + 0.5, yy as f32 + 0.5);
+                    if cov <= 0.02 { continue; }
+                    if pass == 0 {
+                        let hc = halo.unwrap();
+                        for (dx, dy, k) in [(-1, 0, 0.7), (1, 0, 0.7), (0, -1, 0.7), (0, 1, 0.7), (-2, 0, 0.35), (2, 0, 0.35), (0, -2, 0.35), (0, 2, 0.35), (-1, -1, 0.5), (1, 1, 0.5), (-1, 1, 0.5), (1, -1, 0.5)] {
+                            blend(buf, w, h, xx + dx, yy + dy, hc, cov * k);
+                        }
+                    } else {
+                        blend(buf, w, h, xx, yy, color, cov);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Greedy word wrap to a pixel width in `face` at `px`.
 pub fn wrap(text: &str, face: Face, px: f32, max_w: f32) -> Vec<String> {
     let mut lines = Vec::new();

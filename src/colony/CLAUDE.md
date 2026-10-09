@@ -155,7 +155,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   shows title, text and because until Space, which resumes at the speed before (Space also
   remembers the speed when pausing). M turns the stops off (the moment goes to the status line
   instead). `--sim-snapshot` prints "Moments: ..." and writes `<prefix>_moment.png` (the raid);
-  tested. Not done: lesser events' banners still last 720 game minutes, not 4 real seconds.
+  tested. Lesser events' banners last four real seconds from when first drawn, fading over the
+  last, within three game days of the moment (`local_ink::banner_alpha`), framed as a card.
 - Doomed sites say so (`survey`, `Survey::verdict`): before founding, a copy of the colony counts
   berry bushes and fishing spots on the camp's own dry ground within `WORK_RADIUS` and the meals
   a day they give (bush 2.5 per 12 days, spot 2 per 3 days) against `MEALS_NEEDED` (9.3 for
@@ -289,7 +290,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   embarks there at once; Enter still lets the player walk the map. `--sites` prints them; six
   dev seeds: three distinct peoples or threats on each; tested. Known: most dev sites lack water
   (the embark holds only the furnished spring; the river is on a neighbouring tile), so the
-  lacks read alike. The watcher card is still in the bitmap font; not tried in a window.
+  lacks read alike. The watcher card is lettered in IM Fell (`watcher.rs`).
 - The raid arrives on legs (`creatures.rs`, `Colony::creatures`, `Threat::from` / `size`): at 19:00
   on the raid's eve the attackers (a named beast at its size, or a band of three raiders) enter
   84 cells out on the side their lair, the Shadow's seat or their town lies ("Something moves at

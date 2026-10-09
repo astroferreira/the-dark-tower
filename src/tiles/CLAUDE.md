@@ -96,8 +96,11 @@ The default and only maintained front end (minifb window).
 ## Seasons in the tile viewer
 `T` steps Spring/Summer/Autumn/Winter, `C` cycles them automatically. Snow cover (cold + moisture),
 foliage colour (spring flush, summer drought, autumn orange), and frozen lakes/rivers/shallows
-come from the seasonal climate; `--season` picks the season for `--tiles-snapshot`. Not yet applied
-to zoomed regions or embarks.
+come from the seasonal climate; `--season` picks the season for `--tiles-snapshot`. The colony's
+embark has its own winter (snow wash, ice); the region walker takes the season too (T there:
+snow by the season's temperature and moisture, bare broadleaves, ice on lakes and rivers, autumn
+leaves; `region_ink::draw`'s `season`; `--local-snapshot` writes `_region_4px_autumn.png` and
+`_region_4px_winter.png`).
 
 ## Graphical tile viewer (`src/tiles/`)
 `cargo run --release -- --seed 42` opens a window (minifb) titled "The Dark Tower" that draws
@@ -186,7 +189,11 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   lakes in blue italic, capitals in small caps, cities and towns in roman, ruins in italic.
 - Placement: highest rank first; a label must fit wholly on screen (never clipped), overlap no
   placed label or `avoid` rectangle (the minimap: `minimap_box`), and a name is shown once.
-  ~0.5 ms a frame. Not yet: ranges along their axis, rivers along their course.
+  ~0.5 ms a frame. Ranges are lettered along their long axis (when 1.8x longer than wide) and
+  rivers along their course near the label (`viewer::feature_angle`: principal axis of the
+  range's tiles or of the main stem within 6 tiles; within +-60 degrees, reading left to right;
+  `Label::angle`, drawn by `fonts::draw_rotated`, letters turned and sampled bilinearly; the
+  collision box is the turned box's bounds). Not curved along a bending course.
 
 ### Poster (`viewer::save_poster`)
 - `--poster FILE [--poster-width 6144]` renders the whole ink map at ~12 px/tile (seed 42:
@@ -306,7 +313,8 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   down the left, settlers as inked figures in their colours, deep rock under the last level
   (was sky). `PLANET_FRAMES` also writes `_foot.png` (stair's foot) and `_magma.png` (the pipe)
   and prints best-of-three frame times (~12-13 ms each at 1280x800, 16 px, unloaded M4 Pro).
-  Not done: `--local-snapshot`'s `_section.png` is still the old pixel cross-section.
+  `--local-snapshot`'s `_section.png` is the ink section too, down through the strata and caverns
+  to the magma (`render_section_ink_to`, a camp founded on a copy of the map for its ground).
 
 ### The colony's ledger and things on the ground (2026-10-08, half-done)
 - `colony_ui.rs`: a parchment panel on the right (40% of the window, 400-600 px) with five tabs
@@ -325,8 +333,9 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   the map opens their sheet (`actions_sheet`: the clock stops, `paused_by_sheet` restarts it),
   `dream_buttons` under the dream card, Esc order: inspector/card/dream first, then tool, sheet,
   panel, then leave. `Tool::NamePlace` asks for the name (`place_input`) and calls `name_place`,
-  which is NOT recorded in `interventions` (a replay loses the name). Not done: the refugees'
-  `choice_buttons` (Y/N keys work).
+  which is NOT recorded in `interventions` (a replay loses the name). The refugees' card carries
+  its two answers as buttons (`choice_buttons`); `--ui-drive` clicks "take them in" (step 25,
+  `_ui_drive_refugees.png`).
 - Items: `colony::Item` carries `what: Stuff` (berries, fish, meat, grain, cave fungus,
   provisions, timber, stone; set where the load is made, kept through hauling; the simulation
   never reads it: the colony hash is unchanged). `glyphs.rs` draws 24 ink glyphs (one stamp:

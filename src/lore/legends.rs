@@ -425,6 +425,20 @@ impl<'a> Book<'a> {
         o
     }
 
+    /// The country round a place, cut from the same map (CSS: the map scaled up behind a 360x240
+    /// window centred on the tile, clamped at the map's edges), the place pinned.
+    fn site_crop(&self, loc: (usize, usize), caption: &str) -> String {
+        let Some(_) = self.map else { return String::new() };
+        let (bw, bh) = (360.0f32, 240.0f32);
+        let tile = bw / 14.0;
+        let (sw, sh) = (self.map_tiles.0 as f32 * tile, self.map_tiles.1 as f32 * tile);
+        let (cx, cy) = ((loc.0 as f32 + 0.5) * tile, (loc.1 as f32 + 0.5) * tile);
+        let ox = (bw / 2.0 - cx).clamp(-(sw - bw).max(0.0), 0.0);
+        let oy = (bh / 2.0 - cy).clamp(-(sh - bh).max(0.0), 0.0);
+        format!("<figure class=\"map crop\"><div class=\"crop-box\" style=\"background-size:{:.0}px {:.0}px;background-position:{:.0}px {:.0}px\" role=\"img\" aria-label=\"{}\"><span class=\"pin big\" style=\"left:{:.0}px;top:{:.0}px\"></span></div><figcaption>{}</figcaption></figure>",
+            sw, sh, ox, oy, esc(caption), cx + ox, cy + oy, esc(caption))
+    }
+
     /// The world map with pins, if a map was rendered.
     fn map_fig(&self, pins: &[((usize, usize), bool, String)], caption: &str) -> String {
         let Some((w, hgt)) = self.map else { return String::new() };
@@ -640,6 +654,7 @@ pub fn write_legends(world: &WorldData, h: &WorldHistory, gaz: &Gazetteer, camps
             None => format!("Founded in the year {}, it is held by {} and home to {} souls.", s.founded.year, b.people(s.faction), s.population),
         };
         let _ = write!(o, "<p class=\"lede\">{}</p></header>", lede);
+        o.push_str(&b.site_crop(s.location, &format!("The country round {}", s.name)));
         o.push_str(&b.map_fig(&[(s.location, true, s.name.clone())], &format!("{} on the map of the world", s.name)));
         // Who held it, by the tile's record.
         let holders: Vec<String> = h.tile_history.get(s.location.0, s.location.1).ownership.iter()
@@ -1067,6 +1082,7 @@ blockquote { margin: 0.6rem 0; padding: 0.4rem 0.9rem; border-left: 2px solid va
 .map-box img { width: 100%; height: auto; display: block; }
 .pin { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--rubric); border: 1.5px solid #f6efdf; box-shadow: 0 0 0 1px #382a20; }
 .pin.big { width: 14px; height: 14px; margin: -7px 0 0 -7px; }
+.crop-box { position: relative; width: 360px; height: 240px; max-width: 100%; background-image: url(map.png); background-repeat: no-repeat; border: 1px solid #382a20; box-shadow: 0 0 0 4px #efe5cf, 0 0 0 5px #8a7458; }
 .map figcaption { font-family: var(--label); font-size: 0.8rem; letter-spacing: 0.05em; color: var(--ink-soft); margin-top: 0.3rem; }
 .table-wrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }

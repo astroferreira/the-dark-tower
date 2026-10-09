@@ -1415,7 +1415,7 @@ fn settlement_labels(f: &Step, tw: &TileWorld) -> Vec<Label> {
             SettlementType::Town | SettlementType::Fort => (700, 10.0),
             _ => (400, 16.0),
         };
-        Some(Label { x: x as f32 + 0.5, y: y as f32 + 1.6, text: name.clone(), rank: rank + (*pop / 2000).min(99), min_tile_px: min_px, color: INK, style: super::text::LabelStyle::Town })
+        Some(Label { x: x as f32 + 0.5, y: y as f32 + 1.6, text: name.clone(), rank: rank + (*pop / 2000).min(99), min_tile_px: min_px, color: INK, style: super::text::LabelStyle::Town, angle: 0.0 })
     }).collect();
     labels.sort_by_key(|l| std::cmp::Reverse(l.rank));
     labels
