@@ -70,6 +70,7 @@ pub fn on_kill(g: &mut Game, m: &Monster) {
 
 /// Something found: a sought treasure.
 pub fn on_found(g: &mut Game, it: &Item) {
+    if it.is_artifact() { let t = g.turn; let place = g.place().map(|p| p.spec.name.clone()).unwrap_or_default(); g.deeds.push((t, format!("found {} in {}", it.short(), place))); }
     if it.tag == 0 || it.id == "key" { return; }
     let mut lines = Vec::new();
     for q in g.quests.iter_mut().filter(|q| q.state == State::Open) {
@@ -173,6 +174,7 @@ pub fn report(g: &mut Game, k: usize) -> Vec<String> {
     }
     g.quests[k].state = State::Rewarded;
     g.stats.quests_done += 1;
+    if !matches!(q.goal, Goal::Bounty { .. } | Goal::Deliver { .. }) { let t = g.turn; g.deeds.push((t, format!("finished \"{}\" for {}", q.title, q.giver))); }
     super::item::stow(&mut g.hero.pack, Item::new("gold", q.gold));
     out.push(format!("\"Well done.\" {} pays you {} gold.", q.giver, q.gold));
     if let Some(it) = q.item { out.push(format!("And gives you {}.", it.describe())); super::item::stow(&mut g.hero.pack, it); }

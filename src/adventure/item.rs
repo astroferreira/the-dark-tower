@@ -72,6 +72,8 @@ impl Item {
         let q = QUALITY[self.quality.min(6) as usize].1;
         let mat = if self.odd_material() { format!("{} ", self.material.as_deref().unwrap_or("")) } else { String::new() };
         let base = format!("{}{}{}", if q.is_empty() || self.is_artifact() { String::new() } else { format!("{} ", q) }, mat, d.name);
+        // Boots and legs come in pairs.
+        let base = if d.name.ends_with("boots") || d.name.ends_with("legs") { format!("pair of {}", base) } else { base };
         match &self.name {
             Some(n) if d.kind == "key" => n.clone(),
             Some(n) => format!("{}, {}", n, article(&base)),

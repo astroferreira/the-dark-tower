@@ -52,8 +52,10 @@ fn path_avoiding(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize, avoid: O
     let f = g.floor()?;
     let p = g.place()?;
     let keys: Vec<u32> = g.hero.pack.iter().filter(|i| i.id == "key").map(|i| i.tag).collect();
+    let lvl = g.hero.level;
     let pass = |x: i32, y: i32| -> bool {
         let t = f.at(x, y);
+        if let Feature::LevelDoor { level } = t.feature { return lvl >= level; }
         if t.walkable() { return true; }
         match &t.feature { Feature::Door { lock, .. } => *lock == 0 || keys.contains(lock), _ => false }
     };
@@ -538,6 +540,7 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     let gear: Vec<String> = g.hero.equipped.iter().flatten().map(|i| i.describe()).collect();
     println!("Wears: {}", gear.join(", "));
     println!("Quests: {}", g.quests.iter().map(|q| format!("{} [{}]", q.title, q.progress())).collect::<Vec<_>>().join("; "));
+    if let Ok(path) = std::env::var("PLANET_ADV_LEGEND") { let _ = std::fs::write(&path, g.legend_html()); println!("Legend written to {} ({} deeds)", path, g.deeds.len()); }
     if let Some(c) = &g.companion { println!("Companion: {} ({} of {} life, {} slain)", c.name, c.hp, c.max_hp, c.kills); }
     println!("{} acts in {:.1} s ({:.0} µs an act)", acts, t1.elapsed().as_secs_f64(), t1.elapsed().as_secs_f64() * 1e6 / acts.max(1) as f64);
     println!("Last of the log:");

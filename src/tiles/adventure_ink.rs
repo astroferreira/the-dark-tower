@@ -175,6 +175,7 @@ pub fn cell_sig(f: &Floor, x: i32, y: i32) -> u64 {
         Feature::Sarcophagus { opened, .. } => 6000 + *opened as u64,
         Feature::Plinth { item } => 7000 + item.is_some() as u64,
         Feature::Trap { armed, .. } => 8000 + *armed as u64,
+        Feature::LevelDoor { level } => 8500 + *level as u64,
         other => 9000 + std::mem::discriminant(other).hash_u64(),
     };
     (t.ground as u64) | (t.wall as u64) << 8 | feat << 16
@@ -292,6 +293,11 @@ pub fn draw_feature(put: &mut dyn FnMut(i64, i64, Rgb, f32), f: &Floor, cx: i32,
         Feature::Grate => { pen.rect(-0.7, -0.7, 0.7, 0.7, DARK); for k in 0..5 { let a = -0.56 + k as f32 * 0.28; pen.line((a, -0.7), (a, 0.7), iron, 1.5); pen.line((-0.7, a), (0.7, a), iron, 1.5); } }
         Feature::Sign { .. } => { pen.line((0.0, 0.2), (0.0, 0.9), wood, 2.0); pen.rect(-0.6, -0.5, 0.6, 0.25, mix(wood, PARCH, 0.3)); for k in [-0.25f32, -0.05] { pen.line((-0.4, k), (0.4, k), INK, 1.0); } }
         Feature::Trap { armed, .. } => { if *armed { pen.rect_f(-0.45, -0.45, 0.45, 0.45, mix(stone, INK, 0.12), Finish::Plain); } }
+        Feature::LevelDoor { .. } => {
+            if horizontal { pen.rect(-1.0, -0.25, 1.0, 0.25, [120.0, 110.0, 120.0]); } else { pen.rect(-0.25, -1.0, 0.25, 1.0, [120.0, 110.0, 120.0]); }
+            pen.glow(0.0, 0.0, 0.6, [150.0, 120.0, 230.0], 0.6);
+            pen.path(&[(-0.15, 0.15), (0.0, -0.18), (0.15, 0.15), (-0.15, 0.15)], [200.0, 180.0, 255.0], 1.5);
+        }
         Feature::Rail => { let c: Rgb = [110.0, 104.0, 98.0]; for s in [-0.3f32, 0.3] { pen.line((s, -1.0), (s, 1.0), c, 1.5); } for k in [-0.6f32, 0.0, 0.6] { pen.line((-0.45, k), (0.45, k), wood, 2.0); } }
     }
 }

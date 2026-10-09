@@ -803,7 +803,12 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
         if pressed(Key::Slash) { show_help = !show_help; }
         if pressed(Key::Escape) && show_help { show_help = false; }
         else if pressed(Key::Escape) && g.talk.is_none() {
-            if esc_once { let _ = g.save(&g.save_path()); break; }
+            if esc_once {
+                let _ = g.save(&g.save_path());
+                let lp = g.save_path().with_extension("html");
+                if std::fs::write(&lp, g.legend_html()).is_ok() { println!("The legend of {} written to {}", g.hero.name, lp.display()); }
+                break;
+            }
             esc_once = true;
             g.say(Tone::Info, "Press Esc again to leave the adventure (it is saved).");
         } else if window.get_keys_pressed(KeyRepeat::No).iter().any(|k| *k != Key::Escape) { esc_once = false; }

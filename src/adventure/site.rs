@@ -657,6 +657,23 @@ pub fn realize(spec: &SiteSpec) -> Place {
                 monsters.retain(|o| !(o.z == z && (o.x - bp.0).abs() + (o.y - bp.1).abs() < 3));
                 monsters.push(m);
             }
+            // A treasure room behind a level door on the last floor (Tibia), in places of tier 3+:
+            // a dead end walled off, its door asking a level above the place's.
+            if spec.tier >= 3 && spec.kind != SiteKind::Wilds {
+                let cells = open_cells(&f);
+                let dead_end = cells.iter().copied().find(|&(x, y)| {
+                    let open = DIRS4.iter().filter(|(dx, dy)| f.at(x + dx, y + dy).walkable()).count();
+                    open == 1 && (x - bp.0).abs() + (y - bp.1).abs() > 6 && (x - start.0).abs() + (y - start.1).abs() > 6
+                });
+                if let Some((x, y)) = dead_end {
+                    let (dx, dy) = DIRS4.iter().copied().find(|(dx, dy)| f.at(x + dx, y + dy).walkable()).unwrap();
+                    let need = (spec.tier - 1) * 8 + 6;
+                    f.at_mut(x + dx, y + dy).feature = Feature::LevelDoor { level: need };
+                    let mut loot = treasure(&mut b, spec.tier + 1);
+                    loot.push(gear(&mut b, spec.tier + 1));
+                    f.at_mut(x, y).feature = Feature::Chest { items: loot, opened: false, lock: 0, quest: 0 };
+                }
+            }
             // A quest chest beside it: three rewards, one may be taken (Tibia).
             let near = open_cells(&f).into_iter().filter(|&(x, y)| (x - bp.0).abs() + (y - bp.1).abs() <= 4 && (x, y) != bp).min_by_key(|&(x, y)| (x - bp.0).abs() + (y - bp.1).abs());
             if let Some((x, y)) = near {

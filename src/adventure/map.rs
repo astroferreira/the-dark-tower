@@ -63,6 +63,8 @@ pub enum Feature {
     /// A pressure plate: a dart, a fall of stones.
     Trap { armed: bool, damage: i32 },
     Rail,
+    /// A door only the experienced may pass (Tibia's level doors).
+    LevelDoor { level: u32 },
 }
 
 impl Feature {
@@ -96,6 +98,7 @@ impl Feature {
             Feature::Counter => "a counter", Feature::Well => "a well", Feature::Grave => "a grave", Feature::Tent => "a tent", Feature::Campfire => "a campfire",
             Feature::Sconce => "a torch in a sconce", Feature::Plinth { item: Some(_) } => "a plinth with something on it", Feature::Plinth { .. } => "an empty plinth",
             Feature::Grate => "a grate", Feature::Sign { .. } => "a sign", Feature::Trap { .. } => "a pressure plate", Feature::Rail => "rails",
+            Feature::LevelDoor { .. } => "a sealed door with a rune of trial",
         }
     }
 }

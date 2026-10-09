@@ -120,6 +120,9 @@ pub struct Game {
     /// The Shadow's lord broken: the great deed (the adventure's end, though one may go on).
     #[serde(default)]
     pub victory: bool,
+    /// The great deeds, for the adventurer's legend: (turn, words).
+    #[serde(default)]
+    pub deeds: Vec<(u64, String)>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -130,7 +133,7 @@ impl Game {
         let mut g = Game {
             seed, hero, world, sites, places: HashMap::new(), here: None, z: 0, x: 0, y: 0, tile: (0, 0), turn: 0, log: Vec::new(), effects: Vec::new(),
             corpses: HashMap::new(), known: Vec::new(), respawn: Vec::new(), quests: Vec::new(), talk: None, chosen: Vec::new(), facing: (0, 1),
-            rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false,
+            rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
         };
         g.hero.temple = start_town;
         if let Some(s) = g.site(start_town) { g.tile = s.tile; }
@@ -317,6 +320,10 @@ impl Game {
                 return Some(60);
             }
             Feature::Gate { open: false, .. } => { self.say(Tone::Info, "A portcullis bars the way. A lever must raise it."); return None; }
+            Feature::LevelDoor { level } => {
+                if self.hero.level < *level { let l = *level; self.say(Tone::Info, format!("The rune glows and the door holds: \"Only those of level {} and more may pass.\"", l)); return None; }
+                self.say(Tone::Info, "The rune knows you. The door swings aside.");
+            }
             Feature::Lever { id, pulled } => {
                 let (id, pulled) = (*id, *pulled);
                 if let Some(p) = self.place_mut() {
@@ -781,12 +788,14 @@ impl Game {
         if !dead.boss { self.respawn.push((here, dead.clone(), turn)); }
         self.stats.kills += 1;
         self.hero.kills += 1;
-        if dead.boss { self.stats.bosses += 1; self.slain.push(dead.name.clone()); }
+        if dead.boss { self.stats.bosses += 1; self.slain.push(dead.name.clone()); let place = self.place().map(|p| p.spec.name.clone()).unwrap_or_default(); let lvl = self.hero.level; self.deeds.push((turn, format!("slew {} in {} (level {})", dead.name, place, lvl))); }
         if dead.boss && self.place().map_or(false, |p| p.spec.kind == SiteKind::DarkFortress) && !self.victory {
             self.victory = true;
             let who = self.hero.name.clone();
             self.banner = Some(("The Shadow is broken.".into(), format!("{} has slain {} in the seat of its power. The land will tell of it for an age. (You may go on.)", who, dead.name)));
             self.say(Tone::Quest, format!("{} has broken the Shadow.", who));
+            let t = self.turn;
+            self.deeds.push((t, format!("broke the Shadow, slaying {} in its seat", dead.name)));
         }
         let lead = if dead.boss { format!("{} falls, and does not rise.", cap(&name)) } else { format!("You slay {}.", name) };
         self.say(if dead.boss { Tone::Quest } else { Tone::Hit }, format!("{} ({} experience)", lead, xp));
@@ -794,7 +803,10 @@ impl Game {
             let list: Vec<String> = loot.iter().map(|i| i.describe()).collect();
             self.say(Tone::Loot, format!("Loot of {}: {}.", dead.name, list.join(", ")));
         }
-        for l in self.hero.gain_xp(xp as u64) { self.say(Tone::Level, format!("You advanced from level {} to level {}.{}", l - 1, l, if l == 8 && self.hero.calling.is_none() { " Go to a temple: the priest will give you a calling." } else { "" })); }
+        for l in self.hero.gain_xp(xp as u64) {
+            self.say(Tone::Level, format!("You advanced from level {} to level {}.{}", l - 1, l, if l == 8 && self.hero.calling.is_none() { " Go to a temple: the priest will give you a calling." } else { "" }));
+            if l % 10 == 0 { let t = self.turn; self.deeds.push((t, format!("reached level {}", l))); }
+        }
         super::quest::on_kill(self, &dead);
     }
 
@@ -819,6 +831,8 @@ impl Game {
         self.hero.xp -= lost_xp;
         while self.hero.level > 1 && self.hero.xp < super::hero::xp_for(self.hero.level) { self.hero.level -= 1; }
         let place = self.place().map(|p| p.spec.name.clone()).unwrap_or_default();
+        let t = self.turn;
+        self.deeds.push((t, format!("was slain by {} in {}", what, place)));
         self.say(Tone::Death, format!("You are dead, slain by {} in {}. You lose {} experience{}.", what, place, lost_xp, if gold > 0 { format!(" and drop {} gold where you fell", gold) } else { String::new() }));
         self.banner = Some(("You are dead.".into(), format!("Slain by {}. You wake in the temple, poorer and wiser.", what)));
         self.hero.hp = self.hero.max_hp();
@@ -1146,6 +1160,35 @@ impl Game {
 }
 
 fn fresh_rng() -> ChaCha8Rng { ChaCha8Rng::seed_from_u64(0xADE0) }
+
+impl Game {
+    /// The adventurer's legend as an HTML page in the journal's style: who they were, what they
+    /// did (bosses, quests, treasures, falls), where they went.
+    pub fn legend_html(&self) -> String {
+        let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let h = &self.hero;
+        let home = self.site(h.temple).map(|s| s.name.clone()).unwrap_or_default();
+        let mut out = String::new();
+        out.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><title>The Legend of ");
+        out.push_str(&esc(&h.name));
+        out.push_str("</title><style>body{background:#2a221b;margin:0}main{max-width:760px;margin:30px auto;background:#eadec4;color:#38291f;padding:36px 48px;font-family:'IM Fell English',Georgia,serif;border:1px solid #382a20;box-shadow:0 0 0 4px #eadec4,0 0 0 5px #806a52}h1{color:#9a2a1e;font-variant:small-caps;letter-spacing:1px}h2{color:#9a2a1e;font-variant:small-caps;border-bottom:1px solid #806a52}li{margin:4px 0}.day{color:#9a2a1e;font-style:italic}</style></head><body><main>");
+        out.push_str(&format!("<h1>The Legend of {}</h1><p><i>{} of the {}, of {}; level {}{}.</i></p>", esc(&h.name), esc(h.calling.as_deref().unwrap_or("a commoner")), esc(&h.race), esc(&home), h.level,
+            if self.victory { ", who broke the Shadow" } else { "" }));
+        out.push_str(&format!("<p>{} slain, {} of them named; {} quests done; {} places entered; {} times fallen.</p>", h.kills, self.stats.bosses, self.stats.quests_done, self.stats.sites_entered, h.deaths));
+        out.push_str("<h2>Deeds</h2><ul>");
+        for (t, d) in &self.deeds { out.push_str(&format!("<li><span class=\"day\">Day {}</span> — {} {}</li>", t / 144_000 + 1, esc(&h.name), esc(d))); }
+        out.push_str("</ul><h2>What they carried</h2><ul>");
+        for it in h.equipped.iter().flatten().chain(h.pack.iter().filter(|i| i.is_artifact())) {
+            out.push_str(&format!("<li>{}{}</li>", esc(&it.describe()), it.story.as_ref().map(|s| format!(" — <i>{}</i>", esc(s))).unwrap_or_default()));
+        }
+        out.push_str("</ul><h2>Where they went</h2><ul>");
+        let mut known: Vec<&SiteSpec> = self.sites.iter().filter(|s| self.places.contains_key(&s.id) && s.kind != SiteKind::Wilds).collect();
+        known.sort_by_key(|s| s.id);
+        for s in known { out.push_str(&format!("<li>{} ({}){}</li>", esc(&s.name), s.kind.word(), if s.cause.is_empty() { String::new() } else { format!(": <i>{}</i>", esc(&s.cause)) })); }
+        out.push_str("</ul></main></body></html>");
+        out
+    }
+}
 
 /// The head of a saved adventure: what world it belongs to.
 const SAVE_MAGIC: &[u8; 8] = b"ADVENT01";
