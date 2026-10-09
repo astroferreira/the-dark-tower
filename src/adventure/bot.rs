@@ -9,6 +9,7 @@ use super::map::{Feature, DIRS8};
 use super::npc::Topic;
 use super::quest::State;
 use super::site::SiteKind;
+use super::land::LAND;
 use std::collections::{HashSet, VecDeque};
 
 #[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -56,6 +57,8 @@ fn path_avoiding(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize, avoid: O
     let pass = |x: i32, y: i32| -> bool {
         let t = f.at(x, y);
         if let Feature::LevelDoor { level } = t.feature { return lvl >= level; }
+        // Ways in, up and down carry one off: only stepped on when they are the goal.
+        if matches!(t.feature, Feature::Entrance { .. } | Feature::StairsDown | Feature::StairsUp | Feature::LadderDown | Feature::LadderUp | Feature::Hole | Feature::Exit | Feature::Grate | Feature::RopeSpot) { return false; }
         if t.walkable() { return true; }
         match &t.feature { Feature::Door { lock, .. } => *lock == 0 || keys.contains(lock), _ => false }
     };
@@ -90,7 +93,8 @@ fn path_avoiding(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize, avoid: O
             let bumpable = matches!(f.at(nx, ny).feature, Feature::Chest { opened: false, .. } | Feature::Sarcophagus { opened: false, .. } | Feature::QuestChest { taken: false, .. } | Feature::Plinth { item: Some(_) } | Feature::Lever { .. } | Feature::Door { open: false, .. })
                 || p.npcs.iter().any(|n| n.z == g.z && n.x == nx && n.y == ny);
             if Some((nx, ny)) == avoid { continue; }
-            let is_goal = goal(nx, ny) && (pass(nx, ny) && !blocked_by(nx, ny) || bumpable);
+            let transit = matches!(f.at(nx, ny).feature, Feature::Entrance { .. } | Feature::StairsDown | Feature::StairsUp | Feature::LadderDown | Feature::LadderUp | Feature::Hole | Feature::Exit | Feature::Grate | Feature::RopeSpot);
+            let is_goal = goal(nx, ny) && ((pass(nx, ny) || transit) && !blocked_by(nx, ny) || bumpable);
             if !is_goal && (!pass(nx, ny) || blocked_by(nx, ny)) { continue; }
             prev[idx(nx, ny)] = idx(x, y) as u32;
             if is_goal && !pass(nx, ny) {
@@ -128,7 +132,7 @@ impl Bot {
         if g.talk.is_some() { g.talk = None; }
         let r = match g.here {
             None => self.on_road(g),
-            Some(id) if g.place().map_or(false, |p| p.spec.kind == SiteKind::Town) && g.z == 0 => self.in_town(g, id),
+            Some(LAND) => self.on_land(g),
             Some(id) => self.below(g, id),
         };
         self.was_in = g.here;
@@ -193,8 +197,33 @@ impl Bot {
             self.errands.insert(role.word().to_string());
             return Some(true);
         }
-        let step = path_to(g, &|x, y| x == nx && y == ny, 6000)?;
+        let step = path_to(g, &|x, y| x == nx && y == ny, 40_000)?;
         Some(g.act(Action::Move(step.0, step.1)))
+    }
+
+    /// On the land: a town's errands in a town (unless something is at it); else fight what
+    /// comes, then walk to the way into the place it came for, or take to the road.
+    fn on_land(&mut self, g: &mut Game) -> bool {
+        let threat = g.place().map_or(false, |p| p.monsters.iter().any(|m| m.hp > 0 && m.awake && g.visible(m.x, m.y) && (m.x - g.x).abs().max((m.y - g.y).abs()) <= 8));
+        if !threat && g.place().map_or(false, |p| p.spec.kind == SiteKind::Town) { let id = g.site_here(); return self.in_town(g, id); }
+        self.below(g, LAND)
+    }
+
+    /// The way on from the land: into the place it came for (its way in on this land), else
+    /// the road.
+    fn land_way(&mut self, g: &mut Game) -> bool {
+        if let Some(t) = self.target.filter(|t| !self.done.contains(t) && !self.homeward && !self.need_town(g)) {
+            if g.site(t).map_or(false, |s| s.tile == g.tile || super::world::dist(s.tile, g.tile, g.world.w) <= 1) {
+                let f = g.floor().unwrap();
+                let is_in = |x: i32, y: i32| matches!(f.at(x, y).feature, Feature::Entrance { site, .. } if site == t);
+                if is_in(g.x, g.y) { self.why = "go in"; return g.act(Action::Climb); }
+                if let Some(step) = path_to(g, &is_in, 40_000) { self.why = "to the way in"; return g.act(Action::Move(step.0, step.1)); }
+                self.done.insert(t);
+            }
+        }
+        self.why = "road";
+        if g.act(Action::WorldMap) { return true; }
+        g.act(Action::Wait)
     }
 
     fn in_town(&mut self, g: &mut Game, id: u32) -> bool {
@@ -239,7 +268,7 @@ impl Bot {
             let Some(k) = g.place().and_then(|p| p.npcs.iter().position(|n| n.role == Role::Priest)) else { return false };
             let (nx, ny) = { let n = &g.place().unwrap().npcs[k]; (n.x, n.y) };
             if (nx - g.x).abs() > 1 || (ny - g.y).abs() > 1 {
-                if let Some(step) = path_to(g, &|x, y| x == nx && y == ny, 6000) { return g.act(Action::Move(step.0, step.1)); }
+                if let Some(step) = path_to(g, &|x, y| x == nx && y == ny, 40_000) { return g.act(Action::Move(step.0, step.1)); }
                 self.errands.insert("priest".into());
                 return false;
             }
@@ -284,11 +313,12 @@ impl Bot {
         self.equip_best(g);
         // Then out: the sewers while small, the world after.
         let sewer_done = self.done.contains(&id) || g.hero.level >= 6;
-        let target = if sewer_done { Feature::Exit } else { Feature::Grate };
+        if sewer_done { self.why = "road"; return g.act(Action::WorldMap); }
         let f = g.floor().unwrap();
-        let Some(t) = f.find(|x| *x == target) else { return false };
+        let grate = |x: i32, y: i32| matches!(f.at(x, y).feature, Feature::Entrance { site, .. } if site == id);
+        if grate(g.x, g.y) { return g.act(Action::Climb); }
         // (The errand list is cleared when it leaves town: `below` and `on_road`.)
-        if let Some(step) = path_to(g, &|x, y| (x, y) == t, 8000) { return g.act(Action::Move(step.0, step.1)); }
+        if let Some(step) = path_to(g, &grate, 40_000) { return g.act(Action::Move(step.0, step.1)); }
         false
     }
 
@@ -358,7 +388,14 @@ impl Bot {
             if let Some(k) = g.hero.spells.iter().position(|s| s == "wounds" || s == "heal" || s == "intense_heal") { if g.hero.mana >= 20 { return g.act(Action::Cast(k, None)); } }
         }
         if hp * 2 < max && in_sight == 0 && g.hero.fed > 0 { self.why = "rest"; return g.act(Action::Rest); }
-        if hp * 3 < max && in_sight > 0 { self.why = "flee"; return self.go_up(g, id); }
+        // Flee up only when the way up is a few steps off (running down a long gallery with a
+        // goblin at one's back is how heroes die).
+        if hp * 3 < max && in_sight > 0 && id != LAND {
+            let f = g.floor().unwrap();
+            let rope = g.hero.count("rope") > 0;
+            let up = |x: i32, y: i32| match f.at(x, y).feature { Feature::StairsUp | Feature::LadderUp | Feature::Exit => true, Feature::RopeSpot => rope, _ => false };
+            if up(g.x, g.y) || path_to(g, &up, 250).is_some() { self.why = "flee"; return self.go_up(g, id); }
+        }
         if g.hero.fed < 400 { if let Some(k) = g.hero.pack.iter().position(|i| i.def().kind == "food") { return g.act(Action::UseItem(k)); } }
         let outdoor = g.floor().map_or(true, |f| f.outdoor);
         if !outdoor && g.hero.torch == 0 && g.hero.glow == 0 { if let Some(k) = g.hero.pack.iter().position(|i| i.id == "torch") { return g.act(Action::UseItem(k)); } }
@@ -419,6 +456,7 @@ impl Bot {
         // Home when it should.
         let tier = g.place().map_or(1, |p| p.spec.tier);
         let deep_enough = g.hero.level + 2 < (tier.saturating_sub(1) * 6 + g.z as u32 * 3).max(1);
+        if id == LAND { return self.land_way(g); }
         if self.need_town(g) || deep_enough || self.stuck > 40 { self.why = if self.need_town(g) { "town" } else if deep_enough { "too deep" } else { "stuck" }; return self.go_up(g, id); }
         // Explore: things to open, items lying about, the edge of what is seen.
         let f = g.floor().unwrap();
@@ -457,6 +495,7 @@ impl Bot {
     }
 
     fn go_up(&mut self, g: &mut Game, _id: u32) -> bool {
+        if g.on_land() { return self.land_way(g); }
         let f = g.floor().unwrap();
         let has_rope = g.hero.count("rope") > 0;
         if matches!(f.at(g.x, g.y).feature, Feature::StairsUp | Feature::LadderUp | Feature::Exit) || (has_rope && f.at(g.x, g.y).feature == Feature::RopeSpot) { return g.act(Action::Climb); }
@@ -479,13 +518,18 @@ pub fn run(g: &mut Game, acts: usize) -> Bot {
 /// hero's record every N/10 acts and the last of the log.
 pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::world_state::WorldHistory>, acts: usize, seed: u64) {
     let t0 = std::time::Instant::now();
-    let mut g = super::new_game(world, history, seed, None);
+    // (PLANET_ADV_LOAD=FILE plays on from a saved adventure of this world.)
+    let mut g = match std::env::var("PLANET_ADV_LOAD") {
+        Ok(path) => match super::Game::load(std::path::Path::new(&path), super::world::build(world, history, seed, None).info) { Ok(g) => g, Err(e) => { println!("Could not load {}: {}", path, e); return; } },
+        Err(_) => super::new_game(world, history, seed, None),
+    };
     let kinds = |k: SiteKind| g.sites.iter().filter(|s| s.kind == k).count();
     println!("Adventure on seed {}: {} places ({} towns, {} ruins, {} castles, {} lairs, {} tombs, {} temples, {} shrines, {} caves, {} mines, {} labyrinths, {} camps, {} halls, {} dark fortress); built in {:.0} ms",
         seed, g.sites.len(), kinds(SiteKind::Town), kinds(SiteKind::Ruin), kinds(SiteKind::Castle), kinds(SiteKind::Lair), kinds(SiteKind::Tomb), kinds(SiteKind::Temple), kinds(SiteKind::Shrine),
         kinds(SiteKind::Cave), kinds(SiteKind::Mine), kinds(SiteKind::Labyrinth), kinds(SiteKind::Camp), kinds(SiteKind::Halls), kinds(SiteKind::DarkFortress), t0.elapsed().as_secs_f64() * 1000.0);
     let home = g.site(g.hero.temple).map(|s| s.name.clone()).unwrap_or_default();
     println!("{} of the {} sets out from {}.", g.hero.name, g.hero.race, home);
+    if let Ok(which) = std::env::var("PLANET_ADV_SITES") { for s in g.sites.iter().filter(|s| which.is_empty() || s.name.contains(&which)) { println!("  site {} {:?} '{}' tile {:?} tier {}", s.id, s.kind, s.name, s.tile, s.tier); } }
     if let Some(h) = history { if std::env::var("PLANET_ADV_DEBUG").is_ok() {
         use crate::history::events::types::EventType as E;
         let battles = h.chronicle.events.iter().filter(|e| e.event_type == E::BattleFought && e.location.is_some()).count();
@@ -508,6 +552,7 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     for k in 0..acts {
         let before = (g.x, g.y, g.log.len());
         if !b.step(&mut g) { let _ = g.act(Action::Wait); }
+        if std::env::var("PLANET_ADV_DEATHS").is_ok() { for l in g.log[before.2.min(g.log.len())..].iter().filter(|l| l.tone == super::game::Tone::Death) { println!("  death at act {} (level {}, {} on {:?}): {}", k, g.hero.level, g.place().map(|p| p.spec.name.clone()).unwrap_or_default(), g.tile, l.text); } }
         if let Some((a, z)) = trace { if k >= a && k < z {
             let near: Vec<String> = g.place().map(|p| p.monsters.iter().filter(|m| m.z == g.z && (m.x - g.x).abs().max((m.y - g.y).abs()) <= 3).map(|m| format!("{}@{},{} hp{} awake{} vis{}", m.def, m.x, m.y, m.hp, m.awake, g.visible(m.x, m.y))).collect()).unwrap_or_default();
             let items: Vec<String> = g.floor().map(|f| f.items.iter().filter(|((x, y), v)| !v.is_empty() && (x - g.x).abs().max((y - g.y).abs()) <= 4).map(|((x, y), v)| format!("{},{}:{}:{:?}", x, y, v[0].id, f.at(*x, *y).feature.word())).collect()).unwrap_or_default();
@@ -529,7 +574,7 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     if let Ok(path) = std::env::var("PLANET_ADV_SAVE") {
         let p = std::path::Path::new(&path);
         g.save(p).expect("save");
-        let mut back = super::Game::load(p, g.world.w, g.world.h).expect("load");
+        let mut back = super::Game::load(p, g.world.clone()).expect("load");
         let same = back.hero.level == g.hero.level && back.hero.xp == g.hero.xp && back.places.len() == g.places.len() && back.log.len() == g.log.len() && back.hero.pack == g.hero.pack;
         let mut b2 = b.clone();
         let mut g2 = g.clone();
@@ -543,7 +588,6 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     let gear: Vec<String> = g.hero.equipped.iter().flatten().map(|i| i.describe()).collect();
     println!("Wears: {}", gear.join(", "));
     println!("Quests: {}", g.quests.iter().map(|q| format!("{} [{}]", q.title, q.progress())).collect::<Vec<_>>().join("; "));
-    if std::env::var("PLANET_ADV_DEATHS").is_ok() { for l in g.log.iter().filter(|l| l.tone == super::game::Tone::Death) { println!("  death: {}", l.text); } }
     if let Ok(path) = std::env::var("PLANET_ADV_LEGEND") { let _ = std::fs::write(&path, g.legend_html()); println!("Legend written to {} ({} deeds)", path, g.deeds.len()); }
     if let Some(c) = &g.companion { println!("Companion: {} ({} of {} life, {} slain)", c.name, c.hp, c.max_hp, c.kills); }
     println!("{} acts in {:.1} s ({:.0} µs an act)", acts, t1.elapsed().as_secs_f64(), t1.elapsed().as_secs_f64() * 1e6 / acts.max(1) as f64);
@@ -556,12 +600,16 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
 pub fn dump(g: &Game) -> String {
     let Some(f) = g.floor() else { return "on the road".into() };
     let mut out = format!("{} z{} at {},{}: hp {}/{}, fed {}, rope {}\n", f.name, g.z, g.x, g.y, g.hero.hp, g.hero.max_hp(), g.hero.fed, g.hero.count("rope"));
-    for y in 0..f.h as i32 {
-        for x in 0..f.w as i32 {
+    // (Around the adventurer on a big floor.)
+    let (x0, x1, y0, y1) = if f.w > 100 { ((g.x - 40).max(0), (g.x + 40).min(f.w as i32 - 1), (g.y - 25).max(0), (g.y + 25).min(f.h as i32 - 1)) } else { (0, f.w as i32 - 1, 0, f.h as i32 - 1) };
+    for y in y0..=y1 {
+        for x in x0..=x1 {
             let t = f.at(x, y);
             let c = if (x, y) == (g.x, g.y) { '@' }
                 else if g.place().map_or(false, |p| p.monsters.iter().any(|m| m.z == g.z && m.x == x && m.y == y && m.hp > 0)) { 'm' }
+                else if g.place().map_or(false, |p| p.npcs.iter().any(|n| n.z == g.z && n.x == x && n.y == y)) { 'p' }
                 else { match &t.feature {
+                    Feature::Entrance { .. } => 'E', Feature::Sign { .. } => 'S',
                     Feature::StairsDown | Feature::LadderDown | Feature::Hole | Feature::Grate => '>', Feature::StairsUp | Feature::LadderUp | Feature::RopeSpot => '<', Feature::Exit => 'E',
                     Feature::Door { lock, open } => if *lock > 0 { '=' } else if *open { '\'' } else { '+' }, Feature::Chest { .. } | Feature::QuestChest { .. } => 'C', Feature::Gate { .. } => '#', Feature::Lever { .. } => 'L',
                     _ => if t.wall != super::map::Wall::None { '#' } else if !f.seen[y as usize * f.w + x as usize] { '?' } else { '.' } } };

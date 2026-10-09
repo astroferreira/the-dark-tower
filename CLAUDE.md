@@ -148,6 +148,7 @@ Detailed notes, tuning numbers and gotchas live next to the code:
 - `src/climate/CLAUDE.md`: climate (EBM, precipitation, runoff) and biome classification
 - `src/local/CLAUDE.md`: embarks; `src/region/CLAUDE.md`: zoomed regions
 - `src/colony/CLAUDE.md`: the first colony (settlers, needs, jobs, `--sim-snapshot`, `--dev-embark`)
+- `src/adventure/CLAUDE.md`: adventure mode (one hero across the walkable land, places, the bot)
 - `src/adventure/CLAUDE.md`: adventure mode (one hero across the world: places from the history,
   Tibia's levels, callings and dungeons; `--adventure`, `--adventure-bot`, the ink window)
 

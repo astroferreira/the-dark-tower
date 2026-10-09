@@ -203,6 +203,10 @@ struct Args {
     #[arg(long)]
     adventure_gallery: Option<String>,
 
+    /// Adventure mode: the land about tiles of every kind, from above, PREFIX_NAME.png (headless)
+    #[arg(long)]
+    adventure_landscape: Option<String>,
+
     /// Adventure mode played by itself for N acts on the dev world, headless; prints its record
     #[arg(long)]
     adventure_bot: Option<usize>,
@@ -695,7 +699,7 @@ fn parse_args() -> Args {
         std::process::exit(0);
     }
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways || args.adventure_bot.is_some() || args.adventure_snapshot.is_some() || args.adventure_gallery.is_some() { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways || args.adventure_bot.is_some() || args.adventure_snapshot.is_some() || args.adventure_gallery.is_some() || args.adventure_landscape.is_some() { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
@@ -2240,6 +2244,13 @@ fn main() {
             match tiles::adventure::gallery(&world_data, history.as_ref(), world_data.seeds.master, prefix) {
                 Ok(f) => println!("Saved {} gallery frames", f.len()),
                 Err(e) => eprintln!("Adventure gallery failed: {}", e),
+            }
+            return;
+        }
+        if let Some(prefix) = &args.adventure_landscape {
+            match tiles::adventure::landscape(&world_data, history.as_ref(), world_data.seeds.master, prefix) {
+                Ok(f) => println!("Saved {} landscape frames", f.len()),
+                Err(e) => eprintln!("Adventure landscape failed: {}", e),
             }
             return;
         }

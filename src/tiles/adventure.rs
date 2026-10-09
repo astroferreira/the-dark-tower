@@ -207,20 +207,32 @@ fn draw_place(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     // The screen's top-left in world pixels (whole pixels).
     let ox = ((v.cam.0 + 0.5) * cs - map_w as f32 / 2.0).round() as i64;
     let oy = ((v.cam.1 + 0.5) * cs - h as f32 / 2.0).round() as i64;
-    // Bring the plan up to date for the cells in view.
+    // Bring the plan up to date for the cells in view (the land's plan is keyed on the world's
+    // cells and carried along with the camera; a small floor's covers it whole).
     let key = (id, g.z, cs.to_bits());
-    if v.plan.as_ref().map_or(true, |pl| pl.key != key) { v.plan = Some(ai::Plan::new(key, f, cs)); }
-    let plan = v.plan.as_mut().unwrap();
+    let go: (i64, i64) = if g.on_land() { let o = g.origin(); (o.0 as i64, o.1 as i64) } else { (0, 0) };
     let (cx0, cy0) = ((ox as f32 / cs).floor() as i32 - 1, (oy as f32 / cs).floor() as i32 - 1);
     let (cx1, cy1) = (((ox + map_w as i64) as f32 / cs).ceil() as i32 + 1, ((oy + h as i64) as f32 / cs).ceil() as i32 + 1);
-    plan.refresh(f, p.spec.kind, cs, cx0, cy0, cx1, cy1);
+    let whole = (f.w as f32 * cs) * (f.h as f32 * cs) <= 16.0e6;
+    let (vw, vh) = ((cx1 - cx0) as usize + 48, (cy1 - cy0) as usize + 48);
+    let (gx0, gy0, gx1, gy1) = (cx0 as i64 + go.0, cy0 as i64 + go.1, cx1 as i64 + go.0, cy1 as i64 + go.1);
+    let fresh = match v.plan.as_ref() { None => true, Some(pl) => pl.key != key || (!whole && (pl.cw < vw - 8 || pl.ch < vh - 8)) || (whole && (pl.gx0, pl.gy0) != go) };
+    if fresh { v.plan = Some(if whole { ai::Plan::new(key, go.0, go.1, f.w, f.h, cs) } else { ai::Plan::new(key, gx0 - 24, gy0 - 24, vw, vh, cs) }); }
+    let plan = v.plan.as_mut().unwrap();
+    if !whole && !plan.covers(gx0, gy0, gx1, gy1) { plan.rebase(gx0 - 24, gy0 - 24, cs); }
+    plan.refresh(f, p.spec.kind, cs, go, cx0, cy0, cx1, cy1);
     // Copy it with the light and fog: unseen underground is dark, unseen outdoors parchment;
     // seen but out of sight faded; in sight lit by the adventurer's light.
     let outdoor = f.outdoor;
     let light = if outdoor { 14.0 } else { g.hero.light() as f32 + 1.5 };
     let (hx, hy) = (v.hero_pos.0 + 0.5, v.hero_pos.1 + 0.5);
-    let unseen = if outdoor { hexc(mix(PARCH, [214.0, 200.0, 170.0], 0.6)) } else { DESK };
+    // Night under the sky: blue and dark, the hero's light warm about them.
+    let dark = if outdoor { 1.0 - g.daylight() } else { 0.0 };
+    let night_ink: Rgb = [26.0, 32.0, 58.0];
+    let glow = if dark > 0.0 && (g.hero.torch > 0 || g.hero.glow > 0) { g.hero.light() as f32 + 1.0 } else { 0.0 };
+    let unseen = if outdoor { hexc(mix(mix(PARCH, [214.0, 200.0, 170.0], 0.6), [52.0, 56.0, 76.0], dark * 0.8)) } else { DESK };
     let fw = f.w;
+    let (gpx, gpy) = (go.0 * cs as i64, go.1 * cs as i64);
     {
         use rayon::prelude::*;
         let plan = v.plan.as_ref().unwrap();
@@ -229,17 +241,26 @@ fn draw_place(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
             let wy = oy + sy as i64;
             for sx in 0..map_w {
                 let wx = ox + sx as i64;
-                if wx < 0 || wy < 0 || wx as usize >= plan.w || wy as usize >= plan.h { row[sx] = unseen; continue; }
+                if wx < 0 || wy < 0 { row[sx] = unseen; continue; }
                 let (cx, cy) = ((wx as f32 / cs) as usize, (wy as f32 / cs) as usize);
+                if cx >= f.w || cy >= f.h { row[sx] = unseen; continue; }
                 let k = cy * fw + cx;
                 if k >= f.seen.len() || !f.seen[k] { row[sx] = unseen; continue; }
-                let p = plan.buf[wy as usize * plan.w + wx as usize];
+                let Some(p) = plan.pixel(wx + gpx, wy + gpy, cs) else { row[sx] = unseen; continue };
                 let c = [((p >> 16) & 255) as f32, ((p >> 8) & 255) as f32, (p & 255) as f32];
                 let lit = sight.get(k).copied().unwrap_or(false);
                 let c = if !lit {
                     let grey = (c[0] + c[1] + c[2]) / 3.0;
-                    mix(mix(c, [grey, grey, grey], 0.6), if outdoor { PARCH } else { [70.0, 60.0, 52.0] }, if outdoor { 0.35 } else { 0.5 })
-                } else if outdoor { c } else {
+                    let c = mix(mix(c, [grey, grey, grey], 0.6), if outdoor { PARCH } else { [70.0, 60.0, 52.0] }, if outdoor { 0.35 } else { 0.5 });
+                    if dark > 0.0 { mix(c, night_ink, dark * 0.7) } else { c }
+                } else if outdoor {
+                    if dark > 0.0 {
+                        let (dx, dy) = (wx as f32 / cs - hx, wy as f32 / cs - hy);
+                        let d = (dx * dx + dy * dy).sqrt();
+                        let warm = if glow > 0.0 { (1.0 - d / glow).max(0.0) } else { 0.0 };
+                        mix(mix(c, night_ink, dark * 0.62 * (1.0 - warm)), [255.0, 214.0, 150.0], warm * dark * 0.12)
+                    } else { c }
+                } else {
                     let (dx, dy) = (wx as f32 / cs - hx, wy as f32 / cs - hy);
                     let d = (dx * dx + dy * dy).sqrt() / light;
                     let dim = (d * d).clamp(0.0, 1.0) * 0.6;
@@ -363,7 +384,10 @@ fn draw_place(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     }
     for (x, y, t, col) in labels { let tw = fonts::width(&t, Face::Italic, 13.0, 0.0); if x - tw / 2.0 > 0.0 && x + tw / 2.0 < map_w as f32 { fonts::draw(buf, w, h, x - tw / 2.0, y, &t, Face::Italic, 13.0, 0.0, col, Some(0x00EE_E4CC)); } }
     // The place's name and floor, top-left.
-    let title = format!("{} — {}", p.spec.name, f.name);
+    let title = if g.on_land() {
+        let when = clock(g);
+        if p.spec.kind == SiteKind::Town { format!("{} — {}", p.spec.name, when) } else { format!("{} — {}", crate::adventure::game::cap(&f.name), when) }
+    } else { format!("{} — {}", p.spec.name, f.name) };
     let r = Rect { x: 10, y: 10, w: (fonts::width(&title, Face::SmallCaps, 18.0, 0.5) as usize + 28).min(map_w - 20), h: 34 };
     card(buf, w, r);
     fonts::draw(buf, w, h, 24.0, 17.0, &title, Face::SmallCaps, 18.0, 0.5, 0x0030_1E14, None);
@@ -387,6 +411,13 @@ fn element_colour(k: &str) -> Rgb {
     match k { "fire" => [240.0, 120.0, 40.0], "ice" => [150.0, 200.0, 240.0], "energy" => [170.0, 110.0, 230.0], "earth" | "poison" => [110.0, 170.0, 60.0], "holy" => [250.0, 230.0, 140.0], "dark" => [90.0, 50.0, 110.0], "heal" => [140.0, 220.0, 150.0], "blow" => [230.0, 230.0, 220.0], _ => [220.0, 220.0, 200.0] }
 }
 
+/// The time of day in words ("day 3, early morning", "night, the moon full").
+fn clock(g: &Game) -> String {
+    let h = g.hour();
+    let part = if g.night() { if g.full_moon() { "night, the moon full" } else { "night" } } else if h < 8.0 { "dawn" } else if h < 12.0 { "morning" } else if h < 14.0 { "noon" } else if h < 18.0 { "afternoon" } else { "dusk" };
+    format!("day {}, {}", g.turn / crate::adventure::land::DAY + 1, part)
+}
+
 /// What a cell holds, in words.
 fn describe_cell(g: &Game, x: i32, y: i32) -> String {
     let Some(p) = g.place() else { return String::new() };
@@ -399,6 +430,9 @@ fn describe_cell(g: &Game, x: i32, y: i32) -> String {
         if let Some(items) = f.items.get(&(x, y)) { if !items.is_empty() { return items.iter().map(|i| i.describe()).collect::<Vec<_>>().join(", "); } }
     }
     let t = f.at(x, y);
+    if let Feature::Entrance { site, .. } = &t.feature {
+        if let Some(s) = g.site(*site) { return if s.kind == SiteKind::Town { format!("The grate into the sewers of {}", s.name) } else { format!("The way into {} ({})", s.name, s.kind.word()) }; }
+    }
     let w = t.feature.word();
     if !w.is_empty() { return crate::adventure::game::cap(w); }
     String::new()
@@ -436,9 +470,70 @@ fn draw_world(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
         (map_w as f32 / 2.0 + dx * tp, h as f32 / 2.0 + (ty as f32 + 0.5 - cam.cy) * tp)
     };
     let clip = Rect { x: 0, y: 0, w: map_w, h };
+    // The Mapmaker's map: blank parchment where one has not been nor heard of, a faint sketch
+    // where one has heard, inked where one has walked (the edges bleed a little).
+    if !g.mapped.is_empty() {
+        use rayon::prelude::*;
+        let (ww, wh) = (g.world.w as i64, g.world.h as i64);
+        let m = |tx: i64, ty: i64| -> f32 { if ty < 0 || ty >= wh { 0.0 } else { g.mapped[(ty * ww + tx.rem_euclid(ww)) as usize] as f32 } };
+        let blank: Rgb = [232.0, 222.0, 196.0];
+        buf.par_chunks_mut(w).enumerate().for_each(|(sy, row)| {
+            let fy = cam.cy + (sy as f32 + 0.5 - h as f32 / 2.0) / tp - 0.5;
+            for sx in 0..map_w {
+                let fx = cam.cx + (sx as f32 + 0.5 - map_w as f32 / 2.0) / tp - 0.5;
+                let (x0, y0) = (fx.floor() as i64, fy.floor() as i64);
+                let (a, b) = (fx - x0 as f32, fy - y0 as f32);
+                let v = (m(x0, y0) * (1.0 - a) + m(x0 + 1, y0) * a) * (1.0 - b) + (m(x0, y0 + 1) * (1.0 - a) + m(x0 + 1, y0 + 1) * a) * b;
+                // (A lone tile heard of is a round blot, not a smear between its neighbours.)
+                let (nx, ny) = ((fx + 0.5).floor(), (fy + 0.5).floor());
+                let dn = ((fx - nx).powi(2) + (fy - ny).powi(2)).sqrt();
+                let v = v.max(m(nx as i64, ny as i64) * (1.0 - dn * 1.3).max(0.0));
+                // (Keyed on the world, so the paper does not swim as the map moves.)
+                let (qx, qy) = ((fx * 10.0).floor() as i64, (fy * 10.0).floor() as i64);
+                let n = (super::ink::hash(qx, qy, 0x3A9) % 1000) as f32 / 1000.0;
+                let v = v + (n - 0.5) * 0.35;
+                if v >= 1.75 { continue; }
+                let p = row[sx];
+                let c = [((p >> 16) & 255) as f32, ((p >> 8) & 255) as f32, (p & 255) as f32];
+                let grey = (c[0] + c[1] + c[2]) / 3.0;
+                let sketch = mix(mix(c, [grey, grey, grey], 0.65), blank, 0.5);
+                let sketch = if (qx + qy).rem_euclid(9) == 0 { mix(sketch, [120.0, 96.0, 70.0], 0.25) } else { sketch };
+                let paper = mix(blank, [214.0, 200.0, 170.0], n * 0.35);
+                let ink = ((v - 1.25) / 0.5).clamp(0.0, 1.0);
+                let heard = ((v - 0.45) / 0.4).clamp(0.0, 1.0);
+                row[sx] = pack(mix(paper, mix(sketch, c, ink), heard));
+            }
+        });
+    }
     let mut labels = Vec::new();
     {
         let mut put = put_into(buf, w, h, Some(clip));
+        // The road walked, dotted.
+        let start = g.route.len().saturating_sub(3000);
+        for pair in g.route[start..].windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            let dx = (a.0 as i32 - b.0 as i32).abs();
+            if dx > 1 && dx < g.world.w as i32 - 1 || (a.1 as i32 - b.1 as i32).abs() > 1 { continue; }
+            let (ax, ay) = to_screen(a.0 as usize, a.1 as usize);
+            let (bx, by) = to_screen(b.0 as usize, b.1 as usize);
+            if (ax - bx).abs() > tp * 2.0 { continue; }
+            if ax.max(bx) < -10.0 || ay.max(by) < -10.0 || ax.min(bx) > map_w as f32 + 10.0 || ay.min(by) > h as f32 + 10.0 { continue; }
+            let l = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
+            let steps = (l / 6.0).ceil() as i32;
+            for k in 0..steps {
+                let t = k as f32 / steps as f32;
+                let (x, y) = (ax + (bx - ax) * t, ay + (by - ay) * t);
+                for oy in -1..=1 { for ox in -1..=1 { put(x as i64 + ox, y as i64 + oy, [150.0, 46.0, 34.0], if ox == 0 && oy == 0 { 0.9 } else { 0.4 }); } }
+            }
+        }
+        // The crosses of treasure maps.
+        for tag in &g.marks {
+            let (tx, ty) = ((tag & 0xFFFF) as usize, (tag >> 16) as usize);
+            let (x, y) = to_screen(tx, ty);
+            let mut pen = super::ink::Pen::new(&mut put, x, y, tp);
+            pen.line((-0.35, -0.35), (0.35, 0.35), [170.0, 30.0, 24.0], (tp / 8.0).max(2.0));
+            pen.line((-0.35, 0.35), (0.35, -0.35), [170.0, 30.0, 24.0], (tp / 8.0).max(2.0));
+        }
         for s in g.sites.iter().filter(|s| g.known.contains(&s.id) && s.kind != SiteKind::Wilds) {
             let (x, y) = to_screen(s.tile.0, s.tile.1);
             if x < -20.0 || y < -20.0 || x > map_w as f32 + 20.0 || y > h as f32 + 20.0 { continue; }
@@ -452,14 +547,21 @@ fn draw_world(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
         pen.glow(0.0, 0.0, 0.9, [255.0, 230.0, 160.0], 0.5);
         folk::draw(&mut put, &hf, x, y + tp * 0.3, (tp / 22.0 * 1.4).max(0.6), g.facing.0 < 0, false, 1.0);
     }
+    // Names, towns first, none over another.
+    labels.sort_by_key(|l| (l.3 != SiteKind::Town, ((l.0 - map_w as f32 / 2.0).abs() + (l.1 - h as f32 / 2.0).abs()) as i32));
+    let mut placed: Vec<(f32, f32, f32, f32)> = Vec::new();
     for (x, y, t, k) in labels {
         let tw = fonts::width(&t, Face::Italic, 13.0, 0.0);
         if x - tw / 2.0 < 0.0 || x + tw / 2.0 > map_w as f32 { continue; }
+        let r = (x - tw / 2.0 - 2.0, y - 1.0, x + tw / 2.0 + 2.0, y + 15.0);
+        if placed.iter().any(|o| r.0 < o.2 && o.0 < r.2 && r.1 < o.3 && o.1 < r.3) { continue; }
+        placed.push(r);
         fonts::draw(buf, w, h, x - tw / 2.0, y, &t, Face::Italic, 13.0, 0.0, if k == SiteKind::Town { 0x0038_2A20 } else { 0x0090_2010 }, Some(0x00EE_E4CC));
     }
     // What is here.
     let here: Vec<String> = g.sites.iter().filter(|s| s.tile == g.tile && s.kind != SiteKind::Wilds).map(|s| format!("{} ({})", s.name, s.kind.word())).collect();
-    let line = if here.is_empty() { format!("The road at {},{}. Arrows walk; the land's danger grows away from the towns.", g.tile.0, g.tile.1) } else { format!("{}. Enter to go in.", here.join("; ")) };
+    let region = crate::adventure::game::cap(&g.region_name(g.tile));
+    let line = if here.is_empty() { format!("{}. Arrows travel (quick on roads, slow over blank country); Enter walks the land.", region) } else { format!("{}: {}. Enter walks the land here.", region, here.join("; ")) };
     let r = Rect { x: 10, y: 10, w: (fonts::width(&line, Face::Italic, 15.0, 0.0) as usize + 24).min(map_w - 20), h: 30 };
     card(buf, w, r);
     fonts::draw(buf, w, h, 22.0, 17.0, &line, Face::Italic, 15.0, 0.0, 0x0038_2A20, None);
@@ -491,6 +593,7 @@ fn draw_panel(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     bar(buf, w, h, x0, 78, bw, hero.mana as f32 / hero.max_mana() as f32, 0x0040_6AB0, &format!("mana {} / {}", hero.mana, hero.max_mana()));
     bar(buf, w, h, x0, 96, bw, hero.level_progress(), 0x00A8_8A30, &format!("experience {} (level {} at {})", hero.xp, hero.level + 1, crate::adventure::hero::xp_for(hero.level + 1)));
     let mut status = vec![format!("{} gold", hero.gold())];
+    if g.here.is_none() || g.on_land() { status.push(clock(g)); }
     if hero.poisoned > 0 { status.push("poisoned".into()); }
     if hero.fed == 0 { status.push("hungry".into()); }
     if hero.torch > 0 { status.push("torch lit".into()); }
@@ -675,7 +778,19 @@ fn draw_chest_choice(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize
 /// Feed the game's effects to the view (with the time they began).
 pub fn take_effects(g: &mut Game, v: &mut View) { let now = Instant::now(); for e in g.take_effects() { v.effects.push((e, now)); } }
 
-fn act(g: &mut Game, v: &mut View, a: Action) { g.act(a); take_effects(g, v); }
+fn act(g: &mut Game, v: &mut View, a: Action) { g.act(a); follow_shift(g, v); take_effects(g, v); }
+
+/// The land floor was put together about another tile: what is drawn moves with it.
+fn follow_shift(g: &mut Game, v: &mut View) {
+    let (dx, dy) = std::mem::take(&mut g.shifted);
+    if (dx, dy) == (0, 0) { return; }
+    let (fx, fy) = (dx as f32, dy as f32);
+    v.hero_pos = (v.hero_pos.0 + fx, v.hero_pos.1 + fy);
+    v.cam = (v.cam.0 + fx, v.cam.1 + fy);
+    for p in v.pos.values_mut() { *p = (p.0 + fx, p.1 + fy); }
+    if let Some(t) = v.walk_to.as_mut() { *t = (t.0 + dx, t.1 + dy); }
+    v.effects.clear();
+}
 
 /// The first step toward (tx, ty) on the current floor (8-way BFS over walkable cells and doors).
 fn step_toward(g: &Game, tx: i32, ty: i32) -> Option<(i32, i32)> {
@@ -689,7 +804,7 @@ fn step_toward(g: &Game, tx: i32, ty: i32) -> Option<(i32, i32)> {
 
 pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::world_state::WorldHistory>, atlas: &super::atlas::Atlas, seed: u64, load: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let mut g = match load {
-        Some(path) => crate::adventure::Game::load(std::path::Path::new(path), world.width, world.height)?,
+        Some(path) => crate::adventure::Game::load(std::path::Path::new(path), crate::adventure::world::build(world, history, seed, None).info)?,
         None => crate::adventure::new_game(world, history, seed, None),
     };
     if load.is_some() { let n = g.hero.name.clone(); g.say(Tone::Level, format!("{} takes up the road again.", n)); }
@@ -761,7 +876,7 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
             let dirs = [(Key::Up, (0, -1)), (Key::W, (0, -1)), (Key::Down, (0, 1)), (Key::S, (0, 1)), (Key::Left, (-1, 0)), (Key::A, (-1, 0)), (Key::Right, (1, 0)), (Key::D, (1, 0)),
                 (Key::Q, (-1, -1)), (Key::E, (1, -1)), (Key::Z, (-1, 1)), (Key::C, (1, 1)), (Key::NumPad8, (0, -1)), (Key::NumPad2, (0, 1)), (Key::NumPad4, (-1, 0)), (Key::NumPad6, (1, 0)), (Key::NumPad7, (-1, -1)), (Key::NumPad9, (1, -1)), (Key::NumPad1, (-1, 1)), (Key::NumPad3, (1, 1))];
             for (key, (dx, dy)) in dirs { if repeat(key) { act(&mut g, &mut v, Action::Travel(dx, dy)); break; } }
-            if pressed(Key::Enter) { act(&mut g, &mut v, Action::Enter); }
+            if pressed(Key::Enter) || pressed(Key::T) { act(&mut g, &mut v, Action::Enter); v.plan = None; }
             v.world_cam.cx = g.tile.0 as f32 + 0.5;
             v.world_cam.cy = g.tile.1 as f32 + 0.5;
         } else {
@@ -769,6 +884,8 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
                 (Key::Q, (-1, -1)), (Key::E, (1, -1)), (Key::Z, (-1, 1)), (Key::C, (1, 1)), (Key::NumPad8, (0, -1)), (Key::NumPad2, (0, 1)), (Key::NumPad4, (-1, 0)), (Key::NumPad6, (1, 0)), (Key::NumPad7, (-1, -1)), (Key::NumPad9, (1, -1)), (Key::NumPad1, (-1, 1)), (Key::NumPad3, (1, 1))];
             for (key, (dx, dy)) in dirs { if repeat(key) { v.walk_to = None; act(&mut g, &mut v, Action::Move(dx, dy)); break; } }
             if pressed(Key::G) { act(&mut g, &mut v, Action::PickUp); }
+            // Travel: the world map (not with enemies at one's heels).
+            if pressed(Key::T) { act(&mut g, &mut v, Action::WorldMap); }
             if pressed(Key::R) { act(&mut g, &mut v, Action::Rest); }
             if pressed(Key::Comma) || pressed(Key::Period) || pressed(Key::Enter) || pressed(Key::NumPad5) { act(&mut g, &mut v, Action::Climb); }
             if pressed(Key::H) { if let Some(k) = g.hero.pack.iter().position(|i| i.id.contains("health_potion")) { act(&mut g, &mut v, Action::UseItem(k)); } }
@@ -872,17 +989,22 @@ pub fn snapshots(world: &crate::world::WorldData, history: Option<&crate::histor
     shoot(&mut g, &mut v, "talk", &mut files)?;
     g.talk = None;
     // Play until the sewers, then until a fight, then deeper.
-    let mut took = [false; 5];
+    let mut took = [false; 8];
     for k in 0..60_000 {
         // (Only the last act's effects are shown, as the window would.)
         let _ = g.take_effects();
         if !bot.step(&mut g) { let _ = g.act(Action::Wait); }
+        follow_shift(&mut g, &mut v);
+        let in_town = g.place().map_or(false, |p| p.spec.kind == SiteKind::Town);
+        if !took[5] && g.on_land() && !in_town && !g.night() && k > 300 && g.monsters_in_sight() == 0 { took[5] = true; shoot(&mut g, &mut v, "land", &mut files)?; }
+        if !took[6] && g.on_land() && !in_town && g.night() { took[6] = true; shoot(&mut g, &mut v, "night", &mut files)?; }
+        if !took[7] && g.on_land() && in_town && g.site_here() != g.hero.temple { took[7] = true; shoot(&mut g, &mut v, "town", &mut files)?; }
         let in_sewer = g.here == Some(g.hero.temple) && g.z >= 1;
         let fighting = g.monsters_in_sight() >= 2 && g.here.is_some();
         if !took[0] && in_sewer && fighting { took[0] = true; shoot(&mut g, &mut v, "sewer", &mut files)?; }
         if !took[1] && g.here.is_none() && k > 2000 { took[1] = true; shoot(&mut g, &mut v, "world", &mut files)?; }
-        if !took[2] && g.here.is_some() && g.here != Some(g.hero.temple) && g.z == 0 && g.floor().map_or(false, |f| f.outdoor) && fighting { took[2] = true; shoot(&mut g, &mut v, "surface", &mut files)?; }
-        if !took[3] && g.here.is_some() && g.here != Some(g.hero.temple) && g.z >= 1 && fighting { took[3] = true; v.tab = Tab::Skills; shoot(&mut g, &mut v, "deep", &mut files)?; v.tab = Tab::Pack; }
+        if !took[2] && g.on_land() && !in_town && fighting { took[2] = true; shoot(&mut g, &mut v, "surface", &mut files)?; }
+        if !took[3] && g.here.is_some() && !g.on_land() && g.here != Some(g.hero.temple) && g.z >= 1 && fighting { took[3] = true; v.tab = Tab::Skills; shoot(&mut g, &mut v, "deep", &mut files)?; v.tab = Tab::Pack; }
         if !took[4] && g.place().map_or(false, |p| p.monsters.iter().any(|m| m.boss && m.z == g.z && g.visible(m.x, m.y))) { took[4] = true; shoot(&mut g, &mut v, "boss", &mut files)?; }
         if took.iter().all(|t| *t) { break; }
     }
@@ -902,7 +1024,7 @@ pub fn gallery(world: &crate::world::WorldData, history: Option<&crate::history:
         let floors = if *kind == SiteKind::Wilds { 1 } else { 3 };
         let boss = BossSpec { def: "troll".into(), name: "the Gallery Boss".into(), scale: 1.4, legend: None, hoard: vec![], story: String::new() };
         g.sites.push(SiteSpec { id, kind: *kind, name: format!("{:?}", kind), tile: g.tile, seed: seed ^ (n as u64 * 7919), tier: 3, cause: String::new(), boss: Some(boss), treasures: vec![],
-            surface: crate::adventure::map::Ground::Grass, rock: "granite".into(), floors, people: String::new(), god: String::new(), news: Vec::new(), lord: None });
+            surface: crate::adventure::map::Ground::Grass, rock: "granite".into(), floors, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None });
         g.enter_site(id, true);
         let z = if floors > 1 { 1 } else { 0 };
         g.z = z;
@@ -927,9 +1049,54 @@ pub fn gallery(world: &crate::world::WorldData, history: Option<&crate::history:
     Ok(files)
 }
 
+/// `--adventure-landscape PREFIX`: the land about tiles of every kind (woods, mountains, desert,
+/// marsh, a city, a port, a ruin standing in the open, a cave's mouth), wholly revealed, from
+/// above at 8 pixels a cell: PREFIX_NAME.png.
+pub fn landscape(world: &crate::world::WorldData, history: Option<&crate::history::world_state::WorldHistory>, seed: u64, prefix: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    use crate::adventure::surface::{kind_of, Kind};
+    let (w, h) = (1280usize, 800usize);
+    let mut g = crate::adventure::new_game(world, history, seed, None);
+    let (ww, wh) = (g.world.w, g.world.h);
+    let mut picks: Vec<(String, (usize, usize))> = Vec::new();
+    let home = g.tile;
+    picks.push(("home".into(), home));
+    let by_kind = |g: &Game, k: Kind| (0..ww * wh).filter(|&i| g.world.land[i] && kind_of(g.world.biome[i], g.world.elevation[i]) == k && !g.sites.iter().any(|s| s.tile == (i % ww, i / ww))).min_by_key(|&i| crate::adventure::world::dist((i % ww, i / ww), home, ww)).map(|i| (i % ww, i / ww));
+    for (name, k) in [("forest", Kind::Forest), ("mountain", Kind::Mountain), ("desert", Kind::Desert), ("swamp", Kind::Swamp), ("snow", Kind::Snow), ("plains", Kind::Plains), ("jungle", Kind::Jungle)] { if let Some(t) = by_kind(&g, k) { picks.push((name.into(), t)); } }
+    let site_of = |g: &Game, f: &dyn Fn(&crate::adventure::site::SiteSpec) -> bool| g.sites.iter().filter(|s| f(s)).min_by_key(|s| crate::adventure::world::dist(s.tile, home, ww)).map(|s| s.tile);
+    if let Some(t) = site_of(&g, &|s| s.kind == SiteKind::Town && s.town.as_ref().map_or(false, |t| t.size >= 3)) { picks.push(("city".into(), t)); }
+    if let Some(t) = site_of(&g, &|s| s.kind == SiteKind::Town && s.town.as_ref().map_or(false, |t| t.sea != 0)) { picks.push(("port".into(), t)); }
+    if let Some(t) = site_of(&g, &|s| s.kind == SiteKind::Town && s.town.as_ref().map_or(false, |t| t.size == 0)) { picks.push(("hamlet".into(), t)); }
+    if let Some(t) = site_of(&g, &|s| matches!(s.kind, SiteKind::Ruin | SiteKind::Castle | SiteKind::Temple)) { picks.push(("ruin".into(), t)); }
+    if let Some(t) = site_of(&g, &|s| matches!(s.kind, SiteKind::Cave | SiteKind::Mine | SiteKind::Lair)) { picks.push(("cave".into(), t)); }
+    if let Some(t) = (0..ww * wh).filter(|&i| g.world.river[i] && g.world.road[i]).min_by_key(|&i| crate::adventure::world::dist((i % ww, i / ww), home, ww)).map(|i| (i % ww, i / ww)) { picks.push(("ford".into(), t)); }
+    let mut files = Vec::new();
+    for (name, t) in picks {
+        g.land_at(t, None);
+        // Stand in the middle of the tile and see all of it.
+        g.x = crate::adventure::surface::CH + crate::adventure::surface::CH / 2;
+        g.y = g.x;
+        if let Some(p) = g.land.as_mut() { for s in p.floors[0].seen.iter_mut() { *s = true; } }
+        g.look();
+        let n = g.floor().map_or(0, |f| f.w * f.h);
+        g.sight = vec![true; n];
+        g.turn = g.turn / crate::adventure::land::DAY * crate::adventure::land::DAY + 30_000;
+        let mut v = View::new(&g);
+        v.cs = 8.0;
+        let mut buf = vec![0u32; w * h];
+        draw(&g, &mut v, &mut buf, w, h);
+        let path = format!("{}_{}.png", prefix, name);
+        image::RgbImage::from_fn(w as u32, h as u32, |x, y| { let p = buf[y as usize * w + x as usize]; image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8]) }).save(&path)?;
+        let mut kinds: Vec<String> = g.place().map(|p| p.monsters.iter().map(|m| m.def.clone()).collect()).unwrap_or_default();
+        kinds.sort(); kinds.dedup();
+        println!("  {} ({:?}: {}; {} creatures about: {})", path, t, g.region_name(t), g.place().map_or(0, |p| p.monsters.len()), kinds.join(", "));
+        files.push(path);
+    }
+    Ok(files)
+}
+
 /// The keys, on a card (? toggles it).
 fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
-    let lines: [(&str, &str); 17] = [
+    let lines: [(&str, &str); 19] = [
         ("Arrows, WASD, numpad", "walk; Q E Z C the diagonals; bump into a thing to strike it, open it or talk"),
         ("Mouse", "click to walk there or to strike; click a thing in the pack to use or wear it, right click to drop it"),
         ("Space / Tab", "strike or shoot the target / choose the next target in sight"),
@@ -937,7 +1104,8 @@ fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
         ("G", "take what lies here"),
         ("R", "rest until whole (not with enemies near, not hungry)"),
         ("H / J / F", "drink a health potion / a mana potion / eat"),
-        ("< > Enter", "take the stairs, ladder, hole or way out underfoot; Enter on the map goes in"),
+        ("< > Enter", "take the stairs, ladder, hole, cave mouth or grate underfoot"),
+        ("T", "travel: the world map (arrows cross a land a step; Enter or T walks the land there)"),
         ("1 - 9", "answer in a conversation; choose from a quest chest beside you"),
         ("I K M L", "the Pack, Skills, Spells and Quests tabs"),
         ("Wheel", "zoom"),
@@ -945,7 +1113,8 @@ fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
         ("Esc", "close a card; twice to leave"),
         ("Towns", "the priest heals, gives a calling at level 8, teaches spells and blesses"),
         ("", "the smith and the trader buy and sell; the lord, the guard and the sage give work"),
-        ("The world", "walk tile by tile; places are named on the map; the farther from towns, the worse"),
+        ("The land", "every land is walked: woods, roads, rivers; the farther from towns, the worse; worse at night"),
+        ("The map", "inks in where you walk: blank country is slow and dangerous to cross; sages buy your charts"),
         ("Death", "costs a tenth of your experience and half your gold, unless you were blessed"),
     ];
     let cw = 720usize.min(map_w.saturating_sub(40));

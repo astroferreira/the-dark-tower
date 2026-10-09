@@ -22,6 +22,28 @@ pub struct WorldInfo {
     /// 0 safe .. 255 deadly: far from towns, under the Shadow, near lairs.
     pub danger: Vec<u8>,
     pub elevation: Vec<f32>,
+    /// What the land is, for its ground, growth and perils.
+    pub biome: Vec<ExtendedBiome>,
+    pub temperature: Vec<f32>,
+    pub moisture: Vec<f32>,
+    /// A river runs through the tile, and the way it flows (0-7, `map::DIRS8`; 255 none).
+    pub river: Vec<bool>,
+    pub downhill: Vec<u8>,
+    /// A road of the history crosses the tile.
+    pub road: Vec<bool>,
+    /// Forest cover and farmland (0-255) from the history's ecology; the Shadow's corruption 0-1.
+    pub forest: Vec<u8>,
+    pub farmland: Vec<u8>,
+    pub shadow: Vec<f32>,
+    /// Battles fought on the tile (the restless dead walk there at night).
+    pub battles: Vec<u8>,
+    /// What the history remembers of a tile (its battles), told when one walks onto it.
+    #[serde(default)]
+    pub tales: std::collections::BTreeMap<usize, String>,
+}
+
+impl Default for WorldInfo {
+    fn default() -> Self { WorldInfo { w: 0, h: 0, land: vec![], ground: vec![], danger: vec![], elevation: vec![], biome: vec![], temperature: vec![], moisture: vec![], river: vec![], downhill: vec![], road: vec![], forest: vec![], farmland: vec![], shadow: vec![], battles: vec![], tales: Default::default() } }
 }
 
 impl WorldInfo {
@@ -136,19 +158,63 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
     let mut land = vec![false; w * h];
     let mut ground = vec![Ground::Grass; w * h];
     let mut elevation = vec![0.0f32; w * h];
+    let mut biome = vec![ExtendedBiome::TemperateGrassland; w * h];
+    let mut temperature = vec![10.0f32; w * h];
+    let mut moisture = vec![0.5f32; w * h];
+    let mut river = vec![false; w * h];
     for y in 0..h { for x in 0..w {
         let e = *world.heightmap.get(x, y);
         land[y * w + x] = e > 0.0;
         elevation[y * w + x] = e;
+        biome[y * w + x] = *world.biomes.get(x, y);
         ground[y * w + x] = ground_of(*world.biomes.get(x, y));
+        temperature[y * w + x] = *world.temperature.get(x, y);
+        moisture[y * w + x] = *world.moisture.get(x, y);
+        river[y * w + x] = e > 0.0 && world.river_tile_cache.as_ref().map_or(false, |r| *r.get(x, y));
     } }
+    // Which way the water runs: the lowest neighbour.
+    let mut downhill = vec![255u8; w * h];
+    for y in 0..h { for x in 0..w {
+        let e0 = elevation[y * w + x];
+        let mut best = (255u8, e0);
+        for (k, (dx, dy)) in super::map::DIRS8.iter().enumerate() {
+            let ny = y as i32 + dy;
+            if ny < 0 || ny >= h as i32 { continue; }
+            let nx = (x as i32 + dx).rem_euclid(w as i32) as usize;
+            let e = elevation[ny as usize * w + nx];
+            if e < best.1 { best = (k as u8, e); }
+        }
+        downhill[y * w + x] = best.0;
+    } }
+    let mut road = vec![false; w * h];
+    let mut forest = vec![0u8; w * h];
+    let mut farmland = vec![0u8; w * h];
+    let mut shadow_v = vec![0.0f32; w * h];
+    let mut battles = vec![0u8; w * h];
+    let mut tales: std::collections::BTreeMap<usize, String> = Default::default();
+    if let Some(hist) = history {
+        let ov = crate::tiles::classify::HistoryOverlay::from_history(hist, w, h);
+        for k in 0..w * h {
+            road[k] = ov.road.get(k).copied().unwrap_or(false);
+            forest[k] = ov.cover.get(k).copied().unwrap_or(0);
+            farmland[k] = ov.farmland.get(k).copied().unwrap_or(0);
+            shadow_v[k] = ov.shadow.get(k).map_or(0.0, |v| *v as f32 / 255.0);
+        }
+        for e in hist.chronicle.events.iter().filter(|e| e.event_type == crate::history::events::types::EventType::BattleFought) {
+            if let Some((x, y)) = e.location { if x < w && y < h {
+                battles[y * w + x] = battles[y * w + x].saturating_add(1);
+                let t = tales.entry(y * w + x).or_insert_with(String::new);
+                if t.len() < 300 { if !t.is_empty() { t.push(' '); } t.push_str(&format!("Here was fought {} in {}.", e.title.trim_end_matches('.'), e.date.year)); }
+            } }
+        }
+    }
     let mut sites: Vec<SiteSpec> = Vec::new();
     let mut next = 1u32;
     let mut add = |sites: &mut Vec<SiteSpec>, kind: SiteKind, name: String, tile: (usize, usize), tier: u32, cause: String, boss: Option<BossSpec>, floors: usize, people: String, god: String| -> u32 {
         let id = next;
         next += 1;
         let surface = ground[tile.1 * w + tile.0];
-        sites.push(SiteSpec { id, kind, name, tile, seed: h64(seed ^ id as u64, (tile.0 * 7919 + tile.1) as u64), tier, cause, boss, treasures: Vec::new(), surface, rock: "granite".into(), floors, people, god, news: Vec::new(), lord: None });
+        sites.push(SiteSpec { id, kind, name, tile, seed: h64(seed ^ id as u64, (tile.0 * 7919 + tile.1) as u64), tier, cause, boss, treasures: Vec::new(), surface, rock: "granite".into(), floors, people, god, news: Vec::new(), lord: None, town: None });
         id
     };
     let year = history.map_or(0, |hh| hh.current_date.year);
@@ -165,6 +231,21 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
             match s.destroyed {
                 None => {
                     let id = add(&mut sites, SiteKind::Town, s.name.clone(), (x, y), 1, String::new(), None, 3, people, god);
+                    // What the town is: its size, walls and building.
+                    use crate::history::civilizations::settlement::{SettlementType as T, WallLevel as WL};
+                    let size = match s.settlement_type { T::Capital | T::City => 3, T::Town | T::Port | T::Fort => 2, T::Village | T::Temple | T::Mine => 1, _ => 0 };
+                    let size = if s.population > 6000 { size.max(3) } else if s.population > 1500 { size.max(2) } else { size };
+                    let walls = match s.walls { WL::None => 0, WL::Palisade => 1, WL::StoneWall => 2, WL::Fortified | WL::Citadel => 3 };
+                    let arch = hist.factions.get(&s.faction).and_then(|f| hist.races.get(&f.race_id)).and_then(|r| hist.cultures.get(&r.culture_id)).map(|c| format!("{:?}", c.architecture).to_lowercase()).unwrap_or_else(|| "wood".into());
+                    if let Some(sp) = sites.iter_mut().find(|q| q.id == id) { sp.town = Some(super::site::TownShape { size, walls, arch, population: s.population, port: matches!(s.settlement_type, T::Port), roads: {
+                        let mut r = 0u8;
+                        for (k, (dx, dy)) in super::map::DIRS8.iter().enumerate() { let ny = y as i32 + dy; if ny >= 0 && ny < h as i32 && road[ny as usize * w + (x as i32 + dx).rem_euclid(w as i32) as usize] { r |= 1 << k; } }
+                        r
+                    }, sea: {
+                        let mut r = 0u8;
+                        for (k, (dx, dy)) in super::map::DIRS4.iter().enumerate() { let ny = y as i32 + dy; if ny >= 0 && ny < h as i32 && !land[ny as usize * w + (x as i32 + dx).rem_euclid(w as i32) as usize] { r |= 1 << k; } }
+                        r
+                    } }); }
                     let news: Vec<String> = knowledge.news_of_town(s.id, 40, 6).iter().map(|t| t.as_told()).collect();
                     // The ruler of the people holds court in their capital.
                     let lord = hist.factions.get(&s.faction).filter(|f| f.capital == Some(s.id)).and_then(|f| f.current_leader.and_then(|l| hist.figures.get(&l)).map(|fig| (fig.full_name(), fig.titles.first().cloned().unwrap_or_else(|| format!("ruler of {}", f.name)))));
@@ -366,12 +447,12 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
             s.tier = (s.tier + d / 8).clamp(1, 6);
         }
     }
-    let mut built = Built { info: WorldInfo { w, h, land, ground, danger, elevation }, sites, start };
+    let mut built = Built { info: WorldInfo { w, h, land, ground, danger, elevation, biome, temperature, moisture, river, downhill, road, forest, farmland, shadow: shadow_v, battles, tales }, sites, start };
     // A world with no towns at all: one is made where the land is best.
     if built.start == 0 {
         let k = (0..w * h).find(|&k| built.info.land[k] && built.info.ground[k] == Ground::Grass).unwrap_or(0);
         let id = built.sites.iter().map(|s| s.id).max().unwrap_or(0) + 1;
-        built.sites.push(SiteSpec { id, kind: SiteKind::Town, name: "Hearthwater".into(), tile: (k % w, k / w), seed: h64(seed, 7), tier: 1, cause: String::new(), boss: None, treasures: Vec::new(), surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "the old gods".into(), news: Vec::new(), lord: None });
+        built.sites.push(SiteSpec { id, kind: SiteKind::Town, name: "Hearthwater".into(), tile: (k % w, k / w), seed: h64(seed, 7), tier: 1, cause: String::new(), boss: None, treasures: Vec::new(), surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "the old gods".into(), news: Vec::new(), lord: None, town: None });
         built.start = id;
     }
     built

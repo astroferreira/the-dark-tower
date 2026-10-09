@@ -17,10 +17,12 @@ pub mod data;
 pub mod game;
 pub mod hero;
 pub mod item;
+pub mod land;
 pub mod map;
 pub mod npc;
 pub mod quest;
 pub mod site;
+pub mod surface;
 pub mod town;
 pub mod world;
 

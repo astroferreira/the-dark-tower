@@ -13,6 +13,8 @@ pub enum Topic {
     Name, Job, Trade, Buy(String, u32, u32), SellLoot, SellGear, SellOne(usize), Quest, Accept, Report(usize), Rumours, Places,
     Heal, Calling, Become(String), Spells, Learn(String, u32), Rest(u32), Bye, Back,
     Bless(u32), Improve, Refine(super::hero::Slot, u32), Hire(u32),
+    /// The Mapmaker's charts sold to a sage (gold for the tiles inked on foot).
+    Charts(u32),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -27,7 +29,14 @@ pub struct Talk {
     pub offer: Option<Quest>,
 }
 
-fn town_id(g: &Game) -> u32 { g.here.unwrap_or(0) }
+/// The town of the one spoken to (their home; else the town one stands in).
+fn town_id(g: &Game) -> u32 {
+    let home = g.talk.as_ref().and_then(|t| g.place().and_then(|p| p.npcs.get(t.npc))).map_or(0, |n| n.home);
+    if home != 0 { home } else { g.site_here() }
+}
+
+/// What a sage pays for a tile inked on foot.
+fn chart_price(g: &Game) -> u32 { 3 + g.hero.level / 4 }
 
 fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
     let mut v = vec![("Name".to_string(), Topic::Name), ("Job".into(), Topic::Job)];
@@ -39,7 +48,11 @@ fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
             v.push(("Spells".into(), Topic::Spells));
             if !g.hero.blessed { let p = g.hero.blessing_price(); v.push((format!("A blessing: your next death costs nothing ({} gold)", p), Topic::Bless(p))); }
         }
-        Role::Sage => { v.push(("Places".into(), Topic::Places)); v.push(("Runes".into(), Topic::Trade)); }
+        Role::Sage => {
+            v.push(("Places".into(), Topic::Places));
+            v.push(("Runes".into(), Topic::Trade));
+            if g.charted > 0 { let p = g.charted * chart_price(g); v.push((format!("Sell your charts: {} lands newly mapped ({} gold)", g.charted, p), Topic::Charts(p))); }
+        }
         _ => {}
     }
     if role == Role::Innkeeper {
@@ -60,13 +73,15 @@ fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
 pub fn greet(g: &mut Game, k: usize) {
     let Some(n) = g.place().and_then(|p| p.npcs.get(k)).cloned() else { return };
     let hero = g.hero.name.clone();
-    let town = g.place().map(|p| p.spec.name.clone()).unwrap_or_default();
+    let town = g.site(n.home).map(|s| s.name.clone()).or_else(|| g.place().map(|p| p.spec.name.clone())).unwrap_or_default();
     let said = match n.role {
+        Role::Sage if n.of == "hermit" => format!("Few come this way. I am {}, and I have walked this country forty years. I know where things lie, {}.", n.name, hero),
+        Role::Townsfolk if n.of == "farmer" => format!("Morning, {}. Mind the fields. And the wolves, after dark.", hero),
         Role::Priest => format!("Welcome, {}, to the temple of {}. The god's light on you.", hero, n.of),
         Role::Smith => format!("Hello, {}. Iron and steel, sharp and true. Looking for a blade?", hero),
         Role::Trader => format!("Welcome, {}! Potions, food, torches, rope, arrows. And I buy what you drag out of the dark.", hero),
         Role::Innkeeper => format!("Come in, {}, sit by the fire. A meal, a bed, the news of the road.", hero),
-        Role::Lord => if g.place().map_or(false, |p| p.spec.lord.is_some()) { format!("You stand before {}, {}. Speak, {}.", n.name, n.of, hero) } else { format!("You stand before the lord of {}. Speak, {}.", town, hero) },
+        Role::Lord => if g.site(n.home).map_or(false, |s| s.lord.is_some()) { format!("You stand before {}, {}. Speak, {}.", n.name, n.of, hero) } else { format!("You stand before the lord of {}. Speak, {}.", town, hero) },
         Role::Guard => format!("Halt. Ah, {}. The roads are bad and the bounties are good.", hero),
         Role::Sage => format!("Ah, a visitor. I am {}, and I keep what is known of the old days. What would you learn, {}?", n.name, hero),
         Role::Townsfolk => format!("Good day, {}.", hero),
@@ -74,7 +89,7 @@ pub fn greet(g: &mut Game, k: usize) {
     g.talk = Some(Talk { npc: k, name: n.name.clone(), role: n.role, said, options: Vec::new(), offer: None });
     // A parcel for this town's trader: delivered and paid for here.
     if n.role == Role::Trader {
-        let here = g.here.unwrap_or(0);
+        let here = town_id(g);
         if let Some(qk) = g.quests.iter().position(|q| q.state == State::Open && matches!(q.goal, quest::Goal::Deliver { town, .. } if town == here)) {
             let quest::Goal::Deliver { tag, .. } = g.quests[qk].goal.clone() else { unreachable!() };
             if let Some(i) = g.hero.pack.iter().position(|i| i.tag == tag) {
@@ -122,7 +137,7 @@ pub fn answer(g: &mut Game, i: usize) {
     let mut said = String::new();
     let mut options: Option<Vec<(String, Topic)>> = None;
     let mut offer = t.offer.clone();
-    let town = g.place().map(|p| p.spec.name.clone()).unwrap_or_default();
+    let town = g.site(n.home).map(|s| s.name.clone()).or_else(|| g.place().map(|p| p.spec.name.clone())).unwrap_or_default();
     match topic {
         Topic::Name => said = format!("I am {}, {} of {}.", n.name, n.role.word(), town),
         Topic::Job => said = match n.role {
@@ -199,6 +214,7 @@ pub fn answer(g: &mut Game, i: usize) {
                 let dd = { let dx = (s.tile.0 as i32 - here.0 as i32).abs(); (dx.min(w as i32 - dx)).max((s.tile.1 as i32 - here.1 as i32).abs()) };
                 parts.push(format!("They say there is {} to the {}, {} days' walk: {}.{}", s.kind.word(), d, dd, s.name, if s.cause.is_empty() { String::new() } else { format!(" {}", s.cause) }));
                 g.known.push(s.id);
+                g.rumour(s.tile);
             }
             if let Some(nw) = news { parts.push(format!("And the news from the world: {}", nw)); }
             said = if parts.is_empty() { "Nothing new. The roads are quiet, for once.".into() } else { parts.join(" ") };
@@ -212,7 +228,10 @@ pub fn answer(g: &mut Game, i: usize) {
                 near.sort();
                 let ids: Vec<u32> = near.iter().take(4).map(|x| x.1).collect();
                 let names: Vec<String> = ids.iter().filter_map(|id| g.site(*id)).map(|s| format!("{} ({}, {})", s.name, s.kind.word(), quest::direction(here, s.tile, w))).collect();
-                for id in ids { g.known.push(id); }
+                for id in ids { g.known.push(id); if let Some(t) = g.site(id).map(|s| s.tile) { g.rumour(t); } }
+                // The sage's old maps sketch in the country between.
+                let (w, h) = (g.world.w as i32, g.world.h as i32);
+                for dy in -5..=5 { for dx in -5..=5 { let y = here.1 as i32 + dy; if y >= 0 && y < h && dx * dx + dy * dy <= 25 { g.rumour((((here.0 as i32 + dx).rem_euclid(w)) as usize, y as usize)); } } }
                 said = if names.is_empty() { "You know every place I know.".into() } else { format!("For {} gold, the old maps: {}. They are on your map now.", price, names.join("; ")) };
             } else { said = format!("The maps are {} gold.", price); }
         }
@@ -297,6 +316,13 @@ pub fn answer(g: &mut Game, i: usize) {
                 said = format!("{} drains the cup, takes your coin and picks up a spear. \"Lead on.\"", name);
                 g.say(Tone::Level, format!("{} goes with you now.", name));
             } else { said = format!("A good blade costs {} gold.", price); }
+        }
+        Topic::Charts(price) => {
+            let n_tiles = g.charted;
+            g.charted = 0;
+            stow(&mut g.hero.pack, Item::new("gold", price));
+            g.stats.gold_found += price;
+            said = format!("{} lands I had only guessed at, drawn true. Here: {} gold, and come back with more.", n_tiles, price);
         }
         Topic::Back => {}
         Topic::Bye => { g.say(Tone::Talk, format!("{}: \"Good bye, {}.\"", n.name, g.hero.name)); g.talk = None; return; }

@@ -127,6 +127,10 @@ pub fn of_name(name: &str) -> Look {
         let mut l = Look::new(Base::Spider, if has("pale") || big { [210.0, 204.0, 186.0] } else { [90.0, 80.0, 72.0] }, if big { 1.3 } else { 0.55 });
         l.parts |= part::MANDIBLES; l.eyes = Eyes::Many; return l;
     }
+    if has("scorpion") {
+        let mut l = Look::new(Base::Crab, [158.0, 116.0, 64.0], if has("giant") { 1.3 } else { 0.55 });
+        l.parts |= part::STINGER | part::TAIL; return l;
+    }
     if has("crab") || has("crawler") {
         let big = has("giant") || has("drowned");
         let mut l = Look::new(Base::Crab, if has("drowned") { [92.0, 116.0, 100.0] } else { [214.0, 200.0, 182.0] }, if big { 1.2 } else { 0.55 });

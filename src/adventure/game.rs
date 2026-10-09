@@ -11,6 +11,8 @@ use super::item::{stow, Item};
 use super::map::{Feature, Ground, Wall, DIRS8};
 use super::site::{realize, Place, SiteKind, SiteSpec};
 use super::world::WorldInfo;
+use super::land::LAND;
+use super::surface::CH;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
@@ -74,12 +76,17 @@ pub enum Action {
     Climb,
     /// On the world map: go into this place (several may share a tile).
     EnterSite(u32),
+    /// On the land: take to the road (the world map).
+    WorldMap,
+    /// On the world map: walk the land where one is.
+    Land,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Game {
     pub seed: u64,
     pub hero: Hero,
+    #[serde(skip)]
     pub world: WorldInfo,
     pub sites: Vec<SiteSpec>,
     pub places: HashMap<u32, Place>,
@@ -123,6 +130,42 @@ pub struct Game {
     /// The great deeds, for the adventurer's legend: (turn, words).
     #[serde(default)]
     pub deeds: Vec<(u64, String)>,
+    /// The land about the adventurer while they walk it (`land`: rebuilt from `chunks`).
+    #[serde(skip)]
+    pub land: Option<Place>,
+    /// The world tile in the middle of the land floor.
+    #[serde(default)]
+    pub centre: (usize, usize),
+    /// The land's chunks as they were left.
+    #[serde(default, with = "super::land::chunk_map")]
+    pub chunks: HashMap<(u32, u32), super::land::Chunk>,
+    #[serde(skip)]
+    pub atlas: super::surface::Atlas,
+    /// Chunks as made (the base their changes are kept against).
+    #[serde(skip)]
+    pub pristine: HashMap<(u32, u32), Vec<super::map::Tile>>,
+    /// The Mapmaker's map: per world tile 0 blank, 1 heard of, 2 inked.
+    #[serde(default)]
+    pub mapped: Vec<u8>,
+    /// The tiles walked, in order (drawn on the map).
+    #[serde(default)]
+    pub route: Vec<(u16, u16)>,
+    /// Tiles inked on foot since a sage last bought the charts.
+    #[serde(default)]
+    pub charted: u32,
+    /// Treasure maps read (their crosses on the map) and dug.
+    #[serde(default)]
+    pub marks: Vec<u32>,
+    #[serde(default)]
+    pub dug: Vec<u32>,
+    /// Saved with the walkable land (older saves wake in the temple, places made anew).
+    #[serde(default)]
+    pub seamless: bool,
+    #[serde(default)]
+    pub next_uid: u32,
+    /// The land floor moved under the adventurer by (dx, dy) cells (for the window's easing).
+    #[serde(skip)]
+    pub shifted: (i32, i32),
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -134,14 +177,16 @@ impl Game {
             seed, hero, world, sites, places: HashMap::new(), here: None, z: 0, x: 0, y: 0, tile: (0, 0), turn: 0, log: Vec::new(), effects: Vec::new(),
             corpses: HashMap::new(), known: Vec::new(), respawn: Vec::new(), quests: Vec::new(), talk: None, chosen: Vec::new(), facing: (0, 1),
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
+            land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
         };
+        g.set_atlas();
         g.hero.temple = start_town;
         if let Some(s) = g.site(start_town) { g.tile = s.tile; }
         // They know the towns and what lies near their home.
         let home = g.tile;
         let known: Vec<u32> = g.sites.iter().filter(|s| s.kind == SiteKind::Town || ((s.tile.0 as i32 - home.0 as i32).abs() + (s.tile.1 as i32 - home.1 as i32).abs()) <= 4).map(|s| s.id).collect();
         g.known = known;
-        g.enter_site(start_town, true);
+        g.start_map();
         // Wake in the temple.
         g.wake_at_temple();
         let town = g.site(start_town).map(|s| s.name.clone()).unwrap_or_default();
@@ -150,8 +195,12 @@ impl Game {
     }
 
     pub fn site(&self, id: u32) -> Option<&SiteSpec> { self.sites.iter().find(|s| s.id == id) }
-    pub fn place(&self) -> Option<&Place> { self.here.and_then(|id| self.places.get(&id)) }
-    pub fn place_mut(&mut self) -> Option<&mut Place> { let id = self.here?; self.places.get_mut(&id) }
+    pub fn place(&self) -> Option<&Place> { match self.here { Some(LAND) => self.land.as_ref(), Some(id) => self.places.get(&id), None => None } }
+    pub fn place_mut(&mut self) -> Option<&mut Place> { match self.here { Some(LAND) => self.land.as_mut(), Some(id) => self.places.get_mut(&id), None => None } }
+    fn pl(&self, id: u32) -> &Place { if id == LAND { self.land.as_ref().unwrap() } else { &self.places[&id] } }
+    fn pl_mut(&mut self, id: u32) -> &mut Place { if id == LAND { self.land.as_mut().unwrap() } else { self.places.get_mut(&id).unwrap() } }
+    /// The site the adventurer stands in (a town on the land is its own; else the land).
+    pub fn site_here(&self) -> u32 { self.place().map_or(0, |p| p.spec.id) }
     pub fn floor(&self) -> Option<&super::map::Floor> { self.place().and_then(|p| p.floors.get(self.z)) }
     pub fn say(&mut self, tone: Tone, text: impl Into<String>) { let t = text.into(); self.log.push(Line { turn: self.turn, text: t, tone }); if self.log.len() > 400 { self.log.drain(0..100); } }
     pub fn take_effects(&mut self) -> Vec<Effect> { std::mem::take(&mut self.effects) }
@@ -175,8 +224,8 @@ impl Game {
         if let Some(p) = self.places.get_mut(&id) {
             for mut m in back { m.hp = m.max_hp; m.x = m.home.0; m.y = m.home.1; m.awake = false; p.monsters.push(m); }
         }
-        let p = &self.places[&id];
         self.here = Some(id);
+        let p = &self.places[&id];
         self.z = 0;
         // One step inside the way in (standing on the way out, one would have to step off and
         // back on to leave).
@@ -198,27 +247,21 @@ impl Game {
 
     fn wake_at_temple(&mut self) {
         let t = self.hero.temple;
-        if self.here != Some(t) { self.enter_site(t, true); }
-        self.z = 0;
-        if let Some(p) = self.places.get(&t) {
+        let tile = self.site(t).map(|s| s.tile).unwrap_or(self.tile);
+        self.land_at(tile, None);
+        // Before the altar of the temple (not where the priest stands).
+        let spot = self.floor().and_then(|f| {
+            let c = (CH + CH / 2, CH + CH / 2);
+            f.cells(|x| matches!(x.feature, Feature::Altar)).into_iter().filter(|&(x, y)| (x - c.0).abs() < CH / 2 && (y - c.1).abs() < CH / 2).min_by_key(|&(x, y)| (x - c.0).abs() + (y - c.1).abs())
+        });
+        if let Some((ax, ay)) = spot {
+            let p = self.place().unwrap();
             let f = &p.floors[0];
-            if let Some((ax, ay)) = f.find(|x| matches!(x, Feature::Altar)) {
-                // Before the altar (not where the priest stands).
-                for (dx, dy) in [(0, 2), (1, 2), (-1, 2), (1, 1), (-1, 1), (0, 3), (0, 1)] {
-                    let (x, y) = (ax + dx, ay + dy);
-                    if f.walkable(x, y) && !p.npcs.iter().any(|n| n.z == 0 && n.x == x && n.y == y) { self.x = x; self.y = y; break; }
-                }
-            }
+            let near: Vec<(i32, i32)> = (1..=3).flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| (ax + dx, ay + dy)))).collect();
+            if let Some(&(x, y)) = near.iter().find(|&&(x, y)| f.walkable(x, y) && f.at(x, y).feature == Feature::None && !p.npcs.iter().any(|n| (n.x, n.y) == (x, y))) { self.x = x; self.y = y; }
         }
-        if let Some(s) = self.site(t) { self.tile = s.tile; }
+        self.companion_follow(true);
         self.look();
-    }
-
-    fn leave_site(&mut self) {
-        let name = self.place().map(|p| p.spec.name.clone()).unwrap_or_default();
-        self.here = None;
-        self.talk = None;
-        self.say(Tone::Info, format!("You leave {} and take to the road.", name));
     }
 
     /// Bring the companion beside the adventurer (after a change of floor or place, or when left
@@ -237,10 +280,12 @@ impl Game {
     /// What the adventurer sees now.
     pub fn look(&mut self) {
         let Some(id) = self.here else { return };
-        let r = { let f = &self.places[&id].floors[self.z]; if f.outdoor { 12 } else { self.hero.light() + 1 } };
+        let night = self.night();
+        let r = { let f = &self.pl(id).floors[self.z]; if f.outdoor { if night { (self.hero.light() + 2).max(if self.full_moon() { 8 } else { 5 }) } else { 12 } } else { self.hero.light() + 1 } };
         let (x, y) = (self.x, self.y);
-        let p = self.places.get_mut(&id).unwrap();
-        let f = &mut p.floors[self.z];
+        let z = self.z;
+        let p = self.pl_mut(id);
+        let f = &mut p.floors[z];
         let vis = f.sight(x, y, r);
         for (k, v) in vis.iter().enumerate() { if *v { f.seen[k] = true; } }
         // Lit places (sconces, braziers, fires) are seen when in line of sight, however far.
@@ -260,7 +305,9 @@ impl Game {
         let cost = match a {
             Action::Travel(dx, dy) => return self.travel(dx, dy),
             Action::Enter => return self.enter_here(),
-            Action::EnterSite(id) => { if self.here.is_none() && self.site(id).map_or(false, |s| s.tile == self.tile) { self.enter_site(id, false); return true; } return false; }
+            Action::EnterSite(id) => { if self.here.is_none() && self.site(id).map_or(false, |s| s.tile == self.tile) { return self.land_here(Some(id)); } return false; }
+            Action::WorldMap => return self.to_world_map(),
+            Action::Land => return self.land_here(None),
             Action::Move(dx, dy) => self.step(dx, dy),
             Action::Wait => Some(100),
             Action::Rest => return self.rest(),
@@ -356,6 +403,14 @@ impl Game {
             Feature::Sign { text } => { let t = text.clone(); self.say(Tone::Info, format!("The sign reads: \"{}\"", t)); return None; }
             Feature::Well | Feature::Fountain => { self.say(Tone::Info, "Cold, clear water. You drink."); return Some(100); }
             Feature::Altar if self.place().map_or(false, |p| p.spec.kind == SiteKind::Town) => { self.say(Tone::Info, "The altar of the temple. The priest is near."); return None; }
+            Feature::Altar if self.on_land() => {
+                // The old stones: rest and mend a little in their ring.
+                let h = self.hero.max_hp() / 4;
+                self.hero.hp = (self.hero.hp + h).min(self.hero.max_hp());
+                self.hero.poisoned = 0;
+                self.say(Tone::Info, "You lay a hand on the old stone. It is warm, and the warmth runs into you.");
+                return Some(300);
+            }
             _ => {}
         }
         if !t.walkable() {
@@ -381,9 +436,11 @@ impl Game {
                 if self.hero.count("rope") > 0 { self.say(Tone::Info, "You climb your rope back up."); self.change_floor(-1, &t.feature); }
                 else { self.say(Tone::Info, "The hole you fell through is above you. Without a rope there is no climbing it; find another way."); }
             }
-            Feature::Exit => { self.leave_site(); }
+            Feature::Exit => { self.come_out(); }
+            Feature::Entrance { site, z } => { let g = self.global(nx, ny); self.go_in(site, z, g); }
             _ => {}
         }
+        if self.on_land() { self.after_land_step(); }
         // Things lying here.
         if let Some(f) = self.floor() { if let Some(items) = f.items.get(&(self.x, self.y)) { if !items.is_empty() {
             let list: Vec<String> = items.iter().take(4).map(|i| i.describe()).collect();
@@ -401,14 +458,18 @@ impl Game {
             Feature::StairsUp | Feature::LadderUp => { self.change_floor(-1, &feat); Some(100) }
             Feature::RopeSpot if self.hero.count("rope") > 0 => { self.say(Tone::Info, "You climb your rope back up."); self.change_floor(-1, &feat); Some(100) }
             Feature::RopeSpot => { self.say(Tone::Info, "Without a rope there is no climbing back up."); None }
-            Feature::Exit => { self.leave_site(); Some(100) }
+            Feature::Exit => { self.come_out(); Some(100) }
+            Feature::Entrance { site, z } if self.on_land() => { let g = self.global(self.x, self.y); self.go_in(site, z, g); Some(100) }
             _ => { self.say(Tone::Info, "There is no way up or down here."); None }
         }
     }
 
     fn change_floor(&mut self, dz: i32, how: &Feature) {
         let n = self.place().map_or(0, |p| p.floors.len());
+        let top = self.place().map_or(0, |p| p.top);
         let nz = self.z as i32 + dz;
+        // Up from the first floor walked: out onto the land.
+        if dz < 0 && self.z == top && top >= 1 { self.come_out(); return; }
         if nz < 0 || nz as usize >= n { return; }
         self.z = nz as usize;
         let name = self.floor().map(|f| f.name.clone()).unwrap_or_default();
@@ -490,6 +551,8 @@ impl Game {
                 if r.is_some() { self.hero.spend(&it.id, 1); }
                 r
             }
+            "map" => self.read_map(k),
+            "tool" if it.id == "shovel" => self.dig(),
             "light" => {
                 self.hero.spend(&it.id, 1);
                 self.hero.torch += d.burn;
@@ -798,6 +861,8 @@ impl Game {
             if matches!(d.kind.as_str(), "weapon" | "armour" | "shield") && !d.stack && r.gen_bool(0.3) { it.quality = r.gen_range(0..=tier.min(4)) as u8; }
         }
         for it in m.carries.iter().cloned() { stow(&mut loot, it); }
+        // A treasure map marks somewhere near.
+        for k in 0..loot.len() { if loot[k].id == "treasure_map" && loot[k].tag == 0 { loot[k].tag = self.map_target(); } }
         let name = m.the();
         let p = self.place_mut().unwrap();
         // (Not on a stair, a hole or the way out: stepping there to take it would carry one off.)
@@ -809,7 +874,7 @@ impl Game {
         for it in loot.iter().cloned() { p.floors[z].drop_item(lx, ly, it); }
         let dead = p.monsters.remove(k);
         self.corpses.entry(here).or_default().push(Corpse { x, y, z, def: dead.def.clone(), name: dead.name.clone(), turn });
-        if !dead.boss { self.respawn.push((here, dead.clone(), turn)); }
+        if !dead.boss && here != LAND { self.respawn.push((here, dead.clone(), turn)); }
         self.stats.kills += 1;
         self.hero.kills += 1;
         if dead.boss { self.stats.bosses += 1; self.slain.push(dead.name.clone()); let place = self.place().map(|p| p.spec.name.clone()).unwrap_or_default(); let lvl = self.hero.level; self.deeds.push((turn, format!("slew {} in {} (level {})", dead.name, place, lvl))); }
@@ -890,6 +955,7 @@ impl Game {
             if self.hero.fed == 0 && self.turn / 100 % 50 == 0 { self.say(Tone::Danger, "You are hungry, and you will not heal until you eat (F eats, or click food in the pack)."); }
         }
         if self.here.is_some() { self.monsters_act(cost); }
+        self.land_tick(before * 100);
         self.corpses.values_mut().for_each(|v| v.retain(|c| self.turn < c.turn + 3000));
     }
 
@@ -898,28 +964,28 @@ impl Game {
         let z = self.z;
         let (hx, hy) = (self.x, self.y);
         let dist = {
-            let p = &self.places[&id];
+            let p = &self.pl(id);
             let f = &p.floors[z];
             f.distances(hx, hy, 30, |x, y| f.at(x, y).walkable() || matches!(f.at(x, y).feature, Feature::Door { lock: 0, .. }))
         };
         self.companion_act(id, cost, &dist);
-        let n = self.places[&id].monsters.len();
+        let n = self.pl(id).monsters.len();
         let mut k = 0;
-        while k < n.min(self.places[&id].monsters.len()) {
+        while k < n.min(self.pl(id).monsters.len()) {
             if self.here != Some(id) || self.z != z { break; }
-            let m = &self.places[&id].monsters[k];
-            if m.z != z || m.hp <= 0 { k += 1; continue; }
+            let m = &self.pl(id).monsters[k];
+            if m.z != z || m.hp <= 0 || (id == LAND && (m.x - hx).abs().max((m.y - hy).abs()) > 40) { k += 1; continue; }
             let speed = m.speed();
             {
-                let m = &mut self.places.get_mut(&id).unwrap().monsters[k];
+                let m = &mut self.pl_mut(id).monsters[k];
                 m.energy += speed * cost / 100;
                 if m.poisoned > 0 { m.poisoned -= 1; m.hp -= 1 + m.poisoned / 6; }
                 let regen = m.def().regen;
                 if regen > 0 && m.hp < m.max_hp { m.hp = (m.hp + regen).min(m.max_hp); }
             }
             let mut acts = 0;
-            while self.places[&id].monsters.get(k).map_or(false, |m| m.energy >= 100) && acts < 4 {
-                self.places.get_mut(&id).unwrap().monsters[k].energy -= 100;
+            while self.pl(id).monsters.get(k).map_or(false, |m| m.energy >= 100) && acts < 4 {
+                self.pl_mut(id).monsters[k].energy -= 100;
                 self.monster_turn(id, k, &dist);
                 acts += 1;
                 if self.here != Some(id) || self.z != z { return; }
@@ -927,38 +993,38 @@ impl Game {
             k += 1;
         }
         // Poison may have killed something.
-        let dead: Vec<usize> = self.places[&id].monsters.iter().enumerate().filter(|(_, m)| m.hp <= 0).map(|(i, _)| i).collect();
-        for i in dead.into_iter().rev() { let hp = self.places[&id].monsters[i].hp; self.places.get_mut(&id).unwrap().monsters[i].hp = 1; self.damage_monster(i, 1 - hp); }
+        let dead: Vec<usize> = self.pl(id).monsters.iter().enumerate().filter(|(_, m)| m.hp <= 0).map(|(i, _)| i).collect();
+        for i in dead.into_iter().rev() { let hp = self.pl(id).monsters[i].hp; self.pl_mut(id).monsters[i].hp = 1; self.damage_monster(i, 1 - hp); }
     }
 
     fn monster_turn(&mut self, id: u32, k: usize, dist: &[i32]) {
         let (hx, hy, z) = (self.x, self.y, self.z);
-        let m = self.places[&id].monsters[k].clone();
+        let m = self.pl(id).monsters[k].clone();
         let (dx, sees, outdoor) = {
-            let f = &self.places[&id].floors[z];
+            let f = &self.pl(id).floors[z];
             let dx = (hx - m.x).abs().max((hy - m.y).abs());
             (dx, dx <= 8 && f.clear_line((m.x, m.y), (hx, hy)), f.outdoor)
         };
         let d = m.def();
         if !m.awake {
             if sees && (dx <= 5 || outdoor) {
-                self.places.get_mut(&id).unwrap().monsters[k].awake = true;
+                self.pl_mut(id).monsters[k].awake = true;
                 if !d.sounds.is_empty() && self.rng.gen_bool(0.5) { let s = d.sounds[self.rng.gen_range(0..d.sounds.len())].clone(); self.effects.push(Effect::Speech { x: m.x, y: m.y, z, text: s }); }
             } else if self.rng.gen_bool(0.25) {
                 // Wander a little about home.
                 let (ddx, ddy) = DIRS8[self.rng.gen_range(0..8)];
                 let (nx, ny) = (m.x + ddx, m.y + ddy);
-                let ok = self.places[&id].floors[z].walkable(nx, ny) && (nx - m.home.0).abs() + (ny - m.home.1).abs() < 6 && self.free(id, nx, ny);
-                if ok { let mm = &mut self.places.get_mut(&id).unwrap().monsters[k]; mm.x = nx; mm.y = ny; mm.left = ddx < 0 || (ddx == 0 && mm.left); }
+                let ok = self.pl(id).floors[z].walkable(nx, ny) && (nx - m.home.0).abs() + (ny - m.home.1).abs() < 6 && self.free(id, nx, ny);
+                if ok { let mm = &mut self.pl_mut(id).monsters[k]; mm.x = nx; mm.y = ny; mm.left = ddx < 0 || (ddx == 0 && mm.left); }
             }
             return;
         }
         // Lost the scent: go home.
-        if dx > 14 && !m.boss { self.places.get_mut(&id).unwrap().monsters[k].awake = false; return; }
+        if dx > 14 && !m.boss { self.pl_mut(id).monsters[k].awake = false; return; }
         let coward = d.ai == "coward" || (!m.boss && m.hp < m.max_hp / 6 && d.ai != "slow" && !d.undead);
         // Casters heal themselves when hurt.
         if d.heals > 0 && m.hp < m.max_hp / 2 && self.rng.gen_bool(0.3) {
-            let mm = &mut self.places.get_mut(&id).unwrap().monsters[k];
+            let mm = &mut self.pl_mut(id).monsters[k];
             mm.hp = (mm.hp + d.heals).min(mm.max_hp);
             self.effects.push(Effect::Area { cells: vec![(m.x, m.y)], z, kind: "heal".into() });
             return;
@@ -995,7 +1061,7 @@ impl Game {
             let block = r.gen_range(0..=c.defense(lvl));
             let soak = r.gen_range(c.armor(lvl) / 2..=c.armor(lvl).max(1));
             let dmg = if raw <= block / 2 { 0 } else { raw - soak };
-            self.places.get_mut(&id).unwrap().monsters[k].struck_at = self.turn;
+            self.pl_mut(id).monsters[k].struck_at = self.turn;
             if dmg > 0 {
                 self.effects.push(Effect::Number { x: c.x, y: c.y, z, value: dmg, tone: Tone::Hurt });
                 let dead = { let cc = self.companion.as_mut().unwrap(); cc.hp -= dmg; cc.hp <= 0 };
@@ -1010,7 +1076,7 @@ impl Game {
         } }
         // Step toward (or away from) the adventurer along the distance map.
         let (best, cur, door) = {
-            let f = &self.places[&id].floors[z];
+            let f = &self.pl(id).floors[z];
             let mut best: Option<(i32, i32, i32)> = None;
             for (ddx, ddy) in DIRS8 {
                 let (nx, ny) = (m.x + ddx, m.y + ddy);
@@ -1033,7 +1099,7 @@ impl Game {
         if coward && !fled && dx <= 1 { self.monster_strikes(id, k); return; }
         if let Some((nx, ny, s)) = best {
             if (!coward && (cur == i32::MAX || s < cur)) || (coward && s < -cur.min(10_000)) {
-                let p = self.places.get_mut(&id).unwrap();
+                let p = self.pl_mut(id);
                 // Open a door on the way.
                 if door { p.floors[z].at_mut(nx, ny).feature = Feature::Door { open: true, lock: 0 }; return; }
                 let mm = &mut p.monsters[k];
@@ -1044,8 +1110,8 @@ impl Game {
     }
 
     fn free(&self, id: u32, x: i32, y: i32) -> bool {
-        !(x == self.x && y == self.y) && !self.companion.as_ref().map_or(false, |c| (c.x, c.y) == (x, y)) && !self.places[&id].monsters.iter().any(|m| m.z == self.z && m.x == x && m.y == y && m.hp > 0)
-            && !self.places[&id].npcs.iter().any(|n| n.z == self.z && n.x == x && n.y == y)
+        !(x == self.x && y == self.y) && !self.companion.as_ref().map_or(false, |c| (c.x, c.y) == (x, y)) && !self.pl(id).monsters.iter().any(|m| m.z == self.z && m.x == x && m.y == y && m.hp > 0)
+            && !self.pl(id).npcs.iter().any(|n| n.z == self.z && n.x == x && n.y == y)
     }
 
     fn companion_act(&mut self, id: u32, cost: i32, dist: &[i32]) {
@@ -1058,7 +1124,7 @@ impl Game {
             c.energy -= 100;
             // A slow mend.
             if self.turn / 100 % 4 == 0 { c.hp = (c.hp + 1 + lvl as i32 / 8).min(c.max_hp); }
-            let p = &self.places[&id];
+            let p = &self.pl(id);
             let f = &p.floors[z];
             // Strike what is beside them (the weakest first).
             let beside = p.monsters.iter().enumerate().filter(|(_, m)| m.z == z && m.hp > 0 && (m.x - c.x).abs() <= 1 && (m.y - c.y).abs() <= 1).min_by_key(|(_, m)| m.hp).map(|(i, m)| (i, m.clone()));
@@ -1097,11 +1163,11 @@ impl Game {
     }
 
     fn monster_strikes(&mut self, id: u32, k: usize) {
-        let m = self.places[&id].monsters[k].clone();
+        let m = self.pl(id).monsters[k].clone();
         let d = m.def();
         let mut r = self.roll(m.uid as u64 * 11 + self.hero.level as u64);
-        self.places.get_mut(&id).unwrap().monsters[k].struck_at = self.turn;
-        self.places.get_mut(&id).unwrap().monsters[k].left = self.x < m.x;
+        self.pl_mut(id).monsters[k].struck_at = self.turn;
+        self.pl_mut(id).monsters[k].left = self.x < m.x;
         // A beast of the history uses its own attack now and then.
         if let Some(legend) = &m.legend { if let Some(att) = &legend.attack { if r.gen_bool(0.2) {
             let dmg = (m.attack() as f32 * (1.0 + att.deadly)).round() as i32;
@@ -1127,7 +1193,7 @@ impl Game {
         let t = if dmg * 3 > self.hero.max_hp() { Tone::Danger } else { Tone::Hurt };
         self.say(t, format!("{} {}. ({})", cap(&m.the()), how, dmg));
         if d.poison > 0 && r.gen_bool(0.4) && !self.hero.equipped.iter().flatten().any(|i| i.def().resist.as_deref() == Some("poison")) { self.hero.poisoned += d.poison; self.say(Tone::Hurt, "You are poisoned."); }
-        if d.lifesteal { let p = self.places.get_mut(&id).unwrap(); let mm = &mut p.monsters[k]; mm.hp = (mm.hp + dmg / 2).min(mm.max_hp); }
+        if d.lifesteal { let p = self.pl_mut(id); let mm = &mut p.monsters[k]; mm.hp = (mm.hp + dmg / 2).min(mm.max_hp); }
         self.hurt(dmg, &m.a());
     }
 
@@ -1140,35 +1206,35 @@ impl Game {
         if ny < 0 || ny >= self.world.h as i32 { return false; }
         let nx = nx.rem_euclid(self.world.w as i32) as usize;
         let ny = ny as usize;
-        if !self.world.land[ny * self.world.w + nx] { self.say(Tone::Info, "The sea. Without a ship there is no going on."); return false; }
+        let k = ny * self.world.w + nx;
+        if !self.world.land[k] { self.say(Tone::Info, "The sea. Without a ship there is no going on."); return false; }
+        // Quick on a road, slower over country one has mapped, slow and lost over blank country
+        // (the Mapmaker's map is worth having).
+        let blank = self.mapped.get(k).copied().unwrap_or(0) == 0;
+        let time = if self.world.road[k] { 1600 } else if blank { 3600 } else { 2400 };
         self.tile = (nx, ny);
         self.facing = (dx, dy);
-        // A day's walk (a tile is ~25 km... a few hours of game time at this scale).
-        self.turn += 2400;
-        self.hero.fed = (self.hero.fed - 24).max(0);
+        self.turn += time;
+        self.hero.fed = (self.hero.fed - time as i32 / 100).max(0);
         // Healing on the road.
         self.hero.hp = (self.hero.hp + 6 + self.hero.level as i32).min(self.hero.max_hp());
         self.hero.mana = (self.hero.mana + 8 + self.hero.level as i32).min(self.hero.max_mana());
         if self.hero.fed == 0 { self.hurt(3, "hunger"); }
+        if self.route.last() != Some(&(nx as u16, ny as u16)) { self.route.push((nx as u16, ny as u16)); }
+        self.ink((nx, ny), false);
         // What is on this tile.
-        let here: Vec<u32> = self.sites.iter().filter(|s| s.tile == (nx, ny)).map(|s| s.id).collect();
+        let here: Vec<u32> = self.sites.iter().filter(|s| s.tile == (nx, ny) && s.kind != SiteKind::Wilds).map(|s| s.id).collect();
         for id in &here { if !self.known.contains(id) { self.known.push(*id); let s = self.site(*id).unwrap(); let line = format!("You come upon {}: {}.{}", s.name, s.kind.word(), if s.cause.is_empty() { String::new() } else { format!(" {}", s.cause) }); self.say(Tone::Quest, line); } }
-        if let Some(id) = here.first() { let s = self.site(*id).unwrap(); let n = s.name.clone(); self.say(Tone::Info, format!("{} is here. (Enter to go in.)", n)); return true; }
-        // Something on the road (an ambush in the wilds, by the land's danger).
-        let danger = self.world.danger[ny * self.world.w + nx] as f64 / 255.0;
+        if let Some(id) = here.first() { let s = self.site(*id).unwrap(); let n = s.name.clone(); self.say(Tone::Info, format!("{} is here. (Enter to walk the land.)", n)); return true; }
+        // Something on the road (an ambush, by the land's danger; worse in blank country).
+        let danger = self.world.danger[k] as f64 / 255.0;
         let mut r = self.roll(0x7A5E ^ (nx * 131 + ny) as u64);
-        if r.gen_bool((0.02 + danger * 0.12).min(0.15)) {
+        let p = (0.02 + danger * 0.12).min(0.15) * if blank { 1.5 } else { 1.0 } * if self.night() { 1.4 } else { 1.0 };
+        if r.gen_bool(p.min(0.3)) {
             // As dangerous as the land, but never far past the one walking it.
             let tier = (1 + (danger * 3.0) as u32).min(1 + self.hero.level / 7).clamp(1, 5);
-            let id = 900_000 + self.turn as u32 % 100_000;
-            let spec = SiteSpec { id, kind: SiteKind::Wilds, name: format!("the wilds near {},{}", nx, ny), tile: (nx, ny), seed: r.gen(), tier, cause: String::new(), boss: None, treasures: Vec::new(),
-                surface: self.world.ground[ny * self.world.w + nx], rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new(), lord: None };
-            self.sites.retain(|s| !(s.kind == SiteKind::Wilds && s.id >= 900_000 && Some(s.id) != self.here));
-            self.places.retain(|k, _| *k < 900_000);
-            self.sites.push(spec);
             self.say(Tone::Danger, "Something moves on the road ahead. You are set upon!");
-            self.enter_site(id, true);
-            // Wilds: arrive at the middle, the way out at the south edge.
+            self.ambush(tier);
             return true;
         }
         true
@@ -1178,9 +1244,8 @@ impl Game {
         if self.here.is_some() { return false; }
         // A town first where a town stands on its own ruins.
         let here: Vec<&SiteSpec> = self.sites.iter().filter(|s| s.tile == self.tile && s.kind != SiteKind::Wilds).collect();
-        let Some(id) = here.iter().find(|s| s.kind == SiteKind::Town).or(here.first()).map(|s| s.id) else { self.say(Tone::Info, "There is nothing here to enter."); return false };
-        self.enter_site(id, false);
-        true
+        let id = here.iter().find(|s| s.kind == SiteKind::Town).or(here.first()).map(|s| s.id);
+        self.land_here(id)
     }
 }
 
@@ -1223,8 +1288,10 @@ const OLD_MAGIC: &[u8; 8] = b"ADVENT01";
 impl Game {
     /// Write the adventure to `path`: the header, then gzipped JSON of the world's size and the
     /// game (JSON keeps old saves readable as the game grows: new fields take their defaults).
-    pub fn save(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&mut self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
         use std::io::Write;
+        // The land floor's changes into its chunks first.
+        self.store_land();
         if let Some(dir) = path.parent() { if !dir.as_os_str().is_empty() { std::fs::create_dir_all(dir)?; } }
         let mut out = SAVE_MAGIC.to_vec();
         let mut z = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
@@ -1243,10 +1310,21 @@ impl Game {
         Ok(serde_json::from_reader(z)?)
     }
     /// Read an adventure saved by `save`; refused for another world.
-    pub fn load(path: &std::path::Path, world_w: usize, world_h: usize) -> Result<Game, Box<dyn std::error::Error>> {
+    pub fn load(path: &std::path::Path, info: WorldInfo) -> Result<Game, Box<dyn std::error::Error>> {
         let ((w, h, _), mut g) = Self::read_save(path)?;
-        if (w as usize, h as usize) != (world_w, world_h) { return Err(format!("that adventure belongs to a {}x{} world", w, h).into()); }
+        if (w as usize, h as usize) != (info.w, info.h) { return Err(format!("that adventure belongs to a {}x{} world", w, h).into()); }
+        g.world = info;
         g.rng = ChaCha8Rng::seed_from_u64(g.seed ^ g.turn);
+        g.set_atlas();
+        if !g.seamless {
+            // Saved before the land could be walked: wake in the temple, the places made anew.
+            g.into_the_land();
+            g.wake_at_temple();
+            g.say(Tone::Info, "The world has grown wide around you: every land between the towns can be walked now. You wake in your temple.");
+        } else if g.here == Some(LAND) {
+            g.build_land();
+        }
+        if g.mapped.len() != g.world.w * g.world.h { g.start_map(); }
         g.look();
         Ok(g)
     }

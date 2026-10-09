@@ -84,6 +84,27 @@ pub struct SiteSpec {
     /// A capital's ruler in the history (their name and title), who holds court in its hall.
     #[serde(default)]
     pub lord: Option<(String, String)>,
+    /// A town's shape from the history (size, walls, its people's way of building).
+    #[serde(default)]
+    pub town: Option<TownShape>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct TownShape {
+    /// 0 hamlet .. 3 city.
+    pub size: u8,
+    /// 0 none, 1 palisade, 2 stone, 3 fortified.
+    pub walls: u8,
+    /// The people's architecture ("stone", "wood", "carved", "living", "earthen"...).
+    pub arch: String,
+    pub population: u32,
+    pub port: bool,
+    /// The directions its roads leave by (`map::DIRS8` bits): its gates.
+    #[serde(default)]
+    pub roads: u8,
+    /// The sides the sea lies on (`map::DIRS4` bits): a port's piers.
+    #[serde(default)]
+    pub sea: u8,
 }
 
 /// A realized place.
@@ -96,6 +117,16 @@ pub struct Place {
     /// Where one arrives (floor 0).
     pub entry: (i32, i32),
     pub next_uid: u32,
+    /// The first floor walked here (1 when floor 0 stands in the land: going up from it comes
+    /// out there).
+    #[serde(default)]
+    pub top: usize,
+    /// Where this place's cell (0, 0) lies in the land (world cells), when its floor 0 stands in it.
+    #[serde(default)]
+    pub origin: Option<(i32, i32)>,
+    /// The land cell of its way in (a cave's mouth), where one comes out.
+    #[serde(default)]
+    pub mouth: Option<(i32, i32)>,
 }
 
 /// The rooms a layout made (for furnishing): x, y, w, h.
@@ -706,7 +737,7 @@ pub fn realize(spec: &SiteSpec) -> Place {
         arrive = down;
         floors.push(f);
     }
-    Place { spec: spec.clone(), floors, monsters, npcs: Vec::new(), entry, next_uid: uid }
+    Place { spec: spec.clone(), floors, monsters, npcs: Vec::new(), entry, next_uid: uid, top: 0, origin: None, mouth: None }
 }
 
 /// Dress the rooms and corridors of a floor by what the place is.
@@ -811,7 +842,7 @@ mod tests {
 
     pub fn spec(kind: SiteKind, floors: usize, tier: u32, seed: u64) -> SiteSpec {
         SiteSpec { id: 1, kind, name: "Testplace".into(), tile: (0, 0), seed, tier, cause: String::new(), boss: Some(BossSpec { def: "troll".into(), name: "Gnash the Old".into(), scale: 1.5, legend: None, hoard: vec![Item::new("gold", 200)], story: String::new() }),
-            treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors, people: "human".into(), god: "the gods".into(), news: Vec::new(), lord: None }
+            treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors, people: "human".into(), god: "the gods".into(), news: Vec::new(), lord: None, town: None }
     }
 
     /// Every floor's way down is reachable from where one arrives (doors and gates passable,

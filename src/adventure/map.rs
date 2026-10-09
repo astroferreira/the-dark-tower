@@ -7,7 +7,7 @@ use super::item::Item;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum Ground { Rock, Flags, Earth, Grass, Sand, Snow, Wood, Shallows, Water, Lava, Rubble, Mud, Marble, Cobbles, Moss, Ash, Carpet, Void }
+pub enum Ground { Rock, Flags, Earth, Grass, Sand, Snow, Wood, Shallows, Water, Lava, Rubble, Mud, Marble, Cobbles, Moss, Ash, Carpet, Void, Field, Ice }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Wall { None, Rock, Brick, Timber, Tree, Bars, Palisade, Hedge, Shadow }
@@ -65,6 +65,9 @@ pub enum Feature {
     Rail,
     /// A door only the experienced may pass (Tibia's level doors).
     LevelDoor { level: u32 },
+    /// The way into a place standing in the land (a cave mouth, a ruin's stair, a sewer grate):
+    /// the place and the floor one arrives on.
+    Entrance { site: u32, z: usize },
 }
 
 impl Feature {
@@ -73,7 +76,7 @@ impl Feature {
             Feature::Door { open, .. } | Feature::Gate { open, .. } => !*open,
             Feature::Statue | Feature::Pillar | Feature::Bookshelf | Feature::Anvil | Feature::Counter | Feature::Well
             | Feature::Barrel | Feature::Crate | Feature::Tent | Feature::Fountain | Feature::Sarcophagus { .. } | Feature::Plinth { .. }
-            | Feature::Chest { .. } | Feature::QuestChest { .. } | Feature::Lever { .. } | Feature::Altar | Feature::Throne => true,
+            | Feature::Chest { .. } | Feature::QuestChest { .. } | Feature::Lever { .. } | Feature::Altar | Feature::Throne | Feature::Sign { .. } => true,
             _ => false,
         }
     }
@@ -99,6 +102,7 @@ impl Feature {
             Feature::Sconce => "a torch in a sconce", Feature::Plinth { item: Some(_) } => "a plinth with something on it", Feature::Plinth { .. } => "an empty plinth",
             Feature::Grate => "a grate", Feature::Sign { .. } => "a sign", Feature::Trap { .. } => "a pressure plate", Feature::Rail => "rails",
             Feature::LevelDoor { .. } => "a sealed door with a rune of trial",
+            Feature::Entrance { .. } => "a way down",
         }
     }
 }
@@ -234,7 +238,7 @@ pub const DIRS8: [(i32, i32); 8] = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-
 pub const DIRS4: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 
 /// A map keyed by cells, saved as a list of pairs (JSON keys must be strings).
-mod cell_map {
+pub mod cell_map {
     use super::Item;
     use std::collections::HashMap;
     pub fn serialize<S: serde::Serializer>(m: &HashMap<(i32, i32), Vec<Item>>, s: S) -> Result<S::Ok, S::Error> {

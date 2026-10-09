@@ -31,6 +31,7 @@ pub fn ground_wash(g: Ground) -> Rgb {
         Ground::Lava => [230.0, 110.0, 40.0], Ground::Rubble => [168.0, 156.0, 140.0], Ground::Mud => [140.0, 120.0, 90.0],
         Ground::Marble => [222.0, 218.0, 210.0], Ground::Cobbles => [188.0, 178.0, 160.0], Ground::Moss => [140.0, 160.0, 110.0],
         Ground::Ash => [120.0, 112.0, 108.0], Ground::Carpet => [150.0, 60.0, 50.0], Ground::Void => DARK,
+        Ground::Field => [190.0, 170.0, 104.0], Ground::Ice => [214.0, 226.0, 230.0],
     }
 }
 
@@ -45,9 +46,11 @@ fn wall_wash(w: Wall, kind: SiteKind) -> Rgb {
 
 fn solid(t: &Tile) -> bool { t.wall != Wall::None && t.wall != Wall::Tree && t.wall != Wall::Palisade && !t.boulder() }
 
-/// One pixel of a floor's plan at (fx, fy) in cells (px, py its world pixel, cs pixels a cell).
-fn plan_pixel(f: &Floor, kind: SiteKind, fx: f32, fy: f32, px: i64, py: i64, cs: f32) -> Rgb {
+/// One pixel of a floor's plan at (fx, fy) in cells (px, py its world pixel, cs pixels a cell;
+/// `go` the floor's cell (0, 0) in the world, so what is hashed is the world's cell).
+fn plan_pixel(f: &Floor, kind: SiteKind, fx: f32, fy: f32, px: i64, py: i64, cs: f32, go: (i64, i64)) -> Rgb {
     let (cx, cy) = (fx.floor() as i32, fy.floor() as i32);
+    let (wcx, wcy) = (cx as i64 + go.0, cy as i64 + go.1);
     let (u0, v0) = (fx - cx as f32, fy - cy as f32);
     let t = f.at(cx, cy);
     let line = (1.1 / cs).max(0.025);
@@ -110,6 +113,8 @@ fn plan_pixel(f: &Floor, kind: SiteKind, fx: f32, fy: f32, px: i64, py: i64, cs:
         Ground::Lava => { let n = u(px / 4, py / 4, 0x1A); c = mix([238.0, 132.0, 36.0], [196.0, 56.0, 22.0], n); }
         Ground::Rubble => { if h(px / 3, py / 3, 0x2B) % 9 == 0 { c = mix(c, INK, 0.35); } }
         Ground::Carpet => { if u0 < 0.08 || u0 > 0.92 { c = mix(c, [200.0, 160.0, 70.0], 0.6); } }
+        Ground::Field => { if (fy * 3.0).fract() < 0.22 { c = mix(c, [120.0, 104.0, 60.0], 0.5); } else if h(px / 2, py, 0xF1) % 7 == 0 { c = mix(c, [140.0, 150.0, 70.0], 0.5); } }
+        Ground::Ice => { if (px + 2 * py).rem_euclid(23) == 0 { c = mix(c, [130.0, 154.0, 166.0], 0.5); } }
         _ => {}
     }
     // Shadow down-light (south and east of walls), a soft fall-off.
@@ -124,7 +129,7 @@ fn plan_pixel(f: &Floor, kind: SiteKind, fx: f32, fy: f32, px: i64, py: i64, cs:
     c = mix(c, [70.0, 58.0, 48.0], 0.32 * sh);
     // Trees, boulders and palisades stand on the ground.
     if t.boulder() {
-        let (ox, oy) = (0.5 + 0.12 * (u(cx as i64, cy as i64, 4) - 0.5), 0.55);
+        let (ox, oy) = (0.5 + 0.12 * (u(wcx, wcy, 4) - 0.5), 0.55);
         let (dx, dy) = ((u0 - ox) / 0.42, (v0 - oy) / 0.34);
         let d = (dx * dx + dy * dy).sqrt() * (1.0 + 0.08 * ((dy.atan2(dx) * 5.0 + cx as f32).sin()));
         if d < 1.0 {
@@ -137,13 +142,14 @@ fn plan_pixel(f: &Floor, kind: SiteKind, fx: f32, fy: f32, px: i64, py: i64, cs:
     }
     match t.wall {
         Wall::Tree => {
-            let (ox, oy) = (0.5 + 0.18 * (u(cx as i64, cy as i64, 1) - 0.5), 0.5 + 0.18 * (u(cx as i64, cy as i64, 2) - 0.5));
-            let r = 0.46 + 0.08 * u(cx as i64, cy as i64, 3);
+            let (ox, oy) = (0.5 + 0.18 * (u(wcx, wcy, 1) - 0.5), 0.5 + 0.18 * (u(wcx, wcy, 2) - 0.5));
+            let r = 0.46 + 0.08 * u(wcx, wcy, 3);
             let (dx, dy) = (u0 - ox, v0 - oy);
             let d = (dx * dx + dy * dy).sqrt();
             let wob = r * (1.0 + 0.07 * ((dy.atan2(dx) * 6.0 + cx as f32).sin()));
             if d < wob {
-                let mut tc: Rgb = [110.0, 138.0, 84.0];
+                let mut tc: Rgb = match t.ground { Ground::Ash => [96.0, 88.0, 84.0], Ground::Snow => [120.0, 140.0, 120.0], Ground::Sand => [150.0, 150.0, 90.0], Ground::Mud => [96.0, 118.0, 80.0], _ => [110.0, 138.0, 84.0] };
+                if t.ground == Ground::Snow && dx + dy < -0.1 { tc = mix(tc, [244.0, 246.0, 248.0], 0.6); }
                 if dx + dy < -0.15 { tc = mix(tc, PARCH, 0.2); } else if dx + dy > 0.15 && (px - py).rem_euclid(3) == 0 { tc = mix(tc, INK, 0.4); }
                 if d > wob - line * 1.4 { tc = INK; }
                 return gr(tc);
@@ -176,6 +182,7 @@ pub fn cell_sig(f: &Floor, x: i32, y: i32) -> u64 {
         Feature::Plinth { item } => 7000 + item.is_some() as u64,
         Feature::Trap { armed, .. } => 8000 + *armed as u64,
         Feature::LevelDoor { level } => 8500 + *level as u64,
+        Feature::Entrance { site, z } => 8600 + *site as u64 * 7 + *z as u64,
         other => 9000 + std::mem::discriminant(other).hash_u64(),
     };
     (t.ground as u64) | (t.wall as u64) << 8 | feat << 16
@@ -293,6 +300,17 @@ pub fn draw_feature(put: &mut dyn FnMut(i64, i64, Rgb, f32), f: &Floor, cx: i32,
         Feature::Grate => { pen.rect(-0.7, -0.7, 0.7, 0.7, DARK); for k in 0..5 { let a = -0.56 + k as f32 * 0.28; pen.line((a, -0.7), (a, 0.7), iron, 1.5); pen.line((-0.7, a), (0.7, a), iron, 1.5); } }
         Feature::Sign { .. } => { pen.line((0.0, 0.2), (0.0, 0.9), wood, 2.0); pen.rect(-0.6, -0.5, 0.6, 0.25, mix(wood, PARCH, 0.3)); for k in [-0.25f32, -0.05] { pen.line((-0.4, k), (0.4, k), INK, 1.0); } }
         Feature::Trap { armed, .. } => { if *armed { pen.rect_f(-0.45, -0.45, 0.45, 0.45, mix(stone, INK, 0.12), Finish::Plain); } }
+        Feature::Entrance { .. } if matches!(t.ground, Ground::Cobbles | Ground::Flags | Ground::Marble) && t.wall == Wall::None && !matches!(f.at(cx, cy - 1).wall, Wall::Rock | Wall::Timber) => {
+            // A town's grate into its sewers.
+            pen.rect(-0.7, -0.7, 0.7, 0.7, DARK); for k in 0..5 { let a = -0.56 + k as f32 * 0.28; pen.line((a, -0.7), (a, 0.7), iron, 1.5); pen.line((-0.7, a), (0.7, a), iron, 1.5); }
+        }
+        Feature::Entrance { .. } => {
+            // A dark mouth with a step down and a lantern's glow.
+            pen.ellipse(0.0, 0.1, 0.72, 0.55, [70.0, 62.0, 58.0]);
+            pen.ellipse_f(0.0, 0.18, 0.5, 0.38, DARK, Finish::Plain);
+            for k in 0..3 { let v = 0.0 + k as f32 * 0.14; pen.line((-0.3 + k as f32 * 0.06, v), (0.3 - k as f32 * 0.06, v), [120.0, 110.0, 100.0], 1.0); }
+            pen.path(&[(-0.25, -0.55), (0.0, -0.8), (0.25, -0.55)], [160.0, 40.0, 30.0], (cs / 14.0).max(1.5));
+        }
         Feature::LevelDoor { .. } => {
             if horizontal { pen.rect(-1.0, -0.25, 1.0, 0.25, [120.0, 110.0, 120.0]); } else { pen.rect(-0.25, -1.0, 0.25, 1.0, [120.0, 110.0, 120.0]); }
             pen.glow(0.0, 0.0, 0.6, [150.0, 120.0, 230.0], 0.6);
@@ -305,29 +323,67 @@ pub fn draw_feature(put: &mut dyn FnMut(i64, i64, Rgb, f32), f: &Floor, cx: i32,
 /// The pen's put, to hand to a drawer that wants one.
 fn pen_put<'a, 'b>(pen: &'a mut Pen<'b>) -> &'a mut dyn FnMut(i64, i64, Rgb, f32) { pen.put_fn() }
 
-/// A floor's plan kept between frames: the whole floor at `cs` pixels a cell, cells drawn the
-/// first time they come into view and again when what is on them changes.
-pub struct Plan { pub key: (u32, usize, u32), pub w: usize, pub h: usize, pub buf: Vec<u32>, sig: Vec<u64> }
+/// A floor's plan kept between frames: a region of it (all of a small floor; on the land the
+/// part about the camera, carried along as one walks) at `cs` pixels a cell, cells drawn the
+/// first time they come into view and again when what is on them changes. Keyed on world cells
+/// (`go` is the floor's cell (0, 0) in the world), so the land looks the same when its floor is
+/// put together anew about another tile.
+pub struct Plan { pub key: (u32, usize, u32), pub gx0: i64, pub gy0: i64, pub cw: usize, pub ch: usize, pub w: usize, pub h: usize, pub buf: Vec<u32>, sig: Vec<u64> }
 
 impl Plan {
-    pub fn new(key: (u32, usize, u32), f: &Floor, cs: f32) -> Plan {
-        let (w, h) = ((f.w as f32 * cs) as usize, (f.h as f32 * cs) as usize);
-        Plan { key, w, h, buf: vec![pack(PARCH); w * h], sig: vec![u64::MAX; f.w * f.h] }
+    /// A plan of the world cells (gx0.., gy0..), cw x ch of them.
+    pub fn new(key: (u32, usize, u32), gx0: i64, gy0: i64, cw: usize, ch: usize, cs: f32) -> Plan {
+        let (w, h) = ((cw as f32 * cs) as usize, (ch as f32 * cs) as usize);
+        Plan { key, gx0, gy0, cw, ch, w, h, buf: vec![pack(PARCH); w * h], sig: vec![u64::MAX; cw * ch] }
     }
-    /// Bring the cells (x0..x1, y0..y1) up to date.
-    pub fn refresh(&mut self, f: &Floor, kind: SiteKind, cs: f32, x0: i32, y0: i32, x1: i32, y1: i32) {
+    /// Whether the world cells (x0..x1, y0..y1) are in the plan.
+    pub fn covers(&self, x0: i64, y0: i64, x1: i64, y1: i64) -> bool { x0 >= self.gx0 && y0 >= self.gy0 && x1 <= self.gx0 + self.cw as i64 && y1 <= self.gy0 + self.ch as i64 }
+    /// Move the plan to start at world cell (gx0, gy0), keeping what was drawn where the old and
+    /// the new overlap.
+    pub fn rebase(&mut self, gx0: i64, gy0: i64, cs: f32) {
+        let csi = cs as usize;
+        let mut buf = vec![pack(PARCH); self.w * self.h];
+        let mut sig = vec![u64::MAX; self.cw * self.ch];
+        for ry in 0..self.ch as i64 { for rx in 0..self.cw as i64 {
+            let (ox, oy) = (gx0 + rx - self.gx0, gy0 + ry - self.gy0);
+            if ox < 0 || oy < 0 || ox >= self.cw as i64 || oy >= self.ch as i64 { continue; }
+            sig[ry as usize * self.cw + rx as usize] = self.sig[oy as usize * self.cw + ox as usize];
+            for py in 0..csi {
+                let from = (oy as usize * csi + py) * self.w + ox as usize * csi;
+                let to = (ry as usize * csi + py) * self.w + rx as usize * csi;
+                buf[to..to + csi].copy_from_slice(&self.buf[from..from + csi]);
+            }
+        } }
+        // (A cell's fittings may reach into its neighbours: the border is drawn again.)
+        for ry in 0..self.ch { for rx in 0..self.cw { if rx == 0 || ry == 0 || rx + 1 == self.cw || ry + 1 == self.ch { sig[ry * self.cw + rx] = u64::MAX; } } }
+        self.buf = buf;
+        self.sig = sig;
+        self.gx0 = gx0;
+        self.gy0 = gy0;
+    }
+    /// The plan's pixel at world pixel (wx, wy), if it has it.
+    pub fn pixel(&self, wx: i64, wy: i64, cs: f32) -> Option<u32> {
+        let (px, py) = (wx - (self.gx0 as f32 * cs) as i64, wy - (self.gy0 as f32 * cs) as i64);
+        if px < 0 || py < 0 || px as usize >= self.w || py as usize >= self.h { None } else { Some(self.buf[py as usize * self.w + px as usize]) }
+    }
+    /// Bring the floor's cells (x0..x1, y0..y1) up to date (floor cells; `go` the floor's cell
+    /// (0, 0) in the world).
+    pub fn refresh(&mut self, f: &Floor, kind: SiteKind, cs: f32, go: (i64, i64), x0: i32, y0: i32, x1: i32, y1: i32) {
         use rayon::prelude::*;
-        let (x0, y0) = (x0.max(0), y0.max(0));
-        let (x1, y1) = (x1.min(f.w as i32), y1.min(f.h as i32));
+        // The floor's cells in the plan.
+        let (lx0, ly0) = ((self.gx0 - go.0) as i32, (self.gy0 - go.1) as i32);
+        let (x0, y0) = (x0.max(0).max(lx0), y0.max(0).max(ly0));
+        let (x1, y1) = (x1.min(f.w as i32).min(lx0 + self.cw as i32), y1.min(f.h as i32).min(ly0 + self.ch as i32));
+        let inside = |x: i32, y: i32| f.inside(x, y) && x >= lx0 && y >= ly0 && x < lx0 + self.cw as i32 && y < ly0 + self.ch as i32;
+        let ri = |x: i32, y: i32| (y - ly0) as usize * self.cw + (x - lx0) as usize;
         // Cells whose drawing changed, and their neighbours (rims and shadows reach a cell).
         let mut stale: Vec<(i32, i32)> = Vec::new();
-        let fw = f.w;
-        let mut mark = vec![false; f.w * f.h];
+        let mut mark = vec![false; self.cw * self.ch];
         for y in y0..y1 { for x in x0..x1 {
             let s = cell_sig(f, x, y);
-            if self.sig[y as usize * fw + x as usize] != s {
-                self.sig[y as usize * fw + x as usize] = s;
-                for dy in -1..=1 { for dx in -1..=1 { let (nx, ny) = (x + dx, y + dy); if f.inside(nx, ny) && !mark[ny as usize * fw + nx as usize] { mark[ny as usize * fw + nx as usize] = true; stale.push((nx, ny)); } } }
+            if self.sig[ri(x, y)] != s {
+                self.sig[ri(x, y)] = s;
+                for dy in -1..=1 { for dx in -1..=1 { let (nx, ny) = (x + dx, y + dy); if inside(nx, ny) && !mark[ri(nx, ny)] { mark[ri(nx, ny)] = true; stale.push((nx, ny)); } } }
             }
         } }
         if stale.is_empty() { return; }
@@ -337,15 +393,16 @@ impl Plan {
         let draw_cell = |(x, y): &(i32, i32)| -> (i32, i32, Vec<u32>) {
             let mut out = vec![0u32; csi * csi];
             for py in 0..csi { for px in 0..csi {
-                let (wx, wy) = (*x as i64 * csi as i64 + px as i64, *y as i64 * csi as i64 + py as i64);
-                let (fx, fy) = ((wx as f32 + 0.5) / cs, (wy as f32 + 0.5) / cs);
-                out[py * csi + px] = pack(plan_pixel(f, kind, fx, fy, wx, wy, cs));
+                let (wx, wy) = ((*x as i64 + go.0) * csi as i64 + px as i64, (*y as i64 + go.1) * csi as i64 + py as i64);
+                let (fx, fy) = (*x as f32 + (px as f32 + 0.5) / cs, *y as f32 + (py as f32 + 0.5) / cs);
+                out[py * csi + px] = pack(plan_pixel(f, kind, fx, fy, wx, wy, cs, go));
             } }
             (*x, *y, out)
         };
         let cells: Vec<(i32, i32, Vec<u32>)> = if stale.len() > 40 { stale.par_iter().map(draw_cell).collect() } else { stale.iter().map(draw_cell).collect() };
         for (x, y, out) in cells {
-            for py in 0..csi { let row = (y as usize * csi + py) * w + x as usize * csi; if row + csi <= self.buf.len() { self.buf[row..row + csi].copy_from_slice(&out[py * csi..py * csi + csi]); } }
+            let (rx, ry) = ((x - lx0) as usize, (y - ly0) as usize);
+            for py in 0..csi { let row = (ry * csi + py) * w + rx * csi; if row + csi <= self.buf.len() { self.buf[row..row + csi].copy_from_slice(&out[py * csi..py * csi + csi]); } }
         }
         // Then the fittings over them (they may reach a little beyond their cell).
         let (pw, ph) = (self.w, self.h);
@@ -357,7 +414,7 @@ impl Plan {
         };
         for &(x, y) in &stale {
             if f.at(x, y).feature != Feature::None {
-                draw_feature(&mut put, f, x, y, (x as f32 + 0.5) * cs, (y as f32 + 0.5) * cs, cs);
+                draw_feature(&mut put, f, x, y, ((x - lx0) as f32 + 0.5) * cs, ((y - ly0) as f32 + 0.5) * cs, cs);
             }
         }
     }
