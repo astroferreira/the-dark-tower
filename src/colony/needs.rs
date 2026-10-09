@@ -26,9 +26,11 @@ pub enum Need {
     Romance,
     /// Not rolled: a visit to the grave of someone dear (`mourn_option`).
     Remember,
+    /// DF's AcquireObject: a thing of their own (a work kept by the bed).
+    Acquire,
 }
 
-pub const ALL: [Need; 21] = [Need::Romance, 
+pub const ALL: [Need; 22] = [Need::Romance, Need::Acquire, 
     Need::Socialize, Need::Friends, Need::Family, Need::Pray, Need::TakeItEasy, Need::SeeAnimal,
     Need::AdmireArt, Need::Wander, Need::Excitement, Need::HelpSomebody, Need::Learn,
     Need::ThinkAbstractly, Need::MakeMerry, Need::Tradition, Need::Martial, Need::Craft,
@@ -36,7 +38,7 @@ pub const ALL: [Need; 21] = [Need::Romance,
 ];
 
 /// The first words of each spare-hours act's reason (for counting them in the decisions).
-pub const ACT_WORDS: [&str; 19] = ["Talking", "Arguing", "Standing", "Passing the time", "Spending time", "Praying", "Kneeling", "Taking it easy", "Watching", "Admiring",
+pub const ACT_WORDS: [&str; 20] = ["Talking", "Arguing", "Standing", "Taking", "Passing the time", "Spending time", "Praying", "Kneeling", "Taking it easy", "Watching", "Admiring",
     "Walking out", "Climbing", "Sitting", "Lending", "Reading", "Singing", "Telling", "Practising", "Whittling"];
 
 /// DF's ceiling: focus is set to this when a need is met.
@@ -53,7 +55,7 @@ impl Need {
             Need::MakeMerry => "merriment", Need::Tradition => "the old ways", Need::Martial => "arms practice",
             Need::Craft => "a craft to work at", Need::BeCreative => "something new to make", Need::StayOccupied => "work",
             Need::Drink => "a drink", Need::GoodMeal => "a good meal",
-            Need::Romance => "someone to walk out with", Need::Remember => "the dead",
+            Need::Romance => "someone to walk out with", Need::Remember => "the dead", Need::Acquire => "a thing of their own",
         }
     }
 }
@@ -110,6 +112,7 @@ fn strength(p: &Persona, need: Need, faith: bool) -> f32 {
         Need::GoodMeal => f(Facet::Immoderation) * 0.8 + 0.3 * f(Facet::Greed) - 0.1,
         Need::Romance => v(Val::Romance) * 0.8 + 0.4 * f(Facet::Love) - 0.1,
         Need::Remember => 0.0,
+        Need::Acquire => f(Facet::Greed) * 0.9 + 0.3 * f(Facet::Vanity) - 0.1,
     }
 }
 
@@ -204,6 +207,8 @@ impl Colony {
             self.ensure_needs(i);
             let company = self.settlers[i].mind.company;
             if company >= 120 { self.meet(i, Need::Socialize, 150); }
+            // Something of their own, kept by the bed, keeps the wish for things quiet.
+            if self.kept.iter().any(|x| x.1 == i) { self.meet(i, Need::Acquire, 150); }
             if self.spouse_or_child_near(i) { self.meet(i, Need::Family, 150); }
             // One thought for the worst unmet need, weighed by its strength.
             let worst = self.settlers[i].mind.needs.iter().filter(|n| n.focus < -250)
@@ -420,6 +425,24 @@ impl Colony {
                 let fond = if self.opinion(i, j) >= 20 { "sweet on" } else { "fond of" };
                 Some((o.pos, format!("Walking out with {} {}: {} is {} {}", o.name, self.place_word(o.pos), they, fond, if o.persona.female { "her" } else { "him" }), a))
             }
+            Need::Acquire => {
+                // A work at the camp nobody keeps, not sold, no artifact: of a material they love
+                // first, else the finest (DF: dwarves claim objects they like).
+                // (One thing each; two for the greedy, three for the very greedy: one hand had
+                // taken a work a week.)
+                let greed = s.persona.facet(Facet::Greed);
+                let most = 1 + (greed >= 70) as usize + (greed >= 85) as usize;
+                if self.kept.iter().filter(|x| x.1 == i).count() >= most { return None; }
+                let liked = &s.persona.likes.material;
+                let k = (0..self.works.len()).filter(|&k| { let w = &self.works[k]; !w.traded && !self.kept.iter().any(|x| x.0 == k) && !Self::is_artifact(w) && w.kind != "book" })
+                    .max_by_key(|&k| (self.works[k].material == *liked, self.works[k].quality, k))?;
+                let w = &self.works[k];
+                if w.material != *liked && w.quality < 2 { return None; }
+                let mut a = act(need, None, k.to_string(), 20);
+                a.at = self.camp;
+                let why = if w.material == *liked { format!("{} likes {}", they, liked) } else { since(need.word()) };
+                Some((self.camp, format!("Taking {} to keep for {} own: {}", w.describe(), if s.persona.female { "her" } else { "his" }, why), a))
+            }
             Need::Martial => {
                 let at = self.drill_ground();
                 Some((at, format!("Practising thrusts with a stave at the drill ground: {}", since(need.word())), act(need, None, String::new(), 40)))
@@ -453,6 +476,16 @@ impl Colony {
                     self.like(i, j, 2);
                     self.like(j, i, 2);
                     self.meet(j, Need::Romance, FULL);
+                }
+            }
+            Need::Acquire => {
+                if let Some(k) = a.what.parse::<usize>().ok().filter(|&k| k < self.works.len() && !self.works[k].traded && !self.kept.iter().any(|x| x.0 == k)) {
+                    self.kept.push((k, i));
+                    let what = self.works[k].describe();
+                    let (name, their) = (self.settlers[i].name.clone(), if self.settlers[i].persona.female { "her" } else { "his" });
+                    let place = if self.bedroom_of(i).is_some() { format!("in {} room under the rock", their) } else { format!("by {} bed", their) };
+                    self.note(format!("{} takes {} to keep {}.", name, what, place));
+                    self.feel(i, super::mind::Feel::Acquired { what });
                 }
             }
             Need::Remember => {

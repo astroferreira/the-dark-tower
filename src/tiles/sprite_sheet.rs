@@ -59,7 +59,7 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
     use super::status_ink::Emblem;
     let emblems = [Emblem::Tantrum, Emblem::Despair, Emblem::Lost, Emblem::Fey, Emblem::Secretive, Emblem::Possessed, Emblem::Macabre, Emblem::Fell,
         Emblem::Hurt, Emblem::Pray, Emblem::Talk, Emblem::Rest, Emblem::Watch, Emblem::Admire, Emblem::Walk, Emblem::Thrill, Emblem::Help, Emblem::Learn,
-        Emblem::Think, Emblem::Merry, Emblem::Tale, Emblem::Martial, Emblem::Whittle, Emblem::Busy, Emblem::Drink, Emblem::Meal, Emblem::Gloom, Emblem::Love, Emblem::Grief];
+        Emblem::Think, Emblem::Merry, Emblem::Tale, Emblem::Martial, Emblem::Whittle, Emblem::Busy, Emblem::Drink, Emblem::Meal, Emblem::Gloom, Emblem::Love, Emblem::Grief, Emblem::Acquire];
     let folk: Vec<(&str, super::folk::Folk)> = vec![
         ("the Shadow's raider", super::folk::raider(None, "raiders of the Shadow of Skullfang", 0, None)),
         ("the Shadow's axeman", super::folk::raider(None, "raiders of the Shadow of Skullfang", 2, None)),

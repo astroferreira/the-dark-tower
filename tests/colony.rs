@@ -1384,11 +1384,11 @@ fn the_world_remembers_what_the_camp_did() {
 /// Armour (Dwarf Fortress's layers of material): once the militia bears spears the workshop
 /// makes armour of the best to hand (adamantine from the deep shaft, iron, copper, leather from
 /// the hunt), and in the clash it turns blows. (Leather and hide only lighten an edge; mail is
-/// forged from bars, so ore is forced: no dev seed strikes any. Blows are turned on days 60 (76)
-/// and 94 (3).)
+/// forged from bars, so ore is forced: no dev seed strikes any. Blows are turned on days 70 (6)
+/// and 100 (76).)
 #[test]
 fn armour_turns_blows() {
-    let logs: Vec<String> = ["76", "3"].iter().map(|s| run_log(s, "110", &[("PLANET_FORCE_ORE", "1")])).collect();
+    let logs: Vec<String> = ["6", "76"].iter().map(|s| run_log(s, "110", &[("PLANET_FORCE_ORE", "1")])).collect();
     let any = |n: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(n)));
     assert!(any("the first armour in the camp"), "no armour made");
     assert!(any("does not get through") || any("took the worst of it") || any("turns it.") || any("is turned by"), "no blow turned");
@@ -1554,8 +1554,9 @@ fn a_hungry_camp_plants_first() {
 /// caught, they are the camp's prisoner (seed 11, day 169; seed 5, day 257).
 #[test]
 fn thieves_come_for_the_artifact() {
-    // (Seeds 1 and 2 since camps are placed by their founders: days 53 and 100.)
-    let logs: Vec<String> = ["1", "2"].iter().map(|s| run_log(s, "110", &[])).collect();
+    // (Seeds 11 and 6: days 169 and 251. Thieves come for artifacts of moods, which come
+    // later in camps whose makers have spare hours of their own.)
+    let logs: Vec<String> = ["11", "6"].iter().map(|s| run_log(s, "260", &[])).collect();
     assert!(logs.iter().any(|t| t.lines().any(|l| l.contains("catches a thief at the edge of the camp with ") || l.contains(": a thief of "))), "no thief came");
 }
 
@@ -1991,7 +1992,7 @@ fn gates_face_where_the_paths_go() {
 /// after; the unwed walk out with whom they are fond of, and some of them wed.
 #[test]
 fn settlers_mourn_and_court() {
-    let (text, _) = run_decisions("1", "120");
+    let (text, _) = run_decisions("3", "150");
     assert!(text.lines().any(|l| l.contains("wandering        Standing at ") && l.contains("'s grave, remembering them")), "no one stood at a grave");
     assert!(text.lines().any(|l| l.contains("wandering        Walking out with ") && (l.contains(" is fond of ") || l.contains(" is sweet on "))), "no one walked out with anyone");
 }
@@ -2016,4 +2017,17 @@ fn a_camp_without_stone_digs_for_it() {
     assert!(text.lines().any(|l| l.contains("breaks through the last of a gallery cut for stone")), "no gallery cut for stone:\n{text}");
     let done = stdout.lines().filter(|l| l.trim_start().starts_with("Project day") && l.contains(", done)")).count();
     assert!(done >= 12, "only {done} works done in 100 days");
+}
+
+/// Possessions (DF's AcquireObject need and preferences): the greedy and the vain, or one who
+/// sees a work in the material they love, keep it as their own; kept works are never sold.
+#[test]
+fn settlers_keep_things_of_their_own() {
+    let text = run_log("76", "150", &[]);
+    let kept: Vec<&str> = text.lines().filter(|l| l.contains(" takes ") && (l.contains(" to keep by ") || l.contains(" to keep in "))).collect();
+    assert!(!kept.is_empty(), "no one kept anything");
+    // (One each, three at most for the very greedy.)
+    let mut by: std::collections::BTreeMap<&str, usize> = Default::default();
+    for l in &kept { if let Some(n) = l.split("  ").nth(1).and_then(|r| r.split(" takes ").next()) { *by.entry(n).or_default() += 1; } }
+    assert!(by.values().all(|&n| n <= 3), "someone hoards: {by:?}");
 }

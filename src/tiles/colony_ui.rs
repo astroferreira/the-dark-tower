@@ -705,7 +705,10 @@ fn stocks_leaf(p: &mut Pane, colony: &Colony) {
             let maker = colony.settlers.get(w.maker).map(|s| s.name.clone()).unwrap_or_default();
             let tint = if w.quality >= 4 { Some([214.0, 176.0, 70.0]) } else { None };
             let ev = w.image.as_ref().and_then(|(_, e)| *e).map(Action::Event);
-            p.ledger(Glyph::of_thing(&w.kind), tint, &cap(&w.describe()), "", &format!("made by {} on day {}", maker, w.day), ev.or(Some(Action::Sheet(w.maker))));
+            // A settler's own (`Colony::kept`): said, and their sheet a click away.
+            let keeper = colony.works.iter().position(|x| std::ptr::eq(x, &**w)).and_then(|k| colony.kept.iter().find(|kk| kk.0 == k)).map(|kk| kk.1);
+            let kept_by = keeper.and_then(|o| colony.settlers.get(o)).map(|s| format!("; kept by {} as their own", s.name)).unwrap_or_default();
+            p.ledger(Glyph::of_thing(&w.kind), tint, &cap(&w.describe()), "", &format!("made by {} on day {}{}", maker, w.day, kept_by), ev.or(Some(Action::Sheet(keeper.unwrap_or(w.maker)))));
         }
         if sold > 0 { p.para(&format!("{} sold to the caravans.", plural(sold, "work", "works")), Face::Italic, SMALL + 1.0, SOFT, 0.0, None); }
         for (t, _, d) in &colony.stolen { p.para(&format!("{}: stolen in the night of day {}.", cap(t), d), Face::Italic, SMALL + 1.0, RUBRIC, 0.0, None); }

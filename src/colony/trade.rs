@@ -172,7 +172,9 @@ impl Colony {
         let mut sold: Vec<String> = Vec::new();
         // (With a library the camp keeps its books.)
         let library = self.projects.iter().any(|p| p.done && p.kind == projects::ProjectKind::Library);
-        for w in self.works.iter_mut().filter(|w| !w.traded && w.quality < 5 && !(library && w.kind == "book")) {
+        // (Nor what someone keeps as their own.)
+        let kept: Vec<usize> = self.kept.iter().map(|x| x.0).collect();
+        for (_, w) in self.works.iter_mut().enumerate().filter(|(k, w)| !w.traded && w.quality < 5 && !(library && w.kind == "book") && !kept.contains(k)) {
             w.traded = true;
             value += (1 + w.quality as u32).pow(2) * 2 + if w.kind.contains(" set with ") { 6 } else { 0 } + if w.material.ends_with("-bone") { 8 } else { 0 };
             let d = w.describe();

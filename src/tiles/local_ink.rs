@@ -1701,6 +1701,16 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                         if r.furnished.is_some() { super::furniture::bed(&mut pen, r.owner.map(|o| looks[o].2).unwrap_or([150.0, 130.0, 110.0]), r.quality >= 3); }
                         else { super::furniture::pallet(&mut pen); }
                     }
+                    // What the owner keeps as their own, by the bed (`Colony::kept`).
+                    if let Some(o) = r.owner {
+                        for (j, &(k, _)) in colony.kept.iter().filter(|kk| kk.1 == o).enumerate().take(3) {
+                            if let Some(wk) = colony.works.get(k) {
+                                let (gx, gy) = to_screen(b.0 as f32 + 1.2 + 0.0 * j as f32, b.1 as f32 + 0.25 + j as f32 * 0.35);
+                                let tint = if wk.quality >= 4 { Some([214.0, 176.0, 70.0]) } else { None };
+                                super::glyphs::draw(&mut put, super::glyphs::Glyph::of_thing(&wk.kind), gx, gy, (t * 0.4).max(6.0), tint);
+                            }
+                        }
+                    }
                     // (Named on the bed only when its owner is not lying in it.)
                     let abed = r.owner.map_or(false, |o| colony.settlers[o].alive && colony.here3(o) == (b.0, b.1, r.z));
                     if t >= 9.0 && !abed {

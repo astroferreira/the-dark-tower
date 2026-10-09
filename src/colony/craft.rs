@@ -73,7 +73,7 @@ impl Colony {
     pub(crate) fn craft_wish(&self, i: usize) -> f32 {
         // (Only what the work under way does not need: the carvers had used every stone the
         // quarriers brought, and a guildhall waited sixty days for its first.)
-        let spare = self.spare(ItemKind::Stone) + self.spare(ItemKind::Log);
+        let spare = self.spare_for_art(ItemKind::Stone) + self.spare_for_art(ItemKind::Log);
         if spare < 2 { return 0.0; }
         self.craft_wish_any(i)
     }
@@ -111,7 +111,7 @@ impl Colony {
         let want = self.lord.as_ref().and_then(|l| l.demand.as_ref()).filter(|d| !d.2).map(|d| d.0.clone());
         let prefer = want.map(|w| if w == self.land_stone() { Some(ItemKind::Stone) } else if w == self.land_wood() { Some(ItemKind::Log) } else { None }).flatten();
         // (A material the work under way does not need first.)
-        let free = |c: &Colony, k: ItemKind| c.spare(k) > 0;
+        let free = |c: &Colony, k: ItemKind| c.spare_for_art(k) > 0;
         let Some(k) = prefer.filter(|&p| free(self, p)).and_then(|p| self.items.iter().position(|it| it.stored && it.kind == p))
             .or_else(|| self.items.iter().position(|it| it.stored && matches!(it.kind, ItemKind::Stone | ItemKind::Log) && free(self, it.kind)))
             .or_else(|| self.items.iter().position(|it| it.stored && matches!(it.kind, ItemKind::Stone | ItemKind::Log))) else { return };
