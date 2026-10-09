@@ -247,6 +247,11 @@ pub fn draw_works(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i
                 }
                 pen.bone(&[(0.05, 1.0), (0.05, -0.1)], DARK_WOOD, (pen.half * 0.07).max(1.5));
                 pen.bone(&[(2.95, 1.0), (2.95, -0.1)], DARK_WOOD, (pen.half * 0.07).max(1.5));
+                // Under the woodshed's lean-to roof once it stands.
+                if colony.projects.iter().any(|q| q.kind == ProjectKind::Woodshed && q.done) {
+                    pen.poly(&[(-0.2, -0.05), (3.2, -0.05), (3.0, -0.55), (0.0, -0.55)], THATCH);
+                    for k in 1..4 { let v = -0.05 - k as f32 * 0.12; pen.line_a((0.0, v), (3.0, v), INK, 1.0, 0.35); }
+                }
             }
             ProjectKind::Windbreak => {
                 earth(&mut pen, 0.0, 0.0, fw, fh);
@@ -677,4 +682,17 @@ pub fn draw_haunt(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w:
             pen.poly(&[(0.38, -0.3), (0.5, -0.45), (0.62, -0.3)], [176.0, 136.0, 90.0]);
         }
     }
+}
+
+/// Over the delve's mouth once a mine or the deep shaft goes down from it: a timber head-frame
+/// (two posts and a beam), a windlass with its rope down the shaft and a bucket.
+pub fn draw_headframe(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, at: (u16, u16)) {
+    let c = Cells::new(cam, w, h);
+    if !c.visible(at.0 as f32, at.1 as f32, w, h, 3.0) { return; }
+    let mut pen = c.pen(put, at.0 as f32, at.1 as f32);
+    for u in [-0.1, 1.1] { pen.bone(&[(u, 1.0), (0.5 + (u - 0.5) * 0.6, -0.6)], DARK_WOOD, (pen.half * 0.08).max(1.5)); }
+    pen.bone(&[(0.05, -0.55), (0.95, -0.55)], WOOD, (pen.half * 0.1).max(2.0));
+    pen.ellipse(0.5, -0.55, 0.14, 0.14, DARK_WOOD);
+    pen.line((0.5, -0.45), (0.5, 0.35), INK, 1.0);
+    pen.rect(0.4, 0.35, 0.6, 0.52, [150.0, 104.0, 64.0]);
 }

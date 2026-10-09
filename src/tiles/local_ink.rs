@@ -1168,6 +1168,11 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
             put(xx, yy, if edge { INK } else if step { mix([60.0, 52.0, 48.0], INK, v) } else { mix([120.0, 108.0, 94.0], [40.0, 34.0, 32.0], v) }, 0.95);
         } }
     }
+    if let Some(m) = colony.delve_mouth.filter(|_| colony.spine.is_some() && colony.projects.iter().any(|p| matches!(p.kind, crate::colony::projects::ProjectKind::Mine | crate::colony::projects::ProjectKind::DeepShaft))) {
+        let sp = colony.spine.unwrap();
+        let at = if colony.map.cell(sp.at.0 as usize, sp.at.1 as usize, colony.map.surface_z[sp.at.1 as usize * colony.map.width + sp.at.0 as usize].max(0) as usize).shape == crate::local::Shape::Stair { sp.at } else { m };
+        super::camp_ink::draw_headframe(&mut put, cam, w, h, at);
+    }
     // Drawbridges over the ditch: let down, a timber deck with its planks across the way and an
     // inked rail along each side; raised, the leaf stands hatched at the camp's side of the ditch
     // and the crossing is the ditch's dark.
