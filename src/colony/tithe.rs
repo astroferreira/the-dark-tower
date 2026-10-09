@@ -35,7 +35,7 @@ impl Colony {
         let winter_near = self.days_to_winter().map_or(true, |d| d <= 30) || self.hard_winter();
         let keep = alive * if winter_near { 40 } else { 20 } / 2;
         let meals = (food / 10).max(10).min(food.saturating_sub(keep));
-        let works: Vec<usize> = (0..self.works.len()).filter(|&k| !self.works[k].traded && self.works[k].quality < 5).take(2).collect();
+        let works: Vec<usize> = (0..self.works.len()).filter(|&k| !self.works[k].traded && self.works[k].quality < 5 && !self.kept.iter().any(|x| x.0 == k)).take(2).collect();
         let pool: Vec<usize> = (0..self.settlers.len()).filter(|&i| self.settlers[i].alive && self.settlers[i].guest_until == 0).collect();
         let Some(&judge) = self.speaker.filter(|&s| self.settlers[s].alive).as_ref()
             .or_else(|| pool.iter().max_by_key(|&&i| (self.settlers[i].past.as_ref().map_or(30, |x| x.age), std::cmp::Reverse(i)))) else { return };

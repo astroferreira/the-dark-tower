@@ -162,6 +162,16 @@ impl Colony {
         self.stored_count(k).saturating_sub(need + 2)
     }
 
+    /// What is stored of `k` beyond what every unfinished work still needs (and two more): what
+    /// the workshop's art may use (a work stalled for its stone had seen the carvers take what
+    /// came in). The industries use `spare`: charcoal, bars and arms come first.
+    pub(crate) fn spare_for_art(&self, k: ItemKind) -> u32 {
+        let (logs, stones) = self.material_needed();
+        let pending: u32 = self.projects.iter().filter(|p| !p.done && !super::projects::is_dig(p.kind) && p.material == k).map(|p| p.needed.saturating_sub(p.used)).sum();
+        let need = (if k == ItemKind::Log { logs } else { stones }).max(pending);
+        self.stored_count(k).saturating_sub(need + 2)
+    }
+
     fn take_stored(&mut self, k: ItemKind) -> bool {
         let Some(it) = self.items.iter().position(|it| it.stored && it.kind == k) else { return false };
         self.items.remove(it);

@@ -1849,3 +1849,18 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   them (10 at most): "They take up a palisade again (14 of 24 loads laid)". Dev 70,6 by day 200:
   palisade, gallery, ditch, temple, pen, storehouse, tavern, workshop, still, traps, drawbridges,
   library, guildhall, kitchen, field. Tested (`a_camp_without_stone_digs_for_it`).
+- Possessions (`needs.rs`: `Need::Acquire`, DF's AcquireObject; `Colony::kept`): the greedy and
+  vain need a thing of their own; they take a work at the camp (unsold, not an artifact or a
+  book), one of their liked material first, else the finest (quality 2+), "to keep by his bed" /
+  "in her room under the rock". One each, two for greed 70+, three for 85+; owning one meets the
+  need at dawn. Kept works are never sold to caravans or taken by the tithe. Six seeds, 150 days:
+  0-13 kept a camp. Tested (`settlers_keep_things_of_their_own`).
+- Stalls, the second round (`projects.rs`: `stalled_days`, `reckon_progress`, `Colony::progress`):
+  a work with no load laid for eight days no longer holds up the plan or the builders (the next
+  work is planned, and builders turn to one that can go on); the woodpile is restocked first only
+  with a log laid by and while it is not stalled (at 50,20 a woodpile waiting on logs that never
+  came had held every work for a hundred days, 58 stones in the store). The workshop's art uses
+  only what every unfinished work does not need (`industry::spare_for_art`); the industries keep
+  `spare` (charcoal and bars first: the stricter rule had starved the smelter and armour came
+  late). `PLANET_DEBUG_STONE=1` prints the store, the nearest quarry stone and the work under
+  way each dawn. Sixteen camps x 200 days: the longest gap between works 13-26 days.

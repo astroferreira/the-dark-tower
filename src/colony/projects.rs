@@ -59,6 +59,26 @@ const RING_OUT: f32 = 4.5;
 
 impl Colony {
     /// The work under way: the hut until it stands, then the first unfinished project.
+    /// Days since a work under way last had a load laid (or was begun): a work starved of its
+    /// material stops holding the plan up after eight (`plan_projects`, `active_project`).
+    pub(crate) fn stalled_days(&self, p: &Project) -> u64 {
+        let day = self.clock.day();
+        self.progress.iter().find(|x| x.0 == (p.kind, p.at, p.day)).map_or(day.saturating_sub(p.day), |x| day.saturating_sub(x.2))
+    }
+
+    /// Dawn: note which works had loads laid since yesterday.
+    pub(crate) fn reckon_progress(&mut self) {
+        let day = self.clock.day();
+        let keys: Vec<((ProjectKind, Pos, u64), u32)> = self.projects.iter().filter(|p| !p.done || (p.kind == ProjectKind::Woodpile && p.used < p.needed)).map(|p| ((p.kind, p.at, p.day), p.used)).collect();
+        for (key, used) in &keys {
+            match self.progress.iter_mut().find(|x| x.0 == *key) {
+                Some(x) => if x.1 != *used { x.1 = *used; x.2 = day; },
+                None => self.progress.push((*key, *used, day)),
+            }
+        }
+        self.progress.retain(|x| keys.iter().any(|k| k.0 == x.0));
+    }
+
     pub(crate) fn active_project(&self) -> Option<usize> {
         // Nothing is built on ground the patron forbade.
         let ok = |p: &Project| !self.marked_at(p.at, true);
@@ -66,11 +86,18 @@ impl Colony {
         // (Only while there is wood to have: dev 50,20 burnt its trees out of reach, and waiting
         // on the woodpile held the palisade's mending for thirty days.)
         let wood = || self.wood_in_reach || self.items.iter().any(|it| it.kind == ItemKind::Log);
-        if let Some(k) = self.projects.iter().position(|p| p.done && p.kind == ProjectKind::Woodpile && p.used < 4 && ok(p)).filter(|_| wood()) { return Some(k); }
+        // (First only with a log laid by to stack, and not while it stalls: at 50,20 a woodpile
+        // waiting on logs that never came had held every other work for a hundred days, with
+        // fifty-eight stones in the store.)
+        let stacked = self.items.iter().any(|it| it.kind == ItemKind::Log && it.stored);
+        if let Some(k) = self.projects.iter().position(|p| p.done && p.kind == ProjectKind::Woodpile && p.used < 4 && ok(p) && self.stalled_days(p) < 8).filter(|_| stacked) { return Some(k); }
         // (Digs are worked from their own plan, `dig_target`: the builders go on with the next
         // work meanwhile. A deep shaft stuck at its last cuts had held two guildhalls at no
         // stones for sixty days.)
-        self.projects.iter().position(|p| !p.done && ok(p) && !is_dig(p.kind))
+        // (A work starved of its material eight days steps aside for one that can go on.)
+        let live = |p: &Project| !p.done && ok(p) && !is_dig(p.kind);
+        self.projects.iter().position(|p| live(p) && self.stalled_days(p) < 8)
+            .or_else(|| self.projects.iter().position(|p| live(p)))
             // A finished woodpile burns down each night and is restocked.
             .or_else(|| self.projects.iter().position(|p| p.done && p.kind == ProjectKind::Woodpile && p.used < p.needed && ok(p)).filter(|_| wood()))
     }
@@ -182,7 +209,17 @@ impl Colony {
         // A camp hungry five dawns running plans a work that feeds it (a field, a farm under the
         // rock, a pen, a jetty) ahead of whatever else is under way (seed 58 sat a year hungry
         // behind a well it never finished, building nothing because it was hungry).
-        let under_way = self.projects.iter().any(|p| !p.done && !self.marked_at(p.at, true));
+        self.reckon_progress();
+        if std::env::var("PLANET_DEBUG_STONE").is_ok() {
+            let stored = self.items.iter().filter(|it| it.kind == ItemKind::Stone && it.stored).count();
+            let loose = self.items.iter().filter(|it| it.kind == ItemKind::Stone && !it.stored).count();
+            let q = self.nearest_pub(self.camp, |c, p| c.is_quarry_stone_pub(p));
+            let a = self.active_project().map(|k| format!("{} {}/{} stalled {}", self.projects[k].kind.word(), self.projects[k].used, self.projects[k].needed, self.stalled_days(&self.projects[k])));
+            eprintln!("STONE day {} stored {} loose {} quarry {:?} out {} timber {} active {:?} dig {:?}", self.clock.day(), stored, loose, q, self.materials_out(), self.timber_near(), a, self.dig_plan.as_ref().map(|d| d.len()));
+        }
+        // (A work starved of its material eight days does not hold the plan up: dev 50,20 had
+        // waited fifty days on a workshop's stone with nothing else planned.)
+        let under_way = self.projects.iter().any(|p| !p.done && !self.marked_at(p.at, true) && (is_dig(p.kind) || self.stalled_days(p) < 8));
         let food_first = under_way && self.hungry_days >= 5 && !self.projects.iter().any(|p| !p.done && feeds(p.kind));
         if self.hut.as_ref().map_or(true, |h| !h.done) || (under_way && !food_first) { return; }
         let have = |c: &Colony, k: ProjectKind| c.projects.iter().any(|p| p.kind == k);

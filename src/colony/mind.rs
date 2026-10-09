@@ -177,6 +177,8 @@ pub enum Feel {
     NeedUnmet { what: String, level: u8, days: u64 },
     /// Stood at a dear one's grave (`needs.rs`): grief eased a little.
     Remembered { whom: String },
+    /// Took a work to keep as their own (`needs.rs`).
+    Acquired { what: String },
 }
 
 impl Colony {
@@ -253,6 +255,7 @@ impl Colony {
             Feel::OwnRoom { value } => (format!("slept in {} bedroom of their own", if *value >= 9 { "a splendid" } else if *value >= 5 { "a fine" } else { "a" }),
                 0.03 * (0.5 + fac(Facet::Bashfulness).max(fac(Facet::Orderliness))) * (1.0 + 0.1 * (*value).min(12) as f32)),
             Feel::Dreamt { what } => (format!("realized a dream of {}", what), 0.6),
+            Feel::Acquired { what } => (format!("took {} to keep", what), 0.06 * (0.5 + fac(Facet::Greed).max(fac(Facet::Vanity)))),
             Feel::Remembered { whom } => (format!("stood at {}'s grave", whom), 0.05 * (0.5 + fac(Facet::Love))),
             Feel::NeedUnmet { what, level, days } => (format!("has gone {} days without {}", days, what), -(0.008 + 0.004 * *level as f32)),
             Feel::Ragged => ("went about in rags".to_string(), -0.04 * (0.5 + fac(Facet::Vanity))),
