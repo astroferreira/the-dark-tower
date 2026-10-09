@@ -547,5 +547,13 @@ the Claude Doc "Ink graphics: sprites and examples".
   prints its parts). Watcher on one core: a season a frame 105 -> 11.5 ms, panning 28 -> 2 ms
   (all cores: 2.7 and 1.5 ms). 0 pixels differ (`PLANET_WORLD_CHECK`) over 400 seasons and the
   world bench's pans.
+- After merging ui-graphics (2026-10-09): the ink region walker (`region_ink::draw_kept`,
+  `snap_camera`, keyed on a per-`Ink` id; `PLANET_REGION_CHECK=1`) is kept too: walking had cost
+  ~70 ms of CPU a frame (6 ms wall on 14 cores, p99 17), now 2-4.5 ms (one core at 2560x1440:
+  p99 9-15.5 ms). The benches draw what the window does: the ledger's panel
+  (`PLANET_BENCH_PANEL=settlers|stocks|works|annals|camp`), world life and beasts, the ink region.
+  All cores, 1280x800: colony 2.0 ms (3.2 with the panel), pan 2.6, level 3.0, section 4.4,
+  world 1-2 ms, walking 2-4.5, watcher 2.8 / 1.5. One core at 2560x1440 with the panel: surface
+  p99 11, pan 13, level 15.7.
 - Left: the world shader costs ~150 ns a pixel on one core, so fast diagonal pans at 2560x1440 and
   16-32 px a tile on a single core reach 17-18 ms at p95 (1-2.5 ms with all cores).
