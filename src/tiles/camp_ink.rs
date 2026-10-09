@@ -598,3 +598,50 @@ pub fn draw_rising(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w
         }
     }
 }
+
+/// An engraving: a dressed panel on the wall's face toward the floor it was carved from, with a
+/// small scene cut in it from what it shows (a siege's tower, a slain beast's skull, crossed
+/// blades for a battle or raid, a house for a work, a cradle for a birth, a wisp for the dead,
+/// else a figure); finer hands' panels are gilded.
+pub fn draw_engraving(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, e: &crate::colony::engrave::Engraving) {
+    let c = Cells::new(cam, w, h);
+    if !c.visible(e.wall.0 as f32, e.wall.1 as f32, w, h, 2.0) { return; }
+    let (dx, dy) = (e.from.0 as f32 - e.wall.0 as f32, e.from.1 as f32 - e.wall.1 as f32);
+    // The panel's centre: on the wall's edge toward the floor, standing a little into it.
+    let (px, py) = (e.wall.0 as f32 + 0.5 + dx * 0.55, e.wall.1 as f32 + 0.5 + dy * 0.55);
+    let mut pen = c.pen(put, px, py);
+    let (hw, hh) = if dx != 0.0 { (0.2, 0.42) } else { (0.42, 0.24) };
+    let stone = if e.quality >= 3 { [214.0, 190.0, 130.0] } else { [196.0, 186.0, 166.0] };
+    pen.rect(-hw, -hh, hw, hh, stone);
+    if e.quality >= 3 { pen.rect_f(-hw + 0.04, -hh + 0.04, hw - 0.04, hh - 0.04, mix(stone, [214.0, 170.0, 60.0], 0.35), Finish::Paint); }
+    let t = e.image.to_lowercase();
+    let k = hw.min(hh) * 0.8;
+    let cut = mix(INK, stone, 0.25);
+    let lw = (pen.half * 0.04).max(1.0);
+    if t.contains("siege") || t.contains("fall") || t.contains("razing") {
+        pen.rect_f(-k * 0.4, -k * 0.6, k * 0.4, k * 0.8, cut, Finish::Paint);
+        for j in 0..3 { let u = -k * 0.4 + j as f32 * k * 0.4; pen.rect_f(u - k * 0.1, -k * 0.85, u + k * 0.1, -k * 0.6, cut, Finish::Paint); }
+    } else if t.contains("death of") || t.contains("slain") || t.contains("beast") || t.contains("bones") {
+        pen.ellipse_f(0.0, -k * 0.15, k * 0.6, k * 0.5, cut, Finish::Paint);
+        pen.ellipse_f(-k * 0.22, -k * 0.2, k * 0.14, k * 0.14, stone, Finish::Paint);
+        pen.ellipse_f(k * 0.22, -k * 0.2, k * 0.14, k * 0.14, stone, Finish::Paint);
+        pen.rect_f(-k * 0.3, k * 0.3, k * 0.3, k * 0.6, cut, Finish::Paint);
+    } else if t.contains("battle") || t.contains("raid") || t.contains("war") || t.contains("fought") {
+        pen.line((-k * 0.7, k * 0.7), (k * 0.7, -k * 0.7), cut, lw);
+        pen.line((k * 0.7, k * 0.7), (-k * 0.7, -k * 0.7), cut, lw);
+    } else if t.contains("born") || t.contains("birth") {
+        pen.ellipse_f(0.0, k * 0.2, k * 0.6, k * 0.35, cut, Finish::Paint);
+        pen.ellipse_f(-k * 0.35, -k * 0.05, k * 0.2, k * 0.2, cut, Finish::Paint);
+    } else if t.contains("ghost") || t.contains("dead") || t.contains("grave") {
+        pen.path(&[(-k * 0.3, k * 0.7), (-k * 0.2, -k * 0.2), (0.0, -k * 0.6), (k * 0.2, -k * 0.2), (k * 0.35, k * 0.7)], cut, lw);
+    } else if t.contains("finish") || t.contains("hut") || t.contains("hall") || t.contains("built") || t.contains("found") {
+        pen.poly_f(&[(-k * 0.7, -k * 0.05), (0.0, -k * 0.75), (k * 0.7, -k * 0.05)], cut, Finish::Paint);
+        pen.rect_f(-k * 0.5, -k * 0.05, k * 0.5, k * 0.7, cut, Finish::Paint);
+    } else {
+        pen.ellipse_f(0.0, -k * 0.5, k * 0.22, k * 0.22, cut, Finish::Paint);
+        pen.line((0.0, -k * 0.25), (0.0, k * 0.35), cut, lw);
+        pen.line((-k * 0.4, -k * 0.05), (k * 0.4, -k * 0.05), cut, lw);
+        pen.line((0.0, k * 0.35), (-k * 0.3, k * 0.8), cut, lw);
+        pen.line((0.0, k * 0.35), (k * 0.3, k * 0.8), cut, lw);
+    }
+}

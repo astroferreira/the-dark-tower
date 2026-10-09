@@ -1130,20 +1130,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     // Engravings on the hall's walls: a carved panel on the face toward the floor, a little
     // figure scratched in it (`colony::engrave`).
     for e in colony.engravings.iter().filter(|e| e.z == colony.hall_z && colony.hall_cells.contains(&e.from)) {
-        let (wx, wy) = to_screen(e.wall.0 as f32 + 0.5, e.wall.1 as f32 + 0.5);
-        let (dx, dy) = (e.from.0 as f32 - e.wall.0 as f32, e.from.1 as f32 - e.wall.1 as f32);
-        let (cx, cy) = (wx + dx * t * 0.3, wy + dy * t * 0.3);
-        let (hw, hh) = if dx != 0.0 { ((t * 0.12).max(1.5), (t * 0.36).max(3.0)) } else { ((t * 0.36).max(3.0), (t * 0.12).max(1.5)) };
-        let (hwi, hhi) = (hw as i64, hh as i64);
-        for yy in -hhi..=hhi { for xx in -hwi..=hwi {
-            let edge = xx.abs() == hwi || yy.abs() == hhi;
-            put(cx as i64 + xx, cy as i64 + yy, if edge { INK } else { [196.0, 178.0, 140.0] }, if edge { 0.9 } else { 0.8 });
-        } }
-        // The figure: a dot and a stroke, darker for a finer hand.
-        let a = 0.5 + 0.08 * e.quality as f32;
-        put(cx as i64, cy as i64 - 1, INK, a);
-        put(cx as i64, cy as i64, INK, a);
-        put(cx as i64, cy as i64 + 1, INK, a);
+        super::camp_ink::draw_engraving(&mut put, cam, w, h, e);
     }
     // Dug rooms under rock, cut away: the rock above hatched dark, the room's edge inked.
     {
@@ -1674,15 +1661,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
     }
     // Engravings on this level's walls: a carved panel on the face toward the floor.
     for e in colony.engravings.iter().filter(|e| e.z == cam.z) {
-        let (wx, wy) = to_screen(e.wall.0 as f32 + 0.5, e.wall.1 as f32 + 0.5);
-        let (dx, dy) = (e.from.0 as f32 - e.wall.0 as f32, e.from.1 as f32 - e.wall.1 as f32);
-        let (cx, cy) = (wx + dx * t * 0.42, wy + dy * t * 0.42);
-        let (hw, hh) = if dx != 0.0 { ((t * 0.08).max(1.5), (t * 0.34).max(3.0)) } else { ((t * 0.34).max(3.0), (t * 0.08).max(1.5)) };
-        let fine = if e.quality >= 3 { [196.0, 160.0, 80.0] } else { [170.0, 150.0, 120.0] };
-        for yy in (cy - hh) as i64..=(cy + hh) as i64 { for xx in (cx - hw) as i64..=(cx + hw) as i64 {
-            let edge = (xx as f32 - (cx - hw)).abs() < 1.0 || (xx as f32 - (cx + hw)).abs() < 1.0 || (yy as f32 - (cy - hh)).abs() < 1.0 || (yy as f32 - (cy + hh)).abs() < 1.0;
-            put(xx, yy, if edge { INK } else { fine }, 0.95);
-        } }
+        super::camp_ink::draw_engraving(&mut put, cam, w, h, e);
     }
     for r in colony.rooms.iter().filter(|r| r.z == cam.z) {
         match r.kind {
