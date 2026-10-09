@@ -42,6 +42,9 @@ impl Colony {
     pub(crate) fn slab_option(&self, i: usize) -> Option<(f32, Job, String)> {
         if self.clock.is_night() { return None; }
         let r = self.restless.iter().find(|r| !r.at_rest)?;
+        // (Debug: PLANET_FORCE_GHOST=1 lets no one carve for the first six days, for the test:
+        // friends carve a slab within days, and a ghost had grown rare.)
+        if std::env::var("PLANET_FORCE_GHOST").is_ok() && self.clock.day() < r.died + 6 { return None; }
         if self.settlers.iter().enumerate().any(|(j, s)| j != i && s.alive && s.job == Job::Craft && s.why.starts_with("Carving a slab")) { return None; }
         let friend = (0..self.settlers.len()).filter(|&j| self.settlers[j].alive && self.settlers[j].guest_until == 0 && self.settlers[j].past.as_ref().map_or(true, |p| p.age >= 12))
             .max_by_key(|&j| (self.opinion(r.who, j), std::cmp::Reverse(j)))?;
@@ -54,7 +57,7 @@ impl Colony {
             if let Some(t) = self.nearest(me, |c, p| c.is_quarry_stone(p)) { return Some((0.9, Job::Quarry(t), format!("Breaking stone for a slab in memory of {}", name))); }
             return None;
         }
-        let wish = if friend == i { 1.2 } else { self.craft_wish_any(i) * 0.8 };
+        let wish = if friend == i { 1.2 } else { self.maker_wish(i) * 0.8 };
         if wish < 0.3 { return None; }
         let name = self.settlers[r.who].name.clone();
         Some((wish, Job::Craft, format!("Carving a slab in memory of {}, who died {}", name, r.cause)))

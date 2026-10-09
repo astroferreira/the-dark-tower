@@ -94,7 +94,7 @@ impl Colony {
     pub(crate) fn engrave_option(&self, i: usize) -> Option<(f32, Job, String)> {
         if self.clock.is_night() { return None; }
         if self.settlers.iter().enumerate().any(|(j, s)| j != i && s.alive && s.job == Job::Craft && s.why.starts_with("Engraving")) { return None; }
-        let wish = self.craft_wish_any(i);
+        let wish = self.maker_wish(i);
         let builder = self.settlers[i].role == Some(4);
         if wish < 0.3 && !builder { return None; }
         // (The walls are listed once here: `engrave_place` and `engrave_spot` list them each.)

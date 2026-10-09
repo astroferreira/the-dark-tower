@@ -557,11 +557,11 @@ fn minds_break_with_reasons() {
         let _ = std::fs::remove_dir_all(&dir);
         text
     };
-    // 150 days on seed 3, whose raids and wounds break minds early (seed 58 had been the hard
-    // camp; with bedrooms and a great hall below it holds out to its second year).
-    let hard = run("3", "150");
+    // 150 days on seed 4, whose first raid and its wounds break a mind on day 10 (seed 3, the
+    // hard camp before, keeps its people whole since they have needs and places of their own).
+    let hard = run("4", "150");
     let breaks: Vec<&str> = hard.lines().filter(|l| l.contains("throws a tantrum") || l.contains("sinks into despair") || l.contains("walks off into the wild")).collect();
-    assert!(!breaks.is_empty(), "seed 3's camp never broke:\n{hard}");
+    assert!(!breaks.is_empty(), "seed 4's camp never broke:\n{hard}");
     assert!(breaks.iter().all(|l| l.contains("(because they ")), "a break without its reasons: {breaks:?}");
     // Starving camps
     // spiral into tantrums as in Dwarf Fortress; a runaway mind would break far more.
@@ -588,7 +588,11 @@ fn the_mine_wakes_the_deep() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     let _ = std::fs::remove_dir_all(&dir);
     let at = |needle: &str| text.lines().position(|l| l.contains(needle)).unwrap_or_else(|| panic!("no '{needle}' in the log:\n{text}"));
-    let (mine, breach, sound, climbs) = (at("They set to work on a mine"), at("breaks through into darkness"), at("A sound from below"), at("climbs out of the mine"));
+    // (It climbs out, or meets someone on the stair first: then the raid is fought below, "out of
+    // the mine".)
+    let climbs = text.lines().position(|l| l.contains("climbs out of the mine") || (l.contains("The raid: ") && l.contains("out of the mine")))
+        .unwrap_or_else(|| panic!("nothing came up out of the mine:\n{text}"));
+    let (mine, breach, sound) = (at("They set to work on a mine"), at("breaks through into darkness"), at("A sound from below"));
     assert!(mine < breach && breach < sound && sound < climbs, "the deep's beats out of order");
     assert!(stdout.lines().any(|l| l.contains("Cavern: the first cavern")), "no cavern reported:\n{stdout}");
     assert!(text.lines().any(|l| l.contains("out of the mine, came in the night")), "the beast did not raid from the mine:\n{text}");
@@ -673,8 +677,10 @@ fn news_comes_as_its_teller_tells_it() {
     let dir = std::env::temp_dir().join(format!("news_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let (log, annals) = (dir.join("log.txt"), dir.join("annals.html"));
+    // (Seed 3: since settlers have needs of their own, seed 76's camp no longer hears an
+    // account its people tell otherwise within 150 days.)
     let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "150"])
+        .args(["--dev", "--headless", "--seed", "3", "--sim-projects", "150"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_ANNALS", &annals)
         .output()
@@ -717,20 +723,24 @@ fn a_speaker_proclaims_a_mandate() {
 /// buried rise and hunt on dark nights.
 #[test]
 fn the_dead_walk_under_the_shadow() {
-    let dir = std::env::temp_dir().join(format!("dead_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--seed", "11", "--sim-projects", "40"])
-        .env("PLANET_DUMP_LOG", &log)
-        .output()
-        .expect("run planet_generator");
-    assert!(out.status.success());
-    let text = std::fs::read_to_string(&log).unwrap_or_default();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let _ = std::fs::remove_dir_all(&dir);
-    assert!(stdout.lines().any(|l| l.contains("Darkness: ")), "the camp knows nothing of the Shadow:\n{stdout}");
-    assert!(text.lines().any(|l| l.contains("rises from the grave")), "no dead rose under the Shadow:\n{text}");
+    // (Seeds 11, 58 and 5 lie under the Shadow; with fewer deaths since settlers have needs of
+    // their own, 58 and 5 are the ones whose graves give up their dead within 40 days.)
+    let found = ["11", "58", "5"].iter().any(|seed| {
+        let dir = std::env::temp_dir().join(format!("dead_{}_{}", seed, std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("log.txt");
+        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+            .args(["--dev", "--headless", "--seed", seed, "--sim-projects", "40"])
+            .env("PLANET_DUMP_LOG", &log)
+            .output()
+            .expect("run planet_generator");
+        assert!(out.status.success());
+        let text = std::fs::read_to_string(&log).unwrap_or_default();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let _ = std::fs::remove_dir_all(&dir);
+        stdout.lines().any(|l| l.contains("Darkness: ")) && text.lines().any(|l| l.contains("rises from the grave"))
+    });
+    assert!(found, "no dead rose under the Shadow on seeds 11, 58 or 5");
 }
 
 /// Strange moods (Dwarf Fortress): a creative settler is seized, claims the workshop and makes a
@@ -937,20 +947,13 @@ fn the_militia_drills_and_arms() {
 /// neighbouring peoples perform and teach a work the camp then performs as they were taught.
 #[test]
 fn visitors_come_from_the_world() {
-    let dir = std::env::temp_dir().join(format!("visitors_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--seed", "11", "--sim-projects", "190"])
-        .env("PLANET_DUMP_LOG", &log)
-        .output()
-        .expect("run planet_generator");
-    assert!(out.status.success());
-    let text = std::fs::read_to_string(&log).unwrap_or_default();
-    let _ = std::fs::remove_dir_all(&dir);
-    let has = |s: &str| text.lines().any(|l| l.contains(s));
-    assert!(has("a monster hunter of") && has("who set out to slay"), "no hunter came:\n{text}");
-    assert!(has("A traveller comes to the fire"), "no bard came");
+    // (Seed 11 for the hunter; seed 3 too, whose taught works are performed: seed 11's pupil is
+    // seldom at the fire at eight in the evening since settlers have spare hours of their own.)
+    let logs: Vec<String> = ["11", "3"].iter().map(|s| run_log(s, "190", &[])).collect();
+    let has = |s: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(s)));
+    assert!(has("a monster hunter of") && has("who set out to slay"), "no hunter came");
+    // (To the fire, or to the tavern once one stands: seed 11's drinkers press for one early.)
+    assert!(has("A traveller comes to the fire") || has("A traveller comes to the tavern"), "no bard came");
     assert!(has(" teaches "), "the bard taught nothing");
     assert!(has("taught them;"), "the taught work was never performed");
 }
@@ -1120,7 +1123,8 @@ fn gems_are_found_and_set() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "60", "--tiles-center", "45,12"])
+        // (120 days: with spare hours spent on their needs the camp's first set work came later.)
+        .args(["--dev", "--headless", "--sim-projects", "120", "--tiles-center", "45,12"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -1154,8 +1158,11 @@ fn legends_outlive_the_camp() {
 /// Most camps carve within days, so a few dev seeds are tried until one shows it.
 #[test]
 fn the_dead_who_died_badly_walk_until_remembered() {
-    let found = ["23", "58", "3", "11", "5"].iter().any(|seed| {
-        let text = run_log(seed, "120", &[]);
+    // (Camps carve slabs for their dead within days, so a ghost is rare: PLANET_FORCE_GHOST keeps
+    // anyone from carving for six days, and PLANET_FORCE_RAID_DEATH gives the violent death.
+    // Seeds 23 and 58: seen on days 17 and 16, at rest the next days.)
+    let found = ["23", "58", "11"].iter().any(|seed| {
+        let text = run_log(seed, "60", &[("PLANET_FORCE_GHOST", "1"), ("PLANET_FORCE_RAID_DEATH", "1")]);
         let seen = text.lines().position(|l| l.contains("The ghost of ") && l.contains(" is seen "));
         let rest = text.lines().position(|l| l.contains("carved in memory of") && l.contains("ghost is at rest"));
         seen.is_some() && rest.is_some() && seen < rest
@@ -1265,13 +1272,17 @@ fn a_farm_under_the_rock() {
 
 /// Experience shapes character (Dwarf Fortress's personality change and jaded dwarves): horror
 /// makes settlers anxious, saving others brave, long contentment cheerful; enough horror and they
-/// are jaded. (Each seen on at least one of four dev seeds.)
+/// are jaded. (Each seen on at least one of five dev seeds; since seed 58 carves its slabs in
+/// time its ghost no longer walks, and seed 1 is the one that grows jaded, on day 116.)
 #[test]
 fn experience_changes_people() {
-    let logs: Vec<String> = ["58", "11", "76", "3"].iter().map(|s| run_log(s, "250", &[])).collect();
+    // (Seed 3 grows cheerful, 11 anxious. Jaded takes eight horrors, and camps that keep their
+    // people alive no longer see so many: PLANET_FORCE_HORROR counts each three times.)
+    let logs: Vec<String> = ["3", "11"].iter().map(|s| run_log(s, "250", &[])).collect();
     let any = |needle: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(needle)));
     assert!(any("starts at every shadow"), "no one grew anxious");
-    assert!(any("has seen too much to be shaken now"), "no one grew jaded");
+    let jaded = ["11", "1", "4"].iter().any(|s| run_log(s, "150", &[("PLANET_FORCE_HORROR", "1")]).lines().any(|l| l.contains("has seen too much to be shaken now")));
+    assert!(jaded, "no one grew jaded");
     assert!(any("quicker to laugh"), "no one grew cheerful");
 }
 
@@ -1291,7 +1302,9 @@ fn the_tavern_draws_the_world() {
 #[test]
 fn books_are_written() {
     // (A camp laying in its winter store writes less; the chronicle comes after day 120.)
-    let logs: Vec<String> = ["23", "11"].iter().map(|s| run_log(s, "140", &[])).collect();
+    // (Seeds 76 and 1 write their chronicles on days 126 and 123 since camps are placed by their
+    // founders.)
+    let logs: Vec<String> = ["76", "1"].iter().map(|s| run_log(s, "140", &[])).collect();
     for text in &logs {
         let books = text.lines().filter(|l| l.contains(" finishes writing ")).count();
         assert!(books <= 8, "too many books in 140 days: {books}");
@@ -1371,11 +1384,11 @@ fn the_world_remembers_what_the_camp_did() {
 /// Armour (Dwarf Fortress's layers of material): once the militia bears spears the workshop
 /// makes armour of the best to hand (adamantine from the deep shaft, iron, copper, leather from
 /// the hunt), and in the clash it turns blows. (Leather and hide only lighten an edge; mail is
-/// forged from bars, so ore is forced: no dev seed strikes any. Seeds 5 and 3 turn blows on days
-/// 66 and 93.)
+/// forged from bars, so ore is forced: no dev seed strikes any. Blows are turned on days 70 (6)
+/// and 100 (76).)
 #[test]
 fn armour_turns_blows() {
-    let logs: Vec<String> = ["5", "3"].iter().map(|s| run_log(s, "100", &[("PLANET_FORCE_ORE", "1")])).collect();
+    let logs: Vec<String> = ["6", "76"].iter().map(|s| run_log(s, "110", &[("PLANET_FORCE_ORE", "1")])).collect();
     let any = |n: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(n)));
     assert!(any("the first armour in the camp"), "no armour made");
     assert!(any("does not get through") || any("took the worst of it") || any("turns it.") || any("is turned by"), "no blow turned");
@@ -1430,15 +1443,18 @@ fn masters_form_a_guild() {
 /// camp, hold half that grudge against a camp founded two tiles away.
 #[test]
 fn peoples_remember_earlier_camps() {
+    // (Seed 23: the Greenburg League holds -20 against the first camp and half of it against a
+    // camp founded two tiles away. Seed 76's grudge over the staff is now cancelled by the
+    // prisoner it sent home unharmed.)
     let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--seed", "76", "--sim-legend"])
+        .args(["--dev", "--seed", "23", "--sim-legend"])
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
     let legend = text.lines().find(|l| l.starts_with("Legend: ")).unwrap_or_else(|| panic!("no legend:\n{text}"));
-    assert!(legend.contains("regards: [\"The Git Clans -"), "the grudge is not in the legend: {legend}");
+    let people = legend.split("regards: [\"").nth(1).and_then(|r| r.split(" -").next()).unwrap_or_else(|| panic!("no grudge in the legend: {legend}"));
     let second = text.lines().find(|l| l.starts_with("Second camp's regards")).unwrap_or_else(|| panic!("no second camp:\n{text}"));
-    assert!(second.contains("The Git Clans -"), "the second camp inherits nothing: {second}");
+    assert!(second.contains(&format!("{} -", people)), "the second camp inherits nothing from {people}: {second}");
 }
 
 /// A rising against the lord (Dwarf Fortress's nobles and their unhappy subjects): the lord's
@@ -1518,9 +1534,12 @@ fn an_established_camp_does_not_walk_away() {
 /// den after four bites and burns the dead that rose three times.
 #[test]
 fn the_camp_clears_the_den_and_burns_the_restless() {
-    let text = run_log("11", "60", &[]);
-    assert!(text.lines().any(|l| l.contains("go out to the wolves' den at ")), "the wolves were never answered");
-    assert!(text.lines().any(|l| l.contains("burn what is left on a pyre") || l.contains("burn the bones in it")), "the restless dead were never burned");
+    // (Since settlers live through more, fewer graves rise: seed 58 burns its restless dead on
+    // day 23, seed 11 clears its den the same day.)
+    let logs: Vec<String> = ["11", "58"].iter().map(|s| run_log(s, "60", &[])).collect();
+    let any = |f: &dyn Fn(&str) -> bool| logs.iter().any(|t| t.lines().any(|l| f(l)));
+    assert!(any(&|l| l.contains("go out to the wolves' den at ")), "the wolves were never answered");
+    assert!(any(&|l| l.contains("burn what is left on a pyre") || l.contains("burn the bones in it")), "the restless dead were never burned");
 }
 
 /// A hungry camp plants first: seed 58, hungry from its first weeks, sets a field ahead of the
@@ -1535,7 +1554,9 @@ fn a_hungry_camp_plants_first() {
 /// caught, they are the camp's prisoner (seed 11, day 169; seed 5, day 257).
 #[test]
 fn thieves_come_for_the_artifact() {
-    let logs: Vec<String> = ["11", "5"].iter().map(|s| run_log(s, "260", &[])).collect();
+    // (Seeds 11 and 6: days 169 and 251. Thieves come for artifacts of moods, which come
+    // later in camps whose makers have spare hours of their own.)
+    let logs: Vec<String> = ["11", "6"].iter().map(|s| run_log(s, "260", &[])).collect();
     assert!(logs.iter().any(|t| t.lines().any(|l| l.contains("catches a thief at the edge of the camp with ") || l.contains(": a thief of "))), "no thief came");
 }
 
@@ -1615,7 +1636,8 @@ fn vengeance_can_end_in_peace() {
 /// and its cook makes supper from what the camp grows and hunts.
 #[test]
 fn the_cook_makes_supper() {
-    let logs: Vec<String> = ["23", "3"].iter().map(|s| run_log(s, "100", &[])).collect();
+    // (Seeds 5 and 1 cook their first supper on day 91, 23 on day 102.)
+    let logs: Vec<String> = ["5", "1", "23"].iter().map(|s| run_log(s, "110", &[])).collect();
     assert!(logs.iter().any(|t| t.lines().any(|l| l.contains("cooks the camp's first supper in the kitchen: a "))), "no supper was cooked");
 }
 
@@ -1776,7 +1798,9 @@ fn the_camp_digs_a_delve() {
 /// to fish above (forced here: the dev camp has both nearby).
 #[test]
 fn fungus_trees_are_felled_in_the_cavern() {
-    let text = run_log("76", "60", &[("PLANET_FORCE_CAVERN", "1")]);
+    // (Seed 76 fishes below on day 70, seed 10 on day 46.)
+    let logs: Vec<String> = ["76", "10"].iter().map(|s| run_log(s, "90", &[("PLANET_FORCE_CAVERN", "1")])).collect();
+    let text = logs.iter().find(|t| t.lines().any(|l| l.contains("the first blind white fish"))).cloned().unwrap_or_else(|| logs[0].clone());
     assert!(text.lines().any(|l| l.contains("breaks through into darkness")), "no cavern breached");
     assert!(text.lines().any(|l| l.contains("fells a fungus tree in ") && l.contains("haul up the stair")), "no fungus tree felled");
     // (Seed 76 fishes below from day 46 since the caverns' pools stand under each column's band
@@ -1786,10 +1810,12 @@ fn fungus_trees_are_felled_in_the_cavern() {
 }
 
 /// Tombs under the rock (Dwarf Fortress's catacombs): once two of the camp lie in graves at its
-/// edge, a level of niches is cut off the stair, and the next dead are laid there (seed 58).
+/// edge, a level of niches is cut off the stair, and the next dead are laid there (seed 1: cut on
+/// day 43, the first laid in a niche on day 112; seed 58 has buried fewer since its settlers have
+/// needs of their own).
 #[test]
 fn the_dead_are_laid_in_the_tombs() {
-    let text = run_log("58", "130", &[]);
+    let text = run_log("1", "130", &[]);
     assert!(text.lines().any(|l| l.contains("set to work on tombs under the rock")), "no tombs dug");
     assert!(text.lines().any(|l| l.contains("lay them in a niche of the tombs")), "no one entombed");
 }
@@ -1820,7 +1846,8 @@ fn the_caverns_are_sealed_with_a_hatch() {
 /// Stone is dressed into blocks at a mason's.
 #[test]
 fn ore_becomes_bars_tools_and_iron_spears() {
-    let text = run_log("76", "100", &[("PLANET_FORCE_ORE", "1")]);
+    // (130 days: the mason's dresses its first blocks on day 104.)
+    let text = run_log("76", "130", &[("PLANET_FORCE_ORE", "1")]);
     let at = |n: &str| text.lines().position(|l| l.contains(n)).unwrap_or_else(|| panic!("never: {n}\n{text}"));
     let seam = at("strikes a seam of Iron");
     let smelter = at("breaks through the last of a smelter below");
@@ -1828,12 +1855,162 @@ fn ore_becomes_bars_tools_and_iron_spears() {
     let bars = at("smelts the first iron at the smelter: two bars of iron");
     let forge = at("breaks through the last of a forge below");
     let tools = at("forges a set of iron tools");
-    let spear = at("forges an iron-headed spear at the forge");
+    // (The spear may carry its quality word: "forges a finely-crafted iron-headed spear".)
+    let spear = text.lines().position(|l| l.contains(" forges ") && l.contains("iron-headed spear at the forge")).unwrap_or_else(|| panic!("never: an iron-headed spear forged\n{text}"));
     assert!(seam < smelter && smelter < charcoal && charcoal < bars, "ore, smelter, fuel, bars out of order");
     assert!(forge < tools && bars < tools && tools < spear, "the forge's tools and spear came before its bars");
-    // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 76 sells six on
-    // day 45.)
-    let spare = run_log("76", "60", &[("PLANET_FORCE_ORE", "30")]);
+    // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 2 sells them to
+    // the caravan of day 105, seed 76 to that of day 135.)
+    let spare = ["2", "76"].iter().map(|s| run_log(s, "140", &[("PLANET_FORCE_ORE", "30")])).find(|t| t.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron"))).unwrap_or_default();
     assert!(spare.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron")), "no bars sold");
     assert!(text.lines().any(|l| l.contains("dresses the first blocks of")), "no blocks at the mason's");
+}
+
+/// The dev colony's decisions and stdout for `seed` after `days`.
+fn run_decisions(seed: &str, days: &str) -> (String, String) {
+    let dir = std::env::temp_dir().join(format!("decisions_{}_{}_{}", seed, days, std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("decisions.txt");
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        .args(["--dev", "--headless", "--seed", seed, "--sim-projects", days])
+        .env("PLANET_DUMP_DECISIONS", &log)
+        .output()
+        .expect("run planet_generator");
+    assert!(out.status.success());
+    let text = std::fs::read_to_string(&log).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+    (text, String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// Needs (Dwarf Fortress's personality needs): between jobs, settlers go off to meet needs of
+/// their own (talk, pray, watch the deer, admire a carving, walk out alone...), each camp in its
+/// own way: two camps of different people spend their spare hours differently.
+#[test]
+fn settlers_spend_spare_hours_by_their_needs() {
+    let acts = ["Talking", "Passing the time", "Spending time", "Praying", "Kneeling", "Taking it easy", "Watching", "Admiring",
+        "Walking out", "Climbing", "Sitting", "Lending", "Reading", "Singing", "Telling", "Practising", "Whittling"];
+    let profile = |seed: &str| {
+        let (text, _) = run_decisions(seed, "120");
+        let mut count: Vec<(usize, &str)> = acts.iter().map(|a| (text.lines().filter(|l| l.contains(&format!("wandering        {}", a))).count(), *a)).collect();
+        count.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(b.1)));
+        count
+    };
+    let (a, b) = (profile("23"), profile("3"));
+    for (seed, p) in [("23", &a), ("3", &b)] {
+        let kinds = p.iter().filter(|c| c.0 > 0).count();
+        let total: usize = p.iter().map(|c| c.0).sum();
+        assert!(kinds >= 6, "seed {seed}: only {kinds} kinds of spare-hours acts: {p:?}");
+        assert!((100..3000).contains(&total), "seed {seed}: {total} spare-hours acts in 120 days");
+    }
+    let top = |p: &Vec<(usize, &'static str)>| p.iter().take(3).map(|c| c.1).collect::<Vec<&'static str>>();
+    assert_ne!(top(&a), top(&b), "two camps spend their spare hours alike: {:?} / {:?}", a, b);
+}
+
+/// Voices (needs and character steer the plan): settlers press for the works they want, the
+/// loudest named in the plan; a strongly pressed work comes before its usual time (seed 11's
+/// drinkers want a tavern long before travellers come).
+#[test]
+fn the_camp_presses_for_what_its_people_want() {
+    let text = run_log("11", "60", &[]);
+    assert!(text.lines().any(|l| l.contains("They set to work on") && l.contains(" presses for it: ")), "no one pressed for a work");
+    assert!(text.lines().any(|l| l.contains("set to work on a tavern") && l.contains("the evenings are long")), "no tavern pressed for early:\n{text}");
+}
+
+/// Each camp lays itself out its own way: the wall's radius follows its founders (a close, orderly
+/// people walls in tight, an independent one wide), and lots keep off the wall's ring.
+#[test]
+fn camps_lay_themselves_out_differently() {
+    let radius = |seed: &str| {
+        let (_, out) = run_decisions(seed, "20");
+        out.lines().find_map(|l| l.trim().strip_prefix("Layout: wall radius ").and_then(|r| r.split(',').next()).and_then(|r| r.parse::<i32>().ok())).expect("no layout line")
+    };
+    let (a, b) = (radius("23"), radius("5"));
+    assert!((9..=13).contains(&a) && (9..=13).contains(&b));
+    assert!((a - b).abs() >= 3, "walls alike: {a} and {b}");
+}
+
+/// Haunts: a need met out of doors is met again at the same place, which its settler marks (a
+/// cairn where they pray, a bench where they rest...); others come to share it.
+#[test]
+fn settlers_make_places_their_own() {
+    let text = run_log("3", "120", &[]);
+    let marks = text.lines().filter(|l| l.contains("raises a cairn of fieldstones") || l.contains("sets a bench of split logs")
+        || l.contains("lays flat stones as a seat") || l.contains("leaves a small cairn") || l.contains("carves it all over") || l.contains("sets up a standing stone")).count();
+    assert!(marks >= 4, "only {marks} places made their own:\n{text}");
+    assert!(text.lines().any(|l| l.contains(" adds a stone to ") && l.contains("'s cairn")), "no one shared another's cairn");
+}
+
+/// Talk (Dwarf Fortress's conversations): idle hours are spent talking, about a moment both lived
+/// through, a home, a value both hold dear; the quarrelsome argue over values, and say so aloud.
+#[test]
+fn settlers_talk_and_argue() {
+    // (Seed 4 argues most in its first sixty days.)
+    let (text, _) = run_decisions("4", "60");
+    let talks = text.lines().filter(|l| l.contains("wandering        Talking with ") || l.contains("wandering        Passing the time with ")).count();
+    assert!(talks >= 30, "only {talks} talks in 60 days");
+    assert!(text.lines().any(|l| l.contains("wandering        Arguing with ")), "no one argued");
+    // (Said aloud once a pair in twenty days: a few seeds.)
+    let said = ["76", "1", "23"].iter().any(|s| run_log(s, "90", &[]).lines().any(|l| l.contains(" argue ") && l.contains(" holds ") && l.contains(" dear")));
+    assert!(said, "no argument said aloud");
+}
+
+/// Gates where the paths go: the palisade's gates face the water, the woods and the road to the
+/// trading town, two for an uneasy people and up to four for a bold one.
+#[test]
+fn gates_face_where_the_paths_go() {
+    // (Chosen when the palisade is begun; several seeds, since which way each faces depends on
+    // the land and the founders.)
+    let lines: Vec<String> = ["23", "58", "76", "5", "1"].iter().map(|seed| {
+        let log = run_log(seed, "90", &[]);
+        log.lines().find(|l| l.contains("They will leave ") && l.contains(" in the wall")).map(|l| l.to_string()).unwrap_or_else(|| panic!("no gates chosen on seed {seed}"))
+    }).collect();
+    assert!(lines.iter().any(|l| l.contains("2 gates") && l.contains("uneasy")), "no uneasy camp kept to two gates: {lines:?}");
+    assert!(lines.iter().any(|l| l.contains("toward the road to ")), "no gate toward a road: {lines:?}");
+    assert!(lines.iter().any(|l| l.contains("toward the woods")), "no gate toward the woods: {lines:?}");
+    let counts: std::collections::BTreeSet<&str> = lines.iter().filter_map(|l| ["2 gates", "3 gates", "4 gates"].into_iter().find(|g| l.contains(g))).collect();
+    assert!(counts.len() >= 2, "every camp has as many gates: {lines:?}");
+}
+
+/// Grief and courtship on the map: those a death touched most stand at the grave in the days
+/// after; the unwed walk out with whom they are fond of, and some of them wed.
+#[test]
+fn settlers_mourn_and_court() {
+    let (text, _) = run_decisions("3", "150");
+    assert!(text.lines().any(|l| l.contains("wandering        Standing at ") && l.contains("'s grave, remembering them")), "no one stood at a grave");
+    assert!(text.lines().any(|l| l.contains("wandering        Walking out with ") && (l.contains(" is fond of ") || l.contains(" is sweet on "))), "no one walked out with anyone");
+}
+
+/// Stone from the rock (DF: dwarves mine for their stone): dev 70,6 breaks every boulder in reach
+/// and has no timber; it cuts a gallery off the stair for stone and builds on, instead of setting
+/// its works aside for good.
+#[test]
+fn a_camp_without_stone_digs_for_it() {
+    let dir = std::env::temp_dir().join(format!("stonecut_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("log.txt");
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        .args(["--dev", "--headless", "--sim-projects", "100", "--tiles-center", "70,6"])
+        .env("PLANET_DUMP_LOG", &log)
+        .output()
+        .expect("run planet_generator");
+    assert!(out.status.success());
+    let text = std::fs::read_to_string(&log).unwrap_or_default();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(text.lines().any(|l| l.contains("breaks through the last of a gallery cut for stone")), "no gallery cut for stone:\n{text}");
+    let done = stdout.lines().filter(|l| l.trim_start().starts_with("Project day") && l.contains(", done)")).count();
+    assert!(done >= 12, "only {done} works done in 100 days");
+}
+
+/// Possessions (DF's AcquireObject need and preferences): the greedy and the vain, or one who
+/// sees a work in the material they love, keep it as their own; kept works are never sold.
+#[test]
+fn settlers_keep_things_of_their_own() {
+    let text = run_log("76", "150", &[]);
+    let kept: Vec<&str> = text.lines().filter(|l| l.contains(" takes ") && (l.contains(" to keep by ") || l.contains(" to keep in "))).collect();
+    assert!(!kept.is_empty(), "no one kept anything");
+    // (One each, three at most for the very greedy.)
+    let mut by: std::collections::BTreeMap<&str, usize> = Default::default();
+    for l in &kept { if let Some(n) = l.split("  ").nth(1).and_then(|r| r.split(" takes ").next()) { *by.entry(n).or_default() += 1; } }
+    assert!(by.values().all(|&n| n <= 3), "someone hoards: {by:?}");
 }

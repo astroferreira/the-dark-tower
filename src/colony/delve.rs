@@ -136,7 +136,7 @@ impl Colony {
                 let want = (self.grown_without_rooms() as i32).clamp(2, 8);
                 self.plan_level(kind, want)
             }
-            ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Workshops | ProjectKind::CaveFarm => self.plan_level(kind, 0),
+            ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Workshops | ProjectKind::CaveFarm | ProjectKind::StoneCut => self.plan_level(kind, 0),
             // The workshops of the industries (`industry.rs`): a 4x3 room each.
             k if super::industry::shop_room(k).is_some() => self.plan_level(kind, 0),
             ProjectKind::Moat => self.plan_moat(),
@@ -236,6 +236,9 @@ impl Colony {
                 for a in a0..=a0 + 1 { for b in [2, 3] { layout.push((a, side * b, 1 + k)); } }
                 beds_at.push((a0 + 1, side * 3, 1 + k));
             }
+        } else if kind == ProjectKind::StoneCut {
+            // A gallery three wide and ten long: thirty loads of stone.
+            for a in 1..=10 { for b in -1..=1 { layout.push((a, b, 0)); } }
         } else if kind == ProjectKind::Workshops {
             for a in 1..=2 { layout.push((a, 0, 0)); }
             for a in 3..=7 { for b in -2..=2 { layout.push((a, b, 200)); } }
@@ -288,6 +291,8 @@ impl Colony {
                     rooms.push(room(RoomKind::Farm, zb, cells.iter().filter(|c| c.1 == 300).map(|c| c.0).collect(), Some(at(5, 0))));
                 } else if let Some(rk) = super::industry::shop_room(kind) {
                     rooms.push(room(rk, zb, cells.iter().filter(|c| c.1 == 400).map(|c| c.0).collect(), Some(at(4, 0))));
+                } else if kind == ProjectKind::StoneCut {
+                    // (A gallery for its stone: the corridor is the whole of it.)
                 } else if kind == ProjectKind::Workshops {
                     rooms.push(room(RoomKind::Workshop, zb, cells.iter().filter(|c| c.1 == 200).map(|c| c.0).collect(), Some(at(5, 0))));
                 } else {
@@ -600,14 +605,15 @@ impl Colony {
     /// at the four gates. What walks the surface cannot climb two levels, so raiders and beasts
     /// come in by the gates, where the cage traps stand.
     fn plan_moat(&self) -> Option<DelvePlan> {
-        let r = 13i32;
+        let r = self.wall_r() + 2;
+        let crossings = self.crossings(r);
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
         let w = self.map.width;
         let mut ring: Vec<Pos> = Vec::new();
         for dy in -r..=r { for dx in -r..=r {
             if dx.abs() != r && dy.abs() != r { continue; }
-            // The crossings: three cells at each gate's axis.
-            if dx.abs() <= 1 || dy.abs() <= 1 { continue; }
+            // The crossings: the cells round where each gate's way meets the ditch.
+            if crossings.iter().any(|c| (dx - c.0).abs() <= 1 && (dy - c.1).abs() <= 1) { continue; }
             let (x, y) = (cx + dx, cy + dy);
             if x < 4 || y < 4 || x as usize + 4 >= w || y as usize + 4 >= self.map.height { return None; }
             let p = (x as u16, y as u16);
@@ -620,10 +626,25 @@ impl Colony {
         if ring.len() < 60 { return None; }
         let sz = |p: Pos| self.map.surface_z[p.1 as usize * w + p.0 as usize];
         let mut cuts: Vec<DigCell> = ring.iter().map(|&p| DigCell::room(p, sz(p) - 1)).collect();
-        // (The cells beside each crossing stay a level deep: steps out of the ditch at the gates.)
-        let step = |p: Pos| { let (dx, dy) = ((p.0 as i32 - cx).abs(), (p.1 as i32 - cy).abs()); (dx == 2 && dy == r) || (dy == 2 && dx == r) };
+        // (The cells beside each crossing stay a level deep: steps out of the ditch at the gates.
+        // So do the cells beside any stretch left uncut, by a building or on wet or forbidden
+        // ground: a stretch of ditch closed at both ends had trapped its digger, who starved.)
+        let cut: std::collections::HashSet<Pos> = ring.iter().copied().collect();
+        let on_ring = |x: i32, y: i32| ((x - cx).abs() == r || (y - cy).abs() == r) && (x - cx).abs() <= r && (y - cy).abs() <= r;
+        let step = |p: Pos| {
+            (-1i32..=1).any(|oy| (-1i32..=1).any(|ox| {
+                let (x, y) = (p.0 as i32 + ox, p.1 as i32 + oy);
+                (ox, oy) != (0, 0) && on_ring(x, y) && !cut.contains(&(x as u16, y as u16))
+            }))
+        };
         cuts.extend(ring.iter().filter(|&&p| !step(p)).map(|&p| DigCell::room(p, sz(p) - 2)));
         Some(DelvePlan { cuts, rooms: Vec::new(), spine: None, mouth: self.camp })
+    }
+
+    /// Where each gate's way meets the square ring of the ditch (radius `r`, offsets from the
+    /// camp): straight out on an axis, at the corner on a diagonal.
+    pub(crate) fn crossings(&self, r: i32) -> Vec<(i32, i32)> {
+        self.gate_dirs().into_iter().map(|d| (d.0 * r, d.1 * r)).collect()
     }
 
     /// Whether the ditch round the wall is dug.
@@ -702,12 +723,15 @@ impl Colony {
     pub(crate) fn build_drawbridges(&mut self) {
         use crate::local::{Material, Shape};
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
-        let r = 13i32;
+        let r = self.wall_r() + 2;
         let w = self.map.width;
         let mut bridges = Vec::new();
-        for (ax, ay) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
-            for k in -1i32..=1 {
-                let (x, y) = (cx + ax * r + ay.abs() * k, cy + ay * r + ax.abs() * k);
+        let crossings = self.crossings(r);
+        let cells: Vec<(i32, i32)> = (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| (dx, dy)))
+            .filter(|&(dx, dy)| (dx.abs() == r || dy.abs() == r) && crossings.iter().any(|c| (dx - c.0).abs() <= 1 && (dy - c.1).abs() <= 1)).collect();
+        for (dx, dy) in cells {
+            {
+                let (x, y) = (cx + dx, cy + dy);
                 if x < 3 || y < 3 || x as usize + 3 >= w || y as usize + 3 >= self.map.height { continue; }
                 let (ux, uy) = (x as usize, y as usize);
                 let sz = self.map.surface_z[uy * w + ux];
@@ -734,7 +758,7 @@ impl Colony {
         if self.bridges.is_empty() || self.bridges_up == up { return; }
         // (Not with anyone still outside: they would be shut out. Tried again at dawn.)
         if up && (0..self.settlers.len()).any(|i| self.settlers[i].alive && self.settlers[i].away_until == 0 && !self.below(i)
-            && (self.settlers[i].pos.0 as i32 - self.camp.0 as i32).abs().max((self.settlers[i].pos.1 as i32 - self.camp.1 as i32).abs()) >= 13) { return; }
+            && (self.settlers[i].pos.0 as i32 - self.camp.0 as i32).abs().max((self.settlers[i].pos.1 as i32 - self.camp.1 as i32).abs()) >= self.wall_r() + 2) { return; }
         let w = self.map.width;
         for &(p, z) in &self.bridges.clone() {
             let (x, y) = (p.0 as usize, p.1 as usize);
@@ -782,7 +806,7 @@ impl Colony {
 
     /// Where a meal is eaten in the great hall (its table), if there is one.
     pub(crate) fn great_hall(&self) -> Option<(Pos, i32)> {
-        self.rooms.iter().find(|r| r.kind == RoomKind::GreatHall && r.furnished.is_some()).map(|r| (r.bed.unwrap_or(r.cells[0]), r.z))
+        self.rooms.iter().find(|r| r.kind == RoomKind::GreatHall && r.furnished.is_some() && !r.cells.is_empty()).map(|r| (r.bed.unwrap_or(r.cells[0]), r.z))
     }
 
     /// The level of a place a settler goes to: a room's for sleeping, eating and work at a room,
@@ -803,6 +827,9 @@ impl Colony {
             Job::Wander(t) if why.starts_with("Keeping watch") && self.tower.map_or(false, |(p, _)| p == t) => self.tower.map(|(_, z)| z),
             // (A mood holding the workshop below.)
             Job::Wander(t) if why.contains("workshop") && in_room(&[RoomKind::Workshop]).is_some() => in_room(&[RoomKind::Workshop]),
+            // Something admired in a room below (an artifact, an engraving: `needs.rs`).
+            Job::Wander(t) if why.starts_with("Admiring") => self.engravings.iter().find(|e| e.from == t).map(|e| e.z)
+                .or_else(|| self.placed.iter().find(|p| p.2 == t).and_then(|p| self.rooms.get(p.1)).map(|r| r.z)),
             Job::Wander(_) => self.settlers.iter().enumerate()
                 .find(|(j, s)| *j != i && s.alive && s.pos == target && !why.starts_with("Playing"))
                 .map(|(j, _)| self.here3(j).2),
@@ -889,6 +916,14 @@ impl Colony {
                 c.push((if masons { 1.3 } else { 0.6 }, ProjectKind::Workshops, why, plan.cuts.len() as u32, self.spine.unwrap().at));
             }
         }
+        // Stone from the rock, when none is left to quarry in reach and no timber (DF: dwarves
+        // mine for their stone): a gallery off the stair, its rock carried up as stone.
+        if self.materials_out() && !self.projects.iter().any(|p| !p.done && p.kind == ProjectKind::StoneCut) {
+            if let Some(plan) = self.plan_dig(ProjectKind::StoneCut) {
+                let why = "every boulder and bare rock within reach is broken and no tree stands near; a gallery cut off the stair would bring up stone".to_string();
+                c.push((2.5, ProjectKind::StoneCut, why, plan.cuts.len() as u32, self.spine.unwrap().at));
+            }
+        }
         // A hatch over the stair below, once the cavern's hunters have hurt them twice.
         if self.cave_hunter.is_some() && self.cave_bites >= 2 && !self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) {
             let why = format!("{} times {} have found someone alone in the dark or come up the mine; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
@@ -910,7 +945,7 @@ impl Colony {
         if walled && chapters >= 1 && day >= 30 && !self.projects.iter().any(|p| p.kind == ProjectKind::Moat) {
             if let Some(plan) = self.plan_moat() {
                 let raids = self.arc.as_ref().map_or(0, |a| a.events.iter().filter(|e| e.title == "The raid").count());
-                let why = format!("{} {} come to the palisade; a ditch two levels deep round it would leave them only the four gates{}", raids, if raids == 1 { "raid has" } else { "raids have" },
+                let why = format!("{} {} come to the palisade; a ditch two levels deep round it would leave them only the {} gates{}", raids, if raids == 1 { "raid has" } else { "raids have" }, self.gates().len(),
                     if self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Traps) { ", where the cages wait" } else { "" });
                 c.push((if masons { 1.2 } else { 0.8 }, ProjectKind::Moat, why, plan.cuts.len() as u32, self.camp));
             }

@@ -12,13 +12,15 @@ use super::{Colony, ItemKind, Pos, HUT_H, HUT_W};
 use crate::local::{Material, Plant, Shape};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProjectKind { Woodpile, DryingRack, SecondHut, Palisade, Windbreak, Smokehouse, Woodshed, Lookout, Fence, Mending, Storehouse, Workshop, Field, Jetty, Well, DugHall, Cellar, Mine, Temple, Lining, Still, Traps, LordsHall, CaveFarm, Tavern, Pen, DeepShaft, GuildHall, Kitchen, Library, Bedrooms, GreatHall, Tombs, Moat, Workshops, Hatch, Drawbridges, MasonShop, CarpenterShop, Smelter, Forge, Kiln }
+pub enum ProjectKind { Woodpile, DryingRack, SecondHut, Palisade, Windbreak, Smokehouse, Woodshed, Lookout, Fence, Mending, Storehouse, Workshop, Field, Jetty, Well, DugHall, Cellar, Mine, Temple, Lining, Still, Traps, LordsHall, CaveFarm, Tavern, Pen, DeepShaft, GuildHall, Kitchen, Library, Bedrooms, GreatHall, Tombs, Moat, Workshops, Hatch, Drawbridges, MasonShop, CarpenterShop, Smelter, Forge, Kiln,
+    /// A gallery cut off the stair for its stone, when none is left in reach (`delve.rs`).
+    StoneCut }
 
 /// Works that feed the camp: built even while it goes hungry.
 pub fn feeds(k: ProjectKind) -> bool { matches!(k, ProjectKind::Field | ProjectKind::CaveFarm | ProjectKind::Pen | ProjectKind::Jetty) }
 
 /// Works that are dug, not built (no loads to lay).
-pub fn is_dig(k: ProjectKind) -> bool { matches!(k, ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::CaveFarm | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln) }
+pub fn is_dig(k: ProjectKind) -> bool { matches!(k, ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::CaveFarm | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln | ProjectKind::StoneCut) }
 
 impl ProjectKind {
     pub fn word(self) -> &'static str {
@@ -30,7 +32,7 @@ impl ProjectKind {
             ProjectKind::Storehouse => "a storehouse", ProjectKind::Temple => "a temple", ProjectKind::Workshop => "a workshop", ProjectKind::Field => "a fenced field",
             ProjectKind::Jetty => "a jetty", ProjectKind::Well => "a well",
             ProjectKind::DugHall => "a hall in the hill", ProjectKind::Cellar => "a cellar", ProjectKind::Mine => "a mine", ProjectKind::Lining => "the lining of the wet shaft", ProjectKind::Still => "a still", ProjectKind::Traps => "cage traps at the gates", ProjectKind::LordsHall => "a hall for the lord", ProjectKind::CaveFarm => "a farm under the rock", ProjectKind::Tavern => "a tavern", ProjectKind::Pen => "a pen for beasts", ProjectKind::DeepShaft => "the deep shaft", ProjectKind::GuildHall => "a guildhall", ProjectKind::Kitchen => "a kitchen", ProjectKind::Library => "a library", ProjectKind::Bedrooms => "bedrooms under the rock", ProjectKind::GreatHall => "a great hall below", ProjectKind::Tombs => "tombs under the rock", ProjectKind::Moat => "a ditch round the wall", ProjectKind::Workshops => "workshops below", ProjectKind::Hatch => "a hatch over the stair below", ProjectKind::Drawbridges => "drawbridges over the ditch",
-            ProjectKind::MasonShop => "a mason's workshop below", ProjectKind::CarpenterShop => "a carpenter's workshop below", ProjectKind::Smelter => "a smelter below", ProjectKind::Forge => "a forge below", ProjectKind::Kiln => "a kiln below",
+            ProjectKind::MasonShop => "a mason's workshop below", ProjectKind::CarpenterShop => "a carpenter's workshop below", ProjectKind::Smelter => "a smelter below", ProjectKind::Forge => "a forge below", ProjectKind::Kiln => "a kiln below", ProjectKind::StoneCut => "a gallery cut for stone",
         }
     }
 }
@@ -50,10 +52,33 @@ pub struct Project {
 }
 
 /// Radius of the palisade ring around the camp (cells).
-const PALISADE_R: i32 = 11;
+/// Lots keep off the ring between these distances from the wall (`wall_r`): 1.5 inside it to
+/// 4.5 outside (the ditch is dug 2 outside).
+const RING_IN: f32 = -1.5;
+const RING_OUT: f32 = 4.5;
 
 impl Colony {
     /// The work under way: the hut until it stands, then the first unfinished project.
+    /// Days since a work under way last had a load laid (or was begun): a work starved of its
+    /// material stops holding the plan up after eight (`plan_projects`, `active_project`).
+    pub(crate) fn stalled_days(&self, p: &Project) -> u64 {
+        let day = self.clock.day();
+        self.progress.iter().find(|x| x.0 == (p.kind, p.at, p.day)).map_or(day.saturating_sub(p.day), |x| day.saturating_sub(x.2))
+    }
+
+    /// Dawn: note which works had loads laid since yesterday.
+    pub(crate) fn reckon_progress(&mut self) {
+        let day = self.clock.day();
+        let keys: Vec<((ProjectKind, Pos, u64), u32)> = self.projects.iter().filter(|p| !p.done || (p.kind == ProjectKind::Woodpile && p.used < p.needed)).map(|p| ((p.kind, p.at, p.day), p.used)).collect();
+        for (key, used) in &keys {
+            match self.progress.iter_mut().find(|x| x.0 == *key) {
+                Some(x) => if x.1 != *used { x.1 = *used; x.2 = day; },
+                None => self.progress.push((*key, *used, day)),
+            }
+        }
+        self.progress.retain(|x| keys.iter().any(|k| k.0 == x.0));
+    }
+
     pub(crate) fn active_project(&self) -> Option<usize> {
         // Nothing is built on ground the patron forbade.
         let ok = |p: &Project| !self.marked_at(p.at, true);
@@ -61,8 +86,18 @@ impl Colony {
         // (Only while there is wood to have: dev 50,20 burnt its trees out of reach, and waiting
         // on the woodpile held the palisade's mending for thirty days.)
         let wood = || self.wood_in_reach || self.items.iter().any(|it| it.kind == ItemKind::Log);
-        if let Some(k) = self.projects.iter().position(|p| p.done && p.kind == ProjectKind::Woodpile && p.used < 4 && ok(p)).filter(|_| wood()) { return Some(k); }
-        self.projects.iter().position(|p| !p.done && ok(p))
+        // (First only with a log laid by to stack, and not while it stalls: at 50,20 a woodpile
+        // waiting on logs that never came had held every other work for a hundred days, with
+        // fifty-eight stones in the store.)
+        let stacked = self.items.iter().any(|it| it.kind == ItemKind::Log && it.stored);
+        if let Some(k) = self.projects.iter().position(|p| p.done && p.kind == ProjectKind::Woodpile && p.used < 4 && ok(p) && self.stalled_days(p) < 8).filter(|_| stacked) { return Some(k); }
+        // (Digs are worked from their own plan, `dig_target`: the builders go on with the next
+        // work meanwhile. A deep shaft stuck at its last cuts had held two guildhalls at no
+        // stones for sixty days.)
+        // (A work starved of its material eight days steps aside for one that can go on.)
+        let live = |p: &Project| !p.done && ok(p) && !is_dig(p.kind);
+        self.projects.iter().position(|p| live(p) && self.stalled_days(p) < 8)
+            .or_else(|| self.projects.iter().position(|p| live(p)))
             // A finished woodpile burns down each night and is restocked.
             .or_else(|| self.projects.iter().position(|p| p.done && p.kind == ProjectKind::Woodpile && p.used < p.needed && ok(p)).filter(|_| wood()))
     }
@@ -97,6 +132,12 @@ impl Colony {
     }
 
     /// Whether a tree stands within working reach of the camp (else they build in stone).
+    /// Neither timber nor quarry stone within reach, and hardly any stone laid by.
+    pub(crate) fn materials_out(&self) -> bool {
+        !self.timber_near() && self.nearest_pub(self.camp, |c, p| c.is_quarry_stone_pub(p)).is_none()
+            && self.items.iter().filter(|it| it.kind == ItemKind::Stone && it.stored).count() < 4
+    }
+
     pub(crate) fn timber_near(&self) -> bool {
         self.nearest_tree_by(self.camp, |_, _| true).is_some()
     }
@@ -117,7 +158,43 @@ impl Colony {
                 self.note(format!("No {} is left within reach; they finish {} in {}.", if m == ItemKind::Stone { "stone" } else { "timber" }, word, if other == ItemKind::Stone { "stone" } else { "timber" }));
             } else {
                 self.projects[k].done = true;
+                let key = (self.projects[k].kind, self.projects[k].at, self.projects[k].day);
+                if !matches!(key.0, ProjectKind::Lining | ProjectKind::Mending) { self.set_aside.push(key); }
                 self.note(format!("Neither stone nor timber is left within reach; {} is set aside, {} of {} loads laid.", word, self.projects[k].used, self.projects[k].needed));
+            }
+        }
+        // A work set aside is taken up again when stone or timber is to hand (one a dawn; a
+        // palisade had stood at 14 of 24 loads for good once the boulders in reach were broken).
+        if let Some(n) = self.set_aside.iter().position(|key| self.projects.iter().any(|p| (p.kind, p.at, p.day) == *key)) {
+            let key = self.set_aside[n];
+            let k = self.projects.iter().position(|p| (p.kind, p.at, p.day) == key).unwrap();
+            let m = self.projects[k].material;
+            let other = if m == ItemKind::Stone { ItemKind::Log } else { ItemKind::Stone };
+            // (Enough laid by to finish it, or ten loads: a few stones at a time had set it aside
+            // and taken it up again every other dawn.)
+            let left = (self.projects[k].needed - self.projects[k].used.min(self.projects[k].needed)).min(10) as usize;
+            let stored = |c: &Colony, x: ItemKind| c.items.iter().filter(|it| it.kind == x && it.stored).count() >= left.max(1);
+            let take = if have(self, m) || stored(self, m) { Some(m) } else if have(self, other) || stored(self, other) { Some(other) } else { None };
+            if let Some(t) = take {
+                self.set_aside.remove(n);
+                self.projects[k].done = false;
+                self.projects[k].material = t;
+                let p = &self.projects[k];
+                self.note(format!("They take up {} again ({} of {} loads laid): there is {} to hand now.", p.kind.word(), p.used, p.needed, if t == ItemKind::Stone { "stone" } else { "timber" }));
+            }
+        }
+        self.set_aside.retain(|key| self.projects.iter().any(|p| (p.kind, p.at, p.day) == *key));
+        // A dig waiting on its lining, with the lining set aside: the wet shaft is abandoned
+        // (dev 70,6 had planned nothing from day 39 to 150 behind a mine paused for ever).
+        if self.dig_paused && !self.aquifer_lined && !self.projects.iter().any(|p| p.kind == ProjectKind::Lining && !p.done) {
+            self.dig_paused = false;
+            if let Some(k) = self.projects.iter().position(|q| !q.done && is_dig(q.kind)) {
+                if let Some(first) = self.dig_plan.as_ref().and_then(|p| p.first().map(|c| c.p)) { self.digs_given_up.push(first); }
+                let kind = self.projects[k].kind;
+                self.projects.remove(k);
+                self.dig_plan = None;
+                self.dig_rooms.clear();
+                self.note(format!("They abandon {}: the water in the rock cannot be held back with nothing to line it.", kind.word()));
             }
         }
     }
@@ -132,7 +209,17 @@ impl Colony {
         // A camp hungry five dawns running plans a work that feeds it (a field, a farm under the
         // rock, a pen, a jetty) ahead of whatever else is under way (seed 58 sat a year hungry
         // behind a well it never finished, building nothing because it was hungry).
-        let under_way = self.projects.iter().any(|p| !p.done && !self.marked_at(p.at, true));
+        self.reckon_progress();
+        if std::env::var("PLANET_DEBUG_STONE").is_ok() {
+            let stored = self.items.iter().filter(|it| it.kind == ItemKind::Stone && it.stored).count();
+            let loose = self.items.iter().filter(|it| it.kind == ItemKind::Stone && !it.stored).count();
+            let q = self.nearest_pub(self.camp, |c, p| c.is_quarry_stone_pub(p));
+            let a = self.active_project().map(|k| format!("{} {}/{} stalled {}", self.projects[k].kind.word(), self.projects[k].used, self.projects[k].needed, self.stalled_days(&self.projects[k])));
+            eprintln!("STONE day {} stored {} loose {} quarry {:?} out {} timber {} active {:?} dig {:?}", self.clock.day(), stored, loose, q, self.materials_out(), self.timber_near(), a, self.dig_plan.as_ref().map(|d| d.len()));
+        }
+        // (A work starved of its material eight days does not hold the plan up: dev 50,20 had
+        // waited fifty days on a workshop's stone with nothing else planned.)
+        let under_way = self.projects.iter().any(|p| !p.done && !self.marked_at(p.at, true) && (is_dig(p.kind) || self.stalled_days(p) < 8));
         let food_first = under_way && self.hungry_days >= 5 && !self.projects.iter().any(|p| !p.done && feeds(p.kind));
         if self.hut.as_ref().map_or(true, |h| !h.done) || (under_way && !food_first) { return; }
         let have = |c: &Colony, k: ProjectKind| c.projects.iter().any(|p| p.kind == k);
@@ -162,12 +249,12 @@ impl Colony {
             c.push((3.0 + 2.0 / (n as f32 + 1.0), ProjectKind::Palisade, format!("{} {} foretold{}, and there is no wall", t, if many { "are" } else { "is" }, raid_in.map(|n| format!(" in {} nights", n)).unwrap_or_default()), 24, self.camp));
         }
         if alive > beds {
-            if let Some(at) = self.find_site(HUT_W as u16, HUT_H as u16).filter(|_| !have(self, ProjectKind::SecondHut)) {
+            if let Some(at) = self.find_site_for(ProjectKind::SecondHut, HUT_W as u16, HUT_H as u16).filter(|_| !have(self, ProjectKind::SecondHut)) {
                 c.push((2.0 + 0.3 * (alive - beds) as f32, ProjectKind::SecondHut, format!("there are {} of them and {} beds", alive, beds), 30, at));
             }
         }
         if let Some(d) = winter.filter(|&d| d <= 70 && !have(self, ProjectKind::Smokehouse)) {
-            if let Some(at) = self.find_site(3, 3) {
+            if let Some(at) = self.find_site_for(ProjectKind::Smokehouse, 3, 3) {
                 c.push((2.5 + (70 - d.min(70)) as f32 / 30.0, ProjectKind::Smokehouse, format!("winter is {} days off and the store holds {:.0} days of food, and nothing keeps", d, days_of_food), 16, at));
             }
         }
@@ -175,7 +262,7 @@ impl Colony {
             c.push((1.9, ProjectKind::Woodshed, format!("winter is {} days off; the woodpile holds 8 logs and a winter's nights burn a hundred", d), 10, (hut.0 + HUT_W as u16 + 1, hut.1 + 2)));
         }
         if food >= 3 * alive as u32 && !have(self, ProjectKind::DryingRack) {
-            if let Some(at) = self.find_site(2, 2) {
+            if let Some(at) = self.find_site_for(ProjectKind::DryingRack, 2, 2) {
                 c.push((1.5, ProjectKind::DryingRack, format!("{} meals are stored and spoil in about 6 days", food), 6, at));
             }
         }
@@ -184,7 +271,7 @@ impl Colony {
             // At the watch post if its ground is clear, else the next free lot.
             let post = self.watch_post();
             let clear = (0..2u16).all(|dy| (0..2u16).all(|dx| { let q = (post.0 + dx, post.1 + dy); super::nav::passable(&self.map, q) && !self.built_near(q) && self.map.roofs[q.1 as usize * self.map.width + q.0 as usize] == 0 }));
-            if let Some(at) = if clear { Some(post) } else { self.find_site(2, 2) } {
+            if let Some(at) = if clear { Some(post) } else { self.find_site_for(ProjectKind::Lookout, 2, 2) } {
                 c.push((if last_raid_killed.is_some() { 3.2 } else { 1.2 }, ProjectKind::Lookout, why, 8, at));
             }
         }
@@ -198,7 +285,7 @@ impl Colony {
         }
         // A pen for beasts of a herd nearby (`livestock.rs`).
         if !have(self, ProjectKind::Pen) && day >= 40 && self.alive() >= 10 {
-            if let (Some(herd), Some(at)) = (self.herd_near(), self.find_site(6, 5).or_else(|| self.find_site_sloped(6, 5, 1))) {
+            if let (Some(herd), Some(at)) = (self.herd_near(), self.find_site_for(ProjectKind::Pen, 6, 5).or_else(|| self.find_site_for_sloped(ProjectKind::Pen, 6, 5, 1))) {
                 c.push((1.2, ProjectKind::Pen, format!("{} graze within 30 paces; two penned would breed, and meat would keep on the hoof through {} winter days", herd, super::SEASON_DAYS), 10, at));
             }
         }
@@ -206,18 +293,18 @@ impl Colony {
         // A library, once the camp has written two books (`books.rs`): they are kept, not sold.
         let books = self.works.iter().filter(|w| w.kind == "book").count();
         if !have(self, ProjectKind::Library) && books >= 2 && self.alive() >= 10 {
-            if let Some(at) = self.find_site(4, 3) {
+            if let Some(at) = self.find_site_for(ProjectKind::Library, 4, 3) {
                 c.push((1.0, ProjectKind::Library, format!("{} books lie about the huts, and the damp and the traders get at them", books), 12, at));
             }
         }
         // A kitchen, once twelve live here and a storehouse keeps the food (`kitchen.rs`).
         if !have(self, ProjectKind::Kitchen) && self.alive() >= 12 && self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Storehouse) {
-            if let Some(at) = self.find_site(3, 3) {
+            if let Some(at) = self.find_site_for(ProjectKind::Kitchen, 3, 3) {
                 c.push((1.1, ProjectKind::Kitchen, format!("{} eat what they can grab from the store, and none of it cooked", self.alive()), 8, at));
             }
         }
         if !have(self, ProjectKind::Tavern) && self.alive() >= 12 && self.visitors.iter().any(|v| v.came) {
-            if let Some(at) = self.find_site(5, 4) {
+            if let Some(at) = self.find_site_for(ProjectKind::Tavern, 5, 4) {
                 let came = self.visitors.iter().filter(|v| v.came).count();
                 c.push((1.3, ProjectKind::Tavern, format!("{} {} come by the road and slept by the fire, and {} live here", came, if came == 1 { "traveller has" } else { "travellers have" }, self.alive()), 16, at));
             }
@@ -248,13 +335,13 @@ impl Colony {
         }
         // A still, once a workshop stands and berries are to spare (`drink.rs`; dwarves sooner).
         if !have(self, ProjectKind::Still) && self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Workshop) && food >= 3 * self.alive() as u32 {
-            if let Some(at) = self.find_site(2, 2) {
+            if let Some(at) = self.find_site_for(ProjectKind::Still, 2, 2) {
                 let dwarves = self.settlers.iter().filter(|s| s.alive && s.persona.race == "dwarf").count();
                 c.push((if dwarves * 2 >= self.alive() { 2.2 } else { 0.9 }, ProjectKind::Still, format!("{} meals are stored{}", food, if dwarves > 0 { format!(", and {} of them are dwarves, who want a drink with their meals", dwarves) } else { ", and berries keep better as wine".to_string() }), 6, at));
             }
         }
         if have(self, ProjectKind::Smokehouse) && !have(self, ProjectKind::Fence) {
-            if let Some(at) = self.find_site(4, 4) {
+            if let Some(at) = self.find_site_for(ProjectKind::Fence, 4, 4) {
                 c.push((1.0, ProjectKind::Fence, format!("the store holds {} meals, and animals come at night", food), 8, at));
             }
         }
@@ -265,18 +352,18 @@ impl Colony {
         }
         // Buildings with a job, each answering a worry with a number.
         if food >= 4 * alive as u32 && !have(self, ProjectKind::Storehouse) {
-            if let Some(at) = self.find_site(4, 3) {
+            if let Some(at) = self.find_site_for(ProjectKind::Storehouse, 4, 3) {
                 c.push((1.4, ProjectKind::Storehouse, format!("{} meals lie by the fire, and the rain gets at them", food), 12, at));
             }
         }
         let laid: u32 = self.settlers.iter().map(|s| s.loads_laid).sum();
         if laid >= 60 && !have(self, ProjectKind::Workshop) {
-            if let Some(at) = self.find_site(5, 4) {
+            if let Some(at) = self.find_site_for(ProjectKind::Workshop, 5, 4) {
                 c.push((1.3, ProjectKind::Workshop, format!("they have laid {} loads with bad tools, and every log takes too long", laid), 14, at));
             }
         }
         if matches!(self.season(), crate::seasons::Season::Spring | crate::seasons::Season::Summer) && !have(self, ProjectKind::Field) && self.temperature() > 4.0 {
-            if let Some(at) = self.find_site(8, 6).or_else(|| self.find_site_sloped(8, 6, 1)) {
+            if let Some(at) = self.find_site_for(ProjectKind::Field, 8, 6).or_else(|| self.find_site_for_sloped(ProjectKind::Field, 8, 6, 1)) {
                 let to_autumn = (2 * super::SEASON_DAYS).saturating_sub((self.clock.day().max(1) - 1) % (4 * super::SEASON_DAYS));
                 c.push((1.6, ProjectKind::Field, format!("the ground is soft and the harvest is {} days off; a field would feed them through the winter", to_autumn), 8, at));
             }
@@ -319,7 +406,7 @@ impl Colony {
         if !have(self, ProjectKind::Temple) && alive >= 8 && day >= 20 {
             if let Some((god, n)) = self.devout_faith() {
                 if n >= 3 {
-                    if let Some(at) = self.find_site(4, 4) {
+                    if let Some(at) = self.find_site_for(ProjectKind::Temple, 4, 4) {
                         c.push((1.2 + 0.2 * n as f32, ProjectKind::Temple, format!("{} of them are devout and pray to {}, with no roof but the sky", n, god), 16, at));
                     }
                 }
@@ -333,15 +420,24 @@ impl Colony {
                 if way.late.contains(&name) { cand.0 *= 0.5; }
             }
         }
+        // The camp's people press for works of their own wanting (`voices.rs`).
+        // (Debug: PLANET_NO_VOICES=1 plans as before, to compare.)
+        if std::env::var("PLANET_NO_VOICES").is_err() {
+            self.pressed_candidates(&mut c);
+            self.weigh_voices(&mut c);
+        }
         if let Some((p, d)) = self.breach {
             c.push((4.0, ProjectKind::Mending, format!("the raid of day {} broke the palisade at {},{}", d, p.0, p.1), 6, self.camp));
         }
         if food_first { c.retain(|x| feeds(x.1)); }
+        // No stone or timber to be had: only digs (which bring up stone) are worth planning (a
+        // mending had been planned and set aside every dawn).
+        if self.materials_out() { c.retain(|x| is_dig(x.1)); }
         c.sort_by(|a, b| b.0.total_cmp(&a.0));
         let Some((_, kind, why, needed, at)) = c.into_iter().next() else { return };
         // A fixed place on forbidden ground: take the plan's next lot instead.
         let at = if kind != ProjectKind::Palisade && kind != ProjectKind::Mending && self.marked_at(at, true) {
-            match Self::footprint(kind).and_then(|(w, h)| self.find_site(w, h)) { Some(p) => p, None => return }
+            match Self::footprint(kind).and_then(|(w, h)| self.find_site_for(kind, w, h)) { Some(p) => p, None => return }
         } else { at };
         let material = if matches!(kind, ProjectKind::Woodpile | ProjectKind::Woodshed) { ItemKind::Log } else { material };
         if kind == ProjectKind::Woodpile && !self.timber_near() { return; }
@@ -352,6 +448,8 @@ impl Colony {
         if is_dig(kind) {
             match self.plan_dig(kind) { Some(plan) => self.begin_dig(plan), None => return }
         }
+        // The palisade's gates are chosen as it is begun (`traps.rs`).
+        if kind == ProjectKind::Palisade && self.gate_dirs.is_empty() { self.choose_gates(); }
         let p = Project { kind, at, needed, used: 0, material, why, done: false, day };
         if food_first { self.projects.insert(0, p); } else { self.projects.push(p); }
     }
@@ -371,12 +469,53 @@ impl Colony {
     /// `find_site` allowing the ground to rise or fall `slope` levels across the lot (a field
     /// can lie on gently sloping ground; a building cannot).
     fn find_site_sloped(&self, w: u16, h: u16, slope: i32) -> Option<Pos> {
-        // Within 14 cells of the fire; once that is full (the ditch round the wall takes the
-        // ring at 13), out to 24.
-        self.find_site_within(w, h, slope, 14).or_else(|| self.find_site_within(w, h, slope, 24))
+        // Within the wall (3 past its radius); once that is full, beyond the ditch.
+        let r = self.wall_r();
+        self.find_site_within(w, h, slope, r + 3, None).or_else(|| self.find_site_within(w, h, slope, r + 13, None))
     }
 
-    fn find_site_within(&self, w: u16, h: u16, slope: i32, radius: i32) -> Option<Pos> {
+    /// `find_site` for a work of `kind`: the lot is also chosen for what the work is for (the
+    /// temple and the lookout on high ground, the workshop toward the timber, the smokehouse and
+    /// the rack toward the fishing, the store and the kitchen by the hut, the field on deep soil,
+    /// the pen toward the herd, the library away from the noise, the tavern by the fire).
+    pub(crate) fn find_site_for(&self, kind: ProjectKind, w: u16, h: u16) -> Option<Pos> { self.find_site_for_sloped(kind, w, h, 0) }
+
+    pub(crate) fn find_site_for_sloped(&self, kind: ProjectKind, w: u16, h: u16, slope: i32) -> Option<Pos> {
+        // Fields and pens lie outside the wall, as round any walled village.
+        let r = self.wall_r();
+        if matches!(kind, ProjectKind::Field | ProjectKind::Pen) { return self.find_site_within(w, h, slope, r + 15, Some(kind)); }
+        self.find_site_within(w, h, slope, r + 3, Some(kind)).or_else(|| self.find_site_within(w, h, slope, r + 13, Some(kind)))
+    }
+
+    /// What a lot at `(x, y)` (its middle `(mx, my)`) costs a work of `kind` beyond its distance
+    /// from the fire (lower is better).
+    fn purpose_cost(&self, kind: ProjectKind, x: i32, y: i32, mx: i32, my: i32, near: &Near) -> i32 {
+        let n = self.map.width;
+        let z = self.map.surface_z[y as usize * n + x as usize];
+        let dist = |p: Option<Pos>| p.map_or(0, |p| (mx - p.0 as i32).abs().max((my - p.1 as i32).abs()));
+        let d = (mx - self.camp.0 as i32).abs().max((my - self.camp.1 as i32).abs());
+        match kind {
+            ProjectKind::Temple => -4 * (z - near.zc) + dist(near.shrine) - d / 3,
+            ProjectKind::Lookout => -5 * (z - near.zc),
+            ProjectKind::Library => -d / 2,
+            ProjectKind::Workshop | ProjectKind::GuildHall => dist(near.tree) * 3 / 5,
+            ProjectKind::Smokehouse | ProjectKind::DryingRack => dist(near.water) * 3 / 5,
+            ProjectKind::Storehouse | ProjectKind::Kitchen | ProjectKind::Still | ProjectKind::SecondHut | ProjectKind::Fence => dist(near.hut) * 3 / 5,
+            ProjectKind::Tavern => d,
+            ProjectKind::Pen => dist(near.herd) / 2,
+            ProjectKind::Field => {
+                // Deep soil (not rock a hand's depth down): up to four levels of it.
+                let soil = (1..=4).take_while(|k| {
+                    let zz = z - k;
+                    zz >= 0 && matches!(self.map.cell(x as usize, y as usize, zz as usize).material, crate::local::Material::Soil | crate::local::Material::Clay)
+                }).count() as i32;
+                -5 * soil
+            }
+            _ => 0,
+        }
+    }
+
+    fn find_site_within(&self, w: u16, h: u16, slope: i32, radius: i32, purpose: Option<ProjectKind>) -> Option<Pos> {
         let n = self.map.width as i32;
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
         let (xs, xe) = ((cx - radius).max(2), (cx + radius).min(n - w as i32 - 2));
@@ -409,6 +548,11 @@ impl Colony {
         }
         let mut best: Option<(i32, Pos)> = None;
         let lane = self.lane();
+        let near = purpose.map(|_| self.near_things());
+        let wall = self.wall_r() as f32;
+        // How the camp lays itself out: a sociable, orderly people keeps close about the fire;
+        // an independent one spreads out (x0.6 .. x1.4 on the distance from the fire).
+        let spread = self.camp_spread();
         for y in ys..ye {
             for x in xs..xe {
                 let z0 = self.map.surface_z[(y * n + x) as usize];
@@ -417,6 +561,13 @@ impl Colony {
                     !blocked[((yy - ys) * bw + xx - xs) as usize] && (self.map.surface_z[(yy * n + xx) as usize] - z0).abs() <= slope
                 }));
                 if !ok { continue; }
+                // Off the ring the palisade and its ditch take (`wall_r`, and 2 past it): wholly
+                // inside the wall or wholly beyond the ditch (a hut on the ring had left a gap).
+                let corner = |dx: i32, dy: i32| (((x + dx - cx) * (x + dx - cx) + (y + dy - cy) * (y + dy - cy)) as f32).sqrt();
+                let ds = [corner(0, 0), corner(w as i32, 0), corner(0, h as i32), corner(w as i32, h as i32)];
+                let (dmin, dmax) = (ds.iter().cloned().fold(f32::MAX, f32::min), ds.iter().cloned().fold(0.0, f32::max));
+                let outside_only = matches!(purpose, Some(ProjectKind::Field | ProjectKind::Pen));
+                if !((dmax <= wall + RING_IN && !outside_only) || dmin >= wall + RING_OUT) { continue; }
                 // Never on forbidden ground.
                 if (0..h as i32).any(|dy| (0..w as i32).any(|dx| self.marked_at(((x + dx) as u16, (y + dy) as u16), true))) { continue; }
                 // The plan: lots along the lane from the fire toward water (or the way the camp
@@ -427,7 +578,8 @@ impl Colony {
                 let off_lane = (rx * ly - ry * lx).abs() as i32;
                 let behind = if rx * lx + ry * ly < -2.0 { 6 } else { 0 };
                 let blessed = (0..h as i32).any(|dy| (0..w as i32).any(|dx| self.marked_at(((x + dx) as u16, (y + dy) as u16), false)));
-                let score = d + off_lane + behind - if blessed { 30 } else { 0 };
+                let purpose = match (purpose, near.as_ref()) { (Some(k), Some(nr)) => self.purpose_cost(k, x, y, x + w as i32 / 2, y + h as i32 / 2, nr), _ => 0 };
+                let score = (d as f32 * spread) as i32 + off_lane + behind + purpose - if blessed { 30 } else { 0 };
                 if best.map_or(true, |b| score < b.0) { best = Some((score, (x as u16, y as u16))); }
             }
         }
@@ -497,7 +649,7 @@ impl Colony {
                 ProjectKind::Field => { self.stamp_posts(at, 8, 6); self.sow_field(at); }
                 ProjectKind::Jetty => { self.jetty = Some(at); }
                 ProjectKind::Well => self.stamp_block(at, 1, 1, ItemKind::Stone),
-                ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln => {}
+                ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::DeepShaft | ProjectKind::Workshops | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln | ProjectKind::StoneCut => {}
                 ProjectKind::Lining => {
                     // The wet shaft is lined: the dig goes on, dry (`dig.rs`).
                     self.aquifer_lined = true;
@@ -550,7 +702,7 @@ impl Colony {
     /// leaves gates on the four sides.
     fn raise_palisade(&mut self, centre: Pos, used: u32, needed: u32, m: ItemKind) {
         let ring: Vec<(i32, i32)> = {
-            let r = PALISADE_R;
+            let r = self.wall_r();
             let mut v = Vec::new();
             for k in 0..(8 * r) {
                 let a = k as f32 / (8 * r) as f32 * std::f32::consts::TAU;
@@ -558,7 +710,9 @@ impl Colony {
                 if v.last() != Some(&p) { v.push(p); }
             }
             v.dedup();
-            v.into_iter().filter(|(x, y)| x.abs() > 1 && y.abs() > 1).collect()
+            // Open where the gates are (`traps.rs`: `gates`).
+            let gates: Vec<(i32, i32)> = self.gate_dirs().into_iter().map(|d| super::traps::gate_point(d, r)).collect();
+            v.into_iter().filter(|&(x, y)| !gates.iter().any(|g| (x - g.0).pow(2) + (y - g.1).pow(2) <= 2)).collect()
         };
         let mat = if m == ItemKind::Stone { Material::Rock(crate::erosion::materials::RockType::Granite) } else { Material::Wood };
         // A load raises the next stretch; (needed, needed) with `used` past the end... a mending
@@ -668,7 +822,7 @@ impl Colony {
             ProjectKind::SecondHut => (HUT_W as u16, HUT_H as u16), ProjectKind::Storehouse => (4, 3), ProjectKind::Workshop | ProjectKind::LordsHall | ProjectKind::Tavern => (5, 4), ProjectKind::Temple => (4, 4), ProjectKind::GuildHall => (4, 3), ProjectKind::Kitchen => (3, 3), ProjectKind::Library => (4, 3),
             ProjectKind::Field => (8, 6), ProjectKind::Pen => (6, 5), ProjectKind::Smokehouse => (3, 3), ProjectKind::Woodpile => (3, 1), ProjectKind::Windbreak => (HUT_W as u16, 1),
             ProjectKind::DryingRack | ProjectKind::Lookout | ProjectKind::Still => (2, 2), ProjectKind::Fence => (4, 4), ProjectKind::Well | ProjectKind::Jetty => (1, 1),
-            ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln => return None,
+            ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln | ProjectKind::StoneCut => return None,
         })
     }
 
@@ -694,7 +848,7 @@ impl Colony {
                 ProjectKind::SecondHut => (HUT_W as u16, HUT_H as u16), ProjectKind::Storehouse => (4, 3), ProjectKind::Workshop | ProjectKind::LordsHall | ProjectKind::Tavern => (5, 4), ProjectKind::Temple => (4, 4), ProjectKind::GuildHall => (4, 3), ProjectKind::Kitchen => (3, 3), ProjectKind::Library => (4, 3),
                 ProjectKind::Field => (8, 6), ProjectKind::Pen => (6, 5), ProjectKind::Smokehouse => (3, 3), ProjectKind::Woodpile => (3, 1), ProjectKind::Windbreak => (HUT_W as u16, 1),
                 ProjectKind::DryingRack | ProjectKind::Lookout | ProjectKind::Still => (2, 2), ProjectKind::Fence => (4, 4), ProjectKind::Well | ProjectKind::Jetty => (1, 1),
-                ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln => continue,
+                ProjectKind::Palisade | ProjectKind::Woodshed | ProjectKind::Mending | ProjectKind::DugHall | ProjectKind::Cellar | ProjectKind::Mine | ProjectKind::Bedrooms | ProjectKind::GreatHall | ProjectKind::Tombs | ProjectKind::Moat | ProjectKind::Workshops | ProjectKind::Hatch | ProjectKind::Drawbridges | ProjectKind::Lining | ProjectKind::Traps | ProjectKind::CaveFarm | ProjectKind::DeepShaft | ProjectKind::MasonShop | ProjectKind::CarpenterShop | ProjectKind::Smelter | ProjectKind::Forge | ProjectKind::Kiln | ProjectKind::StoneCut => continue,
             };
             let pad = if matches!(q.kind, ProjectKind::Well | ProjectKind::Jetty) { 1 } else { 0 };
             if p.0 + pad >= q.at.0 && p.0 < q.at.0 + w + pad && p.1 + pad >= q.at.1 && p.1 < q.at.1 + h + pad {
@@ -718,9 +872,9 @@ impl Colony {
             let (x, y) = (at.0 as i32 + dx, at.1 as i32 + dy);
             if x < 1 || y < 1 || x >= n - 1 || y >= self.map.height as i32 - 1 { continue; }
             let (xu, yu) = (x as usize, y as usize);
-            // Only the palisade's ring (about PALISADE_R from the camp), not the huts.
+            // Only the palisade's ring (`wall_r` from the camp), not the huts.
             let r = ((x - self.camp.0 as i32).pow(2) + (y - self.camp.1 as i32).pow(2)) as f32;
-            if (r.sqrt() - PALISADE_R as f32).abs() > 1.0 { continue; }
+            if (r.sqrt() - self.wall_r() as f32).abs() > 1.0 { continue; }
             let sz = self.map.surface_z[yu * self.map.width + xu] as usize;
             if sz + 1 >= self.map.depth { continue; }
             let k = self.map.idx(xu, yu, sz + 1);
@@ -737,7 +891,40 @@ impl Colony {
     }
 }
 
+/// What lots are measured against (`purpose_cost`).
+pub(crate) struct Near { zc: i32, tree: Option<Pos>, water: Option<Pos>, hut: Option<Pos>, herd: Option<Pos>, shrine: Option<Pos> }
+
 impl Colony {
+    fn near_things(&self) -> Near {
+        let n = self.map.width;
+        Near {
+            zc: self.map.surface_z[self.camp.1 as usize * n + self.camp.0 as usize],
+            tree: self.nearest_tree(self.camp),
+            water: self.fishing_near(self.camp, 40),
+            hut: self.hut.as_ref().map(|h| h.at),
+            herd: self.creatures.iter().filter(|c| c.kind == super::creatures::CreatureKind::Game && c.z.is_none())
+                .min_by_key(|c| ((c.pos.0 as i32 - self.camp.0 as i32).abs().max((c.pos.1 as i32 - self.camp.1 as i32).abs()), c.id)).map(|c| c.pos),
+            shrine: self.stones.iter().find(|s| s.0 == super::StoneKind::Shrine).map(|s| s.1),
+        }
+    }
+
+    /// The palisade's radius (9..13): a close, orderly people walls in a tight ring, an
+    /// independent one a wide ring with room inside (`camp_spread`). The gates, the ditch (2
+    /// outside), the cages and the drawbridges follow it.
+    pub fn wall_r(&self) -> i32 {
+        (13.0 - ((self.camp_spread() - 0.6) / 0.8 * 4.0)).round().clamp(9.0, 13.0) as i32
+    }
+
+    /// The camp's spread: the founders' gregariousness and orderliness (mean, 0..100) set how
+    /// close the works keep to the fire (x1.4 for the most, x0.6 for the least).
+    pub(crate) fn camp_spread(&self) -> f32 {
+        let f: Vec<f32> = self.settlers.iter().take(7).map(|s| (s.persona.facet(crate::persona::Facet::Gregariousness) as f32 + s.persona.facet(crate::persona::Facet::Orderliness) as f32) / 2.0).collect();
+        if f.is_empty() { return 1.0; }
+        let m = f.iter().sum::<f32>() / f.len() as f32;
+        // (Founders' means run about 50..65 on the dev seeds: centred there.)
+        1.0 + 0.4 * ((m - 57.0) / 7.0).clamp(-1.0, 1.0)
+    }
+
     /// The camp's lane: the unit direction from the fire toward the nearest water (the walk
     /// everyone makes), else toward the map's centre, else east.
     pub(crate) fn lane(&self) -> (f32, f32) {

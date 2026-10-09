@@ -1058,6 +1058,32 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
                     if d < 1.0 { put(cx as i64 + dx, cy as i64 + dy, [70.0, 56.0, 46.0], (0.75 - d * 0.5) * (0.6 + 0.4 * n)); }
                 } }
             }
+            crate::colony::MarkKind::Cairn => {
+                // Three stones heaped, smaller toward the top.
+                for (k, rr) in [(0i64, 0.55f32), (1, 0.42), (2, 0.3)] {
+                    let rad = (r * rr).max(1.5);
+                    let oy = cy as i64 + (r * 0.45) as i64 - k * (r * 0.42) as i64;
+                    disc(&mut put, cx, oy as f32, rad, [168.0, 160.0, 142.0], INK);
+                }
+            }
+            crate::colony::MarkKind::Bench => {
+                // A plank on two legs.
+                let (rw, rh) = ((r * 0.9) as i64, (r * 0.22).max(1.0) as i64);
+                for dy in -rh..=rh { for dx in -rw..=rw {
+                    let edge = dx.abs() == rw || dy.abs() == rh;
+                    put(cx as i64 + dx, cy as i64 + dy, if edge { INK } else { [170.0, 132.0, 88.0] }, 0.95);
+                } }
+                for leg in [-rw + 1, rw - 1] { for k in rh..rh + (r * 0.5) as i64 { put(cx as i64 + leg, cy as i64 + k, INK, 0.9); } }
+            }
+            crate::colony::MarkKind::Carving => {
+                // A post notched with little figures.
+                let (rw, rh) = ((r * 0.22).max(1.0) as i64, r as i64);
+                for dy in -rh..=rh { for dx in -rw..=rw {
+                    let edge = dx.abs() == rw || dy.abs() == rh;
+                    let notch = dy % 3 == 0 && dx == 0;
+                    put(cx as i64 + dx, cy as i64 + dy, if edge || notch { INK } else { [176.0, 136.0, 90.0] }, 0.95);
+                } }
+            }
             crate::colony::MarkKind::Stone => {
                 let (rw, rh) = ((r * 0.5) as i64, r as i64);
                 for dy in -rh..=rh { for dx in -rw..=rw {

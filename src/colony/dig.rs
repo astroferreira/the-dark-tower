@@ -241,7 +241,14 @@ impl Colony {
         let gem = crate::local::gem_in(&self.map, x, y, (z + 1).max(0) as usize);
         let stair = self.dig_plan.as_ref().map_or(false, |plan| plan.iter().any(|c| c.p == p && c.z == z && c.stair));
         self.dig_fails = 0;
-        let Some(m) = self.dig_cell(p, z, stair) else { return };
+        // A cut that cannot be made (below the world's floor, above the ground) is struck from
+        // the plan: the deep shaft's last cut at 50,20 had been "dug" 323 times, and the works
+        // waiting behind it never began.
+        let Some(m) = self.dig_cell(p, z, stair) else {
+            if std::env::var("PLANET_DEBUG_DIG").is_ok() { eprintln!("dig: cut at {},{} level {} cannot be made; struck from the plan", p.0, p.1, z); }
+            if let Some(plan) = self.dig_plan.as_mut() { plan.retain(|c| !(c.p == p && c.z == z)); }
+            return;
+        };
         if stair { if let Some(sp) = self.spine.as_mut().filter(|sp| sp.at == p) { sp.bottom = sp.bottom.min(z); } }
         // A stair cut into open dark (a cavern below): a stair is let down to its floor at once.
         if stair && z >= 1 && self.map.cell(p.0 as usize, p.1 as usize, z as usize).shape == Shape::Empty && self.map.cavern_at(p.0 as usize, p.1 as usize, z).is_some() {

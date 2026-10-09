@@ -69,7 +69,7 @@ impl Colony {
 
     /// While besieged: ground more than 12 cells from the fire is out of bounds.
     pub(crate) fn under_siege_out(&self, p: Pos) -> bool {
-        self.siege.as_ref().map_or(false, |_| (p.0 as i32 - self.camp.0 as i32).abs().max((p.1 as i32 - self.camp.1 as i32).abs()) > 12)
+        self.siege.as_ref().map_or(false, |_| (p.0 as i32 - self.camp.0 as i32).abs().max((p.1 as i32 - self.camp.1 as i32).abs()) > self.wall_r() + 1)
     }
 
     /// Dawn: the days and meals counted; a sally, the fires gone cold, or the assault.
