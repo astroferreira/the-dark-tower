@@ -288,6 +288,24 @@ impl Pane {
         self.no_glyph = false;
     }
 
+    /// A line with an ink icon at its left (`status_ink`): a thought's sign, a dream of a
+    /// lifetime, what the camp asked of its trading town.
+    fn icon_para(&mut self, e: Option<super::status_ink::Emblem>, g: Option<Glyph>, text: &str, face: Face, px: f32, color: u32) {
+        let top = self.y;
+        if self.on(top, 18.0) {
+            let (l, sc) = (self.left, self.scroll);
+            let (w, h) = (self.w, self.h);
+            let buf = &mut self.buf;
+            let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| { if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h { let k = y as usize * w + x as usize; buf[k] = ui::mix(buf[k], super::ink::pack(c), a.clamp(0.0, 1.0)); } };
+            if let Some(e) = e { super::status_ink::draw_icon(&mut put, e, l + 9.0, top + 9.0 - sc, 24.0); }
+            if let Some(g) = g { glyphs::draw(&mut put, g, l + 8.0, top + 9.0 - sc, 16.0, None); }
+        }
+        let l0 = self.left;
+        self.left += 26.0;
+        self.para(text, face, px, color, 0.0, None);
+        self.left = l0;
+    }
+
     /// A measure: a label, an inked bar filled to `frac`, and a word after it.
     fn measure(&mut self, label: &str, frac: f32, word: &str, color: u32) {
         let (l, y) = (self.left, self.y);
@@ -570,10 +588,10 @@ fn sheet_leaf(p: &mut Pane, colony: &Colony, i: usize, history: Option<&crate::h
     if !s.mind.thoughts.is_empty() || !s.mind.scars.is_empty() {
         p.heading("Thoughts");
         for t in s.mind.thoughts.iter().rev().take(7) {
-            p.para(&format!("Day {}: {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text), Face::Roman, SMALL + 1.0, if t.weight < 0.0 { INK } else { SOFT }, 0.0, None);
+            p.icon_para(Some(super::status_ink::thought_emblem(&t.text, t.weight)), None, &format!("Day {}: {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text), Face::Roman, SMALL + 1.0, if t.weight < 0.0 { INK } else { SOFT });
         }
         for t in s.mind.scars.iter().rev().take(2) {
-            p.para(&format!("Still weighs on them (day {}): {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text), Face::Italic, SMALL + 1.0, RUBRIC, 0.0, None);
+            p.icon_para(Some(super::status_ink::thought_emblem(&t.text, t.weight)), None, &format!("Still weighs on them (day {}): {}", t.tick / crate::colony::TICKS_PER_DAY + 1, t.text), Face::Italic, SMALL + 1.0, RUBRIC);
         }
     }
     p.heading("Kin and company");
@@ -610,7 +628,9 @@ fn sheet_leaf(p: &mut Pane, colony: &Colony, i: usize, history: Option<&crate::h
     let sent = colony.patron.dreams.iter().find(|d| d.0 == i && d.2 > colony.clock.tick).map(|d| format!("Tonight they dream of {} (the patron's gift)", d.1.word()));
     if dream.is_some() || vow.is_some() || sent.is_some() {
         p.heading("Dreams and vows");
-        for line in [sent, dream, vow].into_iter().flatten() { p.para(&line, Face::Roman, BODY, INK, 0.0, None); }
+        if let Some(l) = sent { p.icon_para(Some(super::status_ink::Emblem::Dreaming), None, &l, Face::Roman, BODY, INK); }
+        if let Some(l) = dream { p.icon_para(colony.life_dream(i).map(super::status_ink::life_emblem), None, &l, Face::Roman, BODY, INK); }
+        if let Some(l) = vow { p.icon_para(Some(super::status_ink::Emblem::LifeSlay), None, &l, Face::Roman, BODY, INK); }
     }
     if let Some(pp) = &s.past {
         if !pp.lines.is_empty() || pp.feeling.is_some() {
@@ -872,6 +892,12 @@ fn camp_leaf(p: &mut Pane, colony: &Colony) {
         else { colony.days_to_winter().map(|d| format!("winter in {} days", d)).unwrap_or_default() };
     p.para(&format!("{}: {} ({:.0} \u{b0}C){}{}", colony.clock.stamp(), season.name(), colony.temperature(), if winter.is_empty() { "" } else { "; " }, winter), Face::Roman, BODY, INK, 0.0, None);
     p.para(&format!("{} of {} alive; {} meals in the store, about {:.0} days of food (the camp aims for {}).", colony.alive(), colony.company(), colony.food_stored(), colony.days_of_food(), colony.food_goal()), Face::Roman, BODY, INK, 0.0, None);
+    // What the camp asked of its trading town (`liaison.rs`), with the thing's glyph.
+    if let Some(w) = colony.request {
+        use crate::colony::liaison::Want;
+        let g = match w { Want::Herbs => Glyph::Herbs, Want::Salt => Glyph::Barrel, Want::SeedGrain => Glyph::Grain, Want::IronTools => Glyph::Tool, Want::Cloth => Glyph::Cloth, Want::Ore => Glyph::Ore, Want::Charcoal => Glyph::Charcoal };
+        p.icon_para(None, Some(g), &format!("Asked of the trading town: {}", w.word()), Face::Roman, BODY, INK);
+    }
     let standing = colony.standing();
     if !standing.is_empty() {
         p.heading("How the camp stands");
@@ -1129,6 +1155,18 @@ pub(crate) fn save_ui_snapshots(colony: &Colony, history: Option<&crate::history
         let hits = draw(colony, &mut ui, history, 1, (-100.0, -100.0), &mut buf, w, h);
         println!("UI {}: {} things to click, the leaf {:.0} px long", name, hits.len(), ui.content[ui.leaf()]);
         written.push(save(name, &buf));
+    }
+    // The sheet scrolled down to its thoughts, kin, dreams and past.
+    {
+        let mut ui = UiState { open: Some(Tab::Settlers), sheet: Some(pick), selected: Some(pick), ..UiState::default() };
+        let mut buf = vec![0u32; w * h];
+        let _ = draw(colony, &mut ui, history, 0, (-100.0, -100.0), &mut buf, w, h);
+        ui.scroll[5] = (ui.content[5] - 600.0).max(0.0).min(700.0);
+        let cam = LocalCamera { cx: colony.camp.0 as f32 - 6.0, cy: colony.camp.1 as f32 + 1.0, tile_px: 16.0, z: 0, surface_view: true };
+        render_local(&colony.map, atlas, &cam, &mut buf, w, h);
+        super::local_ink::draw_colony(colony, &cam, &mut buf, w, h, history);
+        let _ = draw(colony, &mut ui, history, 0, (-100.0, -100.0), &mut buf, w, h);
+        written.push(save("ui_sheet_low", &buf));
     }
     // The store's heaps close up, with the chip naming the heap under the mouse.
     {

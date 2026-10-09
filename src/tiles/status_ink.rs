@@ -13,6 +13,12 @@ pub enum Emblem {
     Tantrum, Despair, Lost,
     Fey, Secretive, Possessed, Macabre, Fell,
     Hurt, Pray, Talk, Rest, Watch, Admire, Walk, Thrill, Help, Learn, Think, Merry, Tale, Martial, Whittle, Busy, Drink, Meal, Gloom, Love, Grief, Acquire, Dreaming,
+    /// Talk by its topic (`talk::Topic`): an argument, a shared home, a value held in common, a memory.
+    Argue, TalkHome, TalkAgree, TalkMemory,
+    /// A thought's sign on the settler's sheet (`thought_emblem`).
+    Joy, Fear, Cold, Hunger, Pride, Anger,
+    /// A dream of a lifetime (`dreams::LifeDream`).
+    LifeChild, LifeMaster, LifeSlay, LifeBook, LifeRule, LifeDiscover, LifePeace,
 }
 
 /// The sign over settler `i`, if any (most pressing first).
@@ -27,6 +33,10 @@ pub fn emblem_of(colony: &crate::colony::Colony, i: usize) -> Option<Emblem> {
     }
     if s.wounds.iter().any(|w| w.healed_at > tick && w.severity >= 2) { return Some(Emblem::Hurt); }
     if let (crate::colony::Job::Wander(_), Some(a)) = (s.job, s.need_act.as_ref()) {
+        if let Some(t) = a.topic.as_ref() {
+            use crate::colony::talk::Topic;
+            return Some(match t { Topic::Argue { .. } => Emblem::Argue, Topic::Home { .. } => Emblem::TalkHome, Topic::Agree { .. } => Emblem::TalkAgree, Topic::Memory { grief: true, .. } => Emblem::Grief, Topic::Memory { .. } => Emblem::TalkMemory, _ => Emblem::Talk });
+        }
         return Some(match a.need {
             Need::Pray => Emblem::Pray, Need::Socialize | Need::Friends | Need::Family => Emblem::Talk, Need::TakeItEasy => Emblem::Rest,
             Need::SeeAnimal => Emblem::Watch, Need::AdmireArt => Emblem::Admire, Need::Wander => Emblem::Walk, Need::Excitement => Emblem::Thrill,
@@ -108,6 +118,23 @@ fn icon(pen: &mut Pen, e: Emblem) {
             pen.ellipse_f(0.2, -0.1, 0.24, 0.24, [52.0, 62.0, 92.0], Finish::Paint);
             pen.dot(-0.35, -0.2, [250.0, 240.0, 200.0]); pen.dot(-0.25, 0.25, [250.0, 240.0, 200.0]);
         }
+        Emblem::Argue => { for s2 in [-1.0f32, 1.0] { pen.ellipse_f(s2 * 0.25, -0.05, 0.22, 0.17, [244.0, 236.0, 216.0], Finish::Plain); } pen.path(&[(-0.15, -0.3), (0.0, -0.05), (-0.1, 0.05), (0.15, 0.32)], BLOOD, w * 1.3); }
+        Emblem::TalkHome => { pen.rect(-0.25, -0.02, 0.25, 0.32, [176.0, 140.0, 96.0]); pen.poly(&[(-0.36, 0.0), (0.0, -0.32), (0.36, 0.0)], [196.0, 168.0, 108.0]); }
+        Emblem::TalkAgree => { pen.shape(gold, Finish::Plain, [-0.6, -0.4, 0.6, 0.4], &|u, v| { let a = ((u + 0.15).powi(2) + v * v).sqrt(); let b = ((u - 0.15).powi(2) + v * v).sqrt(); (a - 0.24).abs() < 0.07 || (b - 0.24).abs() < 0.07 }); }
+        Emblem::TalkMemory => { pen.rect(-0.3, -0.28, 0.3, 0.28, [236.0, 226.0, 200.0]); for k in 0..3 { let v = -0.14 + k as f32 * 0.14; pen.line((-0.2, v), (0.2, v), INK, 1.0); } }
+        Emblem::Joy => { pen.ellipse(0.0, 0.0, 0.32, 0.32, [240.0, 210.0, 110.0]); pen.path(&[(-0.15, 0.05), (0.0, 0.15), (0.15, 0.05)], INK, w); }
+        Emblem::Fear => { pen.ellipse(0.0, 0.0, 0.32, 0.32, [210.0, 214.0, 222.0]); pen.ellipse_f(0.0, 0.1, 0.08, 0.1, INK, Finish::Paint); for s2 in [-1.0f32, 1.0] { pen.dot(s2 * 0.12, -0.08, INK); } }
+        Emblem::Cold => { for k in 0..3 { let a = k as f32 * 1.047; pen.line((a.cos() * -0.35, a.sin() * -0.35), (a.cos() * 0.35, a.sin() * 0.35), [110.0, 150.0, 200.0], w); } }
+        Emblem::Hunger => { pen.ellipse(0.0, 0.1, 0.34, 0.16, [196.0, 160.0, 110.0]); pen.ellipse_f(0.0, 0.06, 0.24, 0.07, [120.0, 90.0, 60.0], Finish::Paint); pen.line((-0.3, -0.3), (0.3, -0.3), BLOOD, w); }
+        Emblem::Pride => { let pts: Vec<(f32, f32)> = (0..10).map(|k| { let a = k as f32 * 0.6283 - 1.5708; let r = if k % 2 == 0 { 0.36 } else { 0.16 }; (a.cos() * r, a.sin() * r) }).collect(); pen.poly(&pts, gold); }
+        Emblem::Anger => { pen.ellipse(0.0, 0.0, 0.32, 0.32, [214.0, 120.0, 100.0]); pen.line((-0.2, -0.15), (-0.05, -0.05), INK, w); pen.line((0.2, -0.15), (0.05, -0.05), INK, w); pen.line((-0.12, 0.15), (0.12, 0.15), INK, w); }
+        Emblem::LifeChild => { pen.ellipse(-0.1, 0.0, 0.14, 0.13, [232.0, 196.0, 164.0]); pen.rect(0.0, -0.08, 0.32, 0.12, [236.0, 228.0, 210.0]); pen.shape([150.0, 108.0, 70.0], Finish::Inked, [-0.35, 0.05, 0.4, 0.35], &|u, v| v > 0.1 && v < 0.3 && u.abs() < 0.38); }
+        Emblem::LifeMaster => { pen.poly(&[(-0.2, 0.32), (-0.24, 0.02), (0.0, -0.32), (0.24, 0.02), (0.2, 0.32)], [176.0, 170.0, 162.0]); pen.dot(0.0, 0.0, gold); pen.glow(0.0, 0.0, 0.3, [255.0, 230.0, 160.0], 0.5); }
+        Emblem::LifeSlay => { pen.ellipse(0.0, 0.0, 0.26, 0.22, [232.0, 224.0, 204.0]); for s2 in [-1.0f32, 1.0] { pen.ellipse_f(s2 * 0.1, -0.02, 0.06, 0.06, INK, Finish::Paint); } pen.bone(&[(-0.4, 0.35), (0.4, -0.35)], [200.0, 202.0, 210.0], w); }
+        Emblem::LifeBook => { pen.rect(-0.28, -0.3, 0.28, 0.3, [130.0, 58.0, 46.0]); pen.line((0.0, -0.3), (0.0, 0.3), INK, 1.0); }
+        Emblem::LifeRule => { pen.path(&[(-0.35, -0.25), (0.0, 0.1), (0.35, -0.25)], gold, w * 1.2); pen.ellipse(0.0, 0.2, 0.12, 0.12, gold); }
+        Emblem::LifeDiscover => { pen.ellipse(0.0, 0.0, 0.32, 0.32, [236.0, 226.0, 200.0]); pen.poly(&[(0.0, -0.3), (0.07, 0.0), (0.0, 0.3), (-0.07, 0.0)], BLOOD); }
+        Emblem::LifePeace => { pen.path(&[(-0.35, 0.3), (0.0, 0.0), (0.35, -0.3)], [110.0, 120.0, 70.0], w); for k in 0..3 { let t = -0.2 + k as f32 * 0.2; pen.ellipse_rot(t + 0.08, -t - 0.06, 0.12, 0.05, -0.8, [130.0, 150.0, 80.0]); } }
         Emblem::Gloom => { pen.ellipse_f(0.0, 0.0, 0.42, 0.24, [70.0, 70.0, 80.0], Finish::Plain); pen.ellipse_f(-0.18, -0.08, 0.2, 0.16, [96.0, 96.0, 106.0], Finish::Paint); }
     }
 }
@@ -187,4 +214,45 @@ pub fn office_marks(pen: &mut Pen, office: &str) {
         pen.ellipse(0.0, -1.25, 0.62, 0.36, [244.0, 240.0, 230.0]);
         pen.rect(-0.55, -1.05, 0.55, -0.75, [244.0, 240.0, 230.0]);
     }
+}
+
+/// A thought's sign by its words (the simulation keeps a thought as its text and weight): grief
+/// for a death, fear for the raid or the deep, cold, hunger, pride in work made or a foe slain,
+/// anger at a quarrel or a punishment, a friend, prayer, drink, a good meal, the patron's favour,
+/// rags; else joy or gloom by its weight.
+pub fn thought_emblem(text: &str, weight: f32) -> Emblem {
+    let t = text.to_lowercase();
+    let has = |k: &str| t.contains(k);
+    if has("death") || has("died") || has("grave") || has("killed") || has("mourn") { Emblem::Grief }
+    else if has("raid") || has("the deep") || has("ghost") || has("struck") || has("beast") || has("fall of") { Emblem::Fear }
+    else if has("slept warm") || has("warm") { Emblem::Rest }
+    else if has("cold") || has("chill") || has("froze") { Emblem::Cold }
+    else if has("hungry") || has("hunger") || has("ration") { Emblem::Hunger }
+    else if has("made") || has("built") || has("slew") || has("found") || has("masterwork") { Emblem::Pride }
+    else if has("quarrel") || has("punish") || has("stocks") || has("envy") || has("argu") { Emblem::Anger }
+    else if has("friend") || has("talk") || has("reconcil") || has("evening with") { Emblem::Talk }
+    else if has("without their family") || has("lonely") || has("alone") { Emblem::Gloom }
+    else if has("heard") || has("song") || has("sang") { Emblem::Merry }
+    else if has("nothing to do") || has("idle") { Emblem::Rest }
+    else if has("pray") { Emblem::Pray }
+    else if has("drank") || has("drink") || has("thirst") { Emblem::Drink }
+    else if has("ate") || has("meal") || has("supper") { Emblem::Meal }
+    else if has("ragged") || has("rags") { Emblem::Gloom }
+    else if has("dream") { Emblem::Dreaming }
+    else if has("ill") || has("wound") { Emblem::Hurt }
+    // (A thought's weight eases stress when positive: a good thought.)
+    else if weight > 0.0 { Emblem::Joy } else { Emblem::Gloom }
+}
+
+/// The sign of a dream of a lifetime.
+pub fn life_emblem(d: crate::colony::dreams::LifeDream) -> Emblem {
+    use crate::colony::dreams::LifeDream as L;
+    match d { L::Child => Emblem::LifeChild, L::Masterwork => Emblem::LifeMaster, L::Slay => Emblem::LifeSlay, L::Book => Emblem::LifeBook, L::Rule => Emblem::LifeRule, L::Discover => Emblem::LifeDiscover, L::Peace => Emblem::LifePeace }
+}
+
+/// An emblem drawn flat (no bubble) at (x, y), `size` pixels across, for the ledger's lines.
+pub fn draw_icon(put: &mut dyn FnMut(i64, i64, Rgb, f32), e: Emblem, x: f32, y: f32, size: f32) {
+    let mut pen = Pen::new(put, x, y, size);
+    pen.ellipse_f(0.0, 0.0, 0.62, 0.62, [244.0, 236.0, 216.0], Finish::Plain);
+    icon(&mut pen, e);
 }
