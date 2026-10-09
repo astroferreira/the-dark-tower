@@ -60,40 +60,37 @@ pub fn decorate(buf: &mut [u32], w: usize, h: usize, info: &PlateInfo) {
     let title = format!("The Lands of {}", info.world_name);
     let when = match info.year { Some(y) => format!("{}, year {}", info.season, y), None => info.season.clone() };
     let code = format!("seed {}", info.seed);
-    let cw = [text_width(&title, 2), text_width(&when, 1), text_width(&code, 1)].into_iter().max().unwrap_or(0) + 28;
-    let card = Rect { x: inner.x + 14, y: inner.y + 14, w: cw.min(inner.w - 28), h: 62 };
+    let cw = [super::text::fell_width(&title, 2, true), super::text::fell_width(&when, 1, false), super::text::fell_width(&code, 1, false)].into_iter().max().unwrap_or(0) + 28;
+    let card = Rect { x: inner.x + 14, y: inner.y + 14, w: cw.min(inner.w - 28), h: 70 };
     ui::card(buf, w, card);
-    draw_ink(buf, w, h, (card.x + 14) as i64, (card.y + 10) as i64, &title, RUBRIC, 2, true);
-    draw_ink(buf, w, h, (card.x + 14) as i64, (card.y + 32) as i64, &when, INK, 1, false);
-    draw_ink(buf, w, h, (card.x + 14) as i64, (card.y + 45) as i64, &code, INK_FADED, 1, false);
+    super::text::draw_fell(buf, w, h, (card.x + 14) as i64, (card.y + 12) as i64, &title, RUBRIC, 2, true);
+    super::text::draw_fell(buf, w, h, (card.x + 14) as i64, (card.y + 32) as i64, &when, INK, 1, false);
+    super::text::draw_fell(buf, w, h, (card.x + 14) as i64, (card.y + 50) as i64, &code, INK_FADED, 1, false);
 
     // The caption, wrapped, on a band along the bottom.
-    let max_chars = (inner.w - 40) / 7;
-    let lines = ui::wrap(&ui::ascii(&info.caption), max_chars.max(20));
-    let lines: Vec<String> = lines.into_iter().take(3).collect();
-    if !lines.is_empty() {
-        let bh = 12 * lines.len() + 16;
-        let band = Rect { x: inner.x + 14, y: inner.y + inner.h - bh - 14, w: inner.w - 28 - legend_width(info), h: bh };
-        if band.w > 120 {
-            ui::card(buf, w, band);
-            let lines = ui::wrap(&ui::ascii(&info.caption), (band.w - 24) / 7);
-            for (k, l) in lines.iter().take(3).enumerate() {
-                draw_ink(buf, w, h, (band.x + 12) as i64, (band.y + 8 + 12 * k) as i64, l, INK, 1, false);
-            }
+    // (Wrapped to the band's width in IM Fell, at 17 px a line.)
+    let band_w = (inner.w - 28).saturating_sub(legend_width(info));
+    let lines: Vec<String> = super::fonts::wrap(&info.caption, super::fonts::Face::Italic, 15.0, band_w as f32 - 24.0).into_iter().take(3).collect();
+    if !lines.is_empty() && band_w > 120 {
+        let bh = 18 * lines.len() + 14;
+        let band = Rect { x: inner.x + 14, y: inner.y + inner.h - bh - 14, w: band_w, h: bh };
+        ui::card(buf, w, band);
+        for (k, l) in lines.iter().enumerate() {
+            super::fonts::draw(buf, w, h, (band.x + 12) as f32, (band.y + 6 + 18 * k) as f32, l, super::fonts::Face::Italic, 15.0, 0.0, INK, None);
         }
     }
 
     // The legend of realms in view.
     if !info.realms.is_empty() {
         let lw = legend_width(info) - 10;
-        let lh = 22 + 16 * info.realms.len();
+        let lh = 26 + 18 * info.realms.len();
         let r = Rect { x: inner.x + inner.w - lw - 14, y: inner.y + inner.h - lh - 14, w: lw, h: lh };
         ui::card(buf, w, r);
-        draw_ink(buf, w, h, (r.x + 10) as i64, (r.y + 7) as i64, "Realms", RUBRIC, 1, true);
+        super::text::draw_fell(buf, w, h, (r.x + 10) as i64, (r.y + 7) as i64, "Realms", RUBRIC, 1, true);
         for (k, (name, arms)) in info.realms.iter().enumerate() {
-            let y = r.y + 20 + 16 * k;
+            let y = r.y + 24 + 18 * k;
             super::heraldry::draw(buf, w, h, (r.x + 9) as i64, y as i64 - 1, 14, arms);
-            draw_ink(buf, w, h, (r.x + 26) as i64, y as i64 + 2, &ui::truncate(&ui::ascii(name), (lw - 36) / 7), INK, 1, false);
+            super::text::draw_fell(buf, w, h, (r.x + 26) as i64, y as i64 + 2, &ui::truncate(&ui::ascii(name), (lw - 36) / 7), INK, 1, false);
         }
     }
 }

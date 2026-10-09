@@ -167,3 +167,22 @@ pub fn place_labels_scaled(labels: &[Label], tile_px: f32, font_scale: f32, w: u
         names.push(&l.text);
     }
 }
+
+/// Interface lettering in IM Fell where the 8x8 bitmap font had been: scale 1 = 14 px roman
+/// (bold: small caps), 2 = 21 px small caps, 3 = 30 px small caps; `y` is where the bitmap
+/// text's top would have been.
+pub(crate) fn draw_fell(buf: &mut [u32], w: usize, h: usize, x: i64, y: i64, text: &str, color: u32, scale: usize, bold: bool) {
+    let (face, px, track) = fell_face(scale, bold);
+    super::fonts::draw(buf, w, h, x as f32, y as f32 - 3.0, text, face, px, track, color, None);
+}
+
+pub(crate) fn fell_face(scale: usize, bold: bool) -> (super::fonts::Face, f32, f32) {
+    use super::fonts::Face;
+    match scale { 0 | 1 => if bold { (Face::SmallCaps, 14.0, 0.3) } else { (Face::Roman, 14.0, 0.0) }, 2 => (Face::SmallCaps, 21.0, 0.6), _ => (Face::SmallCaps, 30.0, 0.8) }
+}
+
+/// The width `draw_fell` will take.
+pub(crate) fn fell_width(text: &str, scale: usize, bold: bool) -> usize {
+    let (face, px, track) = fell_face(scale, bold);
+    super::fonts::width(text, face, px, track).ceil() as usize
+}

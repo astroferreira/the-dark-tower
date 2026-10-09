@@ -1650,11 +1650,11 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
         y += eh + 2;
     }
     if entries.is_empty() {
-        draw_ink(buf, w, h, text_x as i64, y, "The page is still blank.", INK_FADED, 1, false);
+        fell(buf, w, h, text_x as i64, y, "The page is still blank.", INK_FADED, 1, false);
     }
     if *scroll > 0 {
         let note = format!("({} newer above - scroll up)", scroll);
-        draw_ink(buf, w, h, (x + iw - text_width(&note, 1)) as i64, (r.y + r.h) as i64 - 14, &note, RUBRIC, 1, false);
+        fell(buf, w, h, (x + iw - fell_width(&note, 1)) as i64, (r.y + r.h) as i64 - 14, &note, RUBRIC, 1, false);
     }
     hits
 }

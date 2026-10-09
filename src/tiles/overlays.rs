@@ -183,9 +183,9 @@ pub fn draw_legend(buf: &mut [u32], w: usize, h: usize, mode: Overlay) {
     let r = Rect { x: 12, y: h - 84, w: 300, h: 72 };
     card(buf, w, r);
     let x = r.x + 14;
-    draw_ink(buf, w, h, x as i64, r.y as i64 + 12, &mode.name().to_uppercase(), RUBRIC, 1, true);
+    super::text::draw_fell(buf, w, h, x as i64, r.y as i64 + 12, &mode.name().to_uppercase(), RUBRIC, 1, true);
     let hint = "O next";
-    draw_ink(buf, w, h, (r.x + r.w - 14 - text_width(hint, 1)) as i64, r.y as i64 + 12, hint, INK_FADED, 1, false);
+    super::text::draw_fell(buf, w, h, (r.x + r.w - 14 - super::text::fell_width(hint, 1, false)) as i64, r.y as i64 + 12, hint, INK_FADED, 1, false);
     match mode.legend() {
         Legend::Ramp { stops, labels } => {
             let bar = Rect { x, y: r.y + 28, w: r.w - 28, h: 12 };
@@ -200,15 +200,15 @@ pub fn draw_legend(buf: &mut [u32], w: usize, h: usize, mode: Overlay) {
             for (v, label) in labels {
                 let px = bar.x + ((v - lo) / (hi - lo) * (bar.w - 1) as f32) as usize;
                 for yy in bar.y + bar.h..bar.y + bar.h + 3 { buf[yy * w + px] = INK; }
-                let tw = text_width(&label, 1);
+                let tw = super::text::fell_width(&label, 1, false);
                 let lx = px.saturating_sub(tw / 2).clamp(bar.x, bar.x + bar.w - tw);
-                draw_ink(buf, w, h, lx as i64, (bar.y + bar.h + 5) as i64, &label, INK, 1, false);
+                super::text::draw_fell(buf, w, h, lx as i64, (bar.y + bar.h + 5) as i64, &label, INK, 1, false);
             }
         }
         Legend::Note(text) => {
             let mut y = r.y as i64 + 28;
             for line in wrap(text, (r.w - 28) / 7) {
-                draw_ink(buf, w, h, x as i64, y, &line, INK, 1, false);
+                super::text::draw_fell(buf, w, h, x as i64, y, &line, INK, 1, false);
                 y += 12;
             }
         }
