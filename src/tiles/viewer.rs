@@ -1241,6 +1241,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     // A plate: the map without the interface, framed, captioned and numbered.
                     let mut plate = vec![0u32; w * h];
                     render_world(&tw, &atlas, &cam, &mut plate, w, h);
+                    super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut plate, w, h, false);
                     if show_labels { draw_labels(&labels, &cam, tw.width, &mut plate, w, h); }
                     draw_notes(&notes, None, &cam, tw.width, &mut plate, w, h);
                     let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
@@ -1478,6 +1479,7 @@ pub fn save_inspect_snapshots(world: &WorldData, history: &WorldHistory, atlas: 
     let cam = Camera { cx: tile.0 as f32 + 0.5 + (panel.w as f32 / 2.0) / 16.0, cy: clamp_cy(tile.1 as f32 + 0.5, 16.0, 800, world.height), tile_px: 16.0 };
     let mut map = vec![0u32; w * h];
     render_world(&tw, atlas, &cam, &mut map, w, h);
+    super::beasts::draw_world(&super::beasts::world_beasts(history), &cam, tw.width, &mut map, w, h, false);
     draw_labels(&labels, &cam, tw.width, &mut map, w, h);
     let (mx, my) = ((w - panel.w) as f32 / 2.0, h as f32 / 2.0);
     draw_marker(&mut map, w, h, mx, my, 7.0);
@@ -1564,6 +1566,7 @@ pub fn save_poster(world: &WorldData, history: Option<&WorldHistory>, atlas: &At
     let cam = Camera { cx: world.width as f32 / 2.0, cy: world.height as f32 / 2.0, tile_px };
     let mut buf = vec![0u32; w * h];
     render_world(&tw, atlas, &cam, &mut buf, w, h);
+    if let Some(hh) = history { super::beasts::draw_world(&super::beasts::world_beasts(hh), &cam, tw.width, &mut buf, w, h, false); }
     let font_scale = w as f32 / 2200.0;
     let to_screen = |x: f32, y: f32| (w as f32 / 2.0 + (x - cam.cx) * tile_px, h as f32 / 2.0 + (y - cam.cy) * tile_px);
 
