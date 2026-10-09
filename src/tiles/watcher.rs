@@ -30,6 +30,7 @@ use crate::world::WorldData;
 use super::atlas::Atlas;
 use super::classify::{faction_color, HistoryOverlay, Site, TileWorld};
 use super::render::{render_world_lod, screen_to_world, Camera};
+use super::fonts::{self, Face};
 use super::text::{draw_ink, place_labels, text_width, Label};
 use super::ui::*;
 
@@ -572,8 +573,8 @@ fn banner(buf: &mut [u32], w: usize, h: usize, map: Rect, text: &str, alpha: f32
     let lines = wrap(text, (map.w.saturating_sub(80)) / 14);
     let scale = if lines.len() <= 2 { 2 } else { 1 };
     let lines = if scale == 2 { lines } else { wrap(text, (map.w.saturating_sub(80)) / 7) };
-    let tw = lines.iter().map(|l| text_width(l, scale)).max().unwrap_or(0);
-    let bh = lines.len() * 10 * scale + 16;
+    let tw = lines.iter().map(|l| fell_width(l, scale)).max().unwrap_or(0);
+    let bh = lines.len() * if scale == 2 { 24 } else { 16 } + 18;
     let bw = tw + 40;
     let bx = map.x + map.w.saturating_sub(bw) / 2;
     let by = map.y + 14;
@@ -594,8 +595,8 @@ fn banner(buf: &mut [u32], w: usize, h: usize, map: Rect, text: &str, alpha: f32
     }
     if alpha > 0.5 {
         for (i, l) in lines.iter().enumerate() {
-            let lx = bx + (bw - text_width(l, scale)) / 2;
-            draw_ink(buf, w, h, lx as i64, (by + 8 + i * 10 * scale) as i64, l, RUBRIC, scale, false);
+            let lx = bx + (bw - fell_width(l, scale)) / 2;
+            fell(buf, w, h, lx as i64, (by + 10 + i * if scale == 2 { 24 } else { 16 }) as i64, l, RUBRIC, scale, false);
         }
     }
 }
@@ -961,10 +962,10 @@ impl<'a> View<'a> {
                     let (tx, ty) = ((wx.floor() as i64).rem_euclid(world.width as i64) as usize, wy as usize);
                     let text = hover_text(step, &self.tw, tx, ty);
                     if !text.is_empty() {
-                        let r = Rect { x: lay.map.x + 8, y: lay.map.y + lay.map.h - 22, w: (text_width(&text, 1) + 12).min(lay.map.w - 16), h: 15 };
+                        let r = Rect { x: lay.map.x + 8, y: lay.map.y + lay.map.h - 24, w: (fell_width(&text, 1) + 12).min(lay.map.w - 16), h: 18 };
                         fill(buf, w, r, PAPER);
                         outline(buf, w, r, INK);
-                        draw_ink(buf, w, h, r.x as i64 + 6, r.y as i64 + 4, &truncate(&text, (r.w - 12) / 7), INK, 1, false);
+                        fell(buf, w, h, r.x as i64 + 6, r.y as i64 + 5, &truncate(&text, (r.w - 12) / 6), INK, 1, false);
                     }
                 }
             }
@@ -1441,27 +1442,27 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
     let x = p.x + 16;
     let iw = p.w - 32;
     let mut y = p.y as i64 + 16;
-    draw_ink(buf, w, h, x as i64, y, "THE WORLD", RUBRIC, 2, true);
-    y += 18;
-    draw_ink(buf, w, h, x as i64, y, "TAKES SHAPE", RUBRIC, 2, true);
-    y += 24;
+    fell(buf, w, h, x as i64, y, "The World", RUBRIC, 2, true);
+    y += 22;
+    fell(buf, w, h, x as i64, y, "takes shape", RUBRIC, 2, true);
+    y += 26;
     hline(buf, w, x, x + iw, y as usize, INK);
     hline(buf, w, x, x + iw, y as usize + 2, INK_FADED);
     y += 12;
 
     let Some(f) = f else {
         for line in wrap(status, iw / 7) {
-            draw_ink(buf, w, h, x as i64, y, &line, INK, 1, false);
-            y += LINE;
+            fell(buf, w, h, x as i64, y, &line, INK, 1, false);
+            y += LINE + 4;
         }
         return Rect::default();
     };
 
     // Year and season, large.
     let year = format!("Year {}", f.year);
-    draw_ink(buf, w, h, x as i64, y, &year, INK, 3, true);
+    fell(buf, w, h, x as i64, y, &year, INK, 3, true);
     y += 28;
-    draw_ink(buf, w, h, x as i64, y, season_name(f.season), INK_FADED, 2, false);
+    fell(buf, w, h, x as i64, y, season_name(f.season), INK_FADED, 2, false);
     y += 22;
     // The timeline: written so far (pale), shown (gold), a tick every 50 years. Click or drag
     // it to jump.
@@ -1482,19 +1483,19 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         for ty in bar.y + bar.h..bar.y + bar.h + 3 { buf[ty * w + tx] = INK; }
     }
     y += 14;
-    draw_ink(buf, w, h, x as i64, y, &format!("{} of {} years", f.step / 4, years), INK_FADED, 1, false);
+    fell(buf, w, h, x as i64, y, &format!("{} of {} years", f.step / 4, years), INK_FADED, 1, false);
     let paused = ctl.paused.load(Ordering::Relaxed);
     let state = if done { "complete" } else if paused { "- paused -" } else { PACES[ctl.pace.load(Ordering::Relaxed).min(PACES.len() - 1)].1 };
     let sc = if paused { RUBRIC } else { INK_FADED };
-    draw_ink(buf, w, h, (x + iw - text_width(state, 1)) as i64, y, state, sc, 1, paused);
+    fell(buf, w, h, (x + iw - fell_width(state, 1)) as i64, y, state, sc, 1, paused);
     y += LINE + 4;
     if !done && !paused {
-        draw_ink(buf, w, h, x as i64, y, &truncate(status, iw / 7), INK_FADED, 1, false);
+        fell(buf, w, h, x as i64, y, &truncate(status, iw / 7), INK_FADED, 1, false);
     }
     y += LINE + 6;
 
     // Almanac.
-    heading(buf, w, h, x, y, iw, "ALMANAC");
+    fell_heading(buf, w, h, x, y, iw, "ALMANAC");
     y += 16;
     let s = &f.stats;
     let rows = [
@@ -1506,18 +1507,18 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         ("Treasures", format!("{}", s.artifacts), format!("{} monuments", s.monuments)),
     ];
     for (label, value, note) in rows {
-        draw_ink(buf, w, h, x as i64, y, label, INK, 1, false);
+        fell(buf, w, h, x as i64, y, label, INK, 1, false);
         let vx = x + 140;
-        draw_ink(buf, w, h, vx as i64, y, &value, if label == "Wars raging" && s.wars > 0 { RUBRIC } else { INK }, 1, true);
+        fell(buf, w, h, vx as i64, y, &value, if label == "Wars raging" && s.wars > 0 { RUBRIC } else { INK }, 1, true);
         if !note.is_empty() {
-            draw_ink(buf, w, h, (x + iw - text_width(&note, 1)) as i64, y, &note, INK_FADED, 1, false);
+            fell(buf, w, h, (x + iw - fell_width(&note, 1)) as i64, y, &note, INK_FADED, 1, false);
         }
-        y += LINE + 1;
+        y += LINE + 4;
     }
     y += 6;
 
     // Souls over the age, as an ink line over a pale wash.
-    heading(buf, w, h, x, y, iw, &format!("SOULS  {}", short_num(s.souls)));
+    fell_heading(buf, w, h, x, y, iw, &format!("SOULS  {}", short_num(s.souls)));
     y += 14;
     let chart = Rect { x, y: y as usize, w: iw, h: 44 };
     if souls_hist.len() >= 2 {
@@ -1544,14 +1545,14 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
 
     // The Shadow.
     if let Some(sh) = &s.shadow {
-        heading(buf, w, h, x, y, iw, if sh.broken { "THE SHADOW, BROKEN" } else { "THE SHADOW" });
+        fell_heading(buf, w, h, x, y, iw, if sh.broken { "THE SHADOW, BROKEN" } else { "THE SHADOW" });
         y += 16;
         let mut title = ascii(&sh.name);
         if let Some(c) = title.get_mut(0..1) { c.make_ascii_uppercase(); }
-        draw_ink(buf, w, h, x as i64, y, &truncate(&title, iw / 7), RUBRIC, 1, true);
-        y += LINE;
-        draw_ink(buf, w, h, x as i64, y, &truncate(&ascii(&sh.lord), iw / 7), INK_FADED, 1, false);
-        y += LINE + 3;
+        fell(buf, w, h, x as i64, y, &truncate(&title, iw / 7), RUBRIC, 1, true);
+        y += LINE + 4;
+        fell(buf, w, h, x as i64, y, &truncate(&ascii(&sh.lord), iw / 7), INK_FADED, 1, false);
+        y += LINE + 6;
         // Darkened land: a bar of reach with blight inside it.
         let bar = Rect { x, y: y as usize, w: iw, h: 7 };
         outline(buf, w, bar, INK);
@@ -1559,17 +1560,17 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         let bw = ((bar.w - 2) as f32 * sh.blight.min(1.0)) as usize;
         if rw > 0 { fill(buf, w, Rect { x: bar.x + 1, y: bar.y + 1, w: rw, h: bar.h - 2 }, 0x0090_8478); }
         if bw > 0 { fill(buf, w, Rect { x: bar.x + 1, y: bar.y + 1, w: bw, h: bar.h - 2 }, 0x001E_141A); }
-        y += 10;
+        y += 12;
         let line = format!("{:.0}% of the land darkened, {:.0}% blighted", sh.reach * 100.0, sh.blight * 100.0);
-        draw_ink(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK_FADED, 1, false);
-        y += LINE;
+        fell(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK_FADED, 1, false);
+        y += LINE + 4;
         let line = format!("holds {} towns   {} fallen   {} held out", sh.towns, sh.fallen, sh.held);
-        draw_ink(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK, 1, false);
+        fell(buf, w, h, x as i64, y, &truncate(&line, iw / 7), INK, 1, false);
         y += LINE + 8;
     }
 
     // The great realms.
-    heading(buf, w, h, x, y, iw, "GREAT REALMS");
+    fell_heading(buf, w, h, x, y, iw, "GREAT REALMS");
     y += 16;
     let top = f.realms.first().map(|r| r.population).unwrap_or(1).max(1);
     let footer_top = (p.y + p.h) as i64 - 80;
@@ -1577,17 +1578,17 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         if y + 22 > footer_top { break; }
         super::heraldry::draw(buf, w, h, x as i64, y - 2, 15, &r.arms);
         let pop = format!("{}  {}", r.towns, short_num(r.population));
-        let name_chars = (iw - 18 - text_width(&pop, 1) - 8) / 7;
+        let name_chars = (iw - 18 - fell_width(&pop, 1) - 8) / 7;
         let dark = s.shadow.as_ref().map_or(false, |sh| sh.faction == r.id && !sh.broken);
-        draw_ink(buf, w, h, (x + 16) as i64, y + 1, &truncate(&ascii(&r.name), name_chars), if dark { RUBRIC } else { INK }, 1, dark);
-        draw_ink(buf, w, h, (x + iw - text_width(&pop, 1)) as i64, y + 1, &pop, INK_FADED, 1, false);
+        fell(buf, w, h, (x + 16) as i64, y + 1, &truncate(&ascii(&r.name), name_chars), if dark { RUBRIC } else { INK }, 1, dark);
+        fell(buf, w, h, (x + iw - fell_width(&pop, 1)) as i64, y + 1, &pop, INK_FADED, 1, false);
         let bw = ((iw - 16) as f32 * r.population as f32 / top as f32) as usize;
-        if bw > 0 { hline(buf, w, x + 16, x + 16 + bw, (y + 12) as usize, mix(faction_color(r.id), INK, 0.2)); }
-        y += 18;
+        if bw > 0 { hline(buf, w, x + 16, x + 16 + bw, (y + 16) as usize, mix(faction_color(r.id), INK, 0.2)); }
+        y += 22;
     }
 
     // Controls.
-    let mut fy = footer_top + 6;
+    let mut fy = footer_top + 2;
     hline(buf, w, x, x + iw, fy as usize - 4, INK_FADED);
     for line in [
         "SPACE pause   [ ] pace   < > one season",
@@ -1596,8 +1597,8 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         if done { "ENTER choose where to settle" } else { "click an entry: go there   ESC hurry" },
     ] {
         fy += 2;
-        draw_ink(buf, w, h, x as i64, fy, line, INK_FADED, 1, false);
-        fy += LINE + 2;
+        fell(buf, w, h, x as i64, fy, line, INK_FADED, 1, false);
+        fy += LINE + 3;
     }
     bar
 }
@@ -1640,7 +1641,7 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
             fonts::draw(buf, w, h, x as f32, y as f32, &format!("{}", e.year), Face::Italic, PX, 0.0, mix(RUBRIC, PAPER, age * 0.6), None);
             last_year = Some(e.year);
         }
-        draw_ink(buf, w, h, (x + 44) as i64, y + 4, &glyph.to_string(), mix(gcol, PAPER, age), 1, true);
+        draw_event_icon(buf, w, h, glyph, mix(gcol, PAPER, age), (x + 48) as f32, (y + 9) as f32, 16.0);
         let ink = if e.kind.is_major() || e.kind == EventType::Authored { INK } else { mix(INK, PAPER, age) };
         for (k, l) in lines.iter().enumerate() {
             fonts::draw(buf, w, h, text_x as f32, (y + k as i64 * ROW) as f32, l, face, PX, if face == Face::SmallCaps { 0.3 } else { 0.0 }, ink, None);
@@ -1656,4 +1657,81 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
         draw_ink(buf, w, h, (x + iw - text_width(&note, 1)) as i64, (r.y + r.h) as i64 - 14, &note, RUBRIC, 1, false);
     }
     hits
+}
+
+/// The chronicle's mark for an event (by `style`'s key), drawn as a small ink icon in its colour:
+/// a star for a founding, a flame for a razing, a house for a settlement, crossed blades for war
+/// and battle, an olive branch for peace, linked rings for an alliance or a marriage, a crown for
+/// a ruler, a sun for faith, a horned skull for a beast, a chest or an obelisk for treasure, a
+/// spiral for magic, a tree for the wild, the Shadow's eye, footprints for a journey.
+pub(crate) fn draw_event_icon(buf: &mut [u32], w: usize, h: usize, key: char, colour: u32, cx: f32, cy: f32, size: f32) {
+    use super::ink::{Finish, Pen};
+    let rgb = |c: u32| [((c >> 16) & 255) as f32, ((c >> 8) & 255) as f32, (c & 255) as f32];
+    let col = rgb(colour);
+    let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| blend_px(buf, w, h, x, y, super::ink::pack(c), a);
+    let mut pen = Pen::new(&mut put, cx, cy, size);
+    let lw = (size * 0.08).max(1.0);
+    match key {
+        '*' => { let pts: Vec<(f32, f32)> = (0..10).map(|k| { let a = k as f32 * 0.6283 - 1.5708; let r = if k % 2 == 0 { 0.85 } else { 0.38 }; (a.cos() * r, a.sin() * r) }).collect(); pen.poly(&pts, col); }
+        'X' | '#' => {
+            if key == '#' { pen.rect(-0.55, 0.0, 0.55, 0.75, [176.0, 160.0, 140.0]); pen.poly(&[(-0.7, 0.05), (0.0, -0.45), (0.7, 0.05)], [150.0, 130.0, 110.0]); }
+            pen.poly(&[(-0.4, 0.75), (-0.5, 0.1), (-0.15, -0.3), (-0.05, -0.85), (0.25, -0.25), (0.5, 0.1), (0.4, 0.75)], col);
+            pen.poly_f(&[(-0.18, 0.7), (0.0, 0.0), (0.18, 0.7)], [250.0, 214.0, 120.0], Finish::Paint);
+        }
+        'o' => { pen.rect(-0.55, -0.05, 0.55, 0.75, col); pen.poly(&[(-0.75, 0.0), (0.0, -0.75), (0.75, 0.0)], super::ink::mix(col, [250.0, 244.0, 230.0], 0.3)); }
+        '!' | 'x' => {
+            if colour == VIOLET || (key == '!' && col[2] > col[0]) {
+                pen.poly(&[(0.15, -0.9), (-0.45, 0.1), (0.0, 0.1), (-0.2, 0.9), (0.5, -0.2), (0.05, -0.2), (0.3, -0.9)], col);
+            } else {
+                pen.bone(&[(-0.75, 0.75), (0.7, -0.7)], [200.0, 202.0, 210.0], lw * 1.5);
+                pen.bone(&[(0.75, 0.75), (-0.7, -0.7)], [200.0, 202.0, 210.0], lw * 1.5);
+                pen.line((-0.75, 0.75), (-0.45, 0.45), col, lw * 2.0);
+                pen.line((0.75, 0.75), (0.45, 0.45), col, lw * 2.0);
+            }
+        }
+        '=' => { pen.path(&[(-0.7, 0.7), (0.0, 0.0), (0.7, -0.7)], [110.0, 120.0, 70.0], lw * 1.5); for k in 0..4 { let t = -0.45 + k as f32 * 0.35; pen.ellipse_rot(t + 0.15, -t - 0.1, 0.22, 0.1, -0.8, [130.0, 150.0, 80.0]); } }
+        '&' => { pen.shape(col, Finish::Plain, [-0.9, -0.6, 0.9, 0.6], &|u, v| { let a = ((u + 0.3).powi(2) + v * v).sqrt(); let b = ((u - 0.3).powi(2) + v * v).sqrt(); (a - 0.45).abs() < 0.13 || (b - 0.45).abs() < 0.13 }); }
+        '^' => { pen.poly(&[(-0.75, 0.55), (-0.75, -0.3), (-0.38, 0.1), (0.0, -0.6), (0.38, 0.1), (0.75, -0.3), (0.75, 0.55)], col); }
+        '+' => { pen.ellipse(0.0, 0.0, 0.38, 0.38, col); for k in 0..8 { let a = k as f32 * 0.785; pen.line((a.cos() * 0.5, a.sin() * 0.5), (a.cos() * 0.85, a.sin() * 0.85), col, lw); } }
+        '~' => {
+            pen.ellipse(0.0, 0.05, 0.45, 0.5, [232.0, 224.0, 204.0]);
+            for u in [-0.17f32, 0.17] { pen.ellipse_f(u, 0.0, 0.11, 0.13, super::ink::INK, Finish::Paint); }
+            pen.bone(&[(-0.35, -0.3), (-0.7, -0.8)], col, lw * 1.4);
+            pen.bone(&[(0.35, -0.3), (0.7, -0.8)], col, lw * 1.4);
+        }
+        '$' => { pen.rect(-0.7, -0.1, 0.7, 0.65, [150.0, 104.0, 64.0]); pen.poly(&[(-0.7, -0.1), (-0.55, -0.55), (0.55, -0.55), (0.7, -0.1)], col); pen.rect_f(-0.12, 0.05, 0.12, 0.3, col, Finish::Plain); }
+        '%' => { let pts: Vec<(f32, f32)> = (0..16).map(|k| { let a = k as f32 * 0.7; let r = 0.08 + k as f32 * 0.05; (a.cos() * r, a.sin() * r) }).collect(); pen.path(&pts, col, lw * 1.3); }
+        '"' => { pen.rect(-0.08, 0.2, 0.08, 0.85, [120.0, 86.0, 54.0]); pen.ellipse(0.0, -0.15, 0.55, 0.5, [100.0, 136.0, 76.0]); }
+        '@' => {
+            if colour == GOLD { pen.poly(&[(0.7, -0.8), (-0.4, 0.5), (-0.55, 0.75), (-0.3, 0.6), (0.8, -0.7)], [236.0, 226.0, 200.0]); pen.line((-0.4, 0.5), (-0.6, 0.8), super::ink::INK, lw); }
+            else { pen.ellipse(0.0, 0.0, 0.8, 0.42, [236.0, 226.0, 200.0]); pen.ellipse_f(0.0, 0.0, 0.3, 0.35, col, Finish::Plain); pen.ellipse_f(0.0, 0.0, 0.08, 0.3, super::ink::INK, Finish::Paint); }
+        }
+        '>' => { for (u, v) in [(-0.35f32, 0.35f32), (0.3, -0.3)] { pen.ellipse_f(u, v, 0.16, 0.24, col, Finish::Paint); pen.ellipse_f(u, v - 0.32, 0.1, 0.08, col, Finish::Paint); } }
+        _ => { pen.ellipse(0.0, -0.45, 0.22, 0.22, col); pen.poly(&[(-0.35, 0.8), (-0.25, -0.15), (0.25, -0.15), (0.35, 0.8)], col); }
+    }
+}
+
+/// The watcher's panel lettering in IM Fell (it had been the 8x8 bitmap font): scale 1 = 14 px
+/// roman (bold: small caps), 2 = 21 px small caps, 3 = 30 px small caps; `y` as the bitmap's top.
+fn fell(buf: &mut [u32], w: usize, h: usize, x: i64, y: i64, text: &str, color: u32, scale: usize, bold: bool) {
+    let (face, px, track) = fell_face(scale, bold);
+    fonts::draw(buf, w, h, x as f32, y as f32 - 3.0, text, face, px, track, color, None);
+}
+
+fn fell_face(scale: usize, bold: bool) -> (Face, f32, f32) {
+    match scale { 0 | 1 => if bold { (Face::SmallCaps, 14.0, 0.3) } else { (Face::Roman, 14.0, 0.0) }, 2 => (Face::SmallCaps, 21.0, 0.6), _ => (Face::SmallCaps, 30.0, 0.8) }
+}
+
+fn fell_width(text: &str, scale: usize) -> usize {
+    let (face, px, track) = fell_face(scale, false);
+    fonts::width(text, face, px, track).ceil() as usize
+}
+
+/// A section heading in rubric small capitals, words capitalised, with a rule after it.
+fn fell_heading(buf: &mut [u32], w: usize, h: usize, x: usize, y: i64, width: usize, text: &str) {
+    let title: String = text.split(' ').map(|wd| { let l = wd.to_lowercase(); let mut c = l.chars(); match c.next() { Some(f) => f.to_uppercase().collect::<String>() + c.as_str(), None => String::new() } }).collect::<Vec<_>>().join(" ");
+    let title = title.replace(" Of ", " of ").replace(" The ", " the ");
+    fonts::draw(buf, w, h, x as f32, y as f32 - 4.0, &title, Face::SmallCaps, 15.0, 0.5, RUBRIC, None);
+    let tx = x + fonts::width(&title, Face::SmallCaps, 15.0, 0.5).ceil() as usize + 6;
+    if tx < x + width { let ry = (y + 5) as usize; if ry < h { hline(buf, w, tx, x + width, ry, INK_FADED); } }
 }
