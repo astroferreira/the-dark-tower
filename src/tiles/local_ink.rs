@@ -1291,7 +1291,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
             let look = creature_look(colony, c);
             let px = super::beasts::px_for(&look, scale);
             y + 7.0 * scale - px * if look.flies { 1.25 } else { 0.95 }
-        } else { y - 16.0 * scale };
+        } else if colony.snatched.iter().any(|sn| sn.coming && sn.home.is_none()) { y - 40.0 * scale } else { y - 16.0 * scale };
         letter(buf, w, h, placed, x, top - 16.0, &c.name, Face::Italic, 14.0, 0.0, 0x009A_2A1E);
     }
     for (x, y, n) in ghost_names { letter(buf, w, h, placed, x, y - 12.0, &n, Face::Italic, 12.0, 0.0, 0x0060_7068); }
@@ -1967,24 +1967,25 @@ fn draw_creature(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony
         CreatureKind::Raider | CreatureKind::Besieger => {
             let threat = colony.arc.as_ref().map(|a| &a.threat).filter(|t| t.name == c.name);
             let f = super::folk::raider(threat, &c.name, c.id, history);
-            // A child snatched by these raiders and coming back among them (`snatch.rs`) rides
-            // on the back of the first of them.
-            let first_raider = colony.creatures.iter().filter(|k| k.kind == CreatureKind::Raider).map(|k| k.id).min() == Some(c.id);
-            if first_raider {
-                if let Some(sn) = colony.snatched.iter().find(|sn| sn.coming && sn.home.is_none()) {
-                    if let Some(look) = settler_looks(colony, history).get(sn.who).copied() {
-                        let back = if left { 1.0 } else { -1.0 } * 6.0 * scale;
-                        let mut pen = super::ink::Pen::new(put, x + back, y - 12.0 * scale, 12.0 * scale).faint(a);
-                        pen.ellipse(0.0, 0.35, 0.45, 0.35, look.2);
-                        pen.ellipse(0.0, -0.3, 0.3, 0.3, look.0);
-                        pen.shape(look.1, super::ink::Finish::Paint, [-0.3, -0.6, 0.3, -0.35], &|u, v| u * u + (v + 0.3).powi(2) < 0.07 && v < -0.4);
-                    }
-                }
-            }
             // Striking when a settler is within reach.
             let near = colony.settlers.iter().any(|s| s.alive && (s.pos.0 as i32 - c.pos.0 as i32).abs() <= 1 && (s.pos.1 as i32 - c.pos.1 as i32).abs() <= 1);
             let strike = near && (colony.clock.tick / 3 + c.id as u64) % 2 == 0;
             super::folk::draw(put, &f, x, y, scale * 1.2, left, strike, a);
+            // A child snatched by these raiders and coming back among them (`snatch.rs`) rides on
+            // the shoulders of the first of them, small, in their own colours.
+            let first_raider = colony.creatures.iter().filter(|k| k.kind == CreatureKind::Raider).map(|k| k.id).min() == Some(c.id);
+            if first_raider {
+                if let Some(sn) = colony.snatched.iter().find(|sn| sn.coming && sn.home.is_none()) {
+                    if let Some(look) = settler_looks(colony, history).get(sn.who).copied() {
+                        let back = if left { 1.0 } else { -1.0 } * 5.0 * scale;
+                        let mut pen = super::ink::Pen::new(put, x + back, y - 22.0 * scale, 28.0 * scale).faint(a);
+                        pen.ellipse(0.0, 0.45, 0.5, 0.35, look.2);
+                        pen.ellipse(0.0, -0.2, 0.36, 0.36, look.0);
+                        pen.shape(look.1, super::ink::Finish::Paint, [-0.36, -0.56, 0.36, -0.2], &|u, v| u * u + (v + 0.2).powi(2) < 0.1 && v < -0.32);
+                        for s2 in [-1.0f32, 1.0] { pen.limb((s2 * 0.35, 0.35), 0.1, (s2 * 0.6, 0.7), 0.08, look.0); }
+                    }
+                }
+            }
         }
         CreatureKind::Trader => {
             // A pack mule a step behind the trader, laden.

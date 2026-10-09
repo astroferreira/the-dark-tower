@@ -53,3 +53,18 @@ fn the_world_map_shows_its_living_things() {
     assert!(n.len() >= 8 && n[0] >= 10 && n[3] >= 1 && n[7] >= 1, "{line}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Every simulated kind placed on the test camp and drawn in the game's own frame
+/// (`--inventory`): none left out.
+#[test]
+fn every_kind_draws_in_the_game_frame() {
+    let dir = std::env::temp_dir().join(format!("inventory_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--inventory", dir.join("i").to_str().unwrap()]).output().expect("run planet_generator");
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let line = text.lines().find(|l| l.starts_with("Inventory: ")).unwrap_or_else(|| panic!("no inventory line:\n{text}"));
+    let n: Vec<usize> = line.split(|c: char| !c.is_ascii_digit()).filter_map(|w| w.parse().ok()).collect();
+    assert!(n.len() >= 2 && n[0] >= 60 && n[1] == 0, "{line}");
+    assert!(dir.join("i_inventory.png").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}

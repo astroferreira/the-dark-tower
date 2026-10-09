@@ -144,6 +144,7 @@ pub fn save_inventory(world: &WorldData, history: Option<&crate::history::world_
         let s = &mut c.settlers[*i];
         s.pos = at; s.path.clear(); s.job = crate::colony::Job::Idle; s.z = c.map.surface_z[at.1 as usize * c.map.width + at.0 as usize];
     }
+    if std::env::var("PLANET_DEBUG_INVENTORY").is_ok() { for cr in c.creatures.iter().filter(|k| k.kind == CreatureKind::Raider) { eprintln!("  raider {} {} screen {:.0},{:.0}", cr.id, cr.name, (cr.pos.0 as f32 + 0.5 - c.camp.0 as f32) * 20.0 + 1600.0, (cr.pos.1 as f32 + 0.5 - c.camp.1 as f32 - 4.0) * 20.0 + 1300.0); } }
     if std::env::var("PLANET_DEBUG_INVENTORY").is_ok() { for (i, l) in &states { { let dp = c.draw_pos(*i); eprintln!("  {} -> {} office {:?} pos {:?} screen {:.0},{:.0}", l, c.settlers[*i].name, c.settlers[*i].office, c.settlers[*i].pos, (dp.0 + 0.5 - c.camp.0 as f32) * 20.0 + 1600.0, (dp.1 + 0.5 - c.camp.1 as f32 - 4.0) * 20.0 + 1300.0); } } }
     // Draw the camp as the window does, then crop each kind.
     let (fw, fh) = (3200usize, 2600usize);
