@@ -281,3 +281,27 @@ pub fn draw_stocks(put: &mut dyn FnMut(i64, i64, Rgb, f32), x: f32, y: f32, scal
     pen.rect(-0.85, -0.12, 0.85, 0.08, [164.0, 120.0, 78.0]);
     for u in [-0.45f32, 0.45] { pen.ellipse_f(u, -0.02, 0.08, 0.06, INK, Finish::Paint); }
 }
+
+/// Settlers away from the map (an expedition against a beast, others off on the roads): a
+/// signpost by the camp naming who went and why, with a small banner when it is a war party.
+pub fn draw_away_sign(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i64, Rgb, f32), w: usize, h: usize, labels: &mut Vec<(f32, f32, String)>) {
+    let tick = colony.clock.tick;
+    let away: Vec<usize> = colony.settlers.iter().enumerate().filter(|(_, s)| s.alive && s.away_until > tick).map(|(i, _)| i).collect();
+    let party = colony.expedition.as_ref();
+    if away.is_empty() && party.is_none() { return; }
+    let c = Cells::new(cam, w, h);
+    let (x, y) = (colony.camp.0 as f32 + 3.5, colony.camp.1 as f32 + 2.5);
+    if !c.visible(x, y, w, h, 2.0) { return; }
+    let mut pen = c.pen(put, x, y);
+    pen.bone(&[(0.0, 0.9), (0.0, -0.9)], DARKWOOD, (pen.half * 0.08).max(1.5));
+    pen.poly(&[(0.05, -0.85), (1.0, -0.85), (1.2, -0.65), (1.0, -0.45), (0.05, -0.45)], [196.0, 170.0, 120.0]);
+    pen.line((0.2, -0.65), (0.9, -0.65), INK, 1.0);
+    if party.is_some() { pen.poly(&[(-0.02, -0.9), (-0.6, -0.8), (-0.45, -0.65), (-0.6, -0.5), (-0.02, -0.5)], [150.0, 52.0, 44.0]); }
+    let n = party.map_or(away.len(), |p| p.party.len().max(away.len()));
+    let text = match party {
+        Some(p) => format!("{} gone after {}", n, p.beast),
+        None => format!("{} away on the roads", n),
+    };
+    labels.push((c.x0 + (x + 0.6) * c.t, c.y0 + (y - 0.95) * c.t - 2.0, text));
+}
+const DARKWOOD: Rgb = [122.0, 86.0, 54.0];

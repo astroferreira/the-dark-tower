@@ -1277,6 +1277,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     let mut ghost_names = Vec::new();
     super::fx_ink::draw_ghosts(colony, cam, &mut put, w, h, scale, &mut ghost_names);
     super::fx_ink::draw_prisoner(colony, cam, &mut put, w, h, scale, &mut ghost_names);
+    super::fx_ink::draw_away_sign(colony, cam, &mut put, w, h, &mut ghost_names);
     super::fx_ink::draw_bell(colony, cam, &mut put, w, h);
     masking.set(true);
     // Labels that must show come first (the attackers' band, the patron's names, a roof's count,
