@@ -1913,7 +1913,8 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
     }
     // The timeline: the camp's moments (each with its weight), and the founding, by day.
     let mut moments: Vec<(u64, String)> = Vec::new();
-    if let Some(first) = colony.log.first() { moments.push((1, first.splitn(2, "  ").nth(1).unwrap_or("").to_string())); }
+    let mut titles: Vec<String> = Vec::new();
+    if let Some(first) = colony.log.first() { moments.push((1, first.splitn(2, "  ").nth(1).unwrap_or("").to_string())); titles.push("The founding".into()); }
     let mut weights: Vec<u8> = vec![2];
     for m in &colony.moments {
         let t = m.title.as_str();
@@ -1926,6 +1927,7 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
                 || t.starts_with("The friendship of") || t.starts_with("A hall for") || t.ends_with(" is founded") || t.ends_with(" among the raiders") || t.ends_with("'s dream") || t.ends_with("'s vow") { 2 }
             else { 3 };
         moments.push((m.tick / crate::colony::TICKS_PER_DAY + 1, m.text.clone()));
+        titles.push(m.title.clone());
         weights.push(w);
     }
     let weight_of: Vec<u8> = weights;
@@ -1933,6 +1935,7 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
     ranked.sort_by_key(|(i, _)| (weight_of[*i], *i));
     ranked.truncate(10);
     ranked.sort_by_key(|(i, _)| *i);
+    let chosen_titles: Vec<String> = ranked.iter().map(|(i, _)| titles.get(*i).cloned().unwrap_or_default()).collect();
     let chosen: Vec<&(u64, String)> = ranked.into_iter().map(|(_, m)| m).collect();
     let (tx0, tx1, ty) = (40.0f32, w as f32 - 40.0, 900.0f32);
     for x in tx0 as usize..tx1 as usize { buf[ty as usize * w + x] = 0x0038_2A20; buf[(ty as usize + 1) * w + x] = 0x0038_2A20; }
@@ -1941,6 +1944,12 @@ pub fn saga_plate(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atl
         let x = tx0 + (tx1 - tx0) * (k as f32 + 0.5) / n;
         let up = k % 2 == 0;
         for d in 0..14 { let y = if up { ty as usize - d } else { ty as usize + 2 + d }; buf[y * w + x as usize] = 0x0038_2A20; }
+        // The moment's roundel on the line (`vignette.rs`), as its card had it.
+        {
+            let m = crate::colony::Moment { tick: 0, title: chosen_titles[k].clone(), text: text.clone(), because: String::new(), at: (0, 0), choice: false };
+            let mut put = |px: i64, py: i64, c: [f32; 3], a: f32| super::ui::blend_px(&mut buf, w, h, px, py, super::ink::pack(c), a);
+            super::vignette::draw(&mut put, Some(colony), &m, x, ty, 13.0);
+        }
         fonts::draw(&mut buf, w, h, x - 6.0, if up { ty - 40.0 } else { ty + 18.0 }, &format!("Day {}", day), Face::SmallCaps, 13.0, 0.5, 0x009A_2A1E, None);
         // An arc line ("The raid: ...") shows what happened; others their first clause.
         let body = match text.split_once(": ") { Some((head, rest)) if head.len() < 12 => rest, _ => text.as_str() };
