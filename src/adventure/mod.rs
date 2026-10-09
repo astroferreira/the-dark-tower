@@ -24,6 +24,7 @@ pub mod map;
 pub mod npc;
 pub mod people;
 pub mod quest;
+pub mod regard;
 pub mod site;
 pub mod surface;
 pub mod tales;

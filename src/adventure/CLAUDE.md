@@ -282,6 +282,20 @@ everywhere).
 - Test: `land::tests::a_feud_changes_the_town` (siding: the other house leaves; peace: both
   stay; the town's notes).
 
+## Regard (`regard.rs`; card adv-regard)
+- `Game::regard` per town (-100..100), half of each change spreading to the towns of the same
+  people; it fades a point a day. Causes (`regard::Cause`): striking one of its people (-25; Shift
+  + a direction, `Action::Assault`: they turn into a fleeing townsman or the watchman they were,
+  the watch is called), killing them (-60, a deed), a beast slain within six tiles (+35, every
+  townsperson names the deed in their greeting), work done (+8), a tale betrayed (-30).
+- Effects: prices (`regard::price_factor`, 0.85..1.4 on top of temper), greetings ("Friend of X"
+  at 30+), talk barred at -40 or worse ("Get out of my sight", only Bye), the watch at the gate
+  each time one walks into the town's tile (`at_the_gate`, three watchmen), bounty hunters on the
+  road while a town within 12 tiles is at -30 or worse (`hunted_by`, a fifth of the tiles
+  travelled). New monsters: watchman, townsman, bounty hunter (`Monster::town` marks a town's own).
+  The panel says how the town here sees the hero.
+- Test: `land::tests::the_town_remembers_blood_and_deeds`.
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the
@@ -322,5 +336,5 @@ everywhere).
   from four levels under their place's level, and the priest's only for the risen dead.
 
 ## Not yet
-- Factions' regard (killing a people's soldiers angers their towns), houses, a bank; boats over the sea; rivers through towns (a town
+- Houses, a bank; boats over the sea; rivers through towns (a town
   is laid over its river); the weather.

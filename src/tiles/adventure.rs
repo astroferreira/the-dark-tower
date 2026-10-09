@@ -601,6 +601,12 @@ fn draw_panel(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     if hero.torch > 0 { status.push("torch lit".into()); }
     if hero.hasted > 0 { status.push("hasted".into()); }
     if hero.blessed { status.push("blessed".into()); }
+    // What the town here thinks of them.
+    if let Some(p) = g.place().filter(|p| p.spec.kind == SiteKind::Town) {
+        let r = g.regard_of(p.spec.id);
+        let word = if r >= 30 { "a friend here" } else if r >= 10 { "welcome here" } else if r <= -40 { "hunted here" } else if r <= -10 { "distrusted here" } else { "" };
+        if !word.is_empty() { status.push(word.into()); }
+    }
     if let Some(c) = &g.companion { status.push(format!("{} with you ({}/{})", c.name, c.hp, c.max_hp)); }
     fonts::draw(buf, w, h, x0 as f32, 114.0, &status.join(" · "), Face::Italic, 13.0, 0.0, 0x005A_4634, None);
     // The paper doll: eight slots.
@@ -927,7 +933,9 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
         } else {
             let dirs = [(Key::Up, (0, -1)), (Key::W, (0, -1)), (Key::Down, (0, 1)), (Key::S, (0, 1)), (Key::Left, (-1, 0)), (Key::A, (-1, 0)), (Key::Right, (1, 0)), (Key::D, (1, 0)),
                 (Key::Q, (-1, -1)), (Key::E, (1, -1)), (Key::Z, (-1, 1)), (Key::C, (1, 1)), (Key::NumPad8, (0, -1)), (Key::NumPad2, (0, 1)), (Key::NumPad4, (-1, 0)), (Key::NumPad6, (1, 0)), (Key::NumPad7, (-1, -1)), (Key::NumPad9, (1, -1)), (Key::NumPad1, (-1, 1)), (Key::NumPad3, (1, 1))];
-            for (key, (dx, dy)) in dirs { if repeat(key) { v.walk_to = None; act(&mut g, &mut v, Action::Move(dx, dy)); break; } }
+            // (Shift and a direction strikes whoever stands there, townsfolk too.)
+            let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+            for (key, (dx, dy)) in dirs { if repeat(key) { v.walk_to = None; act(&mut g, &mut v, if shift { Action::Assault(dx, dy) } else { Action::Move(dx, dy) }); break; } }
             if pressed(Key::G) { act(&mut g, &mut v, Action::PickUp); }
             // Travel: the world map (not with enemies at one's heels).
             if pressed(Key::T) { act(&mut g, &mut v, Action::WorldMap); }
@@ -1153,7 +1161,7 @@ fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
     let lines: [(&str, &str); 19] = [
         ("Arrows, WASD, numpad", "walk; Q E Z C the diagonals; bump into a thing to strike it, open it or talk"),
         ("Mouse", "click to walk there or to strike; click a thing in the pack to use or wear it, right click to drop it"),
-        ("Space / Tab", "strike or shoot the target / choose the next target in sight"),
+        ("Space / Tab", "strike or shoot the target / choose the next target in sight; Shift + a direction strikes anyone"),
         ("F1 - F9", "cast the spells you know (the Spells tab lists them)"),
         ("G", "take what lies here"),
         ("R", "rest until whole (not with enemies near, not hungry)"),

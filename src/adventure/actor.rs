@@ -38,13 +38,16 @@ pub struct Monster {
     /// Out by night only: gone at dawn (the risen of a battlefield, a werewolf).
     #[serde(default)]
     pub night: bool,
+    /// The town it belongs to (one of its people or its watch turned on the hero; 0 none).
+    #[serde(default)]
+    pub town: u32,
 }
 
 impl Monster {
     pub fn new(uid: u32, def: &str, x: i32, y: i32, z: usize) -> Monster {
         let d = data().monster(def).unwrap_or_else(|| data().monster("rat").unwrap());
         Monster { uid, def: d.id.clone(), name: d.name.clone(), hp: d.hp, max_hp: d.hp, x, y, z, energy: 0, awake: false, boss: false, scale: 1.0,
-            legend: None, carries: Vec::new(), poisoned: 0, slowed: 0, home: (x, y), left: uid % 2 == 0, struck_at: 0, night: false }
+            legend: None, carries: Vec::new(), poisoned: 0, slowed: 0, home: (x, y), left: uid % 2 == 0, struck_at: 0, night: false, town: 0 }
     }
     /// A named boss over `def`, `scale` times as strong.
     pub fn boss(uid: u32, def: &str, name: &str, scale: f32, x: i32, y: i32, z: usize) -> Monster {

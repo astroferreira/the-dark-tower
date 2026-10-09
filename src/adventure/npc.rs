@@ -50,7 +50,7 @@ fn speaker(g: &Game) -> Option<(super::actor::Npc, super::people::Temper)> {
 }
 
 /// Their price for something worth `v` (their temper and memory).
-fn their_price(g: &Game, v: u32) -> u32 { speaker(g).map_or(v, |(n, t)| ((v as f32) * super::people::price_factor(t, &n.met)).round().max(1.0) as u32) }
+fn their_price(g: &Game, v: u32) -> u32 { speaker(g).map_or(v, |(n, t)| ((v as f32) * super::people::price_factor(t, &n.met) * super::regard::price_factor(g.regard_of(n.home))).round().max(1.0) as u32) }
 
 /// How many towns sing of the adventurer.
 fn fame(g: &Game) -> usize { g.songs.len() }
@@ -104,6 +104,11 @@ pub fn greet(g: &mut Game, k: usize) {
         Role::Lord if n.met.times == 0 && n.met.wronged == 0 && g.site(n.home).map_or(false, |s| s.lord.is_some()) => format!("You stand before {}, {}. Speak, {}.", n.name, n.of, hero),
         _ => super::people::greeting(&n, temper, &n.met, &hero, &town, fame(g), g.turn),
     };
+    // What their town thinks of the hero colours it.
+    let r = g.regard_of(n.home);
+    let said = if r <= -40 && n.role != Role::Townsfolk { format!("\"You. Get out of my sight before I call the watch, {}.\"", hero) }
+        else if r >= 30 && n.met.wronged == 0 { format!("{} (Friend of {}, the whole town knows your name.)", said, town) } else { said };
+    let barred = r <= -40 && n.role != Role::Townsfolk;
     // They will remember this meeting.
     let turn = g.turn;
     if let Some(p) = g.place_mut() { if let Some(m) = p.npcs.get_mut(k) { m.met.times += 1; m.met.last = turn; } }
@@ -122,7 +127,7 @@ pub fn greet(g: &mut Game, k: usize) {
             }
         }
     }
-    let menu = main_menu(g, n.role);
+    let menu = if barred { vec![("Bye".to_string(), Topic::Bye)] } else { main_menu(g, n.role) };
     if let Some(t) = g.talk.as_mut() { t.options = menu; }
     g.say(Tone::Talk, format!("{}: \"{}\"", n.name, g.talk.as_ref().unwrap().said));
     // The other house of a feud hears what the hero came to say.

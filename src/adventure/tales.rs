@@ -410,5 +410,6 @@ fn note(g: &mut Game, town: u32, line: String) { if let Some(s) = g.sites.iter_m
 
 /// The town holds it against the hero.
 fn wrong(g: &mut Game, town: u32, who: &str, n: u32) {
+    if n >= 2 { g.regard(town, super::regard::Cause::Betrayed); }
     for p in g.town_npcs_mut(town) { if p.name == who { p.met.wronged += n; } else if n >= 2 { p.met.wronged += 1; } }
 }

@@ -200,6 +200,7 @@ pub fn report(g: &mut Game, k: usize) -> Vec<String> {
     }
     g.quests[k].state = State::Rewarded;
     g.stats.quests_done += 1;
+    g.regard(q.town, super::regard::Cause::WorkDone);
     if matches!(q.goal, Goal::Tale(_)) { g.stats.tales_done += 1; let lines = super::tales::on_report(g, &q); out.extend(lines); }
     if !matches!(q.goal, Goal::Bounty { .. } | Goal::Deliver { .. }) {
         let t = g.turn; g.deeds.push((t, format!("finished \"{}\" for {}", q.title, q.giver)));

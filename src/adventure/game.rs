@@ -123,6 +123,8 @@ pub enum Action {
     Land,
     /// Answer the choice card (`Game::choice`).
     Decide(usize),
+    /// Strike the person in this direction (the town will remember).
+    Assault(i32, i32),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -233,6 +235,9 @@ pub struct Game {
     /// A choice to make (a tale's turning point).
     #[serde(default)]
     pub choice: Option<super::tales::Choice>,
+    /// Each town's regard of the adventurer (`regard`).
+    #[serde(default)]
+    pub regard: HashMap<u32, i32>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -245,7 +250,7 @@ impl Game {
             corpses: HashMap::new(), known: Vec::new(), respawn: Vec::new(), quests: Vec::new(), talk: None, chosen: Vec::new(), facing: (0, 1),
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
-            seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None, choice: None,
+            seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None, choice: None, regard: HashMap::new(),
         };
         g.set_atlas();
         g.hero.temple = start_town;
@@ -381,6 +386,7 @@ impl Game {
             Action::WorldMap => return self.to_world_map(),
             Action::Land => return self.land_here(None),
             Action::Decide(k) => return super::tales::decide(self, k),
+            Action::Assault(dx, dy) => { let (nx, ny) = (self.x + dx, self.y + dy); match self.npc_at(nx, ny) { Some(k) => self.assault(k), None => self.step(dx, dy) } }
             Action::Move(dx, dy) => self.step(dx, dy),
             Action::Wait => Some(100),
             Action::Rest => return self.rest(),
@@ -950,6 +956,7 @@ impl Game {
         let dead = p.monsters.remove(k);
         self.corpses.entry(here).or_default().push(Corpse { x, y, z, def: dead.def.clone(), name: dead.name.clone(), turn });
         if !dead.boss && here != LAND { self.respawn.push((here, dead.clone(), turn)); }
+        if dead.town != 0 { let (t, n) = (dead.town, dead.name.clone()); self.town_blood(t, &n); }
         self.stats.kills += 1;
         self.hero.kills += 1;
         if dead.boss {
@@ -957,6 +964,7 @@ impl Game {
             let place = self.place().map(|p| p.spec.name.clone()).unwrap_or_default(); let lvl = self.hero.level;
             self.deeds.push((turn, format!("slew {} in {} (level {})", dead.name, place, lvl)));
             let creature = self.place().and_then(|p| p.spec.creature).filter(|_| dead.legend.is_some());
+            if creature.is_some() { let at = self.place().map(|p| p.spec.tile).unwrap_or(self.tile); let n = dead.name.clone(); self.beast_slain(at, &n); }
             let who = self.hero.name.clone();
             let kind = match creature { Some(c) => super::living::DeedKind::BeastSlain(c), None => super::living::DeedKind::BossSlain };
             self.chronicle(kind, format!("{} slew {}", who, dead.name), format!("{} slew {} in {}.", who, dead.name, place));
@@ -1046,7 +1054,7 @@ impl Game {
             if self.hero.fed == 0 && self.turn / 100 % 50 == 0 { self.say(Tone::Danger, "You are hungry, and you will not heal until you eat (F eats, or click food in the pack)."); }
         }
         if self.here.is_some() { self.monsters_act(cost); }
-        if before * 100 / super::land::DAY != self.turn / super::land::DAY { self.companion_day(); }
+        if before * 100 / super::land::DAY != self.turn / super::land::DAY { self.companion_day(); self.regard_day(); }
         self.land_tick(before * 100);
         self.corpses.values_mut().for_each(|v| v.retain(|c| self.turn < c.turn + 3000));
     }
@@ -1344,6 +1352,16 @@ impl Game {
         let here: Vec<u32> = self.sites.iter().filter(|s| s.tile == (nx, ny) && s.kind != SiteKind::Wilds).map(|s| s.id).collect();
         for id in &here { if !self.known.contains(id) { self.known.push(*id); let s = self.site(*id).unwrap(); let line = format!("You come upon {}: {}.{}", s.name, s.kind.word(), if s.cause.is_empty() { String::new() } else { format!(" {}", s.cause) }); self.say(Tone::Quest, line); } }
         if let Some(id) = here.first() { let s = self.site(*id).unwrap(); let n = s.name.clone(); self.say(Tone::Info, format!("{} is here. (Enter to walk the land.)", n)); return true; }
+        // Hunted: a town that hates the hero has put a price on their head.
+        if let Some((t, _)) = self.hunted_by() {
+            let mut r = self.roll(0xB0B7 ^ t as u64);
+            if r.gen_bool(0.2) {
+                let tname = self.site(t).map(|s| s.name.clone()).unwrap_or_default();
+                self.say(Tone::Danger, format!("Riders on the road: bounty hunters, with a paper from {} that has your face on it.", tname));
+                self.ambush_of("bounty_hunter", 2, &format!("a bounty hunter of {}", tname));
+                return true;
+            }
+        }
         // Something on the road (an ambush, by the land's danger; worse in blank country).
         let danger = self.world.danger[k] as f64 / 255.0;
         let mut r = self.roll(0x7A5E ^ (nx * 131 + ny) as u64);

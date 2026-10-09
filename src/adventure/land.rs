@@ -291,6 +291,7 @@ impl Game {
         if self.route.last() != Some(&(t.0 as u16, t.1 as u16)) { self.route.push((t.0 as u16, t.1 as u16)); if self.route.len() > 6000 { self.route.drain(0..1000); } }
         let fresh = self.ink(t, on_foot);
         super::tales::on_tile(self);
+        if let Some(town) = self.sites.iter().find(|s| s.tile == t && s.kind == SiteKind::Town).map(|s| s.id) { self.at_the_gate(town); }
         let now = self.region_name(t);
         if on_foot && now != before { self.say(Tone::Info, format!("You come into {}.", now)); }
         if on_foot && fresh > 0 { if let Some(tale) = self.world.tales.get(&(t.1 * self.world.w + t.0)).cloned() { self.say(Tone::Quest, format!("{} Old bones still come up in the grass.", tale)); } }
@@ -496,6 +497,21 @@ impl Game {
             let (x, y) = self.open_near(x, y);
             let uid = self.fresh_uid();
             let mut m = Monster::new(uid, def, x, y, 0);
+            m.awake = true;
+            if let Some(p) = self.land.as_mut() { p.monsters.push(m); }
+        }
+        self.look();
+    }
+
+    /// Set upon by `n` of `def` named `name` (landed among them, awake).
+    pub fn ambush_of(&mut self, def: &str, n: usize, name: &str) {
+        let t = self.tile;
+        self.land_at(t, None);
+        for k in 0..n {
+            let (x, y) = self.open_near(self.x + 5 - 2 * k as i32, self.y - 4);
+            let uid = self.fresh_uid();
+            let mut m = Monster::new(uid, def, x, y, 0);
+            m.name = name.to_string();
             m.awake = true;
             if let Some(p) = self.land.as_mut() { p.monsters.push(m); }
         }
@@ -839,5 +855,43 @@ mod tests {
             assert_eq!(gone, leaves, "pick {}: {} gone {}", pick, other, gone);
             assert!(!g.site(1).unwrap().notes.is_empty(), "the town remembers");
         }
+    }
+
+    /// Regard: striking and killing the town's guard raises its prices, bars its people's talk and
+    /// brings the watch to the gate; a beast slain near a town makes every townsperson greet the
+    /// hero by the deed.
+    #[test]
+    fn the_town_remembers_blood_and_deeds() {
+        use crate::adventure::actor::Role;
+        let mut g = game();
+        g.land_at((3, 2), None);
+        let price = |g: &Game| crate::adventure::regard::price_factor(g.regard_of(1));
+        let before = price(&g);
+        let k = g.place().unwrap().npcs.iter().position(|n| n.role == Role::Guard && n.home == 1).expect("a guard");
+        g.assault(k);
+        let uid = g.place().unwrap().monsters.iter().find(|m| m.town == 1 && m.def == "watchman" && m.hp > 0).map(|m| m.uid).unwrap();
+        let i = g.place().unwrap().monsters.iter().position(|m| m.uid == uid).unwrap();
+        g.place_mut().unwrap().monsters[i].hp = 1;
+        g.place_mut().unwrap().monsters[i].x = g.x + 1; g.place_mut().unwrap().monsters[i].y = g.y;
+        for _ in 0..20 { if !g.place().unwrap().monsters.iter().any(|m| m.uid == uid) { break; } g.act(Action::Attack(uid)); }
+        assert!(g.regard_of(1) <= -60, "regard {}", g.regard_of(1));
+        assert!(price(&g) > before, "prices rose: {} -> {}", before, price(&g));
+        // Talk is barred; the watch meets them at the gate when they come back.
+        let k = g.place().unwrap().npcs.iter().position(|n| n.role == Role::Trader && n.home == 1).unwrap();
+        crate::adventure::npc::greet(&mut g, k);
+        assert!(g.talk.as_ref().unwrap().options.len() == 1, "barred");
+        g.talk = None;
+        g.place_mut().unwrap().monsters.retain(|m| m.town != 1);
+        g.to_world_map();
+        g.land_at((3, 2), None);
+        assert!(g.place().unwrap().monsters.iter().filter(|m| m.town == 1).count() >= 2, "the watch at the gate");
+        // Another town's people are grateful for a beast slain near them.
+        let mut g = game();
+        g.land_at((3, 2), None);
+        g.beast_slain((4, 2), "Gnash the Old");
+        let k = g.place().unwrap().npcs.iter().position(|n| n.role == Role::Priest && n.home == 1).unwrap();
+        crate::adventure::npc::greet(&mut g, k);
+        let said = g.talk.as_ref().unwrap().said.to_lowercase();
+        assert!(said.contains("tess") && said.contains("gnash"), "{}", said);
     }
 }
