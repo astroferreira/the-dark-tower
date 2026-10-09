@@ -696,3 +696,58 @@ pub fn draw_headframe(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera
     pen.line((0.5, -0.45), (0.5, 0.35), INK, 1.0);
     pen.rect(0.4, 0.35, 0.6, 0.52, [150.0, 104.0, 64.0]);
 }
+
+/// The lost relic where it lies until found (`relic.rs`), half in the earth, glinting.
+pub fn draw_relic(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i64, Rgb, f32), w: usize, h: usize, level: Option<i32>) {
+    let Some(r) = colony.relic.as_ref().filter(|r| r.found.is_none()) else { return };
+    // On the surface view only the relic not lying below; on a level, the one at that level.
+    // (The relic records no level, only whether it lies below: the levels draw it at its cell.)
+    if level.is_some() != r.below { return; }
+    let c = Cells::new(cam, w, h);
+    if !c.visible(r.at.0 as f32, r.at.1 as f32, w, h, 2.0) { return; }
+    let mut pen = c.pen(put, r.at.0 as f32 + 0.5, r.at.1 as f32 + 0.5);
+    pen.ellipse_f(0.0, 0.15, 0.35, 0.15, [120.0, 100.0, 76.0], Finish::Paint);
+    let g = super::glyphs::Glyph::of_thing(&format!("{} {}", r.what, r.name));
+    drop(pen);
+    let t = (c.t * 0.75).max(8.0);
+    super::glyphs::draw(put, if g == super::glyphs::Glyph::Work { super::glyphs::Glyph::Chest } else { g }, c.x0 + (r.at.0 as f32 + 0.5) * c.t, c.y0 + (r.at.1 as f32 + 0.45) * c.t, t, Some([214.0, 176.0, 70.0]));
+    let mut pen = c.pen(put, r.at.0 as f32 + 0.5, r.at.1 as f32 + 0.5);
+    let tw = (colony.clock.tick / 7) % 4;
+    if tw < 2 { for a in 0..4 { let ang = a as f32 * 1.5708 + 0.785; pen.line((0.25, -0.25), (0.25 + ang.cos() * 0.18, -0.25 + ang.sin() * 0.18), [255.0, 246.0, 200.0], 1.0); } }
+}
+
+/// The hall in the hill (`RoomKind::Hall`): a hearth on one wall, benches and a trestle, so the
+/// first dug room reads as where they live.
+pub fn draw_hill_hall(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, cells: &[(u16, u16)]) {
+    if cells.len() < 4 { return; }
+    let c = Cells::new(cam, w, h);
+    let (mut x0, mut y0, mut x1, mut y1) = (u16::MAX, u16::MAX, 0u16, 0u16);
+    for &p in cells { x0 = x0.min(p.0); y0 = y0.min(p.1); x1 = x1.max(p.0); y1 = y1.max(p.1); }
+    let (cx, cy) = ((x0 as f32 + x1 as f32 + 1.0) / 2.0, (y0 as f32 + y1 as f32 + 1.0) / 2.0);
+    if !c.visible(cx, cy, w, h, 6.0) { return; }
+    // The hearth at the north wall's middle.
+    let mut pen = c.pen(put, cx, y0 as f32 + 0.5);
+    pen.rect(-0.7, -0.4, 0.7, 0.45, STONE);
+    pen.rect_f(-0.4, -0.1, 0.4, 0.4, [70.0, 50.0, 44.0], Finish::Plain);
+    pen.glow(0.0, 0.2, 0.7, [250.0, 170.0, 70.0], 0.4);
+    pen.poly(&[(-0.2, 0.35), (0.0, 0.0), (0.2, 0.35)], [226.0, 120.0, 46.0]);
+    drop(pen);
+    if y1 > y0 + 2 && x1 > x0 + 2 {
+        let mut pen = c.pen(put, cx - 1.5, cy);
+        pen.rect(0.1, 0.25, 2.9, 0.75, WOOD);
+        pen.rect(0.2, -0.15, 2.8, 0.05, DARK_WOOD);
+        pen.rect(0.2, 0.95, 2.8, 1.15, DARK_WOOD);
+    }
+}
+
+/// The lined part of a wet shaft (`Colony::aquifer_lined`): courses of dressed stone round the
+/// stair's cell at the levels the aquifer runs through.
+pub fn draw_lining(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, at: (u16, u16)) {
+    let c = Cells::new(cam, w, h);
+    if !c.visible(at.0 as f32, at.1 as f32, w, h, 2.0) { return; }
+    let mut pen = c.pen(put, at.0 as f32, at.1 as f32);
+    for (u0, v0, u1, v1) in [(-0.2, -0.2, 1.2, 0.0), (-0.2, 1.0, 1.2, 1.2), (-0.2, 0.0, 0.0, 1.0), (1.0, 0.0, 1.2, 1.0)] {
+        pen.rect(u0, v0, u1, v1, [196.0, 190.0, 176.0]);
+    }
+    for k in 0..4 { let u = -0.2 + k as f32 * 0.35; pen.line_a((u, -0.2), (u, 0.0), INK, 1.0, 0.6); pen.line_a((u + 0.17, 1.0), (u + 0.17, 1.2), INK, 1.0, 0.6); }
+}

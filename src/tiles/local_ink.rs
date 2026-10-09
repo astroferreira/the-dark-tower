@@ -1237,6 +1237,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     super::camp_ink::draw_palisade(colony, cam, &mut put, w, h);
     super::camp_ink::draw_works(colony, cam, &mut put, w, h);
     super::fx_ink::draw_siege(colony, cam, &mut put, w, h);
+    super::camp_ink::draw_relic(colony, cam, &mut put, w, h, None);
     super::fx_ink::draw_clash(colony, cam, &mut put, w, h);
     // Buildings going up, drawn by the share of loads laid: pegs and a line (a quarter), a
     // timber frame (to three fifths), then walls rising round the ring.
@@ -1692,6 +1693,11 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
     }
     let cells = super::camp_ink::Cells::new(cam, w, h);
     let looks = settler_looks(colony, history);
+    // The lost relic where it lies below; the wet shaft's lining at the aquifer's levels.
+    if colony.relic.as_ref().map_or(false, |r| r.below) { super::camp_ink::draw_relic(colony, cam, &mut put, w, h, Some(cam.z)); }
+    if let (true, Some((lo, hi)), Some(sp)) = (colony.aquifer_lined, colony.map.aquifer, colony.spine) {
+        if cam.z >= lo && cam.z <= hi + 1 { super::camp_ink::draw_lining(&mut put, cam, w, h, sp.at); }
+    }
     // The hatch over the stair below the first cavern: planks bound with iron, an iron ring.
     if let Some((p, _)) = colony.hatch.filter(|h| h.1 == cam.z || h.1 == cam.z + 1) {
         super::furniture::hatch(&mut cells.pen(&mut put, p.0 as f32, p.1 as f32));
@@ -1758,6 +1764,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
                 }
             }
             RoomKind::Hall | RoomKind::Cellar => {
+                if r.kind == RoomKind::Hall { super::camp_ink::draw_hill_hall(&mut put, cam, w, h, &r.cells); }
                 if r.kind == RoomKind::Cellar {
                     // Casks, sacks and crates along it.
                     for (k, &c) in r.cells.iter().enumerate().filter(|(k, _)| k % 3 == 1) {
@@ -1832,6 +1839,8 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
             PlaceKind::Tomb => super::furniture::coffin(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32), true),
             PlaceKind::Lair => super::furniture::lair(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32)),
             PlaceKind::OldMine => super::furniture::ore_cart(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32)),
+            PlaceKind::Cave => super::furniture::cave_end(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32)),
+            PlaceKind::Halls => super::furniture::halls_end(&mut cells.pen(&mut put, c.0 as f32, c.1 as f32)),
             _ => {}
         }
         if t >= 9.0 { labels.push((x + t * 0.5, y - 2.0, pl.name.clone(), false)); }

@@ -134,8 +134,41 @@ pub fn figure_marks(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::col
         pen.ellipse(0.0, -1.25, 0.62, 0.36, [244.0, 240.0, 230.0]);
         pen.rect(-0.55, -1.05, 0.55, -0.75, [244.0, 240.0, 230.0]);
     }
-    if s.visitor.is_some() && s.guest_until > tick {
-        pen.ellipse(0.0, -0.75, 1.5, 0.32, [96.0, 80.0, 70.0]);
-        pen.ellipse(0.0, -1.0, 0.75, 0.45, [110.0, 92.0, 80.0]);
+    if let (Some(calling), true) = (s.visitor.as_deref(), s.guest_until > tick) { guest_marks(&mut pen, calling); }
+    // A vampire, once the sharp-eyed have noticed (`night.rs`): a pallor and red eyes at night.
+    if colony.vampire_noticed && colony.vampire.map_or(false, |v| v.0 == i) && colony.clock.is_night() {
+        pen.glow(-0.4, -0.05, 0.35, [230.0, 40.0, 30.0], 0.8);
+        pen.glow(0.4, -0.05, 0.35, [230.0, 40.0, 30.0], 0.8);
+        pen.dot(-0.4, -0.05, [250.0, 70.0, 50.0]);
+        pen.dot(0.4, -0.05, [250.0, 70.0, 50.0]);
     }
 }
+
+/// A guest's look by their calling, on a pen whose unit is the head's radius (centred on it).
+pub fn guest_marks(pen: &mut Pen, calling: &str) {
+        // A guest from the world, by their calling (`visitors.rs`): the monster hunter's
+        // feathered cap and bow, the teller's or loremaster's wide hat and lute or book, the
+        // seeker's hood and lantern, the sellsword's helm and sword.
+        let lw = (pen.half * 0.12).max(1.0);
+        if calling.starts_with("a monster hunter") {
+            pen.ellipse(0.0, -0.85, 1.05, 0.4, [90.0, 110.0, 70.0]);
+            pen.bone(&[(0.6, -1.0), (1.3, -1.9)], [196.0, 60.0, 50.0], lw * 1.5);
+            pen.path(&[(-1.9, -1.2), (-1.5, 0.0), (-1.9, 1.6)], [140.0, 100.0, 60.0], lw * 1.6);
+            pen.line((-1.9, -1.2), (-1.9, 1.6), [226.0, 218.0, 200.0], 1.0);
+        } else if calling.starts_with("a loremaster") || calling.starts_with("a teller") {
+            pen.ellipse(0.0, -0.75, 1.5, 0.32, [96.0, 80.0, 70.0]);
+            pen.ellipse(0.0, -1.0, 0.75, 0.45, [110.0, 92.0, 80.0]);
+            if calling.starts_with("a loremaster") { pen.rect(-2.2, 0.8, -1.3, 1.9, [130.0, 58.0, 46.0]); pen.line((-1.75, 0.8), (-1.75, 1.9), INK, 1.0); }
+            else { pen.ellipse(-1.8, 1.4, 0.45, 0.55, [176.0, 128.0, 80.0]); pen.bone(&[(-1.8, 0.9), (-1.6, -0.6)], [140.0, 100.0, 60.0], lw * 1.2); }
+        } else if calling.starts_with("a seeker") {
+            pen.shape([110.0, 96.0, 120.0], Finish::Inked, [-1.3, -1.6, 1.3, 0.9], &|u, v| { let o = (u / 1.15).powi(2) + ((v + 0.1) / 1.25).powi(2) <= 1.0; let f = (u / 0.85).powi(2) + ((v - 0.05) / 0.9).powi(2) <= 1.0 && v > -0.5; o && !f });
+            pen.line((-1.7, -0.2), (-1.7, 0.6), INK, 1.0);
+            pen.rect(-2.05, 0.6, -1.35, 1.3, [196.0, 170.0, 110.0]);
+            pen.glow(-1.7, 0.95, 0.8, [250.0, 200.0, 110.0], 0.6);
+        } else {
+            pen.shape([150.0, 150.0, 156.0], Finish::Inked, [-1.1, -1.25, 1.1, -0.1], &|u, v| v < -0.15 && (u / 1.08).powi(2) + (v / 1.2).powi(2) <= 1.0);
+            pen.rect_f(-0.12, -0.3, 0.12, 0.35, [150.0, 150.0, 156.0], Finish::Plain);
+            pen.bone(&[(1.6, 1.8), (2.3, -0.8)], [200.0, 202.0, 210.0], lw * 1.6);
+            pen.line((1.4, 1.1), (2.0, 1.3), INK, lw);
+        }
+    }

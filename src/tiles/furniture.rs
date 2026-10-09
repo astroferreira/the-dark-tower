@@ -222,3 +222,18 @@ pub fn artifact(pen: &mut Pen, title: &str) {
         pen.dot(0.5, 0.5, gem);
     }
 }
+
+/// At the end of a cave in the hills: a cold fire ring and old bones, someone's shelter once.
+pub fn cave_end(pen: &mut Pen) {
+    pen.ellipse_f(0.5, 0.55, 0.3, 0.2, [96.0, 88.0, 82.0], Finish::Plain);
+    for k in 0..7 { let a = k as f32 * 0.9; pen.ellipse(0.5 + a.cos() * 0.34, 0.55 + a.sin() * 0.24, 0.07, 0.06, STONE); }
+    pen.bone(&[(0.1, 0.15), (0.35, 0.05)], [232.0, 224.0, 204.0], (pen.half * 0.04).max(1.0));
+}
+
+/// The far hall of old halls under the hill: two pillars and a seat of stone between them.
+pub fn halls_end(pen: &mut Pen) {
+    for u in [0.05f32, 0.95] { pen.ellipse(u, 0.5, 0.16, 0.16, STONE); pen.ellipse_f(u, 0.5, 0.08, 0.08, mix(STONE, INK, 0.3), Finish::Paint); }
+    pen.rect(0.3, 0.2, 0.7, 0.75, STONE);
+    pen.rect(0.3, 0.1, 0.7, 0.28, mix(STONE, [250.0, 244.0, 230.0], 0.2));
+    pen.dot(0.5, 0.45, [214.0, 176.0, 70.0]);
+}

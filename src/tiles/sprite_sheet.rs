@@ -79,7 +79,7 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
     ];
     let arts = ["a figurine", "a chest", "pipes", "a drum", "a harp", "a crown", "a ring", "a goblet", "a sword", "a book", "a carved stone"];
     let glyph_all = super::glyphs::Glyph::ALL;
-    let n = emblems.len() + folk.len() + furn.len() + arts.len() + glyph_all.len();
+    let n = emblems.len() + folk.len() + 5 + furn.len() + arts.len() + glyph_all.len();
     let cols = 9;
     let mut sheet = Sheet::new(cols, (n + cols - 1) / cols, 150, 130);
     sheet.title("People and things: what settlers go through, strangers, furniture below, artifacts");
@@ -88,6 +88,20 @@ fn save_people_and_things(path: &str) -> Result<usize, Box<dyn std::error::Error
         let mut put = sheet.put();
         super::status_ink::draw_bubble(&mut put, e, cx - 30.0, cy + 20.0, 2.4);
         super::status_ink::draw_bubble(&mut put, e, cx + 40.0, cy + 20.0, 0.85);
+    }
+    // Guests from the world, by their calling: a settler's figure with the guest's marks.
+    for calling in ["a monster hunter of Titankeep", "a teller of tales of Ripu", "a loremaster of the Git Clans", "a seeker of lost things", "a sellsword of Badgerd"] {
+        let (cx, cy) = sheet.cell(calling.split(" of ").next().unwrap_or(calling));
+        let mut put = sheet.put();
+        let mut f = super::folk::trader(calling, 5);
+        f.arm = super::folk::Arm::None; f.helm = super::folk::Helm::None;
+        let sc = 3.0;
+        super::folk::draw(&mut put, &f, cx, cy + 10.0, sc, false, false, 1.0);
+        // The head's centre and radius as folk::draw has them (unit box 22 px at scale 1).
+        let size = 22.0 * sc;
+        let (hx, hy, hr) = (cx, cy + 10.0 - 2.0 * sc + (-0.32) * size / 2.0, 0.38 * size / 2.0);
+        let mut pen = super::ink::Pen::new(&mut put, hx, hy, hr * 2.0);
+        super::status_ink::guest_marks(&mut pen, calling);
     }
     for (label, f) in &folk {
         let (cx, cy) = sheet.cell(label);
