@@ -1301,6 +1301,56 @@ const LAPSE_SIZE: (usize, usize) = (960, 600);
 /// Simulate `config`'s history without a window and save watcher frames as
 /// `<prefix>_y<year>.png` at a quarter, half and the end, plus a close-up of the last event
 /// with a place, for checking the watcher's look headlessly.
+/// Frame budget of the history watcher (`--frame-bench-watch`): the history is simulated, then
+/// played back a step at a time as the window would (each step drawn), then the camera pans
+/// across the map. Prints the frame times of each.
+pub fn watch_frame_bench(world: &WorldData, game_data: &GameData, config: HistoryConfig, engine: HistoryEngine, atlas: &Atlas) -> WorldHistory {
+    let mut base = TileWorld::build(world, atlas);
+    base.set_season(world, Season::Summer);
+    let total = config.total_steps() as usize;
+    let ctl = Control { paused: AtomicBool::new(false), pace: AtomicUsize::new(PACES.len() - 1), detached: AtomicBool::new(false) };
+    let (tx, rx) = mpsc::channel();
+    let report = |what: &str, ms: &mut Vec<f64>| {
+        if ms.is_empty() { return; }
+        ms.sort_by(|a, b| a.total_cmp(b));
+        let q = |f: f64| ms[((ms.len() - 1) as f64 * f) as usize];
+        let over = ms.iter().filter(|&&t| t > 1000.0 / 60.0).count();
+        println!("{}: {} frames, ms p50 {:.2} p95 {:.2} p99 {:.2} max {:.1}; over 16.7 ms: {}", what, ms.len(), q(0.5), q(0.95), q(0.99), q(1.0), over);
+    };
+    std::thread::scope(|scope| {
+        let sim = {
+            let ctl = &ctl;
+            scope.spawn(move || simulate(world, game_data, config, engine, ctl, tx))
+        };
+        let mut view = View::new(world, atlas, base);
+        view.resize(1280, 800);
+        for msg in rx.iter() { view.receive(msg); }
+        let mut ms = Vec::new();
+        view.jump(0);
+        for _ in 0..total.min(400) {
+            view.step_forward();
+            view.last_render = Instant::now() - Duration::from_secs(1);
+            let t0 = Instant::now();
+            view.draw((0.0, 0.0), false, &ctl);
+            ms.push(t0.elapsed().as_secs_f64() * 1000.0);
+        }
+        report("Watcher playing a step a frame", &mut ms);
+        let mut ms = Vec::new();
+        for f in 0..300 {
+            let a = f as f32 * 0.02;
+            view.cam.cx = world.width as f32 / 2.0 + 0.3 * world.width as f32 * a.cos();
+            view.cam.cy = world.height as f32 / 2.0 + 0.2 * world.height as f32 * a.sin();
+            view.moved = Instant::now();
+            view.map_dirty = true;
+            let t0 = Instant::now();
+            view.draw((0.0, 0.0), false, &ctl);
+            ms.push(t0.elapsed().as_secs_f64() * 1000.0);
+        }
+        report("Watcher panning", &mut ms);
+        sim.join().expect("history simulation panicked")
+    })
+}
+
 pub fn watch_snapshots(world: &WorldData, game_data: &GameData, config: HistoryConfig, engine: HistoryEngine, atlas: &Atlas, prefix: &str) -> (WorldHistory, Vec<String>) {
     let mut base = TileWorld::build(world, atlas);
     base.set_season(world, Season::Summer);

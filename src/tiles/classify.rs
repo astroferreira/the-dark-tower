@@ -21,6 +21,9 @@ pub const DIRS: [(i32, i32); 8] = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1
 
 #[derive(Clone)]
 pub struct TileWorld {
+    /// Bumped whenever what is drawn changes (season, history, overlay, resources): the world
+    /// map kept between frames is drawn afresh (`render::render_world_cached`).
+    pub revision: u64,
     pub width: usize,
     pub height: usize,
     pub ground: Vec<TileKind>,
@@ -204,6 +207,7 @@ impl TileWorld {
         let volcano: std::collections::HashSet<(usize, usize)> = world.volcanoes.iter().map(|v| (v.x, v.y)).collect();
 
         let mut tw = TileWorld {
+            revision: 0,
             width: w,
             height: h,
             ground: Vec::with_capacity(n),
@@ -422,6 +426,7 @@ impl TileWorld {
 
     /// Recompute snow cover, foliage colour and frozen water for a season.
     pub fn set_season(&mut self, world: &WorldData, season: crate::seasons::Season) {
+        self.revision += 1;
         use crate::seasons::Season;
         let (w, h) = (self.width, self.height);
         let sc = world.seasonal_climate.as_ref();
@@ -456,12 +461,14 @@ impl TileWorld {
     /// Overlay what history left on the land: settlements and ruins as sprites, roads, and
     /// territory ownership.
     pub fn apply_history(&mut self, world: &WorldData, history: &crate::history::world_state::WorldHistory, atlas: &Atlas) {
+        self.revision += 1;
         let overlay = HistoryOverlay::from_history(history, self.width, self.height);
         self.apply_overlay(world, &overlay, atlas);
     }
 
     /// Apply a history overlay (see `HistoryOverlay`) to a freshly built tile world.
     pub fn apply_overlay(&mut self, world: &WorldData, o: &HistoryOverlay, atlas: &Atlas) {
+        self.revision += 1;
         let (w, h) = (self.width, self.height);
         for i in 0..w * h {
             self.owner[i] = o.owner[i];

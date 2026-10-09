@@ -19,7 +19,7 @@ use crate::world::WorldData;
 use super::atlas::Atlas;
 use super::overlays::{self, Overlay};
 use super::classify::TileWorld;
-use super::render::{render_local, render_minimap, render_world, render_zoom, screen_to_world, Camera, LocalCamera, ZoomCamera};
+use super::render::{render_local, render_minimap, render_world, render_world_cached, render_zoom, screen_to_world, snap_world_camera, Camera, LocalCamera, ZoomCamera};
 use crate::local::{generate_local, LocalMap, Plant, Shape, LOCAL_SIZE, TILE_M};
 
 const MIN_TILE_PX: f32 = 1.0;
@@ -1176,12 +1176,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         status = "no history to write a journal from (run without --no-history)".to_string();
                     }
                 }
-                if pressed(Key::R) { tw.show_resources = !tw.show_resources; dirty = true; }
+                if pressed(Key::R) { tw.show_resources = !tw.show_resources; tw.revision += 1; dirty = true; }
                 if pressed(Key::O) {
                     let back = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
                     overlay = overlay.cycle(if back { -1 } else { 1 });
                     tw.overlay = overlays::colors(world, overlay);
                     tw.overlay_smooth = overlay.smooth();
+                    tw.revision += 1;
                     dirty = true;
                 }
                 if pressed(Key::C) {
@@ -1214,14 +1215,23 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             if dirty {
                 if local_active {
                     let (colony, lcam) = local.as_ref().unwrap();
+                    // (On whole pixels: the ground is drawn so, and a pan shifts the last frame.)
+                    let snapped = super::local_ink::snap_camera(lcam, w, h);
+                    let lcam = &snapped;
                     if section_view {
                         let half = ((w as f32 / 14.0) as usize / 2).max(8);
                         let cx = lcam.cx as usize;
                         super::local_ink::render_section_ink(colony, lcam.cy as usize, cx.saturating_sub(half), (cx + half).min(colony.map.width), &mut buf, w, h);
                     } else {
-                        render_local(&colony.map, &atlas, lcam, &mut buf, w, h);
-                        if lcam.surface_view { super::local_ink::draw_colony(colony, lcam, &mut buf, w, h, history); }
-                        else { super::local_ink::draw_level(colony, lcam, &mut buf, w, h, history); }
+                        // (The surface with the worn paths on it is kept between frames.)
+                        if lcam.surface_view && std::env::var("PLANET_TILE_LEVELS").is_err() {
+                            super::local_ink::render_colony_ground(colony, lcam, &mut buf, w, h);
+                            super::local_ink::draw_colony_on_ground(colony, lcam, &mut buf, w, h, history);
+                        } else {
+                            render_local(&colony.map, &atlas, lcam, &mut buf, w, h);
+                            if lcam.surface_view { super::local_ink::draw_colony(colony, lcam, &mut buf, w, h, history); }
+                            else { super::local_ink::draw_level(colony, lcam, &mut buf, w, h, history); }
+                        }
                     }
                     log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: &status, mouse }, &mut buf, w, h);
                     if let Some(m) = &moment_card { super::colony_hud::draw_moment(m, &mut buf, w, h); }
@@ -1258,7 +1268,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     draw_box(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, half, 0x00F0_D23C);
                     draw_marker(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, (px_per_cell * 0.6).clamp(4.0, 10.0));
                 } else {
-                    render_world(&tw, &atlas, &cam, &mut buf, w, h);
+                    // (Kept between frames, shifted when panned; on whole pixels.)
+                    render_world_cached(&tw, &atlas, &cam, &mut buf, w, h);
+                    let cam = snap_world_camera(&cam, w, h);
                     if show_labels {
                         let avoid = if show_minimap { vec![minimap_box(tw.width, tw.height, w, h)] } else { Vec::new() };
                         draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &avoid);
@@ -2457,6 +2469,172 @@ pub fn colony_bench(world: &WorldData, history: Option<&WorldHistory>, tile: (us
     let ticks = 2.0 * crate::colony::TICKS_PER_DAY as f64;
     println!("Colony bench: {} settlers, 2 game days in {:.2}s = {:.0} ticks/s; 1x = 60 ticks/s, so up to {:.0}x; {} alive",
         n, secs, ticks / secs, ticks / secs / 60.0, colony.alive());
+}
+
+/// The frame benches' window: 1280x800, or `PLANET_BENCH_SIZE=WxH`.
+fn bench_size() -> (usize, usize) {
+    std::env::var("PLANET_BENCH_SIZE").ok().and_then(|v| { let (a, b) = v.split_once('x')?; Some((a.parse().ok()?, b.parse().ok()?)) }).unwrap_or((1280, 800))
+}
+
+/// CPU time the process has run (ms, all its threads): what a frame costs, whatever else the
+/// machine is doing (wall time on a busy machine counts the time spent waiting to be scheduled).
+/// With RAYON_NUM_THREADS=1 a frame's CPU time is all of its work, as one core would do it.
+fn thread_cpu_ms() -> f64 {
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru); }
+    let tv = |t: libc::timeval| t.tv_sec as f64 * 1000.0 + t.tv_usec as f64 / 1000.0;
+    tv(ru.ru_utime) + tv(ru.ru_stime)
+}
+
+/// Frame budget benchmark (`--frame-bench SPEED`): the colony window's work per frame, headless.
+/// Each frame runs `speed` ticks (1x = one tick a frame at 60 frames a second) and draws what the
+/// window draws (`render_local`, then `draw_colony`, `draw_level` or the section, then the HUD) at
+/// 1280x800 with the camera on the camp, for `days` game days. Prints the frame times (median,
+/// 95th and 99th percentile, worst, share over 16.7 ms), the worst frames and the slowest single
+/// ticks with their game time. `mode`: "surface" (default), "level" (one below the ground) or
+/// "section".
+pub fn frame_bench(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize), speed: u32, days: u64, mode: &str) {
+    let (map, seed, _) = colony_site(world, history, tile, START_CELL.get().copied());
+    let mut colony = found_colony(map, history, tile, seed, 7);
+    let (w, h) = bench_size();
+    let mut buf = vec![0u32; w * h];
+    let frames = (days * crate::colony::TICKS_PER_DAY / speed.max(1) as u64) as usize;
+    let mut tick_ms: Vec<f64> = Vec::with_capacity(frames);
+    let mut draw_ms: Vec<f64> = Vec::with_capacity(frames);
+    let mut stamps: Vec<String> = Vec::with_capacity(frames);
+    let mut worst_ticks: Vec<(f64, String)> = Vec::new();
+    let t_all = std::time::Instant::now();
+    let mut stage = [0.0f64; 3];
+    let mut frame_no = 0usize;
+    let mut parts: Vec<(f64, f64)> = Vec::with_capacity(frames);
+    let mut cpu_ms: Vec<f64> = Vec::with_capacity(frames);
+    for _ in 0..frames {
+        let c0 = thread_cpu_ms();
+        let t0 = std::time::Instant::now();
+        for _ in 0..speed.max(1) {
+            let t = std::time::Instant::now();
+            colony.tick();
+            let ms = t.elapsed().as_secs_f64() * 1000.0;
+            if ms > 2.0 { worst_ticks.push((ms, colony.clock.stamp())); }
+        }
+        let t1 = std::time::Instant::now();
+        let surface = colony.map.surface_z[colony.camp.1 as usize * colony.map.width + colony.camp.0 as usize];
+        // ("pan": the camera drifts a quarter cell a frame, round and round the camp.)
+        let drift = if mode == "pan" { let a = frame_no as f32 * 0.01; (12.0 * a.cos(), 8.0 * a.sin()) } else { (0.0, 0.0) };
+        frame_no += 1;
+        let cam = LocalCamera { cx: colony.camp.0 as f32 + 0.5 + drift.0, cy: colony.camp.1 as f32 + 0.5 + drift.1, tile_px: 16.0,
+            z: if mode == "level" { surface - 1 } else { surface }, surface_view: mode != "level" };
+        let cam = super::local_ink::snap_camera(&cam, w, h);
+        if mode == "section" {
+            let half = ((w as f32 / 14.0) as usize / 2).max(8);
+            let cx = cam.cx as usize;
+            super::local_ink::render_section_ink(&colony, cam.cy as usize, cx.saturating_sub(half), (cx + half).min(colony.map.width), &mut buf, w, h);
+        } else {
+            let a = std::time::Instant::now();
+            if cam.surface_view { super::local_ink::render_colony_ground(&colony, &cam, &mut buf, w, h); }
+            else { render_local(&colony.map, atlas, &cam, &mut buf, w, h); }
+            let b = std::time::Instant::now();
+            if cam.surface_view { super::local_ink::draw_colony_on_ground(&colony, &cam, &mut buf, w, h, history); }
+            else { super::local_ink::draw_level(&colony, &cam, &mut buf, w, h, history); }
+            stage[0] += (b - a).as_secs_f64(); stage[1] += b.elapsed().as_secs_f64();
+            parts.push(((b - a).as_secs_f64() * 1e3, b.elapsed().as_secs_f64() * 1e3));
+        }
+        let c = std::time::Instant::now();
+        super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed, status: "", mouse: (-100.0, -100.0) }, &mut buf, w, h);
+        stage[2] += c.elapsed().as_secs_f64();
+        cpu_ms.push(thread_cpu_ms() - c0);
+        tick_ms.push((t1 - t0).as_secs_f64() * 1000.0);
+        draw_ms.push(t1.elapsed().as_secs_f64() * 1000.0);
+        stamps.push(colony.clock.stamp());
+    }
+    let total: Vec<f64> = tick_ms.iter().zip(&draw_ms).map(|(a, b)| a + b).collect();
+    let pct = |v: &Vec<f64>, q: f64| { let mut s = v.clone(); s.sort_by(|a, b| a.total_cmp(b)); s[((s.len() - 1) as f64 * q) as usize] };
+    let over = total.iter().filter(|&&t| t > 1000.0 / 60.0).count();
+    println!("Frame bench ({} mode, {}x, {} days, {} frames, {:.1}s): frame ms p50 {:.2} p95 {:.2} p99 {:.2} max {:.1}; over 16.7 ms: {} ({:.2}%)",
+        mode, speed, days, frames, t_all.elapsed().as_secs_f64(), pct(&total, 0.5), pct(&total, 0.95), pct(&total, 0.99), pct(&total, 1.0), over, 100.0 * over as f64 / frames.max(1) as f64);
+    let cpu_over = cpu_ms.iter().filter(|&&t| t > 1000.0 / 60.0).count();
+    println!("  CPU ms per frame, all threads (the work without waits; one core's worth with RAYON_NUM_THREADS=1): p50 {:.2} p95 {:.2} p99 {:.2} max {:.1}; over 16.7 ms: {}",
+        pct(&cpu_ms, 0.5), pct(&cpu_ms, 0.95), pct(&cpu_ms, 0.99), pct(&cpu_ms, 1.0), cpu_over);
+    println!("  ticks ms p50 {:.3} p99 {:.2} max {:.1}; drawing ms p50 {:.2} p99 {:.2} max {:.1}",
+        pct(&tick_ms, 0.5), pct(&tick_ms, 0.99), pct(&tick_ms, 1.0), pct(&draw_ms, 0.5), pct(&draw_ms, 0.99), pct(&draw_ms, 1.0));
+    let f = frames.max(1) as f64 * 0.001;
+    println!("  mean ms per frame: terrain {:.2}, the camp {:.2}, HUD {:.2}", stage[0] / f, stage[1] / f, stage[2] / f);
+    let mut idx: Vec<usize> = (0..total.len()).collect();
+    idx.sort_by(|&a, &b| total[b].total_cmp(&total[a]));
+    for &k in idx.iter().take(8) {
+        let (a, b) = parts.get(k).copied().unwrap_or((0.0, 0.0));
+        println!("  worst frame {} : {:.1} ms (ticks {:.1}, drawing {:.1}: terrain {:.1}, the camp {:.1})", stamps[k], total[k], tick_ms[k], draw_ms[k], a, b);
+    }
+    let mut cidx: Vec<usize> = (0..cpu_ms.len()).collect();
+    cidx.sort_by(|&a, &b| cpu_ms[b].total_cmp(&cpu_ms[a]));
+    for &k in cidx.iter().take(10) {
+        let (a, b) = parts.get(k).copied().unwrap_or((0.0, 0.0));
+        println!("  costliest frame (CPU) {} : {:.1} ms CPU (wall: ticks {:.1}, terrain {:.1}, the camp {:.1})", stamps[k], cpu_ms[k], tick_ms[k], a, b);
+    }
+    worst_ticks.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (ms, at) in worst_ticks.iter().take(12) { println!("  slow tick {} : {:.1} ms", at, ms); }
+    println!("  ticks over 2 ms: {}; alive {}", worst_ticks.len(), colony.alive());
+}
+
+/// Frame budget of the world map and walking (`--frame-bench-world`): the camera pans across the
+/// world map at 4, 8, 16 and 32 px a tile (the map, its labels and the minimap, as the window
+/// draws them), then walks across the region at `tile` at 2, 4 and 8 px a cell (the region and
+/// its labels). Prints the frame times of each.
+pub fn world_frame_bench(world: &WorldData, history: Option<&WorldHistory>, atlas: &Atlas, tile: (usize, usize)) {
+    let (w, h) = bench_size();
+    let mut buf = vec![0u32; w * h];
+    let tw = TileWorld::build(world, atlas);
+    let gaz = build_gazetteer(world, history, world.seed());
+    let landmarks = crate::lore::find_landmarks(world, &gaz);
+    let labels = build_labels(world, history, &gaz, &landmarks);
+    let report = |what: &str, ms: &mut Vec<f64>, cpu: &mut Vec<f64>| {
+        ms.sort_by(|a, b| a.total_cmp(b));
+        cpu.sort_by(|a, b| a.total_cmp(b));
+        let q = |v: &Vec<f64>, f: f64| v[((v.len() - 1) as f64 * f) as usize];
+        let over = ms.iter().filter(|&&t| t > 1000.0 / 60.0).count();
+        let cover = cpu.iter().filter(|&&t| t > 1000.0 / 60.0).count();
+        println!("{}: {} frames, ms p50 {:.2} p95 {:.2} p99 {:.2} max {:.1}; over 16.7 ms: {} | CPU ms p50 {:.2} p95 {:.2} p99 {:.2} max {:.1}; over: {}", what, ms.len(), q(ms, 0.5), q(ms, 0.95), q(ms, 0.99), q(ms, 1.0), over,
+            q(cpu, 0.5), q(cpu, 0.95), q(cpu, 0.99), q(cpu, 1.0), cover);
+    };
+    for px in [4.0f32, 8.0, 16.0, 32.0] {
+        let mut ms = Vec::new();
+        let mut cpu = Vec::new();
+        let mut parts = [0.0f64; 3];
+        for f in 0..300 {
+            let a = f as f32 * 0.02;
+            let cam = Camera { cx: tw.width as f32 / 2.0 + 0.3 * tw.width as f32 * a.cos(), cy: clamp_cy(tw.height as f32 / 2.0 + 0.25 * tw.height as f32 * a.sin(), px, h, tw.height), tile_px: px };
+            let c0 = thread_cpu_ms();
+            let t0 = std::time::Instant::now();
+            render_world_cached(&tw, atlas, &cam, &mut buf, w, h);
+            let cam = snap_world_camera(&cam, w, h);
+            let t1 = std::time::Instant::now();
+            let avoid = vec![minimap_box(tw.width, tw.height, w, h)];
+            draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &avoid);
+            let t2 = std::time::Instant::now();
+            render_minimap(&tw, &cam, None, &mut buf, w, h);
+            ms.push(t0.elapsed().as_secs_f64() * 1000.0);
+            cpu.push(thread_cpu_ms() - c0);
+            parts[0] += (t1 - t0).as_secs_f64() * 1000.0; parts[1] += (t2 - t1).as_secs_f64() * 1000.0; parts[2] += t2.elapsed().as_secs_f64() * 1000.0;
+        }
+        println!("  mean ms: map {:.2}, labels {:.2}, minimap {:.2}", parts[0] / 300.0, parts[1] / 300.0, parts[2] / 300.0);
+        report(&format!("World map at {} px a tile", px), &mut ms, &mut cpu);
+    }
+    let z = load_region(world, history, tile, world.seed());
+    for ppc in [2.0f32, 4.0, 8.0] {
+        let mut ms = Vec::new();
+        let mut cpu = Vec::new();
+        for f in 0..300 {
+            let a = f as f32 * 0.02;
+            let cam_z = ZoomCamera { cx: z.region.width as f32 / 2.0 + 0.25 * z.region.width as f32 * a.cos(), cy: z.region.height as f32 / 2.0 + 0.25 * z.region.height as f32 * a.sin(), px_per_cell: ppc };
+            let c0 = thread_cpu_ms();
+            let t0 = std::time::Instant::now();
+            render_zoom(&z.rgb, z.region.width, z.region.height, &cam_z, &mut buf, w, h);
+            if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h); }
+            ms.push(t0.elapsed().as_secs_f64() * 1000.0);
+            cpu.push(thread_cpu_ms() - c0);
+        }
+        report(&format!("Walking at {} px a cell", ppc), &mut ms, &mut cpu);
+    }
 }
 
 /// Headless run of the first colony: found it on the embark at `tile`, let it live 30 days

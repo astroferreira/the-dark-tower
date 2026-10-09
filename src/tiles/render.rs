@@ -353,24 +353,124 @@ pub fn render_world(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32]
 /// `render_world` computing one pixel in every `lod` x `lod` block (the rest are copies): a
 /// cheap preview with the same look, for frames where the view is moving.
 pub fn render_world_lod(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32], w: usize, h: usize, lod: usize) {
-    let lod = lod.max(1);
     let t = cam.tile_px;
+    let (ox, oy) = (cam.cx * t - w as f32 / 2.0, cam.cy * t - h as f32 / 2.0);
+    render_world_core(tw, atlas, t, ox, oy, (0, 0), buf, w, h, lod, None);
+    draw_shadow_seat(tw, cam, buf, w, h);
+}
+
+/// The camera moved onto whole screen pixels (as `render_world_cached` draws the map), so what
+/// is drawn over the map stays put on it while the view pans.
+pub fn snap_world_camera(cam: &Camera, w: usize, h: usize) -> Camera {
+    let t = cam.tile_px;
+    let ox = (cam.cx * t - w as f32 / 2.0).round();
+    let oy = (cam.cy * t - h as f32 / 2.0).round();
+    Camera { cx: (ox + w as f32 / 2.0) / t, cy: (oy + h as f32 / 2.0) / t, tile_px: t }
+}
+
+/// The world map as `render_world` draws it, kept between frames: unchanged, the last frame is
+/// shown again; panned, it is shifted and only what comes into view is drawn (the camera is on
+/// whole pixels, `snap_world_camera`, and the Shadow's hatching is keyed on world pixels). A
+/// change to the map (`TileWorld::revision`), the zoom or the window size draws it afresh.
+pub fn render_world_cached(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32], w: usize, h: usize) {
+    use rayon::prelude::*;
+    let t = cam.tile_px;
+    let ox = (cam.cx * t - w as f32 / 2.0).round() as i64;
+    let oy = (cam.cy * t - h as f32 / 2.0).round() as i64;
+    let key = (t.to_bits(), w, h, tw as *const TileWorld as usize, tw.revision);
+    WORLD_CACHE.with(|cell| {
+        let mut cache = cell.borrow_mut();
+        let usable = std::env::var("PLANET_WORLD_NOCACHE").is_err() && cache.as_ref().map_or(false, |c| c.0 == key && (ox - c.1).abs() < w as i64 && (oy - c.2).abs() < h as i64);
+        if !usable {
+            // A large window is first drawn coarse (`lod` 2) and refined a block of rows a frame
+            // after (a zoom step at 2560x1440 had cost three frames).
+            let coarse = w * h >= 1_500_000 && std::env::var("PLANET_WORLD_NOCACHE").is_err() && std::env::var("PLANET_WORLD_CHECK").is_err();
+            let t0 = std::time::Instant::now();
+            render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), buf, w, h, if coarse { 2 } else { 1 }, None);
+            // How fast this machine draws the map (pixels a millisecond), for the refining.
+            let px = if coarse { w * h / 4 } else { w * h } as f64;
+            let rate = px / (t0.elapsed().as_secs_f64() * 1000.0).max(0.1);
+            WORLD_RATE.with(|r| r.set(rate));
+            *cache = Some((key, ox, oy, buf.to_vec(), vec![coarse; h]));
+        } else {
+            let c = cache.as_mut().unwrap();
+            let (dx, dy) = (ox - c.1, oy - c.2);
+            if dx != 0 || dy != 0 {
+                let old = std::mem::take(&mut c.3);
+                let mut moved = vec![OFF_MAP; w * h];
+                moved.chunks_mut(w).enumerate().for_each(|(sy, row)| {
+                    let oy2 = sy as i64 + dy;
+                    if oy2 < 0 || oy2 >= h as i64 { return; }
+                    let src = &old[oy2 as usize * w..(oy2 as usize + 1) * w];
+                    let (a, b) = ((-dx).max(0) as usize, (w as i64 - dx.max(0)) as usize);
+                    if b > a { row[a..b].copy_from_slice(&src[(a as i64 + dx) as usize..(b as i64 + dx) as usize]); }
+                });
+                let exposed = move |sx: usize, sy: usize| { let (px, py) = (sx as i64 + dx, sy as i64 + dy); px < 0 || py < 0 || px >= w as i64 || py >= h as i64 };
+                render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut moved, w, h, 1, Some(&exposed));
+                c.1 = ox; c.2 = oy; c.3 = moved;
+                let old_coarse = std::mem::take(&mut c.4);
+                c.4 = (0..h).map(|sy| { let o = sy as i64 + dy; o >= 0 && o < h as i64 && old_coarse[o as usize] }).collect();
+            }
+            // Refine rows still coarse: about six milliseconds' worth a frame (at the rate the
+            // coarse frame was drawn), top first.
+            if let Some(r0) = c.4.iter().position(|&b| b) {
+                let budget = WORLD_RATE.with(|r| r.get()) * 6.0;
+                let n = ((budget as usize) / w).max(1);
+                let r1 = (r0..h).take(n).take_while(|&r| c.4[r]).last().map_or(r0 + 1, |r| r + 1);
+                let need = move |_: usize, sy: usize| sy >= r0 && sy < r1;
+                render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut c.3, w, h, 1, Some(&need));
+                for r in r0..r1 { c.4[r] = false; }
+            }
+            buf.copy_from_slice(&c.3);
+            // (Debug: PLANET_WORLD_CHECK=1 draws the map afresh and counts pixels that differ.)
+            if std::env::var("PLANET_WORLD_CHECK").is_ok() && !c.4.iter().any(|&b| b) {
+                let mut fresh = vec![0u32; w * h];
+                render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut fresh, w, h, 1, None);
+                let bad = fresh.iter().zip(buf.iter()).filter(|(a, b)| a != b).count();
+                if bad > 0 { eprintln!("WORLD CHECK: {} pixels differ", bad); }
+            }
+        }
+    });
+    draw_shadow_seat(tw, &snap_world_camera(cam, w, h), buf, w, h);
+}
+
+thread_local! {
+    /// Pixels a millisecond this machine draws the world map at (`render_world_cached`).
+    static WORLD_RATE: std::cell::Cell<f64> = std::cell::Cell::new(60_000.0);
+    /// The last world map drawn: (zoom, window, map and its revision), where the screen stood, its
+    /// pixels, and its rows still drawn coarse.
+    static WORLD_CACHE: std::cell::RefCell<Option<((u32, usize, usize, usize, u64), i64, i64, Vec<u32>, Vec<bool>)>> = std::cell::RefCell::new(None);
+}
+
+/// The world map's pixels for the screen whose top-left is the world pixel (ox, oy): every
+/// pixel, or those `need` asks for. `hatch0` is added to screen positions for the Shadow's
+/// hatching (0 keys it on the screen; the origin keys it on the world).
+#[allow(clippy::too_many_arguments)]
+fn render_world_core(tw: &TileWorld, atlas: &Atlas, t: f32, ox: f32, oy: f32, hatch0: (i64, i64), buf: &mut [u32], w: usize, h: usize, lod: usize, need: Option<&(dyn Fn(usize, usize) -> bool + Sync)>) {
+    let lod = lod.max(1);
     let detailed = t >= 4.0;
     let src_px = t.ceil() as usize;
     // Bands of `lod` rows are independent: render them in parallel.
     use rayon::prelude::*;
     buf[..w * h].par_chunks_mut(w * lod).enumerate().for_each(|(band, rows)| {
         let sy = band * lod;
-        let wy = cam.cy + (sy as f32 + 0.5 * lod as f32 - h as f32 / 2.0) / t;
+        let wy = (oy + sy as f32 + 0.5 * lod as f32) / t;
         if wy < 0.0 || wy >= tw.height as f32 {
-            rows.fill(OFF_MAP);
+            match need {
+                None => rows.fill(OFF_MAP),
+                Some(n) => for (k, p) in rows.iter_mut().enumerate() { if n(k % w, sy + k / w) { *p = OFF_MAP; } },
+            }
             return;
         }
+        if let Some(n) = need { if !(0..w).any(|sx| n(sx, sy)) { return; } }
         let (row, rest) = rows.split_at_mut(w);
         let ty = wy as usize;
         let v = wy - ty as f32;
+        let hy = (hatch0.1 + sy as i64).rem_euclid(60) as usize;
         for sx in (0..w).step_by(lod) {
-            let wx = cam.cx + (sx as f32 + 0.5 * lod as f32 - w as f32 / 2.0) / t;
+            if let Some(n) = need { if !n(sx, sy) { continue; } }
+            let hx = (hatch0.0 + sx as i64).rem_euclid(60) as usize;
+            let wx = (ox + sx as f32 + 0.5 * lod as f32) / t;
             let txf = wx.floor();
             let u = wx - txf;
             let tx = (txf as i64).rem_euclid(tw.width as i64) as usize;
@@ -401,7 +501,7 @@ pub fn render_world_lod(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [
                         col = mix(col, INK, 0.7 * cover);
                     }
                 }
-                let col = shadow_ink(tw, wx, wy, sx, sy, t, col);
+                let col = shadow_ink(tw, wx, wy, hx, hy, t, col);
                 let col = overlay_tint(tw, wx, wy, col);
                 row[sx] = pack(col);
                 continue;
@@ -589,7 +689,7 @@ pub fn render_world_lod(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [
                 }
             }
 
-            let col = shadow_ink(tw, wx, wy, sx, sy, t, col);
+            let col = shadow_ink(tw, wx, wy, hx, hy, t, col);
             let col = overlay_tint(tw, wx, wy, col);
             row[sx] = pack([col[0] * mottle, col[1] * mottle, col[2] * mottle]);
         }
@@ -601,7 +701,6 @@ pub fn render_world_lod(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [
             for r in rest.chunks_mut(w) { r.copy_from_slice(&row[..r.len()]); }
         }
     });
-    draw_shadow_seat(tw, cam, buf, w, h);
 }
 
 /// A data overlay washed over the map. The map's own light and dark (relief, ink lines) still

@@ -31,15 +31,18 @@ const SHADOW: (f32, f32) = (0.45, 0.55);
 /// How far (cells) a crown can reach from its tree's cell.
 const CROWN_REACH: i64 = 2;
 
+#[inline(always)]
 fn hash(x: i64, y: i64, salt: u64) -> u64 {
     let mut h = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ salt;
     h ^= h >> 29;
     h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
     h ^ (h >> 32)
 }
+#[inline(always)]
 fn unit(x: i64, y: i64, salt: u64) -> f32 { (hash(x, y, salt) >> 40) as f32 / (1u64 << 24) as f32 }
 
 /// Smooth value noise in cell units (for watercolour mottling).
+#[inline(always)]
 fn mottle(x: f32, y: f32, scale: f32, salt: u64) -> f32 {
     let (x, y) = (x / scale, y / scale);
     let (x0, y0) = (x.floor() as i64, y.floor() as i64);
@@ -51,7 +54,9 @@ fn mottle(x: f32, y: f32, scale: f32, salt: u64) -> f32 {
     a * (1.0 - sy) + b * sy
 }
 
+#[inline(always)]
 fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb { [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t] }
+#[inline(always)]
 fn pack(c: Rgb) -> u32 {
     let q = |v: f32| v.clamp(0.0, 255.0) as u32;
     (q(c[0]) << 16) | (q(c[1]) << 8) | q(c[2])
@@ -108,6 +113,12 @@ fn crown(kind: TreeKind) -> (f32, Rgb) {
     }
 }
 
+/// `(0..n).map(f).collect()`, in parallel when `par` (a view of a few hundred cells is built
+/// on this thread: handing it to the pool cost more than the work, and stalled on a busy machine).
+fn build<T: Send>(n: usize, par: bool, f: impl Fn(usize) -> T + Sync + Send) -> Vec<T> {
+    if par { (0..n).into_par_iter().map(f).collect() } else { (0..n).map(f).collect() }
+}
+
 /// What stands on a column, seen from above.
 #[derive(Clone, Copy, PartialEq)]
 enum Top { Ground, Water(f32), Wall(Material, i32) }
@@ -118,17 +129,35 @@ struct Crown { ox: f32, oy: f32, r: f32, col: Rgb, conifer: bool, h: u64 }
 
 /// Every column read once per frame, so pixels only index arrays (a pixel looks at up to 49
 /// columns for overlapping crowns).
+///
+/// (Only a window of the map is read: the cells on screen and a margin, `x0..x1` by `y0..y1`;
+/// the whole map each frame had cost ten milliseconds.)
 struct View<'a> {
     map: &'a LocalMap,
+    x0: usize,
+    y0: usize,
+    gw: usize,
+    gh: usize,
     top: Vec<Top>,
     wash: Vec<Rgb>,
     crowns: Vec<Option<Crown>>,
+    /// Which neighbours stand higher (and are not water): west, east, north, south as bits 0-3.
+    rises: Vec<u8>,
 }
 
 impl<'a> View<'a> {
-    fn new(map: &'a LocalMap) -> Self {
+    #[allow(dead_code)]
+    fn new(map: &'a LocalMap) -> Self { Self::window(map, 0, 0, map.width, map.height) }
+
+    /// The view of the cells `x0..x1` by `y0..y1` (clamped to the map).
+    fn window(map: &'a LocalMap, x0: usize, y0: usize, x1: usize, y1: usize) -> Self {
+        let (x1, y1) = (x1.min(map.width).max(x0 + 1), y1.min(map.height).max(y0 + 1));
+        let (gw, gh) = (x1 - x0, y1 - y0);
         let (w, h) = (map.width, map.height);
-        let top: Vec<Top> = (0..w * h).into_par_iter().map(|k| column_top(map, k % w, k / w)).collect();
+        // Window index -> map index.
+        let mk = move |i: usize| (y0 + i / gw) * w + x0 + i % gw;
+        let par = gw * gh > 4000;
+        let top: Vec<Top> = build(gw * gh, par, |i| { let k = mk(i); column_top(map, k % w, k / w) });
         let floor_of = |k: usize| {
             let (x, y) = (k % w, k / w);
             map.cell(x, y, map.surface_z[k].clamp(0, map.depth as i32 - 1) as usize)
@@ -145,8 +174,10 @@ impl<'a> View<'a> {
         // How many levels a building stands over its ground (a storey is two), for the shadow it
         // casts down-light: 0.6 cells a level, so a two-storey house throws one cell of shade, a
         // keep four.
-        let tall: Vec<i32> = (0..w * h).into_par_iter().map(|k| {
-            let (x, y, z) = (k % w, k / w, map.surface_z[k]);
+        // (Tall buildings cast shade up to four cells: read four more round the window.)
+        let tall_at = |x: usize, y: usize| -> i32 {
+            let k = y * w + x;
+            let z = map.surface_z[k];
             (1..=10).rev().find(|&dz| {
                 let zz = z + dz;
                 zz >= 0 && (zz as usize) < map.depth && {
@@ -154,16 +185,21 @@ impl<'a> View<'a> {
                     c.shape != Shape::Empty && matches!(c.material, Material::Wood | Material::Block(_) | Material::Clay)
                 }
             }).unwrap_or(0)
-        }).collect();
+        };
+        let (tx0, ty0) = (x0.saturating_sub(4), y0.saturating_sub(4));
+        let (tx1, ty1) = ((x1 + 4).min(w), (y1 + 4).min(h));
+        let tw = tx1 - tx0;
+        let tall: Vec<i32> = build(tw * (ty1 - ty0), par, |i| tall_at(tx0 + i % tw, ty0 + i / tw));
+        let tall_of = |x: usize, y: usize| if x >= tx0 && x < tx1 && y >= ty0 && y < ty1 { tall[(y - ty0) * tw + x - tx0] } else { 0 };
         let s = (SHADOW.0 * SHADOW.0 + SHADOW.1 * SHADOW.1).sqrt();
         let shaded = |k: usize| {
             let (x, y) = ((k % w) as f32, (k / w) as f32);
-            tall[k] == 0 && (1..=4).any(|d| {
+            tall_of(k % w, k / w) == 0 && (1..=4).any(|d| {
                 let (qx, qy) = ((x - SHADOW.0 / s * d as f32).round(), (y - SHADOW.1 / s * d as f32).round());
-                qx >= 0.0 && qy >= 0.0 && (qx as usize) < w && (qy as usize) < h && tall[qy as usize * w + qx as usize] as f32 * 0.6 >= d as f32
+                qx >= 0.0 && qy >= 0.0 && (qx as usize) < w && (qy as usize) < h && tall_of(qx as usize, qy as usize) as f32 * 0.6 >= d as f32
             })
         };
-        let wash = (0..w * h).into_par_iter().map(|k| match top[k] {
+        let wash = build(gw * gh, par, |i| { let k = mk(i); match top[i] {
             Top::Water(d) => water_wash(d),
             _ => {
                 let c = wash(floor_of(k));
@@ -171,9 +207,10 @@ impl<'a> View<'a> {
                 let c = if d >= 2 { mix(c, [70.0, 60.0, 50.0], (0.18 * d as f32).min(0.5)) } else { c };
                 if shaded(k) { mix(c, [70.0, 60.0, 50.0], 0.22) } else { c }
             }
-        }).collect();
-        let crowns = (0..w * h).into_par_iter().map(|k| {
-            if !matches!(top[k], Top::Ground) { return None; }
+        } });
+        let crowns = build(gw * gh, par, |i| {
+            let k = mk(i);
+            if !matches!(top[i], Top::Ground) { return None; }
             let (tx, ty) = ((k % w) as i64, (k / w) as i64);
             let (r, col, conifer) = match floor_of(k).plant {
                 Plant::Tree(kind) => { let (r, col) = crown(kind); (r, col, kind == TreeKind::Conifer) }
@@ -187,20 +224,57 @@ impl<'a> View<'a> {
                 r: r * (0.85 + 0.3 * unit(tx, ty, 70)),
                 col, conifer, h: hash(tx, ty, 73),
             })
-        }).collect();
-        View { map, top, wash, crowns }
+        });
+        let rises = build(gw * gh, par, |i| {
+            let k = mk(i);
+            let (x, y) = ((k % w) as i64, (k / w) as i64);
+            let sz = map.surface_z[k];
+            let mut bits = 0u8;
+            for (b, (dx, dy)) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)].iter().enumerate() {
+                let (qx, qy) = (x + dx, y + dy);
+                if qx < 0 || qy < 0 || qx as usize >= w || qy as usize >= h { continue; }
+                let q = qy as usize * w + qx as usize;
+                if map.surface_z[q] > sz && !matches!(column_top(map, qx as usize, qy as usize), Top::Water(_)) { bits |= 1 << b; }
+            }
+            bits
+        });
+        View { map, x0, y0, gw, gh, top, wash, crowns, rises }
     }
+    #[inline(always)]
     fn inside(&self, x: i64, y: i64) -> bool { x >= 0 && y >= 0 && (x as usize) < self.map.width && (y as usize) < self.map.height }
+    /// The map index of (x, y), clamped to the map.
+    #[inline(always)]
     fn idx(&self, x: i64, y: i64) -> usize {
         (y.clamp(0, self.map.height as i64 - 1) as usize) * self.map.width + x.clamp(0, self.map.width as i64 - 1) as usize
     }
+    /// The window index of (x, y), clamped to the window.
+    #[inline(always)]
+    fn widx(&self, x: i64, y: i64) -> usize {
+        let wx = (x - self.x0 as i64).clamp(0, self.gw as i64 - 1) as usize;
+        let wy = (y - self.y0 as i64).clamp(0, self.gh as i64 - 1) as usize;
+        wy * self.gw + wx
+    }
+    #[inline(always)]
     fn sz(&self, x: i64, y: i64) -> i32 { self.map.surface_z[self.idx(x, y)] }
+    #[inline(always)]
     fn floor(&self, x: i64, y: i64) -> &crate::local::Cell {
         let k = self.idx(x, y);
         self.map.cell(k % self.map.width, k / self.map.width, self.map.surface_z[k].clamp(0, self.map.depth as i32 - 1) as usize)
     }
-    fn top(&self, x: i64, y: i64) -> Top { self.top[self.idx(x, y)] }
-    fn ground_wash(&self, x: i64, y: i64) -> Rgb { self.wash[self.idx(x, y)] }
+    #[inline(always)]
+    fn top(&self, x: i64, y: i64) -> Top { self.top[self.widx(x, y)] }
+    #[inline(always)]
+    fn ground_wash(&self, x: i64, y: i64) -> Rgb { self.wash[self.widx(x, y)] }
+    /// Which neighbours of (x, y) stand higher (bits: west, east, north, south).
+    #[inline(always)]
+    fn rise(&self, x: i64, y: i64) -> u8 { self.rises[self.widx(x, y)] }
+    /// The crown standing in (x, y), none outside the window.
+    #[inline(always)]
+    fn crown(&self, x: i64, y: i64) -> Option<Crown> {
+        let (wx, wy) = (x - self.x0 as i64, y - self.y0 as i64);
+        if wx < 0 || wy < 0 || wx >= self.gw as i64 || wy >= self.gh as i64 { return None; }
+        self.crowns[wy as usize * self.gw + wx as usize]
+    }
 }
 
 /// What stands on a column, seen from above.
@@ -233,21 +307,360 @@ fn water_wash(levels: f32) -> Rgb {
 
 /// Draw the playable area's surface in ink. Same camera and buffer layout as `render_local`.
 pub fn render_local_ink(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
-    let v = View::new(map);
+    render_ground(map, None, cam, buf, w, h);
+}
+
+/// The colony's ground: the ink surface with the camp's worn paths on it, kept between frames
+/// like the surface (`render_local_ink`). `draw_colony_on_ground` then draws the rest.
+pub fn render_colony_ground(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
+    let worn = (colony.steps.len() == colony.map.width * colony.map.height).then_some(colony.steps.as_slice());
+    render_ground(&colony.map, worn, cam, buf, w, h);
+}
+
+/// `draw_colony` over ground drawn by `render_colony_ground` (the worn paths already on it).
+pub fn draw_colony_on_ground(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, history: Option<&crate::history::world_state::WorldHistory>) {
+    let mut placed = Vec::new();
+    draw_colony_inner(colony, cam, buf, w, h, history, None, &mut placed, true);
+}
+
+/// How worn a column's ground is, in eight steps (0: not worn, under 15 footsteps), and whether
+/// it can show wear (no roof or wall on it).
+fn worn_level(map: &LocalMap, worn: Option<&[u16]>, x: usize, y: usize) -> u8 {
+    let Some(st) = worn else { return 0 };
+    let k = y * map.width + x;
+    let n = st[k];
+    if n < 15 { return 0; }
+    let open = map.roofs[k] == 0 && !matches!(map.cell(x, y, (map.surface_z[k] + 1).clamp(0, map.depth as i32 - 1) as usize).shape, Shape::Wall);
+    if !open { return 0; }
+    1 + ((n as u32 - 15) * 7 / 105).min(7) as u8
+}
+
+fn render_ground(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
+    let tg0 = std::time::Instant::now();
+    render_ground_inner(map, worn, cam, buf, w, h);
+    if std::env::var("PLANET_TIME_INK").is_ok() {
+        let ms = tg0.elapsed().as_secs_f64() * 1000.0;
+        if ms > 15.0 { INK_STATS.with(|st| eprintln!("INK slow {:.1} ms: {}", ms, st.borrow())); }
+    }
+}
+
+thread_local! {
+    /// What the last ground drawn did (for PLANET_TIME_INK).
+    static INK_STATS: std::cell::RefCell<String> = std::cell::RefCell::new(String::new());
+}
+
+fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
     let t = cam.tile_px;
+    let ts = std::time::Instant::now();
+    // The camera on whole pixels: the world pixel at the screen's top-left. Hatching and grain
+    // are keyed on world pixels, so a pan is a shift of the last frame and only what comes into
+    // view is drawn.
+    let ox = (cam.cx * t - w as f32 / 2.0).round() as i64;
+    let oy = (cam.cy * t - h as f32 / 2.0).round() as i64;
+    let win = ink_window(map, t, ox, oy, w, h);
+    let (x0, y0, x1, y1) = win;
+    if x1 <= x0 || y1 <= y0 { buf.iter_mut().for_each(|p| *p = OFF_MAP); return; }
+    let snap = column_snaps(map, x0, y0, x1, y1);
+    let gw0 = x1 - x0;
+    let wear: Vec<u8> = (0..gw0 * (y1 - y0)).map(|i| worn_level(map, worn, x0 + i % gw0, y0 + i / gw0)).collect();
+    let key = InkKey { t: t.to_bits(), w, h, map: map as *const LocalMap as usize, mw: map.width, tile: map.world_tile };
+    INK_CACHE.with(|cell| {
+        let mut cache = cell.borrow_mut();
+        // (Debug: PLANET_INK_NOCACHE=1 draws every frame afresh, to time and profile that.)
+        let usable = std::env::var("PLANET_INK_NOCACHE").is_err() && cache.as_ref().map_or(false, |c| c.key == key && c.buf.len() == w * h && (ox - c.ox).abs() < w as i64 && (oy - c.oy).abs() < h as i64);
+        if !usable {
+            // A large window is first drawn coarse (a pixel computed for each 2x2 block) and
+            // refined over the next frames: a zoom step at 2560x1440 had cost three frames.
+            let coarse = w * h >= PREVIEW_PIXELS && std::env::var("PLANET_INK_NOCACHE").is_err() && std::env::var("PLANET_INK_CHECK").is_err();
+            INK_STATS.with(|st| *st.borrow_mut() = if coarse { "coarse".into() } else { "full".into() });
+            let t0 = std::time::Instant::now();
+            if coarse { draw_ink_coarse(map, t, ox, oy, buf, w, h, win, &wear); } else { draw_ink(map, t, ox, oy, buf, w, h, win, &wear, &|_, _| true); }
+            // How fast this machine draws the ground (pixels a millisecond), for the refining.
+            let px = if coarse { w * h / 4 } else { w * h } as f64;
+            INK_RATE.with(|r| r.set(px / (t0.elapsed().as_secs_f64() * 1000.0).max(0.1)));
+            *cache = Some(InkCache { key, ox, oy, win, snap, wear, buf: buf.to_vec(), coarse: vec![coarse; h] });
+            return;
+        }
+        let c = cache.as_mut().unwrap();
+        let (dx, dy) = (ox - c.ox, oy - c.oy);
+        // Shift the last frame by the pan.
+        if dx != 0 || dy != 0 {
+            let old = std::mem::take(&mut c.buf);
+            let mut moved = vec![OFF_MAP; w * h];
+            // (On this thread: a copy is quick, and a parallel one waits on every worker.)
+            moved.chunks_mut(w).enumerate().for_each(|(sy, row)| {
+                let oy2 = sy as i64 + dy;
+                if oy2 < 0 || oy2 >= h as i64 { return; }
+                let src = &old[oy2 as usize * w..(oy2 as usize + 1) * w];
+                let (a, b) = ((-dx).max(0) as usize, (w as i64 - dx.max(0)) as usize);
+                if b > a { row[a..b].copy_from_slice(&src[(a as i64 + dx) as usize..(b as i64 + dx) as usize]); }
+            });
+            c.buf = moved;
+            // The rows still coarse move with the picture; rows come into view are drawn fully.
+            let old_coarse = std::mem::take(&mut c.coarse);
+            c.coarse = (0..h).map(|sy| { let o = sy as i64 + dy; o >= 0 && o < h as i64 && old_coarse[o as usize] }).collect();
+        }
+        // Cells changed since (in both windows), and five round each.
+        let (gw, gh) = (x1 - x0, y1 - y0);
+        let (ox0, oy0, ox1, oy1) = c.win;
+        let ogw = ox1 - ox0;
+        let mut dirty = vec![false; gw * gh];
+        let mut any = false;
+        let r = INK_REACH;
+        for i in 0..snap.len() {
+            let (x, y) = (x0 + i % gw, y0 + i / gw);
+            if x < ox0 || x >= ox1 || y < oy0 || y >= oy1 { continue; }
+            let j = (y - oy0) * ogw + x - ox0;
+            // (Wear reaches only its neighbours: the pixels blend the four nearest cells.)
+            let r = if snap[i] != c.snap[j] { snap[i].reach(&c.snap[j]) } else if wear[i] != c.wear[j] { 1 } else { continue };
+            any = true;
+            let (cx, cy) = ((i % gw) as i64, (i / gw) as i64);
+            for ddy in -r..=r { for ddx in -r..=r {
+                let (qx, qy) = (cx + ddx, cy + ddy);
+                if qx >= 0 && qy >= 0 && (qx as usize) < gw && (qy as usize) < gh { dirty[qy as usize * gw + qx as usize] = true; }
+            } }
+        }
+        let snap_ms = ts.elapsed().as_secs_f64() * 1000.0;
+        let ndirty = dirty.iter().filter(|&&d| d).count();
+        let td = std::time::Instant::now();
+        if any || dx != 0 || dy != 0 {
+            // Up to three passes, each reading the view only where it draws (and three cells
+            // round): the rows that came into view, the columns that came into view, and the
+            // dirty cells. (One view over the whole window for a strip a few pixels wide had made
+            // a pan cost ten milliseconds at 2560x1440.)
+            let cell_of = |p: i64| ((p as f32 + 0.5) / t).floor() as i64;
+            let clamp_win = |a: i64, b: i64, lo: usize, hi: usize| ((a - 3).max(lo as i64).min(hi as i64) as usize, (b + 4).max(lo as i64).min(hi as i64) as usize);
+            // Rows exposed (screen rows), then columns exposed (screen columns).
+            let rows = if dy > 0 { (h as i64 - dy).max(0) as usize..h } else { 0..((-dy).min(h as i64)) as usize };
+            let cols = if dx > 0 { (w as i64 - dx).max(0) as usize..w } else { 0..((-dx).min(w as i64)) as usize };
+            if !rows.is_empty() {
+                let (r0, r1) = (rows.start, rows.end);
+                let (vy0, vy1) = clamp_win(cell_of(oy + r0 as i64), cell_of(oy + r1 as i64 - 1), y0, y1);
+                let need = |_: i64, sy: i64| sy >= r0 as i64 && sy < r1 as i64;
+                let row_need = |sy: usize| sy >= r0 && sy < r1;
+                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (x0, vy0, x1, vy1), &wear, &need, &row_need, (r1 - r0) * w, 0..w);
+            }
+            if !cols.is_empty() {
+                let (c0, c1) = (cols.start, cols.end);
+                let (vx0, vx1) = clamp_win(cell_of(ox + c0 as i64), cell_of(ox + c1 as i64 - 1), x0, x1);
+                let (r0, r1) = (rows.start, rows.end);
+                let need = |sx: i64, sy: i64| sx >= c0 as i64 && sx < c1 as i64 && !(sy >= r0 as i64 && sy < r1 as i64);
+                let row_need = |sy: usize| !(sy >= r0 && sy < r1);
+                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (vx0, y0, vx1, y1), &wear, &need, &row_need, (c1 - c0) * h, c0..c1);
+            }
+            if any {
+                let (mut bx0, mut by0, mut bx1, mut by1) = (usize::MAX, usize::MAX, 0usize, 0usize);
+                for (i, &d) in dirty.iter().enumerate() {
+                    if !d { continue; }
+                    let (x, y) = (x0 + i % gw, y0 + i / gw);
+                    bx0 = bx0.min(x); by0 = by0.min(y); bx1 = bx1.max(x + 1); by1 = by1.max(y + 1);
+                }
+                let view_win = (bx0.saturating_sub(3).max(x0), by0.saturating_sub(3).max(y0), (bx1 + 3).min(x1), (by1 + 3).min(y1));
+                let exposed = |sx: i64, sy: i64| { let (px, py) = (sx + dx, sy + dy); px < 0 || py < 0 || px >= w as i64 || py >= h as i64 };
+                let need = |sx: i64, sy: i64| -> bool {
+                    if exposed(sx, sy) { return false; }
+                    let (wx, wy) = (cell_of(ox + sx) - x0 as i64, cell_of(oy + sy) - y0 as i64);
+                    wx >= 0 && wy >= 0 && (wx as usize) < gw && (wy as usize) < gh && dirty[wy as usize * gw + wx as usize]
+                };
+                let dirty_rows: Vec<bool> = (0..gh).map(|r| dirty[r * gw..(r + 1) * gw].iter().any(|&d| d)).collect();
+                let row_need = |sy: usize| -> bool {
+                    let cy = cell_of(oy + sy as i64) - y0 as i64;
+                    cy >= 0 && (cy as usize) < gh && dirty_rows[cy as usize]
+                };
+                // (Only the screen columns over the dirty cells' box.)
+                let sx0 = (((bx0 as f32) * t) as i64 - ox).clamp(0, w as i64) as usize;
+                let sx1 = ((((bx1 as f32) * t).ceil()) as i64 - ox + 1).clamp(0, w as i64) as usize;
+                draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, view_win, &wear, &need, &row_need, ndirty * (t * t) as usize, sx0..sx1);
+            }
+        }
+        // Refine rows still coarse: about six milliseconds' worth a frame (at the rate the coarse
+        // frame was drawn), top first.
+        if let Some(r0) = c.coarse.iter().position(|&b| b) {
+            let n = ((INK_RATE.with(|r| r.get()) * 6.0) as usize / w).max(1);
+            let r1 = (r0..h).take(n).take_while(|&r| c.coarse[r]).last().map_or(r0 + 1, |r| r + 1);
+            let cell_of = |p: i64| ((p as f32 + 0.5) / t).floor() as i64;
+            let vy0 = (cell_of(oy + r0 as i64) - 3).clamp(y0 as i64, y1 as i64) as usize;
+            let vy1 = (cell_of(oy + r1 as i64 - 1) + 4).clamp(y0 as i64, y1 as i64) as usize;
+            let need = |_: i64, sy: i64| sy >= r0 as i64 && sy < r1 as i64;
+            let row_need = |sy: usize| sy >= r0 && sy < r1;
+            draw_ink_rows(map, t, ox, oy, &mut c.buf, w, h, win, (x0, vy0, x1, vy1.max(vy0 + 1)), &wear, &need, &row_need, (r1 - r0) * w, 0..w);
+            for r in r0..r1 { c.coarse[r] = false; }
+        }
+        INK_STATS.with(|st| *st.borrow_mut() = format!("snap {:.1} ms, dirty cells {} of {}, pan {},{}, draw {:.1} ms", snap_ms, ndirty, gw * gh, dx, dy, td.elapsed().as_secs_f64() * 1000.0));
+        c.ox = ox; c.oy = oy; c.win = win; c.snap = snap; c.wear = wear;
+        buf.copy_from_slice(&c.buf);
+        // (Debug: PLANET_INK_CHECK=1 draws the whole frame afresh and counts pixels that differ.)
+        if std::env::var("PLANET_INK_CHECK").is_ok() && !c.coarse.iter().any(|&b| b) {
+            let mut fresh = vec![0u32; w * h];
+            draw_ink(map, t, ox, oy, &mut fresh, w, h, win, &c.wear, &|_, _| true);
+            let bad = fresh.iter().zip(buf.iter()).filter(|(a, b)| a != b).count();
+            if bad > 0 { eprintln!("INK CHECK: {} pixels differ (pan {},{})", bad, dx, dy); }
+        }
+    });
+}
+
+/// The camera moved onto whole screen pixels (as the surface is drawn: `render_local_ink`), so
+/// everything drawn over the ground stays put on it while the view pans.
+pub fn snap_camera(cam: &LocalCamera, w: usize, h: usize) -> LocalCamera {
+    let t = cam.tile_px;
+    let ox = (cam.cx * t - w as f32 / 2.0).round();
+    let oy = (cam.cy * t - h as f32 / 2.0).round();
+    LocalCamera { cx: (ox + w as f32 / 2.0) / t, cy: (oy + h as f32 / 2.0) / t, ..*cam }
+}
+
+/// The cells under the screen whose top-left world pixel is (ox, oy), and a margin.
+fn ink_window(map: &LocalMap, t: f32, ox: i64, oy: i64, w: usize, h: usize) -> (usize, usize, usize, usize) {
+    let m = INK_MARGIN;
+    let x0 = ((ox as f32 / t).floor() as i64 - m).clamp(0, map.width as i64) as usize;
+    let y0 = ((oy as f32 / t).floor() as i64 - m).clamp(0, map.height as i64) as usize;
+    let x1 = (((ox + w as i64) as f32 / t).ceil() as i64 + m).clamp(0, map.width as i64) as usize;
+    let y1 = (((oy + h as i64) as f32 / t).ceil() as i64 + m).clamp(0, map.height as i64) as usize;
+    (x0, y0, x1, y1)
+}
+
+/// How far (cells) round the screen the view is read, and how far a changed cell's pixels
+/// reach (`render_local_ink`).
+const INK_MARGIN: i64 = 7;
+const INK_REACH: i64 = 5;
+
+/// What the ink surface of a column is drawn from: its ground level, roof and mark, and the
+/// cells from just below the ground to ten above it (water, walls, plants, buildings).
+#[derive(Clone, PartialEq)]
+struct ColumnSnap { sz: i32, roof: u32, feature: crate::local::wildlife::Feature, cells: [crate::local::Cell; 12] }
+
+impl ColumnSnap {
+    /// How far (cells) a change from `old` to this can show: a plant grown or felled (or a mark
+    /// on the ground) reaches its crown and the crown's shade (two cells); anything else (a building's walls and the
+    /// shade they cast, the ground's level) five (`INK_REACH`). The season's regrowth had
+    /// redrawn a third of the screen.
+    fn reach(&self, old: &ColumnSnap) -> i64 {
+        // (A mark on the ground, a stump or a trail, is drawn inside its own cell.)
+        let plants_only = self.sz == old.sz && self.roof == old.roof
+            && self.cells.iter().zip(old.cells.iter()).all(|(a, b)| a.shape == b.shape && a.material == b.material && a.water == b.water && a.boulder == b.boulder);
+        if plants_only { CROWN_REACH + 1 } else { INK_REACH }
+    }
+}
+
+fn column_snaps(map: &LocalMap, x0: usize, y0: usize, x1: usize, y1: usize) -> Vec<ColumnSnap> {
+    let gw = x1 - x0;
+    // (On this thread: a few thousand columns, and the pool's hand-off had stalled for twenty
+    // milliseconds when the machine was busy.)
+    (0..gw * (y1 - y0)).map(|i| {
+        let (x, y) = (x0 + i % gw, y0 + i / gw);
+        let k = y * map.width + x;
+        let sz = map.surface_z[k];
+        let mut cells = [*map.cell(x, y, 0); 12];
+        for (j, c) in cells.iter_mut().enumerate() {
+            let z = sz - 1 + j as i32;
+            *c = if z >= 0 && (z as usize) < map.depth { *map.cell(x, y, z as usize) } else { *map.cell(x, y, 0) };
+        }
+        ColumnSnap { sz, roof: map.roofs[k], feature: map.features[k], cells }
+    }).collect()
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct InkKey { t: u32, w: usize, h: usize, map: usize, mw: usize, tile: (usize, usize) }
+
+/// The last surface drawn: its zoom and map, where the screen stood (world pixels), the window
+/// of columns it was drawn from and their state, its pixels.
+struct InkCache { key: InkKey, ox: i64, oy: i64, win: (usize, usize, usize, usize), snap: Vec<ColumnSnap>, wear: Vec<u8>, buf: Vec<u32>,
+    /// Screen rows drawn coarse, still to be refined.
+    coarse: Vec<bool> }
+
+/// A window this large (pixels) is drawn coarse first, then refined a block of rows a frame.
+const PREVIEW_PIXELS: usize = 1_500_000;
+
+thread_local! {
+    /// Pixels a millisecond this machine draws the ground at (`render_ground`).
+    static INK_RATE: std::cell::Cell<f64> = std::cell::Cell::new(60_000.0);
+}
+
+thread_local! {
+    static INK_CACHE: std::cell::RefCell<Option<InkCache>> = std::cell::RefCell::new(None);
+}
+
+/// Draw the ink surface into `buf` for the screen whose top-left world pixel is (ox, oy): the
+/// pixels `need` asks for. Hatching and grain are keyed on world pixels.
+#[allow(clippy::too_many_arguments)]
+fn draw_ink(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), wear: &[u8], need: &(dyn Fn(i64, i64) -> bool + Sync)) {
+    draw_ink_rows(map, t, ox, oy, buf, w, h, win, win, wear, need, &|_| true, w * h, 0..w);
+}
+
+/// `draw_ink` at half resolution: one pixel computed for each 2x2 block (its top-left, exactly
+/// as the full image has it), copied to the rest.
+#[allow(clippy::too_many_arguments)]
+fn draw_ink_coarse(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), wear: &[u8]) {
+    let mut scratch = vec![0u32; w * h];
+    let need = |sx: i64, sy: i64| sx % 2 == 0 && sy % 2 == 0;
+    let row_need = |sy: usize| sy % 2 == 0;
+    draw_ink_rows(map, t, ox, oy, &mut scratch, w, h, win, win, wear, &need, &row_need, w * h / 4, 0..w);
+    buf.par_chunks_mut(w).enumerate().for_each(|(sy, row)| {
+        let src = &scratch[(sy & !1) * w..(sy & !1) * w + w];
+        for (sx, out) in row.iter_mut().enumerate() { *out = src[sx & !1]; }
+    });
+}
+
+/// `draw_ink`, told which screen rows may need anything (`row_need`) and about how many pixels
+/// will be drawn: a small redraw (under 150,000) is drawn on this thread, a large one in parallel (a parallel pass over
+/// every row for a few dirty cells waited on every worker, and stalled when the machine was busy).
+#[allow(clippy::too_many_arguments)]
+fn draw_ink_rows(map: &LocalMap, t: f32, ox: i64, oy: i64, buf: &mut [u32], w: usize, h: usize, win: (usize, usize, usize, usize), view_win: (usize, usize, usize, usize), wear: &[u8], need: &(dyn Fn(i64, i64) -> bool + Sync), row_need: &(dyn Fn(usize) -> bool + Sync), est_pixels: usize, cols: std::ops::Range<usize>) {
+    let (x0, y0, x1, y1) = win;
+    // (The view is read only where pixels are drawn, and three cells round: `view_win`.)
+    let v = View::window(map, view_win.0, view_win.1, view_win.2, view_win.3);
+    let (gw, gh) = (x1 - x0, y1 - y0);
+    let worn_any = wear.iter().any(|&l| l > 0);
+    // A worn column's strength (0.55 at fifteen footsteps .. 1.0 at a hundred and twenty).
+    let wval = |x: i64, y: i64| -> f32 {
+        let (wx, wy) = (x - x0 as i64, y - y0 as i64);
+        if wx < 0 || wy < 0 || wx as usize >= gw || wy as usize >= gh { return 0.0; }
+        let l = wear[wy as usize * gw + wx as usize];
+        if l == 0 { 0.0 } else { 0.55 + 0.45 * (l - 1) as f32 / 7.0 }
+    };
+    let open = |x: i64, y: i64| -> bool {
+        let (wx, wy) = (x - x0 as i64, y - y0 as i64);
+        wx >= 0 && wy >= 0 && (wx as usize) < gw && (wy as usize) < gh && {
+            let k = y as usize * map.width + x as usize;
+            map.roofs[k] == 0 && !matches!(map.cell(x as usize, y as usize, (map.surface_z[k] + 1).clamp(0, map.depth as i32 - 1) as usize).shape, Shape::Wall)
+        }
+    };
+    let dust: Rgb = [164.0, 138.0, 100.0];
     // Ink lines are about a pixel wide whatever the zoom: their width in cells.
     let line = (1.1 / t).max(0.03);
-    buf.par_chunks_mut(w).enumerate().for_each(|(sy, row)| {
-        let fy = cam.cy + (sy as f32 + 0.5 - h as f32 / 2.0) / t;
-        for (sx, out) in row.iter_mut().enumerate() {
-            let fx = cam.cx + (sx as f32 + 0.5 - w as f32 / 2.0) / t;
+    let draw_row = |(sy, row): (usize, &mut [u32])| {
+        if !row_need(sy) { return; }
+        let py = oy + sy as i64;
+        let fy = (py as f32 + 0.5) / t;
+        for (sx, out) in row.iter_mut().enumerate().skip(cols.start).take(cols.end.saturating_sub(cols.start)) {
+            if !need(sx as i64, sy as i64) { continue; }
+            let px = ox + sx as i64;
+            let fx = (px as f32 + 0.5) / t;
             if fx < 0.0 || fy < 0.0 || fx >= map.width as f32 || fy >= map.height as f32 {
                 *out = OFF_MAP;
                 continue;
             }
-            *out = pack(pixel(&v, fx, fy, sx as i64, sy as i64, line, t));
+            let mut c = pixel(&v, fx, fy, px, py, line, t);
+            // The camp's worn paths: a dusty wash where feet have gone often, blended between
+            // cells with a ragged edge, never on a roof or a wall (`render_colony_ground`).
+            if worn_any && open(fx as i64, fy as i64) {
+                let (gx, gy) = (fx - 0.5, fy - 0.5);
+                let (cx, cy) = (gx.floor() as i64, gy.floor() as i64);
+                let (bx, by) = (gx - cx as f32, gy - cy as f32);
+                let f = (wval(cx, cy) * (1.0 - bx) + wval(cx + 1, cy) * bx) * (1.0 - by) + (wval(cx, cy + 1) * (1.0 - bx) + wval(cx + 1, cy + 1) * bx) * by;
+                if f > 0.05 {
+                    let f = f + 0.3 * (mottle(fx, fy, 1.4, 0x57E) - 0.5);
+                    let a = ((f - 0.28) / 0.22).clamp(0.0, 1.0);
+                    if a > 0.0 {
+                        c = mix(c, dust, a * (0.32 + 0.22 * f.min(1.0)));
+                        if unit(px, py, 0x57F) < 0.035 * a { c = mix(c, INK, 0.3); }
+                    }
+                }
+            }
+            *out = pack(c);
         }
-    });
+    };
+    if est_pixels < 150_000 { buf.chunks_mut(w).enumerate().for_each(draw_row); }
+    else { buf.par_chunks_mut(w).enumerate().for_each(draw_row); }
 }
 
 fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb {
@@ -464,8 +877,9 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
     }
 
     // 3. Steps in the ground: an ink edge along each rise, hachures falling downhill.
-    let higher = |dx: i64, dy: i64| v.inside(cx + dx, cy + dy) && v.sz(cx + dx, cy + dy) > sz && !matches!(v.top(cx + dx, cy + dy), Top::Water(_));
-    let d = edge_distance(u, w, higher(-1, 0), higher(1, 0), higher(0, -1), higher(0, 1));
+    let rise = v.rise(cx, cy);
+    let higher = |dx: i64, dy: i64| rise & match (dx, dy) { (-1, 0) => 1, (1, 0) => 2, (0, -1) => 4, _ => 8 } != 0;
+    let d = edge_distance(u, w, rise & 1 != 0, rise & 2 != 0, rise & 4 != 0, rise & 8 != 0);
     if d < line { c = mix(c, INK, 0.7); }
     else if d < 0.32 {
         // Short strokes perpendicular to the edge, every few pixels along it.
@@ -475,19 +889,23 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
 
     // 4. Shadows cast by crowns, then the crowns themselves (southern ones drawn over northern).
     let mut crown_hit: Option<(f32, Rgb, f32, f32, f32, bool)> = None; // (tree y, colour, dx, dy, radius, conifer)
+    // (The hit crown's radius and hash, when its outline was not reckoned.)
+    let mut lazy: Option<(f32, u64)> = None;
     let mut shaded = false;
     for ty in cy - CROWN_REACH..=cy + CROWN_REACH {
         for tx in cx - CROWN_REACH..=cx + CROWN_REACH {
             if !v.inside(tx, ty) { continue; }
-            let Some(Crown { ox, oy, r, col, conifer, h }) = v.crowns[v.idx(tx, ty)] else { continue };
+            let Some(Crown { ox, oy, r, col, conifer, h }) = v.crown(tx, ty) else { continue };
             let (dx, dy) = (fx - ox, fy - oy);
             // Outlines stay within 0.78r..1.1r of the centre: decide by distance where possible.
             let d2 = dx * dx + dy * dy;
             if d2 <= (r * 1.1) * (r * 1.1) && crown_hit.map_or(true, |hit| oy > hit.0) {
-                let edge = if d2 < (r * 0.75) * (r * 0.75) { r } else { crown_radius(r, dx, dy, conifer, h) };
-                if d2 <= edge * edge {
-                    let edge = if d2 < (r * 0.75) * (r * 0.75) { crown_radius(r, dx, dy, conifer, h) } else { edge };
-                    crown_hit = Some((oy, col, dx, dy, edge, conifer));
+                // (Deep inside, the outline's wave cannot matter: it is reckoned only near it.)
+                let inner = d2 < (r * 0.75) * (r * 0.75);
+                let edge = if inner { -1.0 } else { crown_radius(r, dx, dy, conifer, h) };
+                if inner || d2 <= edge * edge {
+                    crown_hit = Some((oy, col, dx, dy, if inner { -r - 1.0 - h as f32 * 0.0 } else { edge }, conifer));
+                    lazy = if inner { Some((r, h)) } else { None };
                     continue;
                 }
             }
@@ -499,6 +917,13 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
     }
     if let Some((_, col, dx, dy, edge, conifer)) = crown_hit {
         let dist = (dx * dx + dy * dy).sqrt();
+        // The outline, reckoned now only where it could tell: near the rim (it is never under
+        // 0.78 of the radius) or on a fir's needle line.
+        let edge = match lazy {
+            Some((r, h)) if dist > 0.78 * r - line * 1.3 || (conifer && dx.abs() < line * 0.5 && dist >= 0.5 * r) => crown_radius(r, dx, dy, conifer, h),
+            Some((r, _)) => r,
+            None => edge,
+        };
         // Flat, like a map symbol: a wash, a few leaf flecks (needle ticks on firs), an outline.
         let mut k = mix(col, PAPER, 0.06 * (unit(sx / 3, sy / 3, 80) - 0.5));
         if unit(sx / 2, sy / 2, 81) < 0.07 { k = mix(k, INK, 0.25); }
@@ -525,6 +950,7 @@ fn crown_radius(r: f32, dx: f32, dy: f32, conifer: bool, h: u64) -> f32 {
 
 /// Distance (cells) from (u, w) inside a cell to the nearest of its flagged sides
 /// (west, east, north, south); infinity if none is flagged.
+#[inline(always)]
 fn edge_distance(u: f32, w: f32, west: bool, east: bool, north: bool, south: bool) -> f32 {
     let mut d = f32::INFINITY;
     if west { d = d.min(u); }
@@ -846,12 +1272,13 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
 
 pub fn draw_colony(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, history: Option<&crate::history::world_state::WorldHistory>) {
     let mut placed = Vec::new();
-    draw_colony_inner(colony, cam, buf, w, h, history, None, &mut placed);
+    draw_colony_inner(colony, cam, buf, w, h, history, None, &mut placed, false);
 }
 
 /// `draw_colony`, with a mask of the pixels that show the surface (a level view's: the camp's
 /// marks, its night and winter are drawn only there) and the labels placed so far.
-fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, history: Option<&crate::history::world_state::WorldHistory>, mask: Option<&[bool]>, placed: &mut Vec<LabelBox>) {
+#[allow(clippy::too_many_arguments)]
+fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, history: Option<&crate::history::world_state::WorldHistory>, mask: Option<&[bool]>, placed: &mut Vec<LabelBox>, worn_drawn: bool) {
     use crate::colony::ItemKind;
     let t = cam.tile_px;
     let to_screen = |x: f32, y: f32| ((x - cam.cx) * t + w as f32 / 2.0, (y - cam.cy) * t + h as f32 / 2.0);
@@ -859,7 +1286,8 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     // Worn ground first, under everything: a dusty wash where feet have gone often (15+ steps),
     // stronger on the lanes (120+), blended between cells with a ragged edge, so paths read as
     // paths rather than a dot on every cell; never on a roof or a wall.
-    if colony.steps.len() == colony.map.width * colony.map.height {
+    let tm0 = std::time::Instant::now();
+    if !worn_drawn && colony.steps.len() == colony.map.width * colony.map.height {
         let map = &colony.map;
         let (x0, y0) = ((cam.cx - w as f32 / 2.0 / t - 1.0).max(0.0) as usize, (cam.cy - h as f32 / 2.0 / t - 1.0).max(0.0) as usize);
         let (x1, y1) = (((cam.cx + w as f32 / 2.0 / t) as usize + 2).min(map.width), ((cam.cy + h as f32 / 2.0 / t) as usize + 2).min(map.height));
@@ -876,14 +1304,31 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
             let is_open = |x: i64, y: i64| inside(x, y) && open[(y as usize - y0) * gw + (x as usize - x0)];
             if val.iter().any(|&v| v > 0.0) {
                 let dust: Rgb = [164.0, 138.0, 100.0];
+                // The cells with worn ground in or beside them (a pixel blends its four nearest
+                // cells): only their pixels are looked at, and rows with none are skipped.
+                let gh = y1 - y0;
+                let mut touch = vec![false; gw * gh];
+                for i in 0..gw * gh {
+                    if val[i] <= 0.0 { continue; }
+                    let (cx, cy) = ((i % gw) as i64, (i / gw) as i64);
+                    for dy in -1..=1i64 { for dx in -1..=1i64 {
+                        let (qx, qy) = (cx + dx, cy + dy);
+                        if qx >= 0 && qy >= 0 && (qx as usize) < gw && (qy as usize) < gh { touch[qy as usize * gw + qx as usize] = true; }
+                    } }
+                }
+                let row_touched: Vec<bool> = (0..gh).map(|r| touch[r * gw..(r + 1) * gw].iter().any(|&b| b)).collect();
                 buf.par_chunks_mut(w).enumerate().for_each(|(sy, row)| {
                     let fy = cam.cy + (sy as f32 + 0.5 - h as f32 / 2.0) / t;
                     if fy < 0.0 || fy >= map.height as f32 { return; }
+                    let ry = fy as i64 - y0 as i64;
+                    if ry < 0 || ry as usize >= gh || !row_touched[ry as usize] { return; }
                     for sx in 0..w {
                         let k = sy * w + sx;
-                        if !shows(k) { continue; }
                         let fx = cam.cx + (sx as f32 + 0.5 - w as f32 / 2.0) / t;
                         if fx < 0.0 || fx >= map.width as f32 { continue; }
+                        let rx = fx as i64 - x0 as i64;
+                        if rx < 0 || rx as usize >= gw || !touch[ry as usize * gw + rx as usize] { continue; }
+                        if !shows(k) { continue; }
                         if !is_open(fx as i64, fy as i64) { continue; }
                         let (gx, gy) = (fx - 0.5, fy - 0.5);
                         let (cx, cy) = (gx.floor() as i64, gy.floor() as i64);
@@ -904,46 +1349,76 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
             }
         }
     }
+    let tm1 = std::time::Instant::now();
     // Winter: in a hard winter the land pales toward snow, more in a deep freeze (the embark's
     // season, which the colony lives through; the map itself keeps its annual colours).
-    if colony.hard_winter() {
-        let snow: Rgb = [236.0, 234.0, 226.0];
-        let a = if colony.frozen() { 0.42 } else { 0.28 };
-        for (k, p) in buf.iter_mut().enumerate() {
-            if !shows(k) { continue; }
-            let old = [((*p >> 16) & 0xFF) as f32, ((*p >> 8) & 0xFF) as f32, (*p & 0xFF) as f32];
-            // Darker ink (lines, buildings' walls) keeps more of itself than the open ground.
-            let lum = (old[0] + old[1] + old[2]) / 765.0;
-            *p = pack(mix(old, snow, a * lum.powf(0.7)));
-        }
-    }
     // Night: the map washes toward sea-ink blue, but for a warm glow round the fire and the watch.
+    // (One pass for both, row by row in parallel, the glow reckoned only near a light: two
+    // serial passes over every pixel had cost up to thirty milliseconds a frame at night.)
+    let winter = if colony.hard_winter() { Some(if colony.frozen() { 0.42f32 } else { 0.28 }) } else { None };
     let dark = colony.darkness();
-    if dark > 0.0 {
-        let mut lights: Vec<(f32, f32, f32)> = vec![{ let (x, y) = to_screen(colony.camp.0 as f32 + 0.5, colony.camp.1 as f32 + 0.5); (x, y, 7.0 * t) }];
-        if let Some(i) = colony.watcher {
-            let p = colony.draw_pos(i);
-            let (x, y) = to_screen(p.0 + 0.5, p.1 + 0.5);
-            lights.push((x, y, 3.0 * t));
-        }
-        let night: Rgb = [34.0, 48.0, 74.0];
-        let warm: Rgb = [250.0, 196.0, 120.0];
-        for y in 0..h {
-            for x in 0..w {
-                let mut glow = 0.0f32;
-                for &(lx, ly, r) in &lights {
-                    let d = ((x as f32 - lx).powi(2) + (y as f32 - ly).powi(2)).sqrt() / r;
-                    if d < 1.0 { glow = glow.max((1.0 - d) * (1.0 - d) * (3.0 - 2.0 * (1.0 - d)).min(1.0)); }
-                }
-                let k = y * w + x;
-                if !shows(k) { continue; }
-                let p = buf[k];
-                let old = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
-                let c = mix(old, night, dark * (1.0 - glow));
-                buf[k] = pack(mix(c, warm, 0.18 * dark * glow));
+    if winter.is_some() || dark > 0.0 {
+        let mut lights: Vec<(f32, f32, f32)> = Vec::new();
+        if dark > 0.0 {
+            lights.push({ let (x, y) = to_screen(colony.camp.0 as f32 + 0.5, colony.camp.1 as f32 + 0.5); (x, y, 7.0 * t) });
+            if let Some(i) = colony.watcher {
+                let p = colony.draw_pos(i);
+                let (x, y) = to_screen(p.0 + 0.5, p.1 + 0.5);
+                lights.push((x, y, 3.0 * t));
             }
         }
+        let snow: Rgb = [236.0, 234.0, 226.0];
+        let night: Rgb = [34.0, 48.0, 74.0];
+        let warm: Rgb = [250.0, 196.0, 120.0];
+        // (Whole numbers away from the lights: the snow's strength by brightness from a table,
+        // the night's blend fixed. 256ths throughout.)
+        let snow_by_lum: Vec<u32> = (0..=765u32).map(|l| (256.0 * winter.unwrap_or(0.0) * (l as f32 / 765.0).powf(0.7)).round() as u32).collect();
+        let night_a = (256.0 * dark).round() as u32;
+        let (sr, sg, sb) = (snow[0] as u32, snow[1] as u32, snow[2] as u32);
+        let (nr, ng, nb) = (night[0] as u32, night[1] as u32, night[2] as u32);
+        buf.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+            let near: Vec<(f32, f32, f32)> = lights.iter().copied().filter(|&(_, ly, r)| (y as f32 - ly).abs() < r).collect();
+            for x in 0..w {
+                let k = y * w + x;
+                if !shows(k) { continue; }
+                let p = row[x];
+                let lit = near.iter().any(|&(lx, _, r)| (x as f32 - lx).abs() < r);
+                if !lit {
+                    let (mut r, mut g, mut b) = ((p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF);
+                    if winter.is_some() {
+                        let a = snow_by_lum[(r + g + b) as usize];
+                        r = (r * (256 - a) + sr * a + 128) >> 8; g = (g * (256 - a) + sg * a + 128) >> 8; b = (b * (256 - a) + sb * a + 128) >> 8;
+                    }
+                    if night_a > 0 {
+                        let a = night_a;
+                        r = (r * (256 - a) + nr * a + 128) >> 8; g = (g * (256 - a) + ng * a + 128) >> 8; b = (b * (256 - a) + nb * a + 128) >> 8;
+                    }
+                    row[x] = (p & 0xFF00_0000) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
+                    continue;
+                }
+                let mut c = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
+                if let Some(a) = winter {
+                    // Darker ink (lines, buildings' walls) keeps more of itself than the open ground.
+                    let lum = (c[0] + c[1] + c[2]) / 765.0;
+                    c = mix(c, snow, a * lum.powf(0.7));
+                }
+                if dark > 0.0 {
+                    let mut glow = 0.0f32;
+                    for &(lx, ly, r) in &near {
+                        let dx = x as f32 - lx;
+                        if dx.abs() >= r { continue; }
+                        let d = (dx * dx + (y as f32 - ly).powi(2)).sqrt() / r;
+                        if d < 1.0 { glow = glow.max((1.0 - d) * (1.0 - d) * (3.0 - 2.0 * (1.0 - d)).min(1.0)); }
+                    }
+                    c = mix(c, night, dark * (1.0 - glow));
+                    if glow > 0.0 { c = mix(c, warm, 0.18 * dark * glow); }
+                }
+                row[x] = pack(c);
+            }
+        });
     }
+    let tm2 = std::time::Instant::now();
+    if std::env::var("PLANET_TIME_DRAW").is_ok() { eprintln!("DRAW worn {:.2} washes {:.2}", (tm1 - tm0).as_secs_f64() * 1e3, (tm2 - tm1).as_secs_f64() * 1e3); }
     let masking = std::cell::Cell::new(true);
     let mut put = |x: i64, y: i64, c: Rgb, a: f32| {
         if x < 0 || y < 0 || x as usize >= w || y as usize >= h { return; }
@@ -1482,7 +1957,7 @@ pub fn draw_level(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut [
                 mask[sy * w + sx] = cells[(fy as usize - y0) * gw + (fx as usize - x0)];
             }
         }
-        draw_colony_inner(colony, cam, buf, w, h, history, Some(&mask), &mut placed);
+        draw_colony_inner(colony, cam, buf, w, h, history, Some(&mask), &mut placed, false);
     }
     draw_delve_inner(colony, cam, buf, w, h, history, near_ground, &mut placed);
 }

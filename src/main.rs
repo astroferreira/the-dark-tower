@@ -160,6 +160,27 @@ struct Args {
     #[arg(long)]
     sim_bench: Option<usize>,
 
+    /// Frame budget benchmark at game speed N (1, 3 or 10): the colony window's work per frame
+    /// (ticks and drawing) on the dev embark, headless; with --frame-days and --frame-mode
+    #[arg(long)]
+    frame_bench: Option<u32>,
+
+    /// Frame budget of the world map and walking (panning at several zooms), headless
+    #[arg(long)]
+    frame_bench_world: bool,
+
+    /// Frame budget of the history watcher (playing a step a frame, then panning), headless
+    #[arg(long)]
+    frame_bench_watch: bool,
+
+    /// Game days for --frame-bench
+    #[arg(long, default_value_t = 30)]
+    frame_days: u64,
+
+    /// What --frame-bench draws: surface, level or section
+    #[arg(long, default_value = "surface")]
+    frame_mode: String,
+
     /// Print, per kind of event, how many record a cause
     #[arg(long)]
     causes: bool,
@@ -598,7 +619,7 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
@@ -1567,7 +1588,7 @@ fn main() {
     // in the legacy terminal explorer.
     let wants_tiles = (!args.legacy_explorer && !args.headless) || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
     // A saved world's history is reused unless --history-years (or --watch) asks for a fresh simulation.
-    if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() { loaded_history = None; }
+    if args.history_years > 0 || args.watch || args.frame_bench_watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() { loaded_history = None; }
     let mut history = if loaded_history.is_some() {
         loaded_history.take()
     } else if let Some(ref load_path) = args.load_history {
@@ -1583,7 +1604,7 @@ fn main() {
                 None
             }
         }
-    } else if args.history_years > 0 || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || (wants_tiles && !args.no_history) {
+    } else if args.history_years > 0 || args.frame_bench_watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || (wants_tiles && !args.no_history) {
         let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
         // The tile viewer shows history on the land, so it simulates some by default.
         let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
@@ -1614,7 +1635,11 @@ fn main() {
                 Err(e) => eprintln!("Director unavailable, history will be fully procedural: {e}"),
             }
         }
-        let hist = if let Some(prefix) = &args.watch_snapshot {
+        let hist = if args.frame_bench_watch {
+            let atlas = load_atlas(args.tileset.as_deref());
+            let h = tiles::watcher::watch_frame_bench(&world_data, &game_data, config, engine, &atlas);
+            std::process::exit({ let _ = h; 0 });
+        } else if let Some(prefix) = &args.watch_snapshot {
             let atlas = load_atlas(args.tileset.as_deref());
             let (h, files) = tiles::watcher::watch_snapshots(&world_data, &game_data, config, engine, &atlas, prefix);
             println!("Saved watcher snapshots: {}", files.join(", "));
@@ -2076,6 +2101,16 @@ fn main() {
         }
         if let (true, Some(tile)) = (args.sim_patron, center) {
             tiles::viewer::patron_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
+        if let (true, Some(tile)) = (args.frame_bench_world, center) {
+            let atlas = load_atlas(args.tileset.as_deref());
+            tiles::viewer::world_frame_bench(&world_data, history.as_ref(), &atlas, tile);
+            return;
+        }
+        if let (Some(speed), Some(tile)) = (args.frame_bench, center) {
+            let atlas = load_atlas(args.tileset.as_deref());
+            tiles::viewer::frame_bench(&world_data, history.as_ref(), &atlas, tile, speed, args.frame_days, &args.frame_mode);
             return;
         }
         if let (Some(n), Some(tile)) = (args.sim_bench, center) {
