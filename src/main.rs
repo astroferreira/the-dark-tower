@@ -204,6 +204,11 @@ struct Args {
     #[arg(long, default_value = "")]
     inspect_follow: String,
 
+    /// Render one inspector page of each kind (town, realm, beast, event, artifact, monument,
+    /// person) to PREFIX_<kind>.png and exit
+    #[arg(long, value_name = "PREFIX")]
+    inspect_gallery: Option<String>,
+
     /// Master seed (derives all other seeds if not overridden)
     #[arg(short, long)]
     seed: Option<u64>,
@@ -258,6 +263,10 @@ struct Args {
     /// animated GIF timelapse (~25 s; then the run continues as usual)
     #[arg(long, value_name = "FILE")]
     watch_timelapse: Option<String>,
+
+    /// Simulate the history and write an atlas of ages: the world at four moments on one plate
+    #[arg(long, value_name = "FILE")]
+    watch_atlas: Option<String>,
 
     /// Print where the world's ore, farmland, timber and fish are
     #[arg(long)]
@@ -735,6 +744,8 @@ const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 
 fn main() {
     let mut args = parse_args();
+    // Begun from the start screen: the world's making is shown in a window (`tiles::making`).
+    let mut from_start = false;
     if let Some(px) = args.tiles_zoom { tiles::viewer::set_start_zoom(px); }
     if args.coverage {
         let t = tiles::coverage::table();
@@ -801,6 +812,7 @@ fn main() {
         };
         match tiles::start::run_start_screen(initial) {
             Ok(Some(cfg)) => {
+                from_start = true;
                 args.width = cfg.width;
                 args.height = cfg.height;
                 args.seed = Some(cfg.seed);
@@ -1051,10 +1063,11 @@ fn main() {
         legacy_erosion: args.legacy_erosion || args.legacy_tectonics,
         ..terrain::TerrainConfig::new(width, height, world_style)
     };
+    tiles::making::begin(width, height, master_seed, &args.world_style, from_start && !args.headless);
     let terrain::Terrain {
         plate_map, plates, stress_map, heightmap, climate: climate_sim, hardness: hardness_map,
         flow_accumulation, volcanoes, ..
-    } = terrain::generate_terrain(&terrain_config, &seeds, &mut |_| true).expect("terrain generation runs to the end");
+    } = terrain::generate_terrain(&terrain_config, &seeds, &mut |st| { tiles::making::stage(st.name, st.heightmap); true }).expect("terrain generation runs to the end");
     let moisture = climate_sim.mean_moisture.clone();
 
     // Generate lava for active volcanoes
@@ -1069,6 +1082,7 @@ fn main() {
     let (water_body_map, water_bodies_list, water_depth, flow_acc, flow_dir) =
         water_bodies::detect_water_bodies_climate(&heightmap, &temperature, &moisture, Some(&climate_sim.annual_precipitation));
     let lake_count = water_bodies::count_lakes(&water_bodies_list);
+    tiles::making::note("water");
     let wb_stats = water_bodies::water_body_stats(&water_bodies_list);
     println!("Found {} lakes, {} river tiles, {} ocean tiles",
         lake_count, wb_stats.river_tiles, wb_stats.ocean_tiles);
@@ -1092,6 +1106,7 @@ fn main() {
     // Seasonal climates: Mediterranean shrubland (winter rain) and monsoon forest (summer rain).
     let (med, mon) = biomes::apply_seasonal_biomes(&mut extended_biomes, &heightmap, &climate_sim);
     println!("Seasonal climates: {} Mediterranean, {} monsoon tiles", med, mon);
+    tiles::making::note("biomes");
 
     // Apply biome replacement rules (rare biomes replace common ones)
     println!("Applying rare biome replacements...");
@@ -1613,7 +1628,9 @@ fn main() {
     // in the legacy terminal explorer.
     let wants_tiles = (!args.legacy_explorer && !args.headless) || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
     // A saved world's history is reused unless --history-years (or --watch) asks for a fresh simulation.
-    if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() { loaded_history = None; }
+    if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() { loaded_history = None; }
+    // The watcher opens its own window for the history; otherwise the making window waits on it.
+    if args.watch && !args.headless { tiles::making::close(); }
     let mut history = if loaded_history.is_some() {
         loaded_history.take()
     } else if let Some(ref load_path) = args.load_history {
@@ -1629,7 +1646,7 @@ fn main() {
                 None
             }
         }
-    } else if args.history_years > 0 || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || (wants_tiles && !args.no_history) {
+    } else if args.history_years > 0 || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() || (wants_tiles && !args.no_history) {
         let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
         // The tile viewer shows history on the land, so it simulates some by default.
         let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
@@ -1665,6 +1682,9 @@ fn main() {
             let (h, files) = tiles::watcher::watch_snapshots(&world_data, &game_data, config, engine, &atlas, prefix);
             println!("Saved watcher snapshots: {}", files.join(", "));
             h
+        } else if let Some(path) = &args.watch_atlas {
+            let atlas = load_atlas(args.tileset.as_deref());
+            tiles::watcher::watch_atlas(&world_data, &game_data, config, engine, &atlas, path)
         } else if let Some(path) = &args.watch_timelapse {
             let atlas = load_atlas(args.tileset.as_deref());
             tiles::watcher::watch_timelapse(&world_data, &game_data, config, engine, &atlas, path)
@@ -1732,6 +1752,8 @@ fn main() {
     } else {
         None
     };
+    tiles::making::note("history");
+    tiles::making::close();
 
     // Scars history left on the land become part of the biome map.
     if let Some(eco) = history.as_mut().and_then(|h| h.ecology.as_mut()) {
@@ -1837,6 +1859,13 @@ fn main() {
         println!("  soils: {}", line.join(", "));
     }
 
+    if let (Some(prefix), Some(h)) = (&args.inspect_gallery, history.as_ref()) {
+        let atlas = load_atlas(args.tileset.as_deref());
+        match tiles::viewer::save_inspector_gallery(&world_data, h, &atlas, prefix) {
+            Ok(files) => println!("Saved inspector gallery: {} pages", files.len()),
+            Err(e) => eprintln!("Inspector gallery failed: {e}"),
+        }
+    }
     if let Some(spec) = &args.inspect {
         let tile = spec.split_once(',').and_then(|(a, b)| Some((a.trim().parse().ok()?, b.trim().parse().ok()?)));
         match (tile, history.as_ref()) {

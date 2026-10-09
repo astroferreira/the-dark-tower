@@ -162,7 +162,7 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             let Some(fac) = h.factions.get(&f) else { return Page { title: "?".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None } };
             let mut lines = Vec::new();
             let race = h.races.get(&fac.race_id).map(|r| r.name.clone()).unwrap_or_default();
-            lines.push(Line::plain(format!("{} {:?}, founded {}", race, fac.government, fac.founded.year)));
+            lines.push(Line::plain(format!("{}, {}, founded {}", race, spaced(&format!("{:?}", fac.government)).to_lowercase(), fac.founded.year)));
             match fac.dissolved {
                 Some(d) => lines.push(Line::plain(format!("Gone since year {}", d.year))),
                 None => {
@@ -398,7 +398,7 @@ pub fn figure_page(h: &WorldHistory, id: FigureId) -> Page {
         lines.push(Line::section("Deeds"));
         lines.extend(deeds.into_iter().rev().take(8).map(event_line));
     }
-    Page { title: f.full_name(), lines, emblem: None, portrait: None, picture: None }
+    Page { title: f.full_name(), lines, emblem: None, portrait: Some(super::portraits::of_figure(h, f)), picture: None }
 }
 
 /// `settler_page` with the night they were wounded, if they were.
@@ -605,4 +605,11 @@ pub fn save_snapshots(world: &WorldData, h: &WorldHistory, tile: (usize, usize),
         subject = hit.to;
     }
     Ok(written)
+}
+
+/// "TribalCouncil" -> "Tribal Council".
+fn spaced(name: &str) -> String {
+    let mut o = String::new();
+    for (i, c) in name.chars().enumerate() { if i > 0 && c.is_uppercase() { o.push(' '); } o.push(c); }
+    o
 }

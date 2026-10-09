@@ -167,7 +167,8 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   `--plate FILE` re-runs the game with those arguments plus `--tiles-center` and `--tiles-zoom`;
   with `--headless --tiles-snapshot P` it re-renders the plate (`P_plate.png`), byte-identical
   on the dev world. `--tiles-snapshot` always writes `<prefix>_plate.png` (16 px at the centre).
-- Not yet: typed captions, automatic plates at great events (an album).
+- Typed captions: Shift+P asks for the caption on the map (Enter saves the plate with it, Esc
+  drops it); plain P captions with the world's sentence. Not yet: automatic plates at great events.
 
 ### Heraldry (`tiles/heraldry.rs`)
 - `arms_of(world, history, faction)`: shield shape by race (heater, square for dwarves and
@@ -202,7 +203,10 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   crossed swords with their year, a cartouche ("The Annals of <world>", the year, the world's
   sentence), a scale bar (round steps, 4 segments), a compass rose in the most open sea and the
   vintage ruled border (`cartography/decorations.rs`). Works with `--load-world`.
-- Not yet: the atlas of ages (four small maps at years 201, 280, 360, 451).
+- The atlas of ages (`--watch-atlas FILE`, `watcher::watch_atlas`): the world at the dawn of
+  history, a third and two thirds through, and the present (dev: 201, 284, 367, 451), two by two
+  on one ruled parchment plate, each map with its realms, roads and towns and captioned with the
+  year, the age (the timeline's era) and its towns and realms.
 
 ### Portraits (`tiles/portraits.rs`)
 - `of_settler` builds an ink head from parts: skin, ears, tusks and beards by race (orcs green
@@ -264,7 +268,12 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
 - Walking: the site line ("what an embark here would hold") is read only once the walker has
   stopped for 0.35 s ("the site is read when you stop"); generating it near a town costs up to
   a second and stalled walking past one.
-- Not done: keeping the start window open during world generation (generation runs on the main
+- The world being made (`tiles/making.rs`): from the start screen's Begin a window stays up while
+  the world is made: the pipeline's steps ticked as `generate_terrain`'s stages, water and biomes
+  finish, the one under way in rubric, and the land inked small after each stage. It closes for
+  the watcher, or after the history. `PLANET_MAKING_FRAMES=PREFIX` saves its frames (headless
+  too); `PLANET_START_BEGIN=N` presses Begin on frame N (the whole flow checked in a real window
+  with macOS captures). Earlier note: keeping the start window open during world generation (generation runs on the main
   thread in `main`), bucketing river segments and houses, writing the timelapse on a worker.
   Not tried in a real window.
 
@@ -461,3 +470,11 @@ the Claude Doc "Ink graphics: sprites and examples".
 - Live pass on a grown camp (`--code 76.96x48.earthlike.8.250@45,12 --day 200` with
   `PLANET_UI_SCRIPT`): `]` steps through levels 52 (cellar, farm), 48 (great hall, workshops),
   44 (bedrooms, kiln) and on; `[` comes back to the surface; the section and the minimap checked.
+- Overlays all checked (2026-10-09): plates and biomes recoloured into the map's palette
+  (`PLATE_WASHES`, oceanic plates toward the sea's ink; biomes half-saturated with the sea in its
+  washes); they had been golden-angle hues and the biome table's saturated colours.
+- `--inspect-gallery PREFIX`: one inspector page of each kind (town, realm, beast, event,
+  artifact, monument, person) over the map at its place. A person's page carries a face drawn
+  from their persona, race and age (`portraits::of_figure`; a scar for a battle they fought);
+  governments read as words ("tribal council"); the marker sits on the place even when the
+  camera is held off a pole.

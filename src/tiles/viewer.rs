@@ -32,7 +32,7 @@ fn script_key(n: &str) -> Option<Key> {
     let b = n.as_bytes();
     if b.len() == 1 && b[0].is_ascii_alphabetic() { return Some(LETTERS[(b[0].to_ascii_uppercase() - b'A') as usize]); }
     if b.len() == 1 && b[0].is_ascii_digit() { return Some(DIGITS[(b[0] - b'0') as usize]); }
-    Some(match n { "Space" => Key::Space, "Escape" => Key::Escape, "Enter" => Key::Enter, "Tab" => Key::Tab, "Backspace" => Key::Backspace, "<" | "Comma" => Key::Comma, ">" | "Period" => Key::Period, "[" => Key::LeftBracket, "]" => Key::RightBracket, _ => return None })
+    Some(match n { "Space" => Key::Space, "Escape" => Key::Escape, "Enter" => Key::Enter, "Tab" => Key::Tab, "Backspace" => Key::Backspace, "Shift" => Key::LeftShift, "<" | "Comma" => Key::Comma, ">" | "Period" => Key::Period, "[" => Key::LeftBracket, "]" => Key::RightBracket, _ => return None })
 }
 
 /// Seconds per season when the automatic year cycle is on.
@@ -622,6 +622,10 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         // The player's notes on the map, and one being written (the tile, the text so far).
         let mut notes = crate::lore::notes::load(seed);
         let mut note_input: Option<((usize, usize), String)> = None;
+        // Shift+P: the plate's caption being typed; `plate_now` asks for a plate this frame (with
+        // the typed caption, or the world's sentence).
+        let mut caption_input: Option<String> = None;
+        let mut plate_now: Option<Option<String>> = None;
         // The site report for the embark box: (where it was computed, the line).
         let mut site_line: (Option<(i64, i64)>, String) = (None, String::new());
         // The walker's box last moved at (the site line waits until it rests).
@@ -728,7 +732,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             was_down = down;
             was_right = right;
             // Writing a note (M): the keys write until Enter pins it or Esc drops it.
-            let typing = note_input.is_some() || name_input.is_some() || place_input.is_some();
+            let typing = note_input.is_some() || name_input.is_some() || place_input.is_some() || caption_input.is_some();
             if let (Some((at, text)), true) = (place_input.as_mut(), local_active) {
                 let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
                 let mut done = None;
@@ -768,6 +772,18 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         let (colony, _) = local.as_mut().unwrap();
                         colony.name_colony(name.trim());
                         status = format!("The settlement is called {}.", name.trim());
+                    }
+                }
+                dirty = true;
+            } else if caption_input.is_some() {
+                let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
+                for k in window.get_keys_pressed(KeyRepeat::Yes).into_iter().chain(script_keys.iter().copied()) {
+                    let text = caption_input.as_mut().unwrap();
+                    match k {
+                        Key::Enter => { let t = text.trim().to_string(); plate_now = Some(if t.is_empty() { None } else { Some(t) }); caption_input = None; break; }
+                        Key::Escape => { caption_input = None; status = "no plate".into(); break; }
+                        Key::Backspace => { text.pop(); }
+                        _ => if let Some(c) = key_char(k, shift) { if text.len() < 160 { text.push(c); } },
                     }
                 }
                 dirty = true;
@@ -1380,6 +1396,12 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     status = "write a note: Enter pins it, Esc drops it".into();
                 }
                 if pressed(Key::P) {
+                    if window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift) || script_keys.contains(&Key::LeftShift) {
+                        caption_input = Some(String::new());
+                        status = "write the plate's caption: Enter saves the plate, Esc drops it".into();
+                    } else { plate_now = Some(None); }
+                }
+                if let Some(caption) = plate_now.take() {
                     // A plate: the map without the interface, framed, captioned and numbered.
                     let mut plate = vec![0u32; w * h];
                     render_world(&tw, &atlas, &cam, &mut plate, w, h);
@@ -1387,7 +1409,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     super::beasts::draw_world(&world_beasts, &cam, tw.width, &mut plate, w, h, false);
                     if show_labels { draw_labels(&labels, &cam, tw.width, &mut plate, w, h); }
                     draw_notes(&notes, None, &cam, tw.width, &mut plate, w, h);
-                    let info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
+                    let mut info = plate_info(world, history, &gaz, &tw, &cam, w, h, season);
+                    if let Some(c) = caption { info.caption = c; }
                     super::plates::decorate(&mut plate, w, h, &info);
                     let path = super::plates::next_path(seed);
                     status = match super::plates::save(&path, &plate, w, h, (cam.cx, cam.cy, cam.tile_px), &info) {
@@ -1551,6 +1574,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         draw_labels_avoiding(&labels, &cam, tw.width, &mut buf, w, h, &avoid);
                     }
                     draw_notes(&notes, note_input.as_ref(), &cam, tw.width, &mut buf, w, h);
+                    if let Some(t) = &caption_input { super::colony_hud::draw_hint(&format!("The plate's caption: {}_   (Enter saves, Esc drops)", t), &mut buf, w, h); }
                     overlays::draw_legend(&mut buf, w, h, overlay);
                     // Colonies left behind: a gold ring and their name.
                     for (c, _) in &left {
@@ -1611,6 +1635,49 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
 /// Headless check of the inspector as the window shows it: the map at 16 px/tile around `tile`
 /// with the panel open on it, then one frame per followed link (`follow`: clickable line
 /// numbers, 0 = the first). Writes `<prefix>_0.png`, `<prefix>_1.png`, ...
+/// One inspector page of each kind the history has (a town, a realm, a beast, an event with its
+/// causes, an artifact, a monument, a person), each over the map at its place: `<prefix>_<kind>.png`.
+pub fn save_inspector_gallery(world: &WorldData, history: &WorldHistory, atlas: &Atlas, prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    use super::inspector::{draw, page, Subject};
+    let h = history;
+    let mut tw = TileWorld::build(world, atlas);
+    tw.apply_history(world, h, atlas);
+    let gaz = build_gazetteer(world, Some(h), world.seed());
+    let landmarks = crate::lore::find_landmarks(world, &gaz);
+    let labels = build_labels(world, Some(h), &gaz, &landmarks);
+    let life = super::world_ink::world_life(h);
+    let beasts = super::beasts::world_beasts(h);
+    let mut picks: Vec<(&str, Subject, Option<(usize, usize)>)> = Vec::new();
+    if let Some((id, s)) = h.settlements.iter().filter(|(_, s)| !s.is_destroyed()).max_by_key(|(id, s)| (s.population, std::cmp::Reverse(id.0))) { picks.push(("town", Subject::Settlement(*id), Some(s.location))); }
+    if let Some((id, f)) = h.factions.iter().max_by_key(|(id, f)| (h.settlements.values().filter(|s| s.faction == **id && !s.is_destroyed()).count(), std::cmp::Reverse(id.0))) { let _ = f; let at = h.settlements.values().find(|s| s.faction == *id && !s.is_destroyed()).map(|s| s.location); picks.push(("realm", Subject::Faction(*id), at)); }
+    if let Some((id, c)) = h.legendary_creatures.iter().filter(|(_, c)| c.is_alive()).max_by_key(|(id, c)| (c.lair_location.is_some(), std::cmp::Reverse(id.0))) { picks.push(("beast", Subject::Beast(*id), c.lair_location)); }
+    if let Some(e) = h.chronicle.events.iter().rev().find(|e| !e.causes.is_empty() && e.location.is_some()) { picks.push(("event", Subject::Event(e.id), e.location)); }
+    if let Some((id, a)) = h.artifacts.iter().min_by_key(|(id, _)| id.0) { picks.push(("artifact", Subject::Artifact(*id), a.creation_location)); }
+    if let Some((id, m)) = h.monuments.iter().min_by_key(|(id, _)| id.0) { picks.push(("monument", Subject::Monument(*id), Some(m.location))); }
+    if let Some((id, _)) = h.figures.iter().filter(|(_, f)| f.death_date.is_none()).min_by_key(|(id, _)| id.0) { picks.push(("person", Subject::Figure(*id), None)); }
+    let (w, hh) = (1280usize, 800usize);
+    let panel = super::inspector::panel_rect(w, hh);
+    let mut written = Vec::new();
+    for (kind, subject, at) in picks {
+        let tile = at.unwrap_or((world.width / 2, world.height / 2));
+        let cam = Camera { cx: tile.0 as f32 + 0.5 + (panel.w as f32 / 2.0) / 16.0, cy: clamp_cy(tile.1 as f32 + 0.5, 16.0, hh, world.height), tile_px: 16.0 };
+        let mut buf = vec![0u32; w * hh];
+        render_world(&tw, atlas, &cam, &mut buf, w, hh);
+        super::world_ink::draw(&life, &cam, tw.width, &mut buf, w, hh);
+        super::beasts::draw_world(&beasts, &cam, tw.width, &mut buf, w, hh, false);
+        draw_labels(&labels, &cam, tw.width, &mut buf, w, hh);
+        // Where the place is on screen (the camera may be held off a pole, so not always the middle).
+        if at.is_some() { draw_marker(&mut buf, w, hh, (tile.0 as f32 + 0.5 - cam.cx) * cam.tile_px + w as f32 / 2.0, (tile.1 as f32 + 0.5 - cam.cy) * cam.tile_px + hh as f32 / 2.0, 7.0); }
+        let p = page(world, h, subject);
+        let hits = draw(&p, &mut buf, w, hh, 1);
+        let path = format!("{prefix}_{kind}.png");
+        save_rgb_png(&path, w, hh, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("Inspector {}: {} ({} lines, {} links)", kind, p.title, p.lines.len(), hits.len());
+        written.push(path);
+    }
+    Ok(written)
+}
+
 pub fn save_inspect_snapshots(world: &WorldData, history: &WorldHistory, atlas: &Atlas, tile: (usize, usize), follow: &[usize], prefix: &str) -> Result<Vec<String>, Box<dyn Error>> {
     use super::inspector::{draw, page, Subject};
     let mut tw = TileWorld::build(world, atlas);
@@ -1627,7 +1694,7 @@ pub fn save_inspect_snapshots(world: &WorldData, history: &WorldHistory, atlas: 
     super::world_ink::draw(&super::world_ink::world_life(history), &cam, tw.width, &mut map, w, h);
     super::beasts::draw_world(&super::beasts::world_beasts(history), &cam, tw.width, &mut map, w, h, false);
     draw_labels(&labels, &cam, tw.width, &mut map, w, h);
-    let (mx, my) = ((w - panel.w) as f32 / 2.0, h as f32 / 2.0);
+    let (mx, my) = ((tile.0 as f32 + 0.5 - cam.cx) * cam.tile_px + w as f32 / 2.0, (tile.1 as f32 + 0.5 - cam.cy) * cam.tile_px + h as f32 / 2.0);
     draw_marker(&mut map, w, h, mx, my, 7.0);
     let mut subject = Subject::Tile(tile.0, tile.1);
     let mut written = Vec::new();

@@ -117,6 +117,12 @@ fn hsv(h: f32, s: f32, v: f32) -> [f32; 3] {
     [(r + m) * 255.0, (g + m) * 255.0, (b + m) * 255.0]
 }
 
+/// Washes for the plates overlay: ochre, sage, rose-brown, slate, olive, sienna, dusty violet,
+/// grey-teal, umber, moss, straw, brick.
+const PLATE_WASHES: [[u8; 3]; 12] = [[200, 164, 100], [150, 170, 126], [176, 128, 116], [120, 140, 160], [150, 150, 96], [184, 120, 80], [146, 126, 156], [116, 150, 146], [140, 112, 84], [112, 136, 92], [212, 190, 132], [164, 96, 82]];
+
+fn mix3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] { [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t] }
+
 /// Per-tile colours for an overlay (empty for `Overlay::None`).
 pub fn colors(world: &WorldData, mode: Overlay) -> Vec<[f32; 3]> {
     let (w, h) = (world.width, world.height);
@@ -140,14 +146,26 @@ pub fn colors(world: &WorldData, mode: Overlay) -> Vec<[f32; 3]> {
                 Overlay::Stress => ramp(&STRESS, *world.stress_map.get(x, y)),
                 Overlay::Plates => {
                     let id = world.plate_map.get(x, y).0 as u64;
-                    // Golden-angle hues: consecutive plates land far apart on the colour wheel.
-                    let hue = (id as f32 * 137.508) % 360.0;
+                    // A wash from the map's own pigments per plate (they had been golden-angle
+                    // hues, magenta and lime beside the sepia): continental crust paler, oceanic
+                    // crust deeper toward the sea's ink.
+                    let base = PLATE_WASHES[(id as usize * 7) % PLATE_WASHES.len()].map(|v| v as f32);
                     let continental = world.plates.iter().find(|p| p.id.0 as u64 == id).map_or(e >= 0.0, |p| p.plate_type == crate::plates::PlateType::Continental);
-                    hsv(hue, if continental { 0.32 } else { 0.45 }, if continental { 0.86 } else { 0.62 })
+                    if continental { mix3(base, [234.0, 222.0, 196.0], 0.35) } else { mix3(mix3(base, [96.0, 128.0, 142.0], 0.35), [234.0, 222.0, 196.0], 0.12) }
                 }
                 Overlay::Biomes => {
+                    // The biome's class colour, half its saturation and a little toward parchment,
+                    // so the classes read apart in the map's palette.
+                    if e < 0.0 {
+                        // The sea in the map's washes, deeper offshore.
+                        let t = (-e / 3000.0).clamp(0.0, 1.0);
+                        mix3([156.0, 184.0, 178.0], [96.0, 128.0, 142.0], t.sqrt())
+                    } else {
                     let (r, g, b) = world.biomes.get(x, y).color();
-                    [r as f32, g as f32, b as f32]
+                    let c = [r as f32, g as f32, b as f32];
+                    let grey = (c[0] + c[1] + c[2]) / 3.0;
+                    mix3(mix3(c, [grey * 1.04, grey, grey * 0.88], 0.45), [234.0, 222.0, 196.0], 0.18)
+                    }
                 }
             };
             out.push(c);

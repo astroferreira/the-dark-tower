@@ -286,8 +286,10 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   byte-identical per seed. Dev: 1,337 pages in ~0.3 s; seed 42: 7,439 pages, 78 MB.
   `tests/legends.rs`: links and anchors resolve, one entry per event, camps linked, two runs equal.
 - Each site's page opens with the country round it, cut from the same map in CSS (a 360x240
-  window, 14 tiles across, the site pinned; `Book::site_crop`). Not done: dynasties and deities
-  have no pages of their own.
+  window, 14 tiles across, the site pinned; `Book::site_crop`). Houses and gods have pages of their
+  own (`house-N.html` with the family tree as an ink SVG, a line of heirs winding five to a row;
+  `god-N.html` with a seal by domain and alignment, faiths, sacred places, treasures, story);
+  `houses.html` in the menu; figures link their house, faiths their gods.
 
 ## Who knows what (`knowledge.rs`; DF's `local_known_events` / `known_info`, ch. 06)
 - A derived layer over the finished chronicle: no RNG, nothing saved, the history unchanged.

@@ -1296,6 +1296,68 @@ pub fn watch_timelapse(world: &WorldData, game_data: &GameData, config: HistoryC
     })
 }
 
+/// An atlas of ages (`--watch-atlas FILE`): simulate the history as `--watch` does, then draw the
+/// world at four moments, the dawn of history, a third and two thirds through, and the present,
+/// two by two on one parchment plate. Each map has the realms, roads and towns of its year and
+/// is captioned with the year and the age it fell in.
+pub fn watch_atlas(world: &WorldData, game_data: &GameData, config: HistoryConfig, engine: HistoryEngine, atlas: &Atlas, path: &str) -> WorldHistory {
+    let mut base = TileWorld::build(world, atlas);
+    base.set_season(world, Season::Summer);
+    let ctl = Control { paused: AtomicBool::new(true), pace: AtomicUsize::new(PACES.len() - 1), detached: AtomicBool::new(false) };
+    let (tx, rx) = mpsc::channel();
+    std::thread::scope(|scope| {
+        let sim = {
+            let ctl = &ctl;
+            scope.spawn(move || simulate(world, game_data, config, engine, ctl, tx))
+        };
+        let mut view = View::new(world, atlas, base.clone());
+        view.resize(LAPSE_SIZE.0, LAPSE_SIZE.1);
+        for msg in rx.iter() { view.receive(msg); }
+        let history = sim.join().expect("history simulation panicked");
+        let total = view.steps.len();
+        if total == 0 { eprintln!("Atlas: nothing recorded"); return history; }
+        // The plate: 2x2 maps with margins, a title band.
+        let (mw, mh) = (760usize, (760 * world.height / world.width).max(200));
+        let (gap, top, margin) = (28usize, 92usize, 30usize);
+        let (pw, ph) = (margin * 2 + mw * 2 + gap, top + (mh + 44) * 2 + gap + margin);
+        let mut plate = vec![0u32; pw * ph];
+        for y in 0..ph { for x in 0..pw { let n = (super::ui::hash(x / 3, y / 3) & 0xFF) as f32 / 255.0; plate[y * pw + x] = super::ui::mix(super::ui::PAPER, 0x00D8_C8A0, 0.35 * n); } }
+        let gaz = crate::lore::gazetteer::build_gazetteer(world, Some(&history), world.seed());
+        let name = gaz.features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
+        let title = format!("An Atlas of Ages: the Lands of {}", name);
+        let tw_ = super::fonts::width(&title, super::fonts::Face::SmallCaps, 30.0, 2.0);
+        super::fonts::draw(&mut plate, pw, ph, (pw as f32 - tw_) / 2.0, 26.0, &title, super::fonts::Face::SmallCaps, 30.0, 2.0, super::ui::RUBRIC, None);
+        for (i, k) in [0, total / 3, total * 2 / 3, total - 1].into_iter().enumerate() {
+            view.jump(k);
+            let mut tw = base.clone();
+            tw.apply_overlay(world, &view.cur, atlas);
+            let cam = Camera { cx: world.width as f32 / 2.0, cy: world.height as f32 / 2.0, tile_px: mw as f32 / world.width as f32 };
+            let mut buf = vec![0u32; mw * mh];
+            render_world_lod(&tw, atlas, &cam, &mut buf, mw, mh, 1);
+            overlay_realms(&tw, &cam, &mut buf, mw, mh);
+            let step = &*view.steps[k];
+            let labels = settlement_labels(step, &tw);
+            place_labels(&labels, cam.tile_px, mw, mh, &mut buf, &[], |x, y| (mw as f32 / 2.0 + (x - cam.cx) * cam.tile_px, mh as f32 / 2.0 + (y - cam.cy) * cam.tile_px));
+            let (ox, oy) = (margin + (i % 2) * (mw + gap), top + (i / 2) * (mh + 44 + gap));
+            for y in 0..mh { for x in 0..mw { plate[(oy + y) * pw + ox + x] = buf[y * mw + x]; } }
+            let r = Rect { x: ox, y: oy, w: mw, h: mh };
+            super::ui::outline(&mut plate, pw, r, super::ui::INK);
+            super::ui::outline(&mut plate, pw, Rect { x: ox - 4, y: oy - 4, w: mw + 8, h: mh + 8 }, super::ui::INK_FADED);
+            let year = step.year;
+            let age = history.timeline.eras.iter().find(|e| e.start.year <= year && e.end.map_or(true, |d| d.year >= year)).map(|e| e.name.clone()).unwrap_or_default();
+            let towns = step.places.values().filter(|p| !p.4).count();
+            let cap = if age.is_empty() { format!("Year {}: {} towns, {} realms", year, towns, step.realms.len()) } else { format!("Year {}, {}: {} towns, {} realms", year, age, towns, step.realms.len()) };
+            super::fonts::draw(&mut plate, pw, ph, ox as f32, (oy + mh + 10) as f32, &cap, super::fonts::Face::Italic, 18.0, 0.0, super::ui::INK, None);
+        }
+        let outer = Rect { x: 10, y: 10, w: pw - 20, h: ph - 20 };
+        super::ui::outline(&mut plate, pw, outer, super::ui::INK);
+        super::ui::outline(&mut plate, pw, Rect { x: 13, y: 13, w: pw - 26, h: ph - 26 }, super::ui::INK_FADED);
+        super::viewer::save_rgb_png_pub(path, pw, ph, |x, y| { let q = plate[y * pw + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+        println!("Atlas of ages: 4 maps (years {}), written to {}", [0, total / 3, total * 2 / 3, total - 1].iter().map(|&k| view.steps[k].year.to_string()).collect::<Vec<_>>().join(", "), path);
+        history
+    })
+}
+
 /// The timelapse frame: wide enough for the panel and a readable map.
 const LAPSE_SIZE: (usize, usize) = (960, 600);
 

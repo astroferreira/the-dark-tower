@@ -340,8 +340,12 @@ pub fn run_start_screen(initial: StartConfig) -> Result<Option<StartConfig>, Box
     let mut size = (0, 0);
     let mut was_down = false;
     let mut hits: Vec<Hit> = Vec::new();
+    // PLANET_START_BEGIN=N: press Begin on frame N (testing the start -> making -> game flow).
+    let auto_begin: Option<u64> = std::env::var("PLANET_START_BEGIN").ok().and_then(|v| v.parse().ok());
+    let mut frame: u64 = 0;
 
     while window.is_open() {
+        frame += 1;
         let (w, h) = window.get_size();
         if (w, h) != size {
             size = (w, h);
@@ -357,7 +361,7 @@ pub fn run_start_screen(initial: StartConfig) -> Result<Option<StartConfig>, Box
         let row = ROWS[sel];
         if pressed(Key::Left) { menu.change(row, -1); }
         if pressed(Key::Right) { menu.change(row, 1); }
-        if window.is_key_pressed(Key::Enter, KeyRepeat::No) || window.is_key_pressed(Key::NumPadEnter, KeyRepeat::No) {
+        if window.is_key_pressed(Key::Enter, KeyRepeat::No) || window.is_key_pressed(Key::NumPadEnter, KeyRepeat::No) || auto_begin == Some(frame) {
             menu.sync();
             return Ok(Some(menu.cfg));
         }

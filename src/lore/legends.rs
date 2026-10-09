@@ -227,6 +227,8 @@ impl<'a> Book<'a> {
             EntityId::Artifact(x) if h.artifacts.contains_key(&x) => Some(format!("artifact-{}.html", x.0)),
             EntityId::Monument(m) if h.monuments.contains_key(&m) => Some(format!("monument-{}.html", m.0)),
             EntityId::Religion(r) if h.religions.contains_key(&r) => Some(format!("religion-{}.html", r.0)),
+            EntityId::Dynasty(d) if h.dynasties.contains_key(&d) => Some(format!("house-{}.html", d.0)),
+            EntityId::Deity(d) if h.deities.contains_key(&d) => Some(format!("god-{}.html", d.0)),
             _ => None,
         }
     }
@@ -242,6 +244,8 @@ impl<'a> Book<'a> {
             EntityId::Artifact(x) => h.artifacts.get(&x).map(|x| vec![x.name.clone()]).unwrap_or_default(),
             EntityId::Monument(m) => h.monuments.get(&m).map(|x| vec![x.name.clone()]).unwrap_or_default(),
             EntityId::Religion(r) => h.religions.get(&r).map(|x| vec![tidy(&x.name)]).unwrap_or_default(),
+            EntityId::Dynasty(d) => h.dynasties.get(&d).map(|x| vec![tidy(&x.name)]).unwrap_or_default(),
+            EntityId::Deity(d) => h.deities.get(&d).map(|x| vec![x.name.clone()]).unwrap_or_default(),
             _ => Vec::new(),
         }
     }
@@ -473,7 +477,7 @@ impl<'a> Book<'a> {
 
 const FONTS: &str = "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Alegreya:ital,wght@0,400;0,600;1,400&family=Alegreya+Sans+SC:wght@500&display=swap\">";
 
-const NAV: &str = "<a href=\"ages.html\">Ages</a><a href=\"peoples.html\">Peoples</a><a href=\"sites.html\">Sites</a><a href=\"figures.html\">Figures</a><a href=\"beasts.html\">Beasts</a><a href=\"treasures.html\">Treasures</a><a href=\"wars.html\">Wars</a><a href=\"faiths.html\">Faiths</a><a href=\"arts.html\">Arts</a><a href=\"years.html\">Years</a><a href=\"camps.html\">Camps</a>";
+const NAV: &str = "<a href=\"ages.html\">Ages</a><a href=\"peoples.html\">Peoples</a><a href=\"houses.html\">Houses</a><a href=\"sites.html\">Sites</a><a href=\"figures.html\">Figures</a><a href=\"beasts.html\">Beasts</a><a href=\"treasures.html\">Treasures</a><a href=\"wars.html\">Wars</a><a href=\"faiths.html\">Faiths</a><a href=\"arts.html\">Arts</a><a href=\"years.html\">Years</a><a href=\"camps.html\">Camps</a>";
 
 /// Arms as a small PNG (transparent outside the shield).
 fn arms_png(world: &WorldData, h: &WorldHistory, f: FactionId, path: &Path) -> bool {
@@ -710,7 +714,7 @@ pub fn write_legends(world: &WorldData, h: &WorldHistory, gaz: &Gazetteer, camps
             }
         }
         if !f.titles.is_empty() { let _ = write!(lede, " Titles: {}.", esc(&f.titles.join(", "))); }
-        if let Some(d) = f.dynasty.and_then(|d| h.dynasties.get(&d)) { let _ = write!(lede, " Of {}.", esc(&tidy(&d.name))); }
+        if let Some(d) = f.dynasty.filter(|d| h.dynasties.contains_key(d)) { let _ = write!(lede, " Of {}.", b.link(EntityId::Dynasty(d))); }
         let _ = write!(o, "<p class=\"lede\">{}</p></header>", lede);
         let kin: Vec<String> = [f.parents.0, f.parents.1].iter().flatten().map(|p| ("parent", *p))
             .chain(f.spouse.map(|s| ("spouse", s)))
@@ -865,7 +869,7 @@ pub fn write_legends(world: &WorldData, h: &WorldHistory, gaz: &Gazetteer, camps
         let gods: Vec<String> = r.deities.iter().filter_map(|d| h.deities.get(d)).map(|d| {
             let ep = d.epithets.first().map(|e| format!(" {}", e)).unwrap_or_default();
             let doms: Vec<String> = d.domains.iter().map(|x| words(&format!("{:?}", x))).collect();
-            format!("<li><b>{}{}</b> <span class=\"meta\">{}, {}{}</span></li>", esc(&d.name), esc(&ep), words(&format!("{:?}", d.deity_type)), words(&format!("{:?}", d.alignment)), if doms.is_empty() { String::new() } else { format!("; of {}", esc(&and_list(&doms))) })
+            format!("<li><b>{}</b>{} <span class=\"meta\">{}, {}{}</span></li>", b.link(EntityId::Deity(d.id)), esc(&ep), words(&format!("{:?}", d.deity_type)), words(&format!("{:?}", d.alignment)), if doms.is_empty() { String::new() } else { format!("; of {}", esc(&and_list(&doms))) })
         }).collect();
         if !gods.is_empty() { let _ = write!(o, "<h2>Its gods</h2><ul class=\"plain\">{}</ul>", gods.join("")); }
         if !r.doctrines.is_empty() { let _ = write!(o, "<h2>Its teachings</h2><p>{}.</p>", esc(&capital(&and_list(&r.doctrines.iter().map(|d| words(&format!("{:?}", d))).collect::<Vec<_>>())))); }
@@ -885,6 +889,49 @@ pub fn write_legends(world: &WorldData, h: &WorldHistory, gaz: &Gazetteer, camps
     let cults: Vec<String> = sorted(&h.cults).into_iter().map(|(_, c)| format!("<li><span class=\"yr\">{}</span> {}, worshipping {}</li>", c.founded.year, esc(&tidy(&c.name)), b.link(EntityId::LegendaryCreature(c.worshipped_creature)))).collect();
     if !cults.is_empty() { let _ = write!(list, "<h2>Cults of the beasts</h2><ul class=\"plain\">{}</ul>", cults.join("")); }
     files.push(("faiths.html".into(), b.frame("The Faiths", &list)));
+
+    // --- Gods -------------------------------------------------------------------------------
+    for (id, d) in sorted(&h.deities) {
+        let ep = d.epithets.first().cloned().unwrap_or_default();
+        let doms: Vec<String> = d.domains.iter().map(|x| words(&format!("{:?}", x))).collect();
+        let mut o = format!("<header class=\"title\"><p class=\"eyebrow\">{} · {}</p><h1>{}</h1>", esc(&capital(&words(&format!("{:?}", d.deity_type)))), esc(&words(&format!("{:?}", d.alignment))), esc(&d.name));
+        let faiths: Vec<String> = sorted(&h.religions).into_iter().filter(|(_, r)| r.deities.contains(&id)).map(|(rid, _)| b.link(EntityId::Religion(rid))).collect();
+        let _ = write!(o, "<p class=\"lede\">{}{}{}</p></header>", if ep.is_empty() { String::new() } else { format!("{}. ", esc(&capital(&ep))) },
+            if doms.is_empty() { String::new() } else { format!("A god of {}. ", esc(&and_list(&doms))) },
+            if faiths.is_empty() { "No faith keeps them now.".to_string() } else { format!("Worshipped in {}.", and_list(&faiths)) });
+        o.push_str(&god_seal(d));
+        if d.epithets.len() > 1 { let _ = write!(o, "<h2>Also called</h2><p>{}</p>", esc(&d.epithets[1..].join(" · "))); }
+        if let Some(m) = d.associated_monster { let _ = write!(o, "<h2>Its beast</h2><p>{}</p>", b.link(EntityId::LegendaryCreature(m))); }
+        let arts: Vec<String> = d.divine_artifacts.iter().filter(|x| h.artifacts.contains_key(x)).map(|x| b.link(EntityId::Artifact(*x))).collect();
+        if !arts.is_empty() { let _ = write!(o, "<h2>Its treasures</h2><p>{}</p>", arts.join(" · ")); }
+        let pins: Vec<((usize, usize), bool, String)> = d.sacred_places.iter().map(|l| (*l, true, format!("A place sacred to {}", d.name))).collect();
+        o.push_str(&b.map_fig(&pins, &format!("The places sacred to {}", d.name)));
+        let mut idx: Vec<usize> = b.events.iter().enumerate().filter(|(_, e)| e.description.contains(&d.name) || e.title.contains(&d.name)).map(|(i, _)| i).collect();
+        idx.dedup();
+        if !idx.is_empty() { let _ = write!(o, "<h2>Its story</h2>{}", b.story(&idx, true)); }
+        files.push((format!("god-{}.html", id.0), b.frame(&d.name, &o)));
+        search.push((d.name.clone(), "god", format!("god-{}.html", id.0)));
+    }
+
+    // --- Houses -----------------------------------------------------------------------------
+    let mut list = String::from("<header class=\"title\"><p class=\"eyebrow\">The record</p><h1>The Houses</h1><p class=\"lede\">The ruling families, their founders and their trees.</p></header><ul class=\"plain\">");
+    for (id, d) in sorted(&h.dynasties) {
+        let ruled: Vec<String> = d.factions_ruled.iter().filter(|f| h.factions.contains_key(f)).map(|f| b.people(*f)).collect();
+        let _ = write!(list, "<li><span class=\"yr\">{}</span> {} <span class=\"meta\">{} members, {} generations{}</span></li>", d.founded.year, b.link(EntityId::Dynasty(id)), d.members.len(), d.generations, if ruled.is_empty() { String::new() } else { format!("; ruled {}", ruled.len()) });
+        let mut o = format!("<header class=\"title\"><p class=\"eyebrow\">A house · since {}</p><h1>{}</h1>", d.founded.year, esc(&tidy(&d.name)));
+        let head = d.current_head.filter(|f| h.figures.contains_key(f)).map(|f| format!(" Its head is {}.", b.link(EntityId::Figure(f)))).unwrap_or_default();
+        let _ = write!(o, "<p class=\"lede\">Founded in the year {} by {}; {} members over {} generations, by {}.{}{}</p></header>", d.founded.year, b.link(EntityId::Figure(d.founder)), d.members.len(), d.generations,
+            esc(&words(&format!("{:?}", d.succession_law)).to_lowercase()), head, if ruled.is_empty() { String::new() } else { format!(" It has ruled {}.", and_list(&ruled)) });
+        o.push_str(&house_tree(&b, d));
+        let seats: Vec<String> = d.ancestral_seats.iter().filter(|s| h.settlements.contains_key(s)).map(|s| b.link(EntityId::Settlement(*s))).collect();
+        if !seats.is_empty() { let _ = write!(o, "<h2>Its seats</h2><p>{}</p>", seats.join(" · ")); }
+        let heir: Vec<String> = d.heirlooms.iter().filter(|x| h.artifacts.contains_key(x)).map(|x| b.link(EntityId::Artifact(*x))).collect();
+        if !heir.is_empty() { let _ = write!(o, "<h2>Its heirlooms</h2><p>{}</p>", heir.join(" · ")); }
+        files.push((format!("house-{}.html", id.0), b.frame(&tidy(&d.name), &o)));
+        search.push((tidy(&d.name), "house", format!("house-{}.html", id.0)));
+    }
+    list.push_str("</ul>");
+    files.push(("houses.html".into(), b.frame("The Houses", &list)));
 
     // --- Camps ------------------------------------------------------------------------------
     {
@@ -1128,3 +1175,108 @@ const JS: &str = r#"
   });
 })();
 "#;
+
+/// A house's family tree as an ink SVG: the founder at the top, each generation a row, a sepia
+/// elbow from parent to child; names link to their pages; the living in ink, the dead faded.
+/// At most 48 members (the founder's line first, generation by generation).
+fn house_tree(b: &Book, d: &crate::history::entities::lineage::Dynasty) -> String {
+    let h = b.h;
+    let members: std::collections::BTreeSet<FigureId> = d.members.iter().copied().filter(|f| h.figures.contains_key(f)).collect();
+    if members.is_empty() { return String::new(); }
+    let mut rows: Vec<Vec<FigureId>> = vec![vec![d.founder]];
+    let mut seen: std::collections::BTreeSet<FigureId> = [d.founder].into_iter().collect();
+    let mut count = 1usize;
+    while count < 48 {
+        let last = rows.last().unwrap().clone();
+        let mut next: Vec<FigureId> = Vec::new();
+        for p in &last {
+            if let Some(f) = h.figures.get(p) {
+                let mut kids: Vec<FigureId> = f.children.iter().copied().filter(|c| members.contains(c) && !seen.contains(c)).collect();
+                kids.sort();
+                for k in kids { if count >= 48 { break; } seen.insert(k); next.push(k); count += 1; }
+            }
+        }
+        if next.is_empty() { break; }
+        rows.push(next);
+    }
+    let (nw, nh, gx, gy) = (150.0f32, 40.0f32, 14.0f32, 34.0f32);
+    let mut pos: HashMap<FigureId, (f32, f32)> = HashMap::default();
+    // A single line of heirs winds five to a row, left to right then right to left (a column
+    // of twenty boxes had run off the page); a branching tree is laid out by generations.
+    let line = rows.iter().all(|r| r.len() == 1) && rows.len() > 6;
+    let (w, ht) = if line {
+        let per = 5usize;
+        let (gx2, n) = (40.0f32, rows.len());
+        let lines = (n + per - 1) / per;
+        for (i, r) in rows.iter().enumerate() {
+            let (row, col) = (i / per, i % per);
+            let col = if row % 2 == 0 { col } else { per - 1 - col };
+            pos.insert(r[0], (gx2 / 2.0 + col as f32 * (nw + gx2), gy / 2.0 + row as f32 * (nh + gy)));
+        }
+        (per as f32 * (nw + gx2), lines as f32 * (nh + gy) + gy / 2.0)
+    } else {
+        let widest = rows.iter().map(|r| r.len()).max().unwrap_or(1) as f32;
+        let (w, ht) = (widest * (nw + gx) + gx, rows.len() as f32 * (nh + gy) + gy);
+        for (ri, row) in rows.iter().enumerate() {
+            let span = row.len() as f32 * (nw + gx) - gx;
+            let x0 = (w - span) / 2.0;
+            for (k, f) in row.iter().enumerate() { pos.insert(*f, (x0 + k as f32 * (nw + gx), gy / 2.0 + ri as f32 * (nh + gy))); }
+        }
+        (w, ht)
+    };
+    let mut o = format!("<figure class=\"tree\"><svg viewBox=\"0 0 {:.0} {:.0}\" width=\"{:.0}\" style=\"max-width:100%;height:auto\" role=\"img\" aria-label=\"The tree of {}\">", w, ht, w, esc(&tidy(&d.name)));
+    for row in &rows {
+        for f in row {
+            let Some(fig) = h.figures.get(f) else { continue };
+            let (cx, cy) = pos[f];
+            for p in [fig.parents.0, fig.parents.1].into_iter().flatten() {
+                if let Some(&(px, py)) = pos.get(&p) {
+                    if line && (py - cy).abs() < 1.0 {
+                        // Side by side in the winding line: a level stroke between them.
+                        let (xa, xb) = if px < cx { (px + nw, cx) } else { (cx + nw, px) };
+                        let _ = write!(o, "<path d=\"M{:.0} {:.0} H{:.0}\" fill=\"none\" stroke=\"#8a7458\" stroke-width=\"1.4\"/>", xa, cy + nh / 2.0, xb);
+                    } else {
+                        let (x1, y1, x2, y2) = (px + nw / 2.0, py + nh, cx + nw / 2.0, cy);
+                        let my = (y1 + y2) / 2.0;
+                        let _ = write!(o, "<path d=\"M{:.0} {:.0} V{:.0} H{:.0} V{:.0}\" fill=\"none\" stroke=\"#8a7458\" stroke-width=\"1.4\"/>", x1, y1, my, x2, y2);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    for row in &rows {
+        for f in row {
+            let Some(fig) = h.figures.get(f) else { continue };
+            let (x, y) = pos[f];
+            let dead = fig.death_date.is_some();
+            let years = match fig.death_date { Some(dd) => format!("{}–{}", fig.birth_date.year, dd.year), None => format!("b. {}", fig.birth_date.year) };
+            let name: String = fig.name.chars().take(20).collect();
+            let head = d.current_head == Some(*f);
+            let _ = write!(o, "<a href=\"figure-{}.html\"><rect x=\"{:.0}\" y=\"{:.0}\" width=\"{:.0}\" height=\"{:.0}\" rx=\"4\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"/><text x=\"{:.0}\" y=\"{:.0}\" text-anchor=\"middle\" font-family=\"IM Fell English, serif\" font-size=\"14\" fill=\"{}\">{}</text><text x=\"{:.0}\" y=\"{:.0}\" text-anchor=\"middle\" font-family=\"IM Fell English, serif\" font-style=\"italic\" font-size=\"11\" fill=\"#7a6650\">{}</text></a>",
+                f.0, x, y, nw, nh, if dead { "#e4d8bc" } else { "#efe5cf" }, if head { "#9a2a1e" } else { "#382a20" }, if head { 2.2 } else { 1.0 },
+                x + nw / 2.0, y + 17.0, if dead { "#6a5a48" } else { "#30201a" }, esc(&name), x + nw / 2.0, y + 32.0, years);
+        }
+    }
+    let shown = rows.iter().map(|r| r.len()).sum::<usize>();
+    let more = if members.len() > shown { format!(" ({} of {} shown)", shown, members.len()) } else { String::new() };
+    let _ = write!(o, "</svg><figcaption>The tree of {}{}</figcaption></figure>", esc(&tidy(&d.name)), more);
+    o
+}
+
+/// A god's seal as a small ink SVG: a ring in the alignment's tint with a sign for the first
+/// domain (a sun, a moon, waves, a flame, a tree, a sword, a skull, a star).
+fn god_seal(d: &crate::history::religion::deity::Deity) -> String {
+    let dom = d.domains.first().map(|x| format!("{:?}", x).to_lowercase()).unwrap_or_default();
+    let align = format!("{:?}", d.alignment).to_lowercase();
+    let tint = if align.contains("evil") { "#b89a9a" } else if align.contains("good") { "#d8c890" } else { "#b8c0b0" };
+    let sign = if dom.contains("sun") || dom.contains("light") { "<circle cx=\"40\" cy=\"40\" r=\"10\" fill=\"#d6aa3c\" stroke=\"#382a20\"/><g stroke=\"#382a20\" stroke-width=\"2\"><path d=\"M40 18v8M40 54v8M18 40h8M54 40h8M24 24l6 6M50 50l6 6M24 56l6-6M50 30l6-6\"/></g>" }
+        else if dom.contains("moon") || dom.contains("night") || dom.contains("dark") { "<path d=\"M46 24a16 16 0 1 0 0 32a12 12 0 1 1 0-32z\" fill=\"#e8e0c8\" stroke=\"#382a20\" stroke-width=\"1.5\"/>" }
+        else if dom.contains("sea") || dom.contains("water") || dom.contains("storm") { "<path d=\"M20 36q5-6 10 0t10 0t10 0t10 0M20 46q5-6 10 0t10 0t10 0t10 0\" fill=\"none\" stroke=\"#28425a\" stroke-width=\"2.2\"/>" }
+        else if dom.contains("fire") || dom.contains("forge") { "<path d=\"M40 18c8 12 14 16 8 30c-2 6-14 8-17 0c-4-10 6-14 9-30z\" fill=\"#c8622e\" stroke=\"#382a20\" stroke-width=\"1.5\"/>" }
+        else if dom.contains("nature") || dom.contains("harvest") || dom.contains("earth") || dom.contains("life") { "<circle cx=\"40\" cy=\"34\" r=\"13\" fill=\"#7e9a5c\" stroke=\"#382a20\" stroke-width=\"1.5\"/><rect x=\"37\" y=\"46\" width=\"6\" height=\"14\" fill=\"#8a6440\" stroke=\"#382a20\"/>" }
+        else if dom.contains("war") || dom.contains("strength") { "<path d=\"M40 16l5 8v26h-10v-26z\" fill=\"#c8c8c8\" stroke=\"#382a20\" stroke-width=\"1.5\"/><rect x=\"30\" y=\"50\" width=\"20\" height=\"5\" fill=\"#8a6440\" stroke=\"#382a20\"/><rect x=\"37\" y=\"55\" width=\"6\" height=\"9\" fill=\"#8a6440\" stroke=\"#382a20\"/>" }
+        else if dom.contains("death") || dom.contains("disease") { "<ellipse cx=\"40\" cy=\"38\" rx=\"13\" ry=\"12\" fill=\"#e8e0c8\" stroke=\"#382a20\" stroke-width=\"1.5\"/><circle cx=\"35\" cy=\"37\" r=\"3\" fill=\"#382a20\"/><circle cx=\"45\" cy=\"37\" r=\"3\" fill=\"#382a20\"/><rect x=\"35\" y=\"49\" width=\"10\" height=\"6\" fill=\"#e8e0c8\" stroke=\"#382a20\"/>" }
+        else { "<path d=\"M40 20l5 14h14l-11 9l4 15l-12-9l-12 9l4-15l-11-9h14z\" fill=\"#d6aa3c\" stroke=\"#382a20\" stroke-width=\"1.5\"/>" };
+    format!("<figure class=\"seal\"><svg viewBox=\"0 0 80 80\" width=\"96\" height=\"96\" role=\"img\" aria-label=\"The seal of {}\"><circle cx=\"40\" cy=\"40\" r=\"36\" fill=\"{}\" stroke=\"#382a20\" stroke-width=\"2\"/><circle cx=\"40\" cy=\"40\" r=\"31\" fill=\"#efe5cf\" stroke=\"#8a7458\" stroke-width=\"1\"/>{}</svg></figure>", esc(&d.name), tint, sign)
+}

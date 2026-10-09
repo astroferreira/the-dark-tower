@@ -19,6 +19,7 @@ pub mod glyphs;
 pub mod heraldry;
 pub mod inspector;
 pub mod local_ink;
+pub mod making;
 pub mod overlays;
 pub mod plates;
 pub mod portraits;
