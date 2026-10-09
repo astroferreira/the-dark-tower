@@ -368,3 +368,18 @@ the Claude Doc "Ink graphics: sprites and examples".
   it); a raid's beast from `Colony::foes_seen` (cosmetic, filled in `send_attackers`).
 - `--sim-snapshot` adds `_raidclose.png`, `_clash.png`, `_wild.png`. The colony hash (chronicle +
   log) is unchanged by all of this.
+- Later the same day: job pictograms are glyphs (axe, pick, hammer, berries, rod and fish,
+  spear); worn armour over the dress; clothes fade and patch at 120 days, rags at 180; the stocks;
+  role badges with the role's glyph; children smaller. The pen's beasts amble (`colony.pen` is a
+  count); crops by season; timber walls rising (`camp_ink::draw_rising`); a woodshed's lean-to;
+  a head-frame over the mine; haunts (cairn, bench, carved post); engravings as carved panels with
+  a scene (`draw_engraving`); kept works by their keeper's bed; a prisoner bound to a post; a
+  signpost for those away. Glyphs: 46 (`Glyph::ALL`, `Glyph::of_thing`), animals in the ledger
+  as sprites (`ledger_beast`). Section view: trees, roofs, creatures. Watcher: ink event icons
+  (`watcher::draw_event_icon`), panel/banner in IM Fell; start screen in IM Fell with a picture
+  per row (`--start-snapshot FILE`); plates/overlay legend in IM Fell (`text::draw_fell`);
+  inspector pages carry a `Picture` (a beast's sprite, an artifact's glyph); beasts on plates and
+  the poster. `tests/sprites.rs` checks the sheet.
+- Speed: the camp's overlay costs ~3 ms at 1280x800 (sprites ~1 ms; worn ground ~2 ms; the night
+  wash is row-parallel now). `PLANET_FRAMES` prints "the ground alone" beside the frame times.
+- Not done: driving the ledger by hand in a real window.
