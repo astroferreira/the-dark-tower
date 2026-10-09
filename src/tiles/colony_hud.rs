@@ -246,11 +246,11 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
 }
 
 /// A great moment's card, across the top middle: its title, what happened and why, until Space.
-pub(crate) fn draw_moment(m: &crate::colony::Moment, colony: Option<&crate::colony::Colony>, buf: &mut [u32], w: usize, h: usize) {
+pub(crate) fn draw_moment(m: &crate::colony::Moment, colony: Option<&crate::colony::Colony>, buf: &mut [u32], w: usize, h: usize) -> Option<Rect> {
     // A roundel at the left with a picture of the moment (`vignette.rs`), when there is room.
     let pic = w >= 700 && !m.because.is_empty();
     let card_w = if pic { 640usize } else { 520 }.min(w.saturating_sub(40));
-    if card_w < 200 || h < 200 { return; }
+    if card_w < 200 || h < 200 { return None; }
     let pic_w = if pic { 120.0 } else { 0.0 };
     let inner = card_w as f32 - 40.0 - pic_w;
     let text = wrap_px(&m.text, Face::Roman, 17.0, inner);
@@ -275,10 +275,11 @@ pub(crate) fn draw_moment(m: &crate::colony::Moment, colony: Option<&crate::colo
         fonts::draw(buf, w, h, x, y, line, Face::Italic, BODY, 0.0, INK_FADED, None);
         y += 19.0;
     }
-    if m.because.is_empty() { return; }
-    let hint = if m.choice { "Y: take them in     N: turn them away" } else { "Space to go on   M: stop for moments on/off" };
+    if m.because.is_empty() { return Some(r); }
+    let hint = if m.choice { "or Y / N" } else { "Space to go on   M: stop for moments on/off" };
     let hw = fonts::width(hint, Face::Italic, SMALL, 0.0);
     fonts::draw(buf, w, h, (r.x + card_w) as f32 - 20.0 - hw, (r.y + card_h) as f32 - 26.0, hint, Face::Italic, SMALL, 0.0, GOLD, None);
+    Some(r)
 }
 
 /// One line of guidance in a parchment chip at the bottom middle of the screen.

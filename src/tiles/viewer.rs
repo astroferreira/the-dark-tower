@@ -1356,8 +1356,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let hide_chip = super::colony_ui::over_ui(&ui, w, h, mouse);
                     log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: &status, mouse, right, selected: ui.selected, hide_chip, bar: false }, &mut buf, w, h);
                     ui_hits = super::colony_ui::draw(colony, &mut ui, history, speed as u32, mouse, &mut buf, w, h);
-                    if let Some(m) = &moment_card { super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h); }
+                    let card = moment_card.as_ref().and_then(|m| super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h));
                     dream_hits = match dream_for { Some(i) => super::colony_ui::dream_buttons(i, &mut buf, w, h, mouse, right), None => Vec::new() };
+                    // The refugees' question: its two answers as buttons on the card.
+                    if let (Some(r), true) = (card, moment_card.as_ref().map_or(false, |m| m.choice) && colony.refugees_waiting()) {
+                        let r = if r.w >= 600 { super::ui::Rect { x: r.x + 120, w: r.w - 120, ..r } } else { r };
+                        dream_hits.extend(super::colony_ui::choice_buttons(r, &mut buf, w, h, mouse));
+                    }
                     if let Some(tool) = ui.tool { super::colony_hud::draw_hint(tool.prompt(), &mut buf, w, h.saturating_sub(36)); }
                     let prompt = if leave_asked {
                         Some((format!("Leave {}?", colony.name.clone().unwrap_or_else(|| "the camp".into())), "Enter to leave (the patron's acts are saved). Esc to stay.".to_string()))
@@ -1369,7 +1374,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         Some((format!("A dream for {}", colony.settlers[i].name), "1 the hut finished   2 plenty   3 rest   4 the watch   (Esc: none)".to_string()))
                     } else { None };
                     if let Some((title, text)) = prompt {
-                        super::colony_hud::draw_moment(&crate::colony::Moment { tick: 0, title, text, because: String::new(), at: (0, 0), choice: false }, None, &mut buf, w, h);
+                        let _ = super::colony_hud::draw_moment(&crate::colony::Moment { tick: 0, title, text, because: String::new(), at: (0, 0), choice: false }, None, &mut buf, w, h);
                     }
                     inspect_hits.clear();
                     if let Some(&subject) = inspect.last() {
@@ -2682,7 +2687,7 @@ pub fn save_colony_snapshots(world: &WorldData, history: Option<&WorldHistory>, 
         render_local(&colony.map, atlas, &cam, &mut buf, w, h);
         draw_colony(&colony, &cam, &mut buf, w, h, history);
         super::colony_hud::draw(&colony, &cam, &super::colony_hud::HudState { speed: 0, status: "", mouse: (-100.0, -100.0), right: 0, selected: None, hide_chip: false, bar: true }, &mut buf, w, h);
-        super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h);
+        let _ = super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h);
         let path = format!("{prefix}_moment.png");
         save_rgb_png(&path, w, h, |x, y| { let p = buf[y * w + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
         written.push(path);
