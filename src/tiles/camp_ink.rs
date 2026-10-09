@@ -645,3 +645,36 @@ pub fn draw_engraving(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera
         pen.line((0.0, k * 0.35), (k * 0.3, k * 0.8), cut, lw);
     }
 }
+
+/// A settler's own place (`colony/haunts.rs`): a cairn of stones heaped smaller to the top, a
+/// bench (a plank on two legs, seen a little from the front), a post carved with little figures.
+pub fn draw_haunt(put: &mut dyn FnMut(i64, i64, Rgb, f32), cam: &LocalCamera, w: usize, h: usize, at: (u16, u16), kind: crate::colony::MarkKind) {
+    let c = Cells::new(cam, w, h);
+    if !c.visible(at.0 as f32, at.1 as f32, w, h, 2.0) { return; }
+    let mut pen = c.pen(put, at.0 as f32, at.1 as f32);
+    match kind {
+        crate::colony::MarkKind::Cairn => {
+            pen.ground_shadow(0.5, 0.88, 0.42, 0.1);
+            for (k, (r, v)) in [(0.32f32, 0.72f32), (0.25, 0.46), (0.18, 0.26)].iter().enumerate() {
+                pen.ellipse(0.5 + if k == 1 { 0.03 } else { 0.0 }, *v, *r, r * 0.8, mix(STONE, INK, 0.05 * k as f32));
+            }
+        }
+        crate::colony::MarkKind::Bench => {
+            pen.ground_shadow(0.5, 0.82, 0.48, 0.08);
+            for u in [0.18, 0.82] { pen.rect(u - 0.05, 0.45, u + 0.05, 0.8, DARK_WOOD); }
+            pen.rect(0.05, 0.36, 0.95, 0.5, WOOD);
+            pen.line_a((0.05, 0.43), (0.95, 0.43), INK, 1.0, 0.35);
+        }
+        _ => {
+            pen.ground_shadow(0.5, 0.9, 0.25, 0.08);
+            pen.rect(0.38, -0.3, 0.62, 0.9, [176.0, 136.0, 90.0]);
+            for k in 0..3 {
+                let v = -0.12 + k as f32 * 0.3;
+                pen.ellipse_f(0.5, v, 0.05, 0.05, INK, Finish::Paint);
+                pen.line((0.5, v + 0.05), (0.5, v + 0.16), INK, 1.0);
+                pen.line((0.43, v + 0.09), (0.57, v + 0.09), INK, 1.0);
+            }
+            pen.poly(&[(0.38, -0.3), (0.5, -0.45), (0.62, -0.3)], [176.0, 136.0, 90.0]);
+        }
+    }
+}

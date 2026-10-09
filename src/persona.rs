@@ -551,6 +551,8 @@ impl Persona {
 
     /// The name of a value (for logs).
     pub fn value_name(v: Val) -> &'static str { &data().value_names[v as usize] }
+    /// The name of the value at index `k` (0..N_VALUES).
+    pub fn value_name_at(k: usize) -> &'static str { &data().value_names[k] }
 }
 
 /// "a, b and c".

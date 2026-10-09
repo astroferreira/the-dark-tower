@@ -22,9 +22,13 @@ pub enum Need {
     Socialize, Friends, Family, Pray, TakeItEasy, SeeAnimal, AdmireArt, Wander, Excitement,
     HelpSomebody, Learn, ThinkAbstractly, MakeMerry, Tradition, Martial, Craft, BeCreative,
     StayOccupied, Drink, GoodMeal,
+    /// DF's MakeRomance: walking out with someone they like.
+    Romance,
+    /// Not rolled: a visit to the grave of someone dear (`mourn_option`).
+    Remember,
 }
 
-pub const ALL: [Need; 20] = [
+pub const ALL: [Need; 21] = [Need::Romance, 
     Need::Socialize, Need::Friends, Need::Family, Need::Pray, Need::TakeItEasy, Need::SeeAnimal,
     Need::AdmireArt, Need::Wander, Need::Excitement, Need::HelpSomebody, Need::Learn,
     Need::ThinkAbstractly, Need::MakeMerry, Need::Tradition, Need::Martial, Need::Craft,
@@ -32,7 +36,7 @@ pub const ALL: [Need; 20] = [
 ];
 
 /// The first words of each spare-hours act's reason (for counting them in the decisions).
-pub const ACT_WORDS: [&str; 17] = ["Talking", "Passing the time", "Spending time", "Praying", "Kneeling", "Taking it easy", "Watching", "Admiring",
+pub const ACT_WORDS: [&str; 19] = ["Talking", "Arguing", "Standing", "Passing the time", "Spending time", "Praying", "Kneeling", "Taking it easy", "Watching", "Admiring",
     "Walking out", "Climbing", "Sitting", "Lending", "Reading", "Singing", "Telling", "Practising", "Whittling"];
 
 /// DF's ceiling: focus is set to this when a need is met.
@@ -49,6 +53,7 @@ impl Need {
             Need::MakeMerry => "merriment", Need::Tradition => "the old ways", Need::Martial => "arms practice",
             Need::Craft => "a craft to work at", Need::BeCreative => "something new to make", Need::StayOccupied => "work",
             Need::Drink => "a drink", Need::GoodMeal => "a good meal",
+            Need::Romance => "someone to walk out with", Need::Remember => "the dead",
         }
     }
 }
@@ -68,9 +73,13 @@ pub struct NeedState {
 #[derive(Clone, Debug)]
 pub struct NeedAct {
     pub need: Need,
+    /// Where it is done (a haunt's place, `haunts.rs`).
+    pub at: Pos,
     pub with: Option<usize>,
     pub what: String,
     pub minutes: u32,
+    /// What a talk is about (`talk.rs`).
+    pub topic: Option<super::talk::Topic>,
 }
 
 /// How strongly a character needs each thing, 0..~1.3 (the values -50..50, facets 0..100).
@@ -99,6 +108,8 @@ fn strength(p: &Persona, need: Need, faith: bool) -> f32 {
         // Dwarves all need drink (DF); others by their appetites.
         Need::Drink => if p.race == "dwarf" { 0.6 + 0.4 * f(Facet::Immoderation) } else { f(Facet::Immoderation) - 0.2 },
         Need::GoodMeal => f(Facet::Immoderation) * 0.8 + 0.3 * f(Facet::Greed) - 0.1,
+        Need::Romance => v(Val::Romance) * 0.8 + 0.4 * f(Facet::Love) - 0.1,
+        Need::Remember => 0.0,
     }
 }
 
@@ -219,8 +230,8 @@ impl Colony {
         if s.guest_until > 0 && s.visitor.is_some() && s.mind.needs.is_empty() { return None; }
         if s.ill_until > self.clock.tick || s.hunger >= 0.6 || s.past.as_ref().map_or(false, |p| p.age < 12) { return None; }
         let hour = self.clock.hour();
-        if self.clock.is_night() { return None; }
-        let mut due: Vec<&NeedState> = s.mind.needs.iter().filter(|n| n.focus < -60).collect();
+        if self.clock.is_night() || self.drill_due(i) { return None; }
+        let mut due: Vec<&NeedState> = s.mind.needs.iter().filter(|n| n.focus < -100).collect();
         due.sort_by_key(|n| (std::cmp::Reverse(n.level as i32 * -n.focus), n.need as u8));
         let evening = (18..21).contains(&hour);
         for n in due {
@@ -229,25 +240,65 @@ impl Colony {
             if let Some((target, why, act)) = self.need_act(i, n.need, evening, days) {
                 // Leisure is cut short by a mandate against idle hands and by trouble on the way.
                 let leisure = !matches!(n.need, Need::HelpSomebody | Need::Pray | Need::Martial | Need::Learn);
-                let mut w = 0.2 + deficit * (0.3 + 0.06 * n.level as f32);
+                // (Below most work: needs are met in spare time, not instead of the camp's work,
+                // until one has gone very long unmet. 0.95 at most, at full strength and deficit.)
+                let mut w = 0.15 + deficit * (0.2 + 0.06 * n.level as f32);
                 if leisure && self.mandate == Some(society::Mandate::NoIdleHands) { w *= 0.5; }
                 if self.trouble_foretold().is_some() && leisure { w *= 0.75; }
                 // A thin store keeps them at the gathering.
                 if self.food_stored() < self.food_goal() / 2 { w *= 0.4; }
-                if evening { w += 0.2; }
+                if evening { w += 0.15; }
                 return Some(((w, Job::Wander(target), why), act));
             }
         }
         None
     }
 
-    /// Where settler `i` would go to meet `need` now, why (said with their character), and the act.
+    /// Where settler `i` would go to meet `need` now, why, and the act: their own place for it
+    /// when they have one (`haunts.rs`), else wherever `need_act_here` finds.
     fn need_act(&self, i: usize, need: Need, evening: bool, days: u64) -> Option<(Pos, String, NeedAct)> {
+        let (target, why, mut a) = self.need_act_here(i, need, evening, days)?;
+        let s = &self.settlers[i];
+        let (they, their) = if s.persona.female { ("she", "her") } else { ("he", "his") };
+        let reason = why.split_once(": ").map(|x| x.1.to_string()).unwrap_or_default();
+        let god = s.past.as_ref().and_then(|p| p.faith.as_ref()).map(|f| f.1.clone()).unwrap_or_default();
+        let verb = match need {
+            Need::Pray => format!("Praying to {}", god),
+            Need::TakeItEasy => "Taking it easy".to_string(),
+            Need::ThinkAbstractly => format!("Sitting alone with {} thoughts", their),
+            Need::Wander => "Walking out alone".to_string(),
+            Need::Craft | Need::BeCreative => "Whittling".to_string(),
+            Need::Tradition => format!("Telling the old tales of {} people", their),
+            _ => String::new(),
+        };
+        // Prayer at a temple or a standing stone stays there; elsewhere, their own place.
+        let at_house = need == Need::Pray && (why.contains("at the temple") || why.contains("standing stone"));
+        if super::haunts::kept(need) && !at_house {
+            if let Some(h) = self.haunt_of(i, need) {
+                let word = match need { Need::Pray => "cairn", Need::TakeItEasy => "bench", Need::ThinkAbstractly => "seat", Need::Wander => "waymark",
+                    Need::Craft | Need::BeCreative => "carved post", Need::Tradition => "standing stone", _ => "place" };
+                let place = if h.mark.is_some() { format!("at {} {}", their, word) } else { format!("at {},{}, where {} always goes", h.at.0, h.at.1, they) };
+                a.at = h.at;
+                return Some((h.at, format!("{} {}: {}", verb, place, reason), a));
+            }
+            // The devout without a place of their own may kneel at another's cairn.
+            if need == Need::Pray {
+                if let Some((h, title)) = self.shared_haunt(i, need, 30) {
+                    a.at = h.at;
+                    return Some((h.at, format!("{} at {}: {}", verb, title, reason), a));
+                }
+            }
+        }
+        a.at = target;
+        Some((target, why, a))
+    }
+
+    fn need_act_here(&self, i: usize, need: Need, evening: bool, days: u64) -> Option<(Pos, String, NeedAct)> {
         let s = &self.settlers[i];
         let me = s.pos;
         let they = if s.persona.female { "she" } else { "he" };
         let since = |what: &str| if days >= 2 { format!("{} has gone {} days without {}", they, days, what) } else { format!("{} longs for {}", they, what) };
-        let act = |need: Need, with: Option<usize>, what: String, minutes: u32| NeedAct { need, with, what, minutes };
+        let act = |need: Need, with: Option<usize>, what: String, minutes: u32| NeedAct { need, at: (0, 0), with, what, minutes, topic: None };
         let awake_near = |j: usize, r: i32| {
             let o = &self.settlers[j];
             j != i && o.alive && o.job != Job::Sleep && o.ill_until <= self.clock.tick && !self.below(j) && o.mind.left == false
@@ -259,9 +310,10 @@ impl Colony {
                 let j = (0..self.settlers.len()).filter(|&j| awake_near(j, 40)).max_by_key(|&j| (self.opinion(i, j), std::cmp::Reverse(j)))?;
                 if need == Need::Friends && self.opinion(i, j) < 8 { return None; }
                 let o = &self.settlers[j];
-                let what = if self.opinion(i, j) >= 12 { "talking" } else { "passing the time" };
-                Some((o.pos, format!("{} with {} {}: {}", cap(what), o.name, self.place_word(o.pos), since(need.word())),
-                    act(need, Some(j), o.name.clone(), 40)))
+                let (verb, about, topic) = self.talk_topic(i, j);
+                let mut a = act(need, Some(j), o.name.clone(), 40);
+                a.topic = Some(topic);
+                Some((o.pos, format!("{} with {} {} {}: {}", verb, o.name, self.place_word(o.pos), about, since(need.word())), a))
             }
             Need::Family => {
                 let kin: Vec<usize> = s.spouse.into_iter().chain(self.children.iter().filter(|c| c.1 == i || c.2 == i).map(|c| c.0)).filter(|&j| awake_near(j, 60)).collect();
@@ -278,7 +330,7 @@ impl Colony {
                 if let Some(sh) = self.stones.iter().find(|x| x.0 == StoneKind::Shrine).map(|x| x.1) {
                     return Some((sh, format!("Praying to {} at the standing stone: {}", god, since(need.word())), act(need, None, god, 45)));
                 }
-                let hill = self.high_spot(i, 25)?;
+                let hill = self.high_spot(i, 15)?;
                 Some((hill, format!("Kneeling on the rise at {},{} to pray to {}: {}", hill.0, hill.1, god, since(need.word())), act(need, None, god, 45)))
             }
             Need::TakeItEasy => {
@@ -287,7 +339,7 @@ impl Colony {
             }
             Need::SeeAnimal => {
                 let c = self.creatures.iter().filter(|c| matches!(c.kind, creatures::CreatureKind::Game | creatures::CreatureKind::Pet) && c.z.is_none() && !c.leaving
-                    && cheb(c.pos, self.camp) <= 45).min_by_key(|c| (cheb(c.pos, me), c.id))?;
+                    && cheb(c.pos, self.camp) <= 30).min_by_key(|c| (cheb(c.pos, me), c.id))?;
                 let name = c.name.clone();
                 let liked = fond_of(&s.persona, &name);
                 let what = if c.kind == creatures::CreatureKind::Pet { format!("{} the {}", name, "pet") } else { format!("the {}", plural(&name)) };
@@ -311,12 +363,12 @@ impl Colony {
                 Some((at, format!("Admiring {}: {}", what, since(need.word())), act(need, None, what, 30)))
             }
             Need::Wander => {
-                let to = self.far_spot(i, 22, 45)?;
+                let to = self.far_spot(i, 12, 25)?;
                 Some((to, format!("Walking out alone toward the {} for the walking's sake: {}", direction(self.camp, to), since(need.word())), act(need, None, String::new(), 40)))
             }
             Need::Excitement => {
                 if let Some((t, _)) = self.tower { return Some((t, format!("Climbing the lookout to look out over the land: {}", since(need.word())), act(need, None, "the lookout".into(), 30))); }
-                let hill = self.high_spot(i, 35)?;
+                let hill = self.high_spot(i, 18)?;
                 Some((hill, format!("Climbing the high ground at {},{}: {}", hill.0, hill.1, since(need.word())), act(need, None, "the high ground".into(), 30)))
             }
             Need::HelpSomebody => {
@@ -354,6 +406,20 @@ impl Colony {
             Need::Tradition if evening => {
                 Some((self.near_fire(i), format!("Telling the old tales of {} people by the fire: {}", if s.persona.female { "her" } else { "his" }, since(need.word())), act(need, None, String::new(), 45)))
             }
+            Need::Romance => {
+                // Someone unwed of their people and the other sex, whom they like and who does
+                // not dislike them (DF's lovers walk out together before they wed).
+                if s.spouse.is_some() || s.past.as_ref().map_or(false, |p| p.age < 16) { return None; }
+                let j = (0..self.settlers.len()).filter(|&j| awake_near(j, 40) && self.settlers[j].spouse.is_none()
+                    && self.settlers[j].persona.race == s.persona.race && self.settlers[j].persona.female != s.persona.female
+                    && self.settlers[j].past.as_ref().map_or(true, |p| p.age >= 16) && self.settlers[j].guest_until == 0
+                    && self.opinion(i, j) >= 10 && self.opinion(j, i) >= 4).max_by_key(|&j| (self.opinion(i, j), std::cmp::Reverse(j)))?;
+                let o = &self.settlers[j];
+                let mut a = act(need, Some(j), o.name.clone(), 50);
+                a.at = o.pos;
+                let fond = if self.opinion(i, j) >= 20 { "sweet on" } else { "fond of" };
+                Some((o.pos, format!("Walking out with {} {}: {} is {} {}", o.name, self.place_word(o.pos), they, fond, if o.persona.female { "her" } else { "him" }), a))
+            }
             Need::Martial => {
                 let at = self.drill_ground();
                 Some((at, format!("Practising thrusts with a stave at the drill ground: {}", since(need.word())), act(need, None, String::new(), 40)))
@@ -370,14 +436,29 @@ impl Colony {
     /// A spare-hours act done: the need is met, and those it touched feel it.
     pub(crate) fn complete_need(&mut self, i: usize, a: NeedAct) {
         self.meet(i, a.need, FULL);
+        self.visit_haunt(i, a.need, a.at);
         match a.need {
             Need::Socialize | Need::Friends | Need::Family => {
                 if let Some(j) = a.with.filter(|&j| self.settlers[j].alive && cheb(self.settlers[j].pos, self.settlers[i].pos) <= 3) {
-                    self.warm(i, j);
-                    self.warm(j, i);
+                    match &a.topic {
+                        Some(t) => { let place = self.place_word(self.settlers[i].pos); self.talk_done(i, j, t, &place); }
+                        None => { self.warm(i, j); self.warm(j, i); }
+                    }
                     self.meet(j, Need::Socialize, FULL / 2);
                     if a.need == Need::Family { self.meet(j, Need::Family, FULL); }
                 }
+            }
+            Need::Romance => {
+                if let Some(j) = a.with.filter(|&j| self.settlers[j].alive && cheb(self.settlers[j].pos, self.settlers[i].pos) <= 3) {
+                    self.like(i, j, 2);
+                    self.like(j, i, 2);
+                    self.meet(j, Need::Romance, FULL);
+                }
+            }
+            Need::Remember => {
+                let day = self.clock.day();
+                if let Some(m) = self.mourning.iter_mut().find(|m| m.0 == i && m.1 == a.what) { m.4 = day; }
+                self.feel(i, super::mind::Feel::Remembered { whom: a.what.clone() });
             }
             Need::HelpSomebody => {
                 if let Some(j) = a.with.filter(|&j| self.settlers[j].alive) {
@@ -400,12 +481,26 @@ impl Colony {
         }
     }
 
+    /// In the days after a death, those it touched most visit the grave (by day, once a day, for
+    /// twelve days; the loving more): "Standing at Noostond's grave, remembering them".
+    pub(crate) fn mourn_option(&self, i: usize) -> Option<((f32, Job, String), NeedAct)> {
+        let day = self.clock.day();
+        let s = &self.settlers[i];
+        if self.clock.is_night() || self.drill_due(i) || s.ill_until > self.clock.tick || s.hunger >= 0.6 || self.below(i) { return None; }
+        let m = self.mourning.iter().filter(|m| m.0 == i && day <= m.3 + 12 && m.4 != day && !self.marked(m.2, true)).max_by_key(|m| m.3)?;
+        let love = s.persona.facet(Facet::Love) as f32 / 100.0;
+        let w = 0.3 + 0.4 * love + if m.5 { 0.2 } else { 0.0 };
+        let why = format!("Standing at {}'s grave, remembering them ({} died {} days ago)", m.1, m.1, day - m.3);
+        Some(((w, Job::Wander(m.2), why), NeedAct { need: Need::Remember, at: m.2, with: None, what: m.1.clone(), minutes: 30, topic: None }))
+    }
+
     /// A few words for where `p` is: by a work standing there, the fire, water or trees.
     pub(crate) fn place_word(&self, p: Pos) -> String {
         if cheb(p, self.camp) <= 3 { return "by the fire".into(); }
         if let Some(k) = self.projects.iter().filter(|q| q.done && q.kind != ProjectKind::Palisade && q.kind != ProjectKind::Mending)
             .min_by_key(|q| cheb(q.at, p)).filter(|q| cheb(q.at, p) <= 4).map(|q| q.kind) {
-            return format!("by {}", k.word());
+            let w = k.word();
+            return format!("by the {}", w.strip_prefix("an ").or_else(|| w.strip_prefix("a ")).or_else(|| w.strip_prefix("the ")).unwrap_or(w));
         }
         if self.hut.as_ref().map_or(false, |h| cheb(h.at, p) <= 5) { return "by the hut".into(); }
         let n = self.map.width;
@@ -445,7 +540,7 @@ impl Colony {
     /// A pleasant place near the camp: by the water, else in the shade of trees.
     fn pleasant_spot(&self, i: usize) -> Option<(Pos, String)> {
         let me = self.settlers[i].pos;
-        if let Some(w) = self.fishing_spots.iter().copied().filter(|&p| cheb(p, self.camp) <= 30 && !self.marked(p, true)).min_by_key(|&p| (cheb(p, me), p)) {
+        if let Some(w) = self.fishing_spots.iter().copied().filter(|&p| cheb(p, self.camp) <= 20 && !self.marked(p, true)).min_by_key(|&p| (cheb(p, me), p)) {
             return Some((w, format!("by the water at {},{}", w.0, w.1)));
         }
         let t = self.tree_spot(i)?;
@@ -457,7 +552,7 @@ impl Colony {
         let n = self.map.width as i32;
         let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
         let h = crate::history::settlers::hash_pub(self.seed ^ i as u64, 0x7AEE);
-        for r in 4..25i32 {
+        for r in 4..18i32 {
             for k in 0..8u64 {
                 let a = ((h + k * 7919) % 360) as f32 * std::f32::consts::PI / 180.0;
                 let (x, y) = (cx + (a.cos() * r as f32) as i32, cy + (a.sin() * r as f32) as i32);
@@ -529,4 +624,5 @@ fn plural(name: &str) -> String {
     else if name.ends_with('s') || name.ends_with("x") { format!("{}es", name) } else { format!("{}s", name) }
 }
 
+#[allow(dead_code)]
 fn cap(s: &str) -> String { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }

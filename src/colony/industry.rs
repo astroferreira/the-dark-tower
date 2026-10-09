@@ -154,7 +154,9 @@ impl Colony {
     fn stored_count(&self, k: ItemKind) -> u32 { self.items.iter().filter(|it| it.stored && it.kind == k).count() as u32 }
 
     /// Logs and stones laid by beyond what the work under way still needs, less two.
-    fn spare(&self, k: ItemKind) -> u32 {
+    /// What is stored of `k` beyond what the work under way still needs (and two more): what
+    /// the workshops may use (DF reserves a construction's materials).
+    pub(crate) fn spare(&self, k: ItemKind) -> u32 {
         let (logs, stones) = self.material_needed();
         let need = if k == ItemKind::Log { logs } else { stones };
         self.stored_count(k).saturating_sub(need + 2)

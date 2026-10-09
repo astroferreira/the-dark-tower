@@ -49,7 +49,7 @@ impl Colony {
         if self.settlers.iter().enumerate().any(|(j, s)| j != i && s.alive && s.job == Job::Craft && s.why.starts_with("Sewing")) { return None; }
         let stuff = self.sewing_stuff()?;
         let who = (0..self.settlers.len()).filter(|&j| self.ragged(j)).max_by_key(|&j| (self.clothes_worn(j), std::cmp::Reverse(j)))?;
-        let wish = self.craft_wish_any(i);
+        let wish = self.maker_wish(i);
         if wish < 0.3 { return None; }
         // (Below the workshop's other work: rags are a small misery, and sewing had crowded out
         // the carving, the books and the armour.)

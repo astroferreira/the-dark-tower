@@ -11,13 +11,72 @@
 use super::*;
 
 impl Colony {
-    /// The gates of the palisade ring (`projects.rs`): the four points where the ring is open.
+    /// The gates of the palisade ring (`projects.rs`): the points where the ring is open, in the
+    /// directions the camp chose for them (`choose_gates`).
     pub(crate) fn gates(&self) -> Vec<Pos> {
         let r = self.wall_r();
-        [(r, 0), (-r, 0), (0, r), (0, -r)].iter().filter_map(|&(dx, dy)| {
+        self.gate_dirs().into_iter().filter_map(|d| {
+            let (dx, dy) = gate_point(d, r);
             let (x, y) = (self.camp.0 as i32 + dx, self.camp.1 as i32 + dy);
             (x >= 1 && y >= 1 && (x as usize) < self.map.width && (y as usize) < self.map.height).then_some((x as u16, y as u16))
         }).collect()
+    }
+
+    /// The compass directions of the gates (the four axes until the camp chooses).
+    pub(crate) fn gate_dirs(&self) -> Vec<(i32, i32)> {
+        if self.gate_dirs.is_empty() { vec![(1, 0), (-1, 0), (0, 1), (0, -1)] } else { self.gate_dirs.clone() }
+    }
+
+    /// Where the gates go, chosen when the palisade is begun: toward where the camp's paths
+    /// lead (the water, the woods, the road to the trading town), each on one of the eight
+    /// compass points and a quarter turn apart at least; two for an anxious people, four for a
+    /// bold one, three otherwise. Said aloud.
+    pub(crate) fn choose_gates(&mut self) {
+        const DIRS: [(i32, i32); 8] = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)];
+        let snap = |dx: f32, dy: f32| -> usize { ((dy.atan2(dx) / std::f32::consts::FRAC_PI_4).round() as i32).rem_euclid(8) as usize };
+        let mut want: Vec<(usize, String)> = Vec::new();
+        let lane = self.lane();
+        want.push((snap(lane.0, lane.1), "the water".into()));
+        let r = self.wall_r();
+        // The woods: the eighth of the land beyond the wall (out to 25 cells past it) that holds
+        // the most standing trees, when it holds a good many.
+        let mut trees = [0u32; 8];
+        let n = self.map.width as i32;
+        for dy in -(r + 25)..=(r + 25) { for dx in -(r + 25)..=(r + 25) {
+            if (dx * dx + dy * dy) as f32 <= ((r + 3) * (r + 3)) as f32 || (dx + dy) % 2 != 0 { continue; }
+            let (x, y) = (self.camp.0 as i32 + dx, self.camp.1 as i32 + dy);
+            if x < 0 || y < 0 || x >= n || y >= self.map.height as i32 { continue; }
+            if matches!(self.floor_plant_pub((x as u16, y as u16)), crate::local::Plant::Tree(_)) { trees[snap(dx as f32, dy as f32)] += 1; }
+        } }
+        let (k, &most) = trees.iter().enumerate().max_by_key(|(k, c)| (**c, std::cmp::Reverse(*k))).unwrap();
+        let mean = trees.iter().sum::<u32>() / 8;
+        if most >= 30 && most >= mean * 3 / 2 { want.push((k, "the woods".into())); }
+        if let Some(p) = self.trade.as_ref() {
+            let (tx, ty) = self.map.world_tile;
+            let d = (p.from.0 as f32 - tx as f32, p.from.1 as f32 - ty as f32);
+            if d.0.abs() + d.1.abs() > 0.5 { want.push((snap(d.0, d.1), format!("the road to {}", p.town))); }
+        }
+        let fear: f32 = { let f: Vec<f32> = self.settlers.iter().take(7).map(|s| s.persona.facet(crate::persona::Facet::Anxiety) as f32).collect(); f.iter().sum::<f32>() / f.len().max(1) as f32 };
+        let most = if fear >= 58.0 { 2 } else if fear < 45.0 { 4 } else { 3 };
+        let mut chosen: Vec<(usize, String)> = Vec::new();
+        for (k, why) in want {
+            if chosen.iter().any(|c| { let d = (c.0 as i32 - k as i32).rem_euclid(8); d <= 1 || d >= 7 }) { continue; }
+            chosen.push((k, why));
+        }
+        // At least two, across from each other; then a quarter turn from the first, as needed.
+        while chosen.len() < 2 || (chosen.len() < most && chosen.len() < 4) {
+            let first = chosen.first().map_or(0, |c| c.0);
+            let next = [(first + 4) % 8, (first + 2) % 8, (first + 6) % 8].into_iter()
+                .find(|&k| !chosen.iter().any(|c| { let d = (c.0 as i32 - k as i32).rem_euclid(8); d <= 1 || d >= 7 }));
+            match next { Some(k) => chosen.push((k, String::new())), None => break }
+        }
+        chosen.truncate(most.max(2));
+        self.gate_dirs = chosen.iter().map(|c| DIRS[c.0]).collect();
+        let named: Vec<String> = chosen.iter().filter(|c| !c.1.is_empty()).map(|c| format!("{} toward {}", COMPASS[c.0], c.1)).collect();
+        let n = chosen.len();
+        self.note(format!("They will leave {} gate{} in the wall{}{}.", n, if n == 1 { "" } else { "s" },
+            if named.is_empty() { String::new() } else { format!(": {}", super::join_names(&named)) },
+            if fear >= 58.0 { ", and no more: they are an uneasy people" } else { "" }));
     }
 
     /// Where the traps are: the gates and the mine's mouth.
@@ -66,4 +125,12 @@ impl Colony {
         for j in 0..self.settlers.len() { if self.settlers[j].alive { self.feel(j, mind::Feel::Admired { what: format!("{} in its cage", name) }); } }
         true
     }
+}
+
+const COMPASS: [&str; 8] = ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"];
+
+/// A gate's place on the ring of radius `r`, from its compass direction.
+pub(crate) fn gate_point(d: (i32, i32), r: i32) -> (i32, i32) {
+    let l = ((d.0 * d.0 + d.1 * d.1) as f32).sqrt();
+    ((d.0 as f32 / l * r as f32).round() as i32, (d.1 as f32 / l * r as f32).round() as i32)
 }

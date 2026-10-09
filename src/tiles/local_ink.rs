@@ -1131,6 +1131,7 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
                 } }
             }
             crate::colony::MarkKind::Stone => super::camp_ink::draw_stone_mark(&mut put, cam, w, h, m.at, &m.title),
+            crate::colony::MarkKind::Cairn | crate::colony::MarkKind::Bench | crate::colony::MarkKind::Carving => super::camp_ink::draw_haunt(&mut put, cam, w, h, m.at, m.kind),
         }
     }
     // Engravings on the hall's walls: a carved panel on the face toward the floor, a little

@@ -1113,8 +1113,9 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
 - Legends carry regard (2026-10-08): `Legend::regards` keeps each people at |10|+ with its sum
   and weightiest cause (serde default: older legend files load); `heed_legends` gives the new
   camp half of it (12 at most) as a "legend" cause ("is remembered for the camp at 45,12: it would
-  not give The Staff of Greenburg back"). `--sim-legend` prints both camps' regards; seed 76:
-  the Git Clans -15 toward the first camp, -7 toward the second. Tested
+  not give The Staff of Greenburg back"). `--sim-legend` prints both camps' regards; seed 23:
+  the Greenburg League -20 toward the first camp, -10 toward the second (seed 76's grudge over the
+  staff is cancelled since it sends its Git Clans prisoner home unharmed). Tested
   (`peoples_remember_earlier_camps`).
 - Quality pass (2026-10-08, reading seed 76's days 120-200): a sally's raid line no longer says
   the band "came in the night" (it "was met at their own fires at first light, and broke before
@@ -1712,14 +1713,15 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   (x0.94 focused .. x1.06 distracted, `focus_pace` in `start`); a need badly unmet (-250) is a
   thought at dawn ("has gone 9 days without prayer").
 - Between jobs only (`decide`, `free`), never when the camp goes hungry, a need well past due
-  (-60) is an option (`need_option`; 0.2 + deficit x (0.3 + 0.06 x strength), +0.2 in the
-  evening, x0.4 when the store is under half its goal, x0.5 for leisure under the no-idle-hands
+  (-100) is an option (`need_option`; 0.15 + deficit x (0.2 + 0.06 x strength), +0.15 in the
+  evening: below most work until a need has gone very long unmet; at 0.2 + 0.3 it had stalled a
+  camp's building for months), x0.4 when the store is under half its goal, x0.5 for leisure under the no-idle-hands
   mandate, x0.75 with trouble foretold): a `Job::Wander` to a place with a reason, kept in
   `Settler::need_act` and met when it ends (`complete_need`): talking with the dearest awake
   settler where they are ("by the woodpile", `place_word`), time with a spouse or child, praying at
   the temple, the standing stone or on the highest ground near (`high_spot`), taking it easy by
   the water or under trees, watching the nearest herd or a pet, admiring an artifact in its room,
-  an engraving (on its level, `spot_level`) or the best work at the fire, walking out alone 22-45
+  an engraving (on its level, `spot_level`) or the best work at the fire, walking out alone 12-25
   cells toward the settler's own direction of the day, climbing the lookout or the high ground,
   sitting with the ill or hurt (else lending a builder a hand), reading at the library or
   watching the best hand at work (+0.01 skill), sitting with their thoughts on a rise, singing or
@@ -1756,3 +1758,94 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   `the_camp_presses_for_what_its_people_want`, `camps_lay_themselves_out_differently`. Moved:
   the bard may come "to the tavern"; Gru may meet someone on the stair (the raid "out of the
   mine"); gems at 120 days; news on seed 3; jaded, tombs on seed 1; suppers on 5, 1, 23.
+- Haunts (`haunts.rs`): a need met out of doors (prayer, rest, time to think, a walk alone,
+  whittling, the old ways) is met again where it was first met (`haunt_of`; the act's why says
+  "at her cairn" / "at 111,103, where she always goes"); on the third visit the settler leaves a
+  mark there (`MarkKind::{Cairn, Bench, Carving}`, or a raised stone for the old ways; inked as
+  a heap of three stones, a plank on legs, a notched post; hover and click as any mark): "Grang
+  raises a cairn of fieldstones on the rise at 111,103, where he prays to Heleleon". A newcomer
+  whose spot lies within 5 cells of another's place of the same need shares it ("Ord adds a stone
+  to Grang's cairn, and prays there too"; +1 opinion), and the devout without a place of their
+  own pray at another's cairn one day in two (`shared_haunt`). Six dev seeds, 120 days: 7-15
+  such marks a camp, no two camps alike. `Colony::haunts`.
+- Talk (`talk.rs`, DF's conversations): a talk has a topic chosen when they sit down
+  (`talk_topic`, in the why): a moment both lived through in the last 20 days (raids, deaths,
+  births, weddings, festivals, masterworks...), a home both name in their callings, a value both
+  hold dear, or small talk; where a value pulls them apart (both 20+ apart in sign), an argument,
+  likelier for the quarrelsome (discord, anger). `talk_done` when they get up: agreement and a
+  shared home +2 both ways; shared grief +2 and comfort; an argument -3 both ways, a quarrel
+  thought when either is angry, said aloud once a pair in 20 days ("Snokh and Graadrozz argue
+  under the trees about cunning: Snokh has no use for cunning; Graadrozz holds it dear, and voices
+  are raised"). Idle hours become talk (`idle_talk`: with nothing to do, sit with the dearest
+  idle, eating or resting settler within 12 cells; 0.06, 0.3 in the evening), so a camp talks
+  90-390 times in 120 days. Spear-bearers owe the evening drill first (`drill_due`: no need act or
+  idle talk then; drills had fallen a third and no hunting party went out).
+- Gates where the paths go (`traps.rs`: `choose_gates`, `gate_dirs`, `gate_point`): when the
+  palisade is begun the camp chooses its gates on the eight compass points, toward the water (the
+  lane), the nearest timber outside the wall and the road to the trading town, a quarter turn
+  apart at least; 2 for an uneasy people (founders' mean anxiety 58+), 4 for a bold one (under
+  45), else 3 ("They will leave 2 gates in the wall: north toward the water and south-west toward
+  the road to Swanworth, and no more: they are an uneasy people"). The palisade leaves the gaps
+  there, the cages stand there, the ditch's crossings are where each gate's way meets its square
+  (a corner for a diagonal; `crossings`), with steps beside, and the drawbridges span them.
+- A work set with a gem is always logged. Tests: `settlers_make_places_their_own`,
+  `settlers_talk_and_argue`, `gates_face_where_the_paths_go`; moved: risings on 58/5, the pyre on
+  58, the taught work on seed 3, spare bars sold on day 105.
+- Where the camp is founded (`Colony::found_by`, `Leaning`; `viewer::found_colony` passes the
+  roster's personas): within 30 cells of the embark's middle, the founders' characters weigh the
+  flat open ground: lovers of the wild want water near (`water_distance`, x2 a cell) and the
+  woods' edge (trees within 8 cells), the anxious and proud and dwarves high ground (x6 a level);
+  the founding line says what drew them ("7 settlers make camp at 91,66 ..., close to water").
+  Thirteen seeds: camps from 82,84 to 94,112 (all had been within a few cells of 96,96 where the
+  middle was open). `found` without founders is as before.
+- The woods gate faces the eighth of the land beyond the wall (to 25 cells past it) with the most
+  trees, when it holds 30+ and half again the mean (the nearest tree was usually inside the wall).
+- Duty before needs (`drill_due`): spear-bearers at the evening drill, and whoever has someone
+  to tend (`tend_option`). The healer hurt is tended by the most empathic other grown hand (a
+  healer had died of a broken leg's fever no one tended; on `main` too). Outings are shorter
+  (walks 12-25 cells, rises within 15-18, water within 20, herds within 30) and arguments rarer
+  (8% + a fifth of the speaker's heat). Thirteen seeds x 120 days: 14-16 dead or gone with the
+  spare-hours acts, 15 without (`PLANET_NO_NEEDS`); they had been 22 against 13.
+- Tastes and rhythm (`rhythm.rs`): `taste_of` gives each settler's pull toward each kind of work
+  from a little luck (by name) leaned by character (lovers of the wild forage and fish, the
+  patient fish, the strong fell and quarry and lovers of the wild do not, the orderly haul,
+  craftsmen and the dutiful build), set when the roster's personas are given and for every
+  newcomer (`add_settler` had cloned the first settler's tastes onto all of them). Each settler
+  rises at their own minute (`wake_minute`: 5:00 for the hard-working .. 7:30 for lovers of
+  leisure) and lies down at theirs (`bed_minute`: 20:00 .. 22:30, the immoderate and
+  thrill-seeking late); `abed` replaces the clock's night for sleep only (night work rules are
+  unchanged). Dev 76: the first acts of the day spread from 04:00 to 08:00.
+- Grief and courtship (`needs.rs`): `mourn_death` records who mourns whom (kin, or opinion 12+;
+  `Colony::mourning`); for twelve days after, by day, once a day, they stand at the grave
+  (`mourn_option`, 0.3 + 0.4 x love, +0.2 kin; before any other spare-hours act):
+  `Feel::Remembered` eases a little. DF's MakeRomance: `Need::Romance` (romance value, love
+  facet) walks out with an unwed settler of their people and the other sex whom they are fond of
+  (opinion 10+, and 4+ back): +2 opinion both ways, so courting couples reach the wedding's 20.
+  Eight seeds, 120 days: 2-5 weddings each, 3-19 walks.
+- `PLANET_FORCE_HORROR=1` counts each horror three times (the jaded test: camps that keep their
+  people alive no longer see eight). `PLANET_FORCE_PET_PREY=1` now lets night hunters take a
+  pet's keeper wherever they are on the surface (keepers keeping their own hours were never caught
+  alone).
+- Work no longer waits on a dig: the building under way is the first unfinished work that is not
+  a dig (`active_project`; digs are worked from `dig_target`), and diggers on their way to or at a
+  cut eat at 0.85 and nap only worn out, like a hand at the bench (a deep shaft's cuts lie hours
+  down the stair; diggers setting out at 0.6 turned back before they got there). Dev 50,20 (on
+  `main` too): the deep shaft had stood at 20 of 36 cuts for 50 days and two guildhalls at no
+  stones behind it; now the shaft is done on day ~100 and the camp goes on to a kitchen, library,
+  bedrooms and tombs. A cut that cannot be made is struck from the plan.
+- Crafts at the workshop use only what the work under way does not need (`industry::spare`):
+  the carvers had used every stone the quarriers brought. Engravers, slab carvers and sewers
+  are not held back by someone at the workshop (`maker_wish`, the wish without the workshop's
+  one-at-a-time rule): 50,20's hall had stayed bare for 150 days.
+- `PLANET_FORCE_GHOST=1`: no slab is carved for six days after a violent death (the ghost test,
+  with `PLANET_FORCE_RAID_DEATH`).
+- Out of stone (`projects.rs`: `materials_out`, `set_aside`; `delve.rs`: `ProjectKind::StoneCut`):
+  with no timber and no quarry stone within reach and under 4 stones laid by, only digs are
+  planned (a mending had been planned and set aside every dawn), and a gallery three wide and ten
+  long is cut off the stair for its stone ("a gallery cut for stone", 2.5). A dig paused for a
+  lining that was set aside is abandoned ("the water in the rock cannot be held back"; it had
+  blocked all planning: dev 70,6 planned nothing from day 39 to 150). Works set aside are taken up
+  again, one a dawn, when their material (or the other) is in reach or enough is laid by to finish
+  them (10 at most): "They take up a palisade again (14 of 24 loads laid)". Dev 70,6 by day 200:
+  palisade, gallery, ditch, temple, pen, storehouse, tavern, workshop, still, traps, drawbridges,
+  library, guildhall, kitchen, field. Tested (`a_camp_without_stone_digs_for_it`).

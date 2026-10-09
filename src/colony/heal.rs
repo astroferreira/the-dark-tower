@@ -78,7 +78,21 @@ impl Colony {
 
     /// The healer's rounds: the nearest wounded settler not tended today.
     pub(crate) fn tend_option(&self, i: usize) -> Option<(f32, Job, String)> {
-        if self.healer != Some(i) || self.clock.is_night() { return None; }
+        if self.clock.is_night() { return None; }
+        // The healer hurt: the most empathic other grown hand tends them (no one had, and a
+        // healer died of a broken leg's fever).
+        if let Some(h) = self.healer.filter(|&h| h != i && self.settlers[h].alive) {
+            let day = self.clock.day();
+            if let Some(w) = self.open_wounds(h).filter(|w| w.tended < day).max_by_key(|w| (w.infected, w.severity)) {
+                let best = (0..self.settlers.len()).filter(|&j| j != h && self.settlers[j].alive && self.settlers[j].ill_until <= self.clock.tick
+                    && self.settlers[j].guest_until == 0 && self.settlers[j].past.as_ref().map_or(true, |p| p.age >= 14))
+                    .max_by(|&a, &b| self.settlers[a].persona.attr(crate::persona::Attr::Empathy).total_cmp(&self.settlers[b].persona.attr(crate::persona::Attr::Empathy)).then(b.cmp(&a)));
+                if best == Some(i) {
+                    return Some((if w.infected { 1.6 } else { 1.1 }, Job::Wander(self.settlers[h].pos), format!("Tending {}'s {}", self.settlers[h].name, w.word().trim_start_matches("a ").trim_start_matches("an "))));
+                }
+            }
+        }
+        if self.healer != Some(i) { return None; }
         let day = self.clock.day();
         let me = self.settlers[i].pos;
         let (p, w) = (0..self.settlers.len()).filter(|&j| j != i && self.settlers[j].alive)

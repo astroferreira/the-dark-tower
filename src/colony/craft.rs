@@ -71,8 +71,10 @@ impl Colony {
     /// How much settler `i` wants to make something now (0 = not at all): art lovers, those who
     /// value craft, the creative. Needs a workshop and stored material to spare.
     pub(crate) fn craft_wish(&self, i: usize) -> f32 {
-        let spare = self.items.iter().filter(|it| it.stored && matches!(it.kind, ItemKind::Stone | ItemKind::Log)).count();
-        if spare < 4 { return 0.0; }
+        // (Only what the work under way does not need: the carvers had used every stone the
+        // quarriers brought, and a guildhall waited sixty days for its first.)
+        let spare = self.spare(ItemKind::Stone) + self.spare(ItemKind::Log);
+        if spare < 2 { return 0.0; }
         self.craft_wish_any(i)
     }
 
@@ -85,6 +87,13 @@ impl Colony {
         // (Only those making works at the workshop: writers, brewers, engravers and the like
         // are elsewhere.)
         if self.settlers.iter().enumerate().filter(|(j, s)| *j != i && s.alive && s.job == Job::Craft && s.why.starts_with("Making something")).count() >= at_once { return 0.0; }
+        self.maker_wish(i)
+    }
+
+    /// The wish to make things, from character (art, craftsmanship, creativity) and the
+    /// mandates, whatever the workshop is doing: engravers, carvers of slabs and sewers work
+    /// elsewhere (a workshop never empty had kept the hall's walls bare for 150 days).
+    pub(crate) fn maker_wish(&self, i: usize) -> f32 {
         let p = &self.settlers[i].persona;
         let art = p.facet(Facet::ArtInclined) as f32 / 100.0;
         let craft = (p.value(Val::Craftsmanship) as f32 / 50.0).max(0.0);
@@ -101,7 +110,10 @@ impl Colony {
         // The lord's demand chooses the material when it can (`nobles.rs`).
         let want = self.lord.as_ref().and_then(|l| l.demand.as_ref()).filter(|d| !d.2).map(|d| d.0.clone());
         let prefer = want.map(|w| if w == self.land_stone() { Some(ItemKind::Stone) } else if w == self.land_wood() { Some(ItemKind::Log) } else { None }).flatten();
-        let Some(k) = prefer.and_then(|p| self.items.iter().position(|it| it.stored && it.kind == p))
+        // (A material the work under way does not need first.)
+        let free = |c: &Colony, k: ItemKind| c.spare(k) > 0;
+        let Some(k) = prefer.filter(|&p| free(self, p)).and_then(|p| self.items.iter().position(|it| it.stored && it.kind == p))
+            .or_else(|| self.items.iter().position(|it| it.stored && matches!(it.kind, ItemKind::Stone | ItemKind::Log) && free(self, it.kind)))
             .or_else(|| self.items.iter().position(|it| it.stored && matches!(it.kind, ItemKind::Stone | ItemKind::Log))) else { return };
         let kind_item = self.items[k].kind;
         self.items.remove(k);
@@ -173,7 +185,7 @@ impl Colony {
                     self.feel(j, mind::Feel::Admired { what: w });
                 }
             }
-        } else if quality >= 3 || self.works.len() == 1 {
+        } else if quality >= 3 || self.works.len() == 1 || what.contains(" set with ") {
             self.note(format!("{} finishes {} at the workshop.", name, what));
         }
     }

@@ -889,6 +889,8 @@ impl Colony {
         s.starving = 0;
         s.skill = super::skills_from_past(past.as_ref(), &s.name);
         s.persona = past.as_ref().and_then(|p| p.persona.clone()).unwrap_or_else(|| crate::persona::Persona::roll("human", None, crate::persona::seed_of(&s.name, self.seed)));
+        // (Their own tastes: a clone of the first settler had carried theirs to every newcomer.)
+        s.taste = super::rhythm::taste_of(&s.persona, &s.name);
         s.stride_frac = 0.0;
         s.mind = Default::default();
         s.wounds = Vec::new();

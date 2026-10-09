@@ -481,7 +481,8 @@ pub fn settler_page_with(h: Option<&WorldHistory>, s: &crate::colony::Settler, w
 
 /// A colony mark's page: what it is, the day, and the words on it.
 pub fn mark_page(m: &crate::colony::ColonyMark) -> Page {
-    let kind = match m.kind { crate::colony::MarkKind::Grave => "A grave", crate::colony::MarkKind::Stone => "A raised stone", crate::colony::MarkKind::Scorch => "Scorched ground", crate::colony::MarkKind::Cage => "A cage trap" };
+    let kind = match m.kind { crate::colony::MarkKind::Grave => "A grave", crate::colony::MarkKind::Stone => "A raised stone", crate::colony::MarkKind::Scorch => "Scorched ground", crate::colony::MarkKind::Cage => "A cage trap",
+        crate::colony::MarkKind::Cairn => "A cairn", crate::colony::MarkKind::Bench => "A bench", crate::colony::MarkKind::Carving => "A carved post" };
     Page { title: m.title.clone(), lines: vec![
         Line::faded(format!("{}, day {}, at {},{}", kind, m.day, m.at.0, m.at.1)),
         Line::section("The words on it"),

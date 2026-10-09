@@ -12,7 +12,7 @@ use crate::colony::needs::Need;
 pub enum Emblem {
     Tantrum, Despair, Lost,
     Fey, Secretive, Possessed, Macabre, Fell,
-    Hurt, Pray, Talk, Rest, Watch, Admire, Walk, Thrill, Help, Learn, Think, Merry, Tale, Martial, Whittle, Busy, Drink, Meal, Gloom,
+    Hurt, Pray, Talk, Rest, Watch, Admire, Walk, Thrill, Help, Learn, Think, Merry, Tale, Martial, Whittle, Busy, Drink, Meal, Gloom, Love, Grief,
 }
 
 /// The sign over settler `i`, if any (most pressing first).
@@ -33,6 +33,7 @@ pub fn emblem_of(colony: &crate::colony::Colony, i: usize) -> Option<Emblem> {
             Need::HelpSomebody => Emblem::Help, Need::Learn => Emblem::Learn, Need::ThinkAbstractly => Emblem::Think, Need::MakeMerry => Emblem::Merry,
             Need::Tradition => Emblem::Tale, Need::Martial => Emblem::Martial, Need::Craft | Need::BeCreative => Emblem::Whittle,
             Need::StayOccupied => Emblem::Busy, Need::Drink => Emblem::Drink, Need::GoodMeal => Emblem::Meal,
+            Need::Romance => Emblem::Love, Need::Remember => Emblem::Grief,
         });
     }
     if s.job == crate::colony::Job::Eat { return Some(Emblem::Meal); }
@@ -83,6 +84,16 @@ fn icon(pen: &mut Pen, e: Emblem) {
         Emblem::Busy => { pen.bone(&[(-0.25, 0.3), (0.1, -0.05)], [122.0, 86.0, 54.0], w); pen.rect(0.0, -0.3, 0.32, -0.05, [150.0, 150.0, 158.0]); }
         Emblem::Drink => { pen.rect(-0.2, -0.22, 0.14, 0.32, [176.0, 124.0, 70.0]); pen.rect_f(-0.2, -0.3, 0.14, -0.16, [244.0, 236.0, 210.0], Finish::Plain); pen.path(&[(0.14, -0.1), (0.3, -0.05), (0.3, 0.15), (0.14, 0.2)], INK, w); }
         Emblem::Meal => { pen.ellipse(0.0, 0.08, 0.36, 0.2, [196.0, 160.0, 110.0]); pen.ellipse_f(0.0, 0.0, 0.26, 0.09, [150.0, 100.0, 60.0], Finish::Paint); pen.line((0.15, -0.35), (0.3, 0.0), INK, w); }
+        Emblem::Love => {
+            let red = [190.0, 60.0, 70.0];
+            pen.ellipse(-0.14, -0.08, 0.18, 0.18, red); pen.ellipse(0.14, -0.08, 0.18, 0.18, red);
+            pen.poly_f(&[(-0.3, 0.0), (0.0, 0.34), (0.3, 0.0), (0.0, -0.05)], red, Finish::Paint);
+        }
+        Emblem::Grief => {
+            pen.rect(-0.1, -0.05, 0.1, 0.38, [236.0, 228.0, 206.0]);
+            pen.glow(0.0, -0.22, 0.25, [250.0, 200.0, 110.0], 0.8);
+            pen.poly_f(&[(-0.05, -0.08), (0.0, -0.34), (0.05, -0.08)], [240.0, 170.0, 70.0], Finish::Plain);
+        }
         Emblem::Gloom => { pen.ellipse_f(0.0, 0.0, 0.42, 0.24, [70.0, 70.0, 80.0], Finish::Plain); pen.ellipse_f(-0.18, -0.08, 0.2, 0.16, [96.0, 96.0, 106.0], Finish::Paint); }
     }
 }
