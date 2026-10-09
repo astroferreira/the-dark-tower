@@ -55,7 +55,7 @@ pub struct Pen<'a> {
 impl<'a> Pen<'a> {
     /// A pen drawing a sprite `size` pixels across, centred at (cx, cy).
     pub fn new(put: &'a mut dyn FnMut(i64, i64, Rgb, f32), cx: f32, cy: f32, size: f32) -> Pen<'a> {
-        Pen { put, cx, cy, half: (size / 2.0).max(1.5), flip: false, alpha: 1.0, tint: None, ink: INK }
+        Pen { put, cx, cy, half: (size / 2.0).max(0.5), flip: false, alpha: 1.0, tint: None, ink: INK }
     }
 
     pub fn facing_left(mut self, left: bool) -> Self { self.flip = left; self }

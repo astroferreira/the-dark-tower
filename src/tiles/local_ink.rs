@@ -1464,6 +1464,63 @@ pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize,
             l += run;
         }
     }
+    // Above the ground on the row: trees in profile and the houses' pitched roofs; creatures
+    // on the row at their level (the section had shown only rock, rooms and settlers).
+    {
+        let mut put = |px: i64, py: i64, c: Rgb, a: f32| {
+            if px < 0 || py < 0 || px as usize >= w || py as usize >= h { return; }
+            let k = py as usize * w + px as usize;
+            let p = buf[k];
+            let old = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
+            buf[k] = pack(mix(old, c, a));
+        };
+        let ground_y = |z: i32| top + (ztop - z) as f32 * ch;
+        let mut x = x0;
+        while x < x1.min(map.width) {
+            let k = row * map.width + x;
+            let sz = map.surface_z[k];
+            let roof = map.roofs[k];
+            if roof > 0 {
+                // A run of this roof along the row: one pitched roof over its walls.
+                let mut e = x;
+                while e + 1 < x1.min(map.width) && map.roofs[row * map.width + e + 1] == roof { e += 1; }
+                let (lx, rx) = (margin + (x - x0) as f32 * cw, margin + (e + 1 - x0) as f32 * cw);
+                let eave = ground_y(sz + 1);
+                let peak = eave - ((rx - lx) * 0.35).min(ch * 1.6);
+                let stone = map.houses.get(roof as usize - 1).map_or(false, |r| r.stone);
+                let mut pen = super::ink::Pen::new(&mut put, 0.0, 0.0, 2.0);
+                pen.poly(&[(lx - 3.0, eave), ((lx + rx) / 2.0, peak), (rx + 3.0, eave)], if stone { [150.0, 140.0, 130.0] } else { [196.0, 168.0, 108.0] });
+                x = e + 1;
+                continue;
+            }
+            if sz >= 0 && (sz as usize) < map.depth {
+                if let crate::local::Plant::Tree(kind) = map.cell(x, row, sz as usize).plant {
+                    if kind != crate::local::TreeKind::Fungus {
+                        let (cxp, gy) = (margin + (x - x0) as f32 * cw + cw / 2.0, ground_y(sz));
+                        let hgt = (ch * 2.6).max(14.0);
+                        let mut pen = super::ink::Pen::new(&mut put, 0.0, 0.0, 2.0);
+                        pen.rect(cxp - (cw * 0.08).max(1.0), gy - hgt * 0.45, cxp + (cw * 0.08).max(1.0), gy, [120.0, 86.0, 54.0]);
+                        let (r, c) = crown(kind);
+                        let _ = r;
+                        if matches!(kind, crate::local::TreeKind::Conifer) {
+                            pen.poly(&[(cxp - cw * 0.45 - 2.0, gy - hgt * 0.3), (cxp, gy - hgt), (cxp + cw * 0.45 + 2.0, gy - hgt * 0.3)], c);
+                        } else {
+                            pen.ellipse(cxp, gy - hgt * 0.68, (cw * 0.5).max(4.0) + 2.0, hgt * 0.34, c);
+                        }
+                    }
+                }
+            }
+            x += 1;
+        }
+        for c in colony.creatures.iter().filter(|c| (c.pos.1 as i32 - row as i32).abs() <= 1 && (c.pos.0 as usize) >= x0 && (c.pos.0 as usize) < x1) {
+            let z = colony.creature_here3(c).2 + 1;
+            let (cxp, base) = (margin + (c.pos.0 as usize - x0) as f32 * cw + cw / 2.0, top + (ztop - z + 1) as f32 * ch);
+            let look = creature_look(colony, c);
+            let px = (ch * 1.6 * look.len.sqrt()).clamp(12.0, 60.0);
+            let (left, pose) = creature_motion(c);
+            super::beasts::draw(&mut put, &look, cxp, base, px, left, pose, 1.0);
+        }
+    }
     // Settlers on the row stand at their level: small inked figures in their portrait's colours.
     let looks = settler_looks(colony, None);
     for (i, s) in colony.settlers.iter().enumerate().filter(|(_, s)| s.alive && (s.pos.1 as i32 - row as i32).abs() <= 1) {
