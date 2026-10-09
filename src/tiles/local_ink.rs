@@ -822,7 +822,13 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
         }
     }
     // The camp's builder, forager, ...: a small gold mark on the shoulder.
-    if s.role.is_some() { ink_disc(put, x - sw * 0.55, base - sh * 0.55, (1.8 * scale).max(1.5), [200.0, 160.0, 60.0], INK); }
+    // (Its role's glyph: berries, a fish, an axe, a pack, a hammer, on a gold roundel.)
+    if let Some(r) = s.role {
+        let (bx, by) = (x - sw * 0.55, base - sh * 0.55);
+        ink_disc(put, bx, by, (2.6 * scale).max(2.0), [214.0, 186.0, 110.0], INK);
+        let g = [super::glyphs::Glyph::Berries, super::glyphs::Glyph::Fish, super::glyphs::Glyph::Axe, super::glyphs::Glyph::Provisions, super::glyphs::Glyph::Mace][r.min(4)];
+        if scale >= 0.8 { super::glyphs::draw(put, g, bx, by, (4.6 * scale).max(5.0), None); }
+    }
     // A bandage, an office's headgear, a visitor's hat; and a bubble with what they are going
     // through (`status_ink`).
     super::status_ink::figure_marks(put, colony, i, hx, hy, hr);
