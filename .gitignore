@@ -14,6 +14,9 @@ lore_*.txt
 lore_*.md
 /worlds
 
+# Saved adventures and their legends (adventure mode)
+/adventures
+
 # macOS folder metadata
 .DS_Store
 
