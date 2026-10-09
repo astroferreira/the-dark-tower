@@ -153,6 +153,10 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     arms_sheet: Option<String>,
 
+    /// Print every simulated kind and the sprite routine that draws it, and exit
+    #[arg(long)]
+    coverage: bool,
+
     /// Draw the start screen to FILE (headless) and exit
     #[arg(long, value_name = "FILE")]
     start_snapshot: Option<String>,
@@ -732,6 +736,14 @@ const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 fn main() {
     let mut args = parse_args();
     if let Some(px) = args.tiles_zoom { tiles::viewer::set_start_zoom(px); }
+    if args.coverage {
+        let t = tiles::coverage::table();
+        let mut types: Vec<&str> = t.iter().map(|r| r.0).collect();
+        types.dedup();
+        for (ty, k, d) in &t { println!("{:<14} {:<16} {}", ty, k, d); }
+        println!("Coverage: {} kinds of {} simulated types, each with its drawing (the matches are exhaustive: an undrawn kind does not compile)", t.len(), types.len());
+        std::process::exit(0);
+    }
     if let Some(path) = &args.start_snapshot {
         let initial = tiles::start::StartConfig {
             width: args.width, height: args.height, seed: args.seed.unwrap_or(42),

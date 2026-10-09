@@ -23,6 +23,18 @@ use super::render::{render_local, render_minimap, render_world, render_zoom, scr
 use crate::local::{generate_local, LocalMap, Plant, Shape, LOCAL_SIZE, TILE_M};
 
 const MIN_TILE_PX: f32 = 1.0;
+
+/// A key named in a `PLANET_UI_SCRIPT` line: a letter, a digit, or Space, Escape, Enter, Tab,
+/// Backspace, `<` (Comma), `>` (Period), `[`, `]`.
+fn script_key(n: &str) -> Option<Key> {
+    const LETTERS: [Key; 26] = [Key::A, Key::B, Key::C, Key::D, Key::E, Key::F, Key::G, Key::H, Key::I, Key::J, Key::K, Key::L, Key::M, Key::N, Key::O, Key::P, Key::Q, Key::R, Key::S, Key::T, Key::U, Key::V, Key::W, Key::X, Key::Y, Key::Z];
+    const DIGITS: [Key; 10] = [Key::Key0, Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5, Key::Key6, Key::Key7, Key::Key8, Key::Key9];
+    let b = n.as_bytes();
+    if b.len() == 1 && b[0].is_ascii_alphabetic() { return Some(LETTERS[(b[0].to_ascii_uppercase() - b'A') as usize]); }
+    if b.len() == 1 && b[0].is_ascii_digit() { return Some(DIGITS[(b[0] - b'0') as usize]); }
+    Some(match n { "Space" => Key::Space, "Escape" => Key::Escape, "Enter" => Key::Enter, "Tab" => Key::Tab, "Backspace" => Key::Backspace, "<" | "Comma" => Key::Comma, ">" | "Period" => Key::Period, "[" => Key::LeftBracket, "]" => Key::RightBracket, _ => return None })
+}
+
 /// Seconds per season when the automatic year cycle is on.
 const SEASON_SECONDS: f32 = 3.0;
 const MAX_TILE_PX: f32 = 64.0;
@@ -36,6 +48,8 @@ const RUN_PX_PER_FRAME: f64 = 12.0;
 struct ZoomState {
     region: ZoomRegion,
     rgb: Vec<[u8; 3]>,
+    /// The region's fields for drawing it in ink (`region_ink`).
+    ink: super::region_ink::Ink,
     /// Global cell coordinate of the region's local cell (0, 0).
     origin: (i64, i64),
     /// World tile the region is centred on.
@@ -65,7 +79,8 @@ fn load_region(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, 
     if let Some(l) = &lore { crate::lore::paint_region(l, &region, &mut rgb); }
     let s = cells_per_tile();
     let origin = (region.world_x0 * s, region.world_y0 * s);
-    ZoomState { region, rgb, origin, tile, lore }
+    let ink = super::region_ink::Ink::new(&region, &rgb);
+    ZoomState { region, rgb, ink, origin, tile, lore }
 }
 
 /// Names of the settlements in a zoomed region.
@@ -249,12 +264,13 @@ fn draw_marker(buf: &mut [u32], w: usize, h: usize, cx: f32, cy: f32, r: f32) {
             if x < 0 || y < 0 || x >= w as i64 || y >= h as i64 { continue; }
             let d = ((dx * dx + dy * dy) as f32).sqrt();
             let k = y as usize * w + x as usize;
-            if d <= r - 1.2 {
-                buf[k] = 0x00E0_3030;
+            // In the map's ink: a rubric dot in a parchment ring, rimmed in sepia.
+            if d <= r - 1.6 {
+                buf[k] = 0x009A_3324;
             } else if d <= r {
-                buf[k] = 0x00FF_FFFF;
-            } else if d <= r + 1.0 {
-                buf[k] = 0x0010_1010;
+                buf[k] = 0x00EA_DEC4;
+            } else if d <= r + 1.2 {
+                buf[k] = 0x0038_2A20;
             }
         }
     }
@@ -267,8 +283,9 @@ fn draw_box(buf: &mut [u32], w: usize, h: usize, cx: f32, cy: f32, half: f32, co
     let mut put = |x: i64, y: i64| {
         if x >= 0 && y >= 0 && x < w as i64 && y < h as i64 { buf[y as usize * w + x as usize] = color; }
     };
-    for x in x0..=x1 { put(x, y0); put(x, y1); }
-    for y in y0..=y1 { put(x0, y); put(x1, y); }
+    // Dashed, as a boundary is on the map (5 on, 3 off).
+    for x in x0..=x1 { if (x - x0) % 8 < 5 { put(x, y0); put(x, y1); } }
+    for y in y0..=y1 { if (y - y0) % 8 < 5 { put(x0, y); put(x1, y); } }
 }
 
 pub(crate) fn save_rgb_png_pub(path: &str, w: usize, h: usize, pixel: impl Fn(usize, usize) -> [u8; 3]) -> String { save_rgb_png(path, w, h, pixel) }
@@ -629,7 +646,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 let _ = f;
                 match verb.as_str() {
                     "click" => { if let (Some(x), Some(y)) = (args.first().and_then(|v| v.parse().ok()), args.get(1).and_then(|v| v.parse().ok())) { script_mouse = Some((x, y)); script_down = true; } }
-                    "key" => { if let Some(k) = args.first().and_then(|n| match n.as_str() { "C" => Some(Key::C), "I" => Some(Key::I), "O" => Some(Key::O), "L" => Some(Key::L), "T" => Some(Key::T), "Space" => Some(Key::Space), "Escape" => Some(Key::Escape), "1" => Some(Key::Key1), "2" => Some(Key::Key2), "3" => Some(Key::Key3), "B" => Some(Key::B), "F" => Some(Key::F), _ => None }) { script_keys.push(k); } }
+                    "key" => { if let Some(k) = args.first().and_then(|n| script_key(n)) { script_keys.push(k); } else { println!("UI script frame {}: no key {:?}", ui_frame, args.first()); } }
                     // Click the centre of the hit area the window drew for an action (by its name).
                     "act" => {
                         let want = args.join(" ");
@@ -1020,8 +1037,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     (false, _) => drag = None,
                 }
                 // DF keys: '<' goes up a level, '>' goes down.
-                let up = window.is_key_pressed(Key::Comma, KeyRepeat::Yes) || window.is_key_pressed(Key::PageUp, KeyRepeat::Yes);
-                let dn = window.is_key_pressed(Key::Period, KeyRepeat::Yes) || window.is_key_pressed(Key::PageDown, KeyRepeat::Yes);
+                let up = window.is_key_pressed(Key::Comma, KeyRepeat::Yes) || window.is_key_pressed(Key::PageUp, KeyRepeat::Yes) || script_keys.contains(&Key::Comma);
+                let dn = window.is_key_pressed(Key::Period, KeyRepeat::Yes) || window.is_key_pressed(Key::PageDown, KeyRepeat::Yes) || script_keys.contains(&Key::Period);
                 if up || dn {
                     // From the surface view, start from the ground's level under the view's centre.
                     if lcam.surface_view {
@@ -1478,11 +1495,11 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         cy: (player.1 - z.origin.1 as f64) as f32,
                         px_per_cell,
                     };
-                    render_zoom(&z.rgb, z.region.width, z.region.height, &cam_z, &mut buf, w, h);
+                    super::region_ink::draw(&z.ink, &cam_z, &mut buf, w, h);
                     if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h); }
                     // The playable area an embark here would cover.
                     let half = (LOCAL_SIZE as f32 * TILE_M / z.region.cell_m * px_per_cell / 2.0).max(6.0);
-                    draw_box(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, half, 0x00F0_D23C);
+                    draw_box(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, half, 0x009A_3324);
                     draw_marker(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, (px_per_cell * 0.6).clamp(4.0, 10.0));
                 } else {
                     render_world(&tw, &atlas, &cam, &mut buf, w, h);
@@ -1816,7 +1833,7 @@ pub fn save_province_snapshot(world: &WorldData, history: Option<&WorldHistory>,
     let (w, h) = (1100usize, 800usize);
     let cam = ZoomCamera { cx: ((x0 + x1) / 2.0) as f32, cy: ((y0 + y1) / 2.0) as f32, px_per_cell: (h as f64 / span) as f32 };
     let mut buf = vec![0u32; w * h];
-    render_zoom(&zs.rgb, zs.region.width, zs.region.height, &cam, &mut buf, w, h);
+    super::region_ink::draw(&zs.ink, &cam, &mut buf, w, h);
     draw_region_labels(lore, &cam, &mut buf, w, h);
     let to_screen = |x: f64, y: f64| ((w as f32 / 2.0 + (x as f32 - cam.cx) * cam.px_per_cell), (h as f32 / 2.0 + (y as f32 - cam.cy) * cam.px_per_cell));
     let (sx, sy) = to_screen(ex, ey);
@@ -1845,7 +1862,7 @@ pub fn save_province_snapshot(world: &WorldData, history: Option<&WorldHistory>,
         super::text::draw_ink(&mut buf, w, h, mx as i64 - tw / 2, my as i64, &label, 0x008A_2A1A, 1, true);
         lines.push(format!("{} ({:?}, {} souls): {:.0} km, {} days on foot", st.name, st.kind, st.population, d, days));
     }
-    draw_box(&mut buf, w, h, sx, sy, 8.0, 0x00F0_D23C);
+    draw_box(&mut buf, w, h, sx, sy, 8.0, 0x009A_3324);
     let title = format!("The theatre of the embark at {},{}: 250 km ring, nearest places", tile.0, tile.1);
     super::text::draw_ink(&mut buf, w, h, 12, 10, &title, 0x0030_1E14, 1, true);
     let path = format!("{prefix}_province.png");
@@ -3110,13 +3127,24 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
         let (vw, vh) = (1280usize, 800usize);
         let mut vbuf = vec![0u32; vw * vh];
         let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: 1.0 };
-        render_zoom(&zs.rgb, rw, rh, &cam, &mut vbuf, vw, vh);
+        super::region_ink::draw(&zs.ink, &cam, &mut vbuf, vw, vh);
         if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh); }
         image::RgbImage::from_fn(vw as u32, vh as u32, |x, y| {
             let p = vbuf[y as usize * vw + x as usize];
             image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
         }).save(&path)?;
         written.push(path);
+        // The walker's zooms: 4 px a cell (where it opens) and 12 px.
+        for z in [4.0f32, 12.0] {
+            let path = format!("{prefix}_region_{}px.png", z);
+            let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: z };
+            let t0 = std::time::Instant::now();
+            super::region_ink::draw(&zs.ink, &cam, &mut vbuf, vw, vh);
+            println!("Region in ink at {} px a cell: {:.1} ms", z, t0.elapsed().as_secs_f64() * 1000.0);
+            if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh); }
+            save_rgb_png(&path, vw, vh, |x, y| { let p = vbuf[y * vw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+            written.push(path);
+        }
     }
     // Embark on the settlement in this tile if there is one, else by a river.
     let s = cells_per_tile() as f64;

@@ -104,7 +104,7 @@ pub fn page(world: &WorldData, h: &WorldHistory, subject: Subject) -> Page {
             let owner = h.tile_history.get(x, y).current_owner;
             let mut p = match owner {
                 Some(f) => page(world, h, Subject::Faction(f)),
-                None => Page { title: "Unclaimed land".into(), lines: Vec::new(), emblem: None, portrait: None, picture: None },
+                None => Page { title: if *world.heightmap.get(x, y) < 0.0 { "Open water".into() } else { "Unclaimed land".into() }, lines: Vec::new(), emblem: None, portrait: None, picture: None },
             };
             p.lines.insert(0, Line::faded(format!("Tile {},{}: {:?}, {:.0} m", x, y, world.biomes.get(x, y), world.heightmap.get(x, y))));
             let here = recent(h, |e| e.location == Some((x, y)));

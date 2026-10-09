@@ -68,3 +68,18 @@ fn every_kind_draws_in_the_game_frame() {
     assert!(dir.join("i_inventory.png").exists());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn every_simulated_kind_names_its_drawing() {
+    let t = planet_generator::tiles::coverage::table();
+    let types: std::collections::BTreeSet<&str> = t.iter().map(|r| r.0).collect();
+    assert!(types.len() >= 24, "only {} types covered", types.len());
+    assert!(t.len() >= 250, "only {} kinds", t.len());
+    for (ty, k, d) in &t {
+        assert!(!k.is_empty() && !d.is_empty(), "{} {:?} has no drawing", ty, k);
+    }
+    // Each project kind is listed once.
+    let projects: Vec<&String> = t.iter().filter(|r| r.0 == "ProjectKind").map(|r| &r.1).collect();
+    let uniq: std::collections::BTreeSet<_> = projects.iter().collect();
+    assert_eq!(projects.len(), uniq.len());
+}

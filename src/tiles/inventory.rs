@@ -181,5 +181,37 @@ pub fn save_inventory(world: &WorldData, history: Option<&crate::history::world_
         } }
     }
     sheet.save(&format!("{prefix}_inventory.png"))?;
+
+    // The same things at the zooms a player uses (8 to 32 px a cell): each drawn afresh at that
+    // zoom, not scaled from the 20 px frame, so what is unreadable small shows here.
+    let mut subjects: Vec<(String, (f32, f32))> = Vec::new();
+    if let Some(r) = c.creatures.iter().filter(|k| k.kind == CreatureKind::Raider).min_by_key(|k| k.id) {
+        subjects.push(("the snatched child on a raider".into(), (r.pos.0 as f32 + 0.5, r.pos.1 as f32 - 0.3)));
+    }
+    for (i, label) in states.iter().filter(|(_, l)| l.contains("lord") || l.contains("bandaged") || l.contains("tantrum") || l.contains("hunter")) {
+        let p = c.draw_pos(*i);
+        subjects.push((format!("settler: {}", label), (p.0 + 0.5, p.1 - 0.1)));
+    }
+    if let Some(cr) = c.creatures.iter().find(|k| k.kind == CreatureKind::Beast) { subjects.push((format!("the beast: {}", cr.name), (cr.pos.0 as f32 + 0.5, cr.pos.1 as f32 - 1.0))); }
+    subjects.push(("the fire and the store".into(), (c.camp.0 as f32 + 0.5, c.camp.1 as f32 + 0.5)));
+    let zooms = [8.0f32, 12.0, 16.0, 24.0, 32.0];
+    let (zw, zh) = (240usize, 210usize);
+    let mut zs = super::ink::Sheet::new(zooms.len(), subjects.len(), zw + 10, zh + 26);
+    zs.title("The same things at each zoom (8, 12, 16, 24, 32 px a cell), drawn at that zoom");
+    for (label, (x, y)) in &subjects {
+        for z in zooms {
+            let cam = LocalCamera { cx: *x, cy: *y, tile_px: z, z: 0, surface_view: true };
+            let mut fb = vec![0u32; zw * zh];
+            render_local(&c.map, atlas, &cam, &mut fb, zw, zh);
+            super::local_ink::draw_colony(&c, &cam, &mut fb, zw, zh, history);
+            let (cx, cy) = zs.cell(&format!("{} - {} px", label.chars().take(24).collect::<String>(), z));
+            let mut put = zs.put();
+            for oy in 0..zh { for ox in 0..zw {
+                let q = fb[oy * zw + ox];
+                put((cx - zw as f32 / 2.0) as i64 + ox as i64, (cy - zh as f32 / 2.0) as i64 + oy as i64, [((q >> 16) & 255) as f32, ((q >> 8) & 255) as f32, (q & 255) as f32], 1.0);
+            } }
+        }
+    }
+    zs.save(&format!("{prefix}_zooms.png"))?;
     Ok((n, missing))
 }

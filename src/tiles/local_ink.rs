@@ -1524,10 +1524,16 @@ pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize,
                         pen.rect(cxp - (cw * 0.08).max(1.0), gy - hgt * 0.45, cxp + (cw * 0.08).max(1.0), gy, [120.0, 86.0, 54.0]);
                         let (r, c) = crown(kind);
                         let _ = r;
+                        // Crowns as wide as the surface view's (a broadleaf ~4 m across, a fir
+                        // ~3 m): they had been thin poplars, unlike the same trees seen from above.
                         if matches!(kind, crate::local::TreeKind::Conifer) {
-                            pen.poly(&[(cxp - cw * 0.45 - 2.0, gy - hgt * 0.3), (cxp, gy - hgt), (cxp + cw * 0.45 + 2.0, gy - hgt * 0.3)], c);
+                            let half = (hgt * 0.24).max(cw * 0.7);
+                            pen.poly(&[(cxp - half, gy - hgt * 0.28), (cxp, gy - hgt * 1.05), (cxp + half, gy - hgt * 0.28)], c);
                         } else {
-                            pen.ellipse(cxp, gy - hgt * 0.68, (cw * 0.5).max(4.0) + 2.0, hgt * 0.34, c);
+                            let r = (hgt * 0.27).max(cw * 0.9);
+                            for (ox, oy, k) in [(-0.62f32, 0.18f32, 0.72f32), (0.62, 0.18, 0.72), (0.0, 0.0, 1.0)] {
+                                pen.ellipse(cxp + ox * r, gy - hgt * 0.7 + oy * r, r * k, r * k * 0.9, c);
+                            }
                         }
                     }
                 }
@@ -1568,7 +1574,9 @@ pub fn render_section_ink(colony: &crate::colony::Colony, row: usize, x0: usize,
         }
     }
     let title = format!("Section through row {} ({} levels; 0 is the camp's ground)", row, levels);
-    super::fonts::draw(buf, w, h, margin, 10.0, &title, super::fonts::Face::Italic, 16.0, 0.0, pack(INK), None);
+    // Top centre below the HUD's banner (at the left it ran under the camp's card).
+    let tw = super::fonts::width(&title, super::fonts::Face::Italic, 16.0, 0.0);
+    super::fonts::draw(buf, w, h, (w as f32 - tw) / 2.0, 62.0, &title, super::fonts::Face::Italic, 16.0, 0.0, pack(INK), Some(0x00EE_E4CC));
 }
 
 /// Everything over a level slice: near the camp's ground (two levels either side) the camp as
@@ -1897,7 +1905,8 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
         if let Some(c) = colony.map.caverns.iter().find(|c| (0..colony.map.width).step_by(16).any(|x| colony.map.cavern_at(x, colony.camp.1 as usize, cam.z + 1).map_or(false, |l| l == c.layer as usize))) { kinds.push(c.name.clone()); }
         let depth = if d == 0 { "the camp's ground".to_string() } else if d < 0 { format!("{} below the camp's ground", -d) } else { format!("{} above the camp's ground", d) };
         let cap = format!("Level {} - {}{}", cam.z, depth, if kinds.is_empty() { String::new() } else { format!(": {}", kinds.join(", ")) });
-        letter(buf, w, h, placed, w as f32 / 2.0, 14.0, &cap, super::fonts::Face::Italic, 16.0, 0.0, 0x0030_1E14);
+        // Below the HUD's banner at the top centre (a moment's title sits there; they had overlapped).
+        letter(buf, w, h, placed, w as f32 / 2.0, 70.0, &cap, super::fonts::Face::Italic, 16.0, 0.0, 0x0030_1E14);
     }
     // Names step aside from each other and from the surface view's labels (above, below,
     // right, left) or are left out.
@@ -1970,15 +1979,17 @@ fn draw_creature(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony
             // Striking when a settler is within reach.
             let near = colony.settlers.iter().any(|s| s.alive && (s.pos.0 as i32 - c.pos.0 as i32).abs() <= 1 && (s.pos.1 as i32 - c.pos.1 as i32).abs() <= 1);
             let strike = near && (colony.clock.tick / 3 + c.id as u64) % 2 == 0;
-            super::folk::draw(put, &f, x, y, scale * 1.2, left, strike, a);
+            let head_top = super::folk::draw(put, &f, x, y, scale * 1.2, left, strike, a);
             // A child snatched by these raiders and coming back among them (`snatch.rs`) rides on
-            // the shoulders of the first of them, small, in their own colours.
+            // the shoulders of the first of them, small, in their own colours, legs either side of
+            // the raider's head and hands on it.
             let first_raider = colony.creatures.iter().filter(|k| k.kind == CreatureKind::Raider).map(|k| k.id).min() == Some(c.id);
             if first_raider {
                 if let Some(sn) = colony.snatched.iter().find(|sn| sn.coming && sn.home.is_none()) {
                     if let Some(look) = settler_looks(colony, history).get(sn.who).copied() {
-                        let back = if left { 1.0 } else { -1.0 } * 5.0 * scale;
-                        let mut pen = super::ink::Pen::new(put, x + back, y - 22.0 * scale, 28.0 * scale).faint(a);
+                        let back = if left { 1.0 } else { -1.0 } * 1.5 * scale;
+                        let size = 19.0 * scale;
+                        let mut pen = super::ink::Pen::new(put, x + back, head_top - 0.32 * size, size).faint(a);
                         pen.ellipse(0.0, 0.45, 0.5, 0.35, look.2);
                         pen.ellipse(0.0, -0.2, 0.36, 0.36, look.0);
                         pen.shape(look.1, super::ink::Finish::Paint, [-0.36, -0.56, 0.36, -0.2], &|u, v| u * u + (v + 0.2).powi(2) < 0.1 && v < -0.32);

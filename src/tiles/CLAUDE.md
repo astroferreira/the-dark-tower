@@ -406,3 +406,29 @@ the Claude Doc "Ink graphics: sprites and examples".
 - Thoughts, the dream of a lifetime, a vow, the patron's dream and the trading town's request
   have icons in the ledger (`status_ink::thought_emblem`, `life_emblem`, `draw_icon`); the talk
   bubble shows its topic. `PatronStyle` is a test harness (`raid_trial`), not game state.
+- Coverage the compiler checks (`coverage.rs`, `--coverage`): every variant of 25 simulated enums
+  (creatures, works, rooms, marks, stones, stuff, items, jobs, needs, breaks, moods, dreams, life
+  dreams, mandates, visits, threats, places, talk topics, wants, thoughts (`Feel`), monuments,
+  shapes, plants, trees) maps to the routine that draws it in a match with no wildcard arm, so a
+  new kind without a sprite does not compile; `--coverage` prints the 251 rows;
+  `tests/sprites.rs::every_simulated_kind_names_its_drawing`.
+- `--inventory` also writes `<prefix>_zooms.png`: the snatched child, office headgear, a bandage,
+  a bubble, the guest's hat, the beast and the fire drawn afresh at 8, 12, 16, 24 and 32 px a
+  cell. It showed the snatched child drawn larger than the raider carrying them (28 px at
+  scale 1); the child is now 19 px, sat on the raider's head (`folk::draw` returns its top).
+- The region walker in ink (`region_ink.rs`, 2026-10-09): Z's zoomed region had been
+  `render_rgb` blown up (flat climate colours, pixel rivers), the one view out of style. Now per
+  pixel from the region's fields sampled between cells: washes muted toward parchment, hatching
+  on the far side of slopes, contours every 100 m (500 m heavier), sea/lakes/rivers as one water
+  field with an ink bank on its 0.5 contour, an offshore line and wave marks, tree symbols on a
+  jittered 14 px grid (broadleaf/fir by temperature, nearer trees over farther), the lore's
+  fields and roads muted. ~7-11 ms at 1280x800. The marker and the embark box are rubric ink
+  (dashed box). `--local-snapshot` writes `_region.png` (1 px a cell), `_region_4px.png`,
+  `_region_12px.png` and prints the frame times.
+- `PLANET_UI_SCRIPT` keys: any letter or digit, Space, Escape, Enter, Tab, Backspace, `<`, `>`,
+  `[`, `]` (`viewer::script_key`). A full pass (tabs, sheet, bell, speed, a settler clicked,
+  level view, `[`/`]`, section, leave to the region, the world map, the inspector on a town and on
+  the sea, overlays) runs in the real window. It found the level caption under the moment banner
+  and the section title under the camp card (both now top centre below the banner), the
+  section's trees as thin poplars (now crowns as wide as the surface view's), and the sea titled
+  "Unclaimed land" (now "Open water").
