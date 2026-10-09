@@ -230,6 +230,22 @@ everywhere).
   a deed named), `land::tests::townsfolk_remember_the_hero` (met twice, the deed named, kept
   after leaving and coming back).
 
+## Asking (`lore.rs`; card adv-knowledge-talk)
+- Talk's "Ask about..." lists what the speaker's town knows worth asking about (`lore::subjects`:
+  beasts, people and treasures in its notable news) and takes a typed name (the window's talk
+  card: type, Enter; `npc::ask_typed`). `lore::find` matches the name among the history's beasts,
+  figures, towns, peoples and treasures (exact, then a beginning, then a word, then within;
+  ties to the most told of). `lore::ask` tells the most famous events about it that the
+  speaker's town knows (a sage: their whole people), as their people tell them
+  (`knowledge::account`), and where it is (`whereabouts`: a beast's lair, a town, a people's
+  seat, a person's home, a treasure's place) in days and a direction, marking the map.
+- The inn's drunk (`Npc.of == "drunk"`, placed in every inn by `town::lay_out`) has heard
+  everything and tells it wrong: the dead and the deeds grown ("raids" become "burned half of"),
+  a confident tail, the wrong direction, nothing marked.
+- `Game::history` is the host's living history shared by `Arc` (copied on write only while
+  the game holds it during a step; `sync` lets go first).
+- Test: `tests/adventure.rs::a_sage_and_a_drunk_tell_it_differently` (`PLANET_ADV_ASK=1`).
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the

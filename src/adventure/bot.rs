@@ -547,6 +547,23 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     // The history goes on beside the adventure.
     let mut living = history.map(super::living::Living::new);
     if let Some(l) = living.as_mut() { l.sync(&mut g, world); }
+    // PLANET_ADV_ASK=1: the home town's sage and its drunk asked about the same beast.
+    if let (Ok(_), Some(h)) = (std::env::var("PLANET_ADV_ASK"), g.history.clone()) {
+        let home = g.site(g.hero.temple).map(|s| s.tile).unwrap_or(g.tile);
+        let beast = h.legendary_creatures.values().filter(|c| c.death_date.is_none() && c.lair_location.is_some()).min_by_key(|c| (super::world::dist(c.lair_location.unwrap(), home, g.world.w), c.id.0)).map(|c| (c.name.clone(), c.lair_location.unwrap()));
+        if let Some((name, lair)) = beast {
+            for who in ["sage", "drunk"] {
+                let k = g.place().and_then(|p| p.npcs.iter().position(|n| if who == "sage" { n.role == super::actor::Role::Sage && n.home == g.hero.temple } else { n.of == "drunk" && n.home == g.hero.temple }));
+                let Some(k) = k else { println!("Ask {}: nobody", who); continue };
+                let n = g.place().unwrap().npcs[k].clone();
+                let town = g.site(n.home).and_then(|s| s.settlement).map(crate::history::SettlementId);
+                let before = g.mapped.get(lair.1 * g.world.w + lair.0).copied().unwrap_or(0);
+                let said = super::lore::ask(&mut g, &n, town, &name);
+                let after = g.mapped.get(lair.1 * g.world.w + lair.0).copied().unwrap_or(0);
+                println!("Ask {} about {}: {} [marked {}]", who, name, said, before == 0 && after > 0 || before > 0 && said.contains("on your map"));
+            }
+        }
+    }
     let t1 = std::time::Instant::now();
     let step = (acts / 10).max(1);
     let mut dumped = false;

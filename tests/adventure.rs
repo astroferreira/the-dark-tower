@@ -87,3 +87,17 @@ fn the_world_moves_and_remembers() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(named, "{} has no page of deeds in the legends", hero);
 }
+
+/// A sage and the tavern's drunk asked about the same beast of the history give two accounts;
+/// the sage's "where" marks the lair on the map, the drunk's does not (they have it wrong).
+#[test]
+fn a_sage_and_a_drunk_tell_it_differently() {
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--adventure-bot", "1"]).env("PLANET_ADV_ASK", "1").output().expect("run");
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let sage = text.lines().find(|l| l.starts_with("Ask sage")).unwrap_or_else(|| panic!("no sage:\n{text}"));
+    let drunk = text.lines().find(|l| l.starts_with("Ask drunk")).unwrap_or_else(|| panic!("no drunk:\n{text}"));
+    assert!(sage.contains("They say") && drunk.contains("They say"), "{sage}\n{drunk}");
+    let told = |l: &str| l.split_once(" about ").map(|x| x.1.to_string()).unwrap_or_default();
+    assert_ne!(told(sage).split(" Its lair").next(), told(drunk).split(" Its lair").next(), "the same telling");
+    assert!(sage.ends_with("[marked true]"), "{sage}");
+}

@@ -55,7 +55,8 @@ pub struct HeroEvent {
 
 /// The history as it goes on beside the adventure (kept by the host).
 pub struct Living {
-    pub history: WorldHistory,
+    /// Shared with the game (`Game::history`) for talk; copied on write when a season steps.
+    pub history: std::sync::Arc<WorldHistory>,
     pub data: crate::history::data::GameData,
     /// Seasons stepped since the adventure began.
     pub ran: u32,
@@ -67,7 +68,7 @@ impl Living {
     /// The history as it stood when the adventure began.
     pub fn new(history: &WorldHistory) -> Living {
         let data = if std::path::Path::new("data").is_dir() { crate::history::data::GameData::load_from(std::path::Path::new("data")) } else { crate::history::data::GameData::defaults() };
-        Living { history: history.clone(), data, ran: 0, applied: 0 }
+        Living { history: std::sync::Arc::new(history.clone()), data, ran: 0, applied: 0 }
     }
 
     /// Bring the history up to the adventure: its deeds put in, the seasons its clock has passed
@@ -78,6 +79,8 @@ impl Living {
         let replay = self.ran < g.seasons;
         let queued = !g.deed_queue.is_empty();
         if self.ran >= target && !queued && self.applied >= g.hero_events.len() { return false; }
+        // (The game lets go of its handle while the history changes, so it is not copied.)
+        g.history = None;
         let before = self.history.chronicle.events.len();
         let mut stepped = false;
         loop {
@@ -97,19 +100,20 @@ impl Living {
             }
             if self.ran >= target { break; }
             let mut rng = ChaCha8Rng::seed_from_u64(g.seed ^ 0x11F3_5EA5 ^ (self.ran as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-            crate::history::simulation::step::simulate_step(&mut self.history, world, &self.data, &mut rng);
+            crate::history::simulation::step::simulate_step(std::sync::Arc::make_mut(&mut self.history), world, &self.data, &mut rng);
             self.ran += 1;
             stepped = true;
         }
         g.seasons = self.ran;
         if stepped && !replay { g.on_history(&self.history, before); }
         g.refresh_talk(&self.history);
+        g.history = Some(self.history.clone());
         true
     }
 
     /// Put a deed into the history.
     fn apply(&mut self, g: &mut Game, e: &HeroEvent) {
-        let h = &mut self.history;
+        let h = std::sync::Arc::make_mut(&mut self.history);
         let date = h.current_date;
         // The town nearest the deed: its people are those who tell it first.
         let near = h.settlements.values().filter(|s| !s.is_destroyed()).min_by_key(|s| (super::world::dist(s.location, e.tile, h.tile_history.width.max(1)), s.id.0)).map(|s| (s.id, s.faction));

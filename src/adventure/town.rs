@@ -325,6 +325,11 @@ fn lay_out(spec: &SiteSpec, b: &mut Builder) -> (Floor, Vec<Npc>, (i32, i32), (i
         let of = match (role, &spec.lord) { (Role::Priest, _) => spec.god.clone(), (Role::Lord, Some((_, title))) => title.clone(), _ => spec.people.clone() };
         npcs.push(Npc { name, role, x: post.0, y: post.1, z: 0, post, race: race.clone(), female, of, home: spec.id, met: Default::default() });
     }
+    // The inn's drunk, who has heard everything and gets half of it wrong.
+    if let Some(&(_, _, (ix, iy, iw, ih))) = post_of.iter().find(|q| q.0 == Role::Innkeeper) {
+        let spot = (iy + 1..iy + ih - 1).flat_map(|y| (ix + 1..ix + iw - 1).map(move |x| (x, y))).find(|&(x, y)| p.f.walkable(x, y) && p.f.at(x, y).feature == Feature::None && !npcs.iter().any(|n: &Npc| (n.x, n.y) == (x, y)) && (x, y) != (ix + iw / 2, iy + ih / 2));
+        if let Some((x, y)) = spot { npcs.push(Npc { name: person_name(&race, spec.seed ^ 0xD2C), role: Role::Townsfolk, x, y, z: 0, post: (x, y), race: race.clone(), female: b.rng.gen_bool(0.3), of: "drunk".into(), home: spec.id, met: Default::default() }); }
+    }
     // Gardens and trees in the open (a living town grows inside its hedges).
     for y in y0 + thick..=y1 - thick { for x in x0 + thick..=x1 - thick {
         if p.u(x, y) != OPEN { continue; }

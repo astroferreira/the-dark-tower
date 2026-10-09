@@ -222,6 +222,12 @@ pub struct Game {
     /// What each town's bards sing of the adventurer (site -> lines), from the history.
     #[serde(skip)]
     pub songs: HashMap<u32, Vec<String>>,
+    /// The world's history as it stands (shared by the host's `Living`), for talk.
+    #[serde(skip)]
+    pub history: Option<std::sync::Arc<crate::history::world_state::WorldHistory>>,
+    /// A name being typed in talk (the window fills it; Enter asks).
+    #[serde(skip)]
+    pub typing: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -234,7 +240,7 @@ impl Game {
             corpses: HashMap::new(), known: Vec::new(), respawn: Vec::new(), quests: Vec::new(), talk: None, chosen: Vec::new(), facing: (0, 1),
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
-            seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(),
+            seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None,
         };
         g.set_atlas();
         g.hero.temple = start_town;

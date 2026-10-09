@@ -738,6 +738,12 @@ fn draw_talk(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w:
     let mut y = r.y + 44;
     for l in &said { fonts::draw(buf, w, h, (r.x + 100) as f32, y as f32, l, Face::Italic, 16.0, 0.0, 0x0038_2A20, None); y += 20; }
     y += 10;
+    // A name being typed.
+    if let Some(q) = &g.typing {
+        let line = format!("Ask about: {}_", q);
+        fonts::draw(buf, w, h, (r.x + 30) as f32, y as f32, &line, Face::Roman, 16.0, 0.0, 0x009A_2A1E, None);
+        y += 24;
+    }
     for (k, o) in opts.iter().enumerate() {
         let rr = Rect { x: r.x + 30, y, w: cw - 60, h: o.len() * 18 + 2 };
         let hover = rr.contains(v.mouse.0, v.mouse.1);
@@ -871,7 +877,15 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
             }
         }
         // Keys.
-        if g.talk.is_some() {
+        if g.talk.is_some() && g.typing.is_some() {
+            // Typing a name to ask about.
+            let letters = [(Key::A, 'a'), (Key::B, 'b'), (Key::C, 'c'), (Key::D, 'd'), (Key::E, 'e'), (Key::F, 'f'), (Key::G, 'g'), (Key::H, 'h'), (Key::I, 'i'), (Key::J, 'j'), (Key::K, 'k'), (Key::L, 'l'), (Key::M, 'm'),
+                (Key::N, 'n'), (Key::O, 'o'), (Key::P, 'p'), (Key::Q, 'q'), (Key::R, 'r'), (Key::S, 's'), (Key::T, 't'), (Key::U, 'u'), (Key::V, 'v'), (Key::W, 'w'), (Key::X, 'x'), (Key::Y, 'y'), (Key::Z, 'z'), (Key::Space, ' '), (Key::Apostrophe, '\''), (Key::Minus, '-')];
+            for (key, ch) in letters { if pressed(key) { if let Some(t) = g.typing.as_mut() { t.push(ch); } } }
+            if pressed(Key::Backspace) { if let Some(t) = g.typing.as_mut() { t.pop(); } }
+            if pressed(Key::Enter) { let q = g.typing.clone().unwrap_or_default(); crate::adventure::npc::ask_typed(&mut g, &q); }
+            if pressed(Key::Escape) { g.typing = None; }
+        } else if g.talk.is_some() {
             let digits = [Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5, Key::Key6, Key::Key7, Key::Key8, Key::Key9];
             for (k, key) in digits.iter().enumerate() { if pressed(*key) { crate::adventure::npc::answer(&mut g, k); } }
             if pressed(Key::Escape) { g.talk = None; }

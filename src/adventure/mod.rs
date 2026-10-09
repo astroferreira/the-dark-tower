@@ -19,6 +19,7 @@ pub mod hero;
 pub mod item;
 pub mod land;
 pub mod living;
+pub mod lore;
 pub mod map;
 pub mod npc;
 pub mod people;

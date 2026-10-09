@@ -17,6 +17,11 @@ pub enum Topic {
     Charts(u32),
     /// What the inn's bard sings of the adventurer (from the history: what this town has heard).
     Songs,
+    /// Ask about someone or something by name (`lore::ask`), the things the town knows to ask
+    /// about, and a name of one's own (typed in the window).
+    Ask(String),
+    AskMenu,
+    AskTyped,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -81,6 +86,7 @@ fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
         v.push(("Quest".into(), Topic::Quest));
     }
     if matches!(role, Role::Townsfolk | Role::Innkeeper | Role::Guard | Role::Sage | Role::Lord) { v.push(("Rumours".into(), Topic::Rumours)); }
+    if g.history.is_some() { v.push(("Ask about...".into(), Topic::AskMenu)); }
     v.push(("Bye".into(), Topic::Bye));
     v
 }
@@ -94,6 +100,7 @@ pub fn greet(g: &mut Game, k: usize) {
     let said = match n.role {
         Role::Sage if n.of == "hermit" && n.met.times == 0 => format!("Few come this way. I am {}, and I have walked this country forty years. I know where things lie, {}.", n.name, hero),
         Role::Townsfolk if n.of == "farmer" && n.met.times == 0 => format!("Morning, {}. Mind the fields. And the wolves, after dark.", hero),
+        Role::Townsfolk if n.of == "drunk" => format!("Shiddown, shtranger! {}, ish it? Buy me a drink and I'll tell you everything. Everything! Ask me anything.", hero),
         Role::Lord if n.met.times == 0 && n.met.wronged == 0 && g.site(n.home).map_or(false, |s| s.lord.is_some()) => format!("You stand before {}, {}. Speak, {}.", n.name, n.of, hero),
         _ => super::people::greeting(&n, temper, &n.met, &hero, &town, fame(g), g.turn),
     };
@@ -147,6 +154,15 @@ fn stock(role: Role, g: &Game) -> Vec<(&'static str, u32)> {
 pub fn answer(g: &mut Game, i: usize) {
     let Some(t) = g.talk.clone() else { return };
     let Some((_, topic)) = t.options.get(i).cloned() else { return };
+    answer_topic(g, topic);
+}
+
+/// Ask the one spoken to about a typed name.
+pub fn ask_typed(g: &mut Game, q: &str) { g.typing = None; if !q.trim().is_empty() { answer_topic(g, Topic::Ask(q.trim().to_string())); } }
+
+/// Take up `topic` in the open conversation.
+pub fn answer_topic(g: &mut Game, topic: Topic) {
+    let Some(t) = g.talk.clone() else { return };
     let n = match g.place().and_then(|p| p.npcs.get(t.npc)).cloned() { Some(n) => n, None => { g.talk = None; return } };
     let mut said = String::new();
     let mut options: Option<Vec<(String, Topic)>> = None;
@@ -364,6 +380,19 @@ pub fn answer(g: &mut Game, i: usize) {
                 }
                 None => "The bard shrugs. \"No one sings of you here. Not yet. Do something worth a song.\"".into(),
             };
+        }
+        Topic::AskMenu => {
+            let town = g.site(n.home).and_then(|s| s.settlement).map(crate::history::SettlementId);
+            let mut v: Vec<(String, Topic)> = super::lore::subjects(g, town, 6).into_iter().map(|nm| (format!("Ask about {}", nm), Topic::Ask(nm))).collect();
+            v.push(("Ask about someone or something else (type a name)".into(), Topic::AskTyped));
+            v.push(("Back".into(), Topic::Back));
+            said = "What do you want to know?".into();
+            options = Some(v);
+        }
+        Topic::AskTyped => { said = "Type a name and press Enter.".into(); options = Some(t.options.clone()); g.typing = Some(String::new()); }
+        Topic::Ask(q) => {
+            let town = g.site(n.home).and_then(|s| s.settlement).map(crate::history::SettlementId);
+            said = super::lore::ask(g, &n, town, &q);
         }
         Topic::Back => {}
         Topic::Bye => { g.say(Tone::Talk, format!("{}: \"Good bye, {}.\"", n.name, g.hero.name)); g.talk = None; return; }
