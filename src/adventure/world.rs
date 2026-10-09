@@ -245,7 +245,7 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
         let id = next;
         next += 1;
         let surface = ground[tile.1 * w + tile.0];
-        sites.push(SiteSpec { id, kind, name, tile, seed: h64(seed ^ id as u64, (tile.0 * 7919 + tile.1) as u64), tier, cause, boss, treasures: Vec::new(), surface, rock: "granite".into(), floors, people, god, news: Vec::new(), lord: None, town: None, settlement: None, creature: None });
+        sites.push(SiteSpec { id, kind, name, tile, seed: h64(seed ^ id as u64, (tile.0 * 7919 + tile.1) as u64), tier, cause, boss, treasures: Vec::new(), surface, rock: "granite".into(), floors, people, god, news: Vec::new(), lord: None, town: None, settlement: None, creature: None, notes: Vec::new() });
         id
     };
     let year = history.map_or(0, |hh| hh.current_date.year);
@@ -365,10 +365,30 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
         cults.sort_by_key(|c| c.id.0);
         for c in cults {
             let Some((x, y)) = c.headquarters else { continue };
-            if x >= w || y >= h || sites.iter().any(|s| s.tile == (x, y)) { continue; }
+            if x >= w || y >= h { continue; }
             let beast = hist.legendary_creatures.get(&c.worshipped_creature).map(|b| b.full_name()).unwrap_or_else(|| "something below".into());
+            // The cult's cell in the nearest living town: a cellar under a house (a tale finds it).
+            let town = sites.iter().filter(|s| s.kind == SiteKind::Town).min_by_key(|s| (dist(s.tile, (x, y), w), s.id)).map(|s| (s.tile, s.settlement, s.name.clone()));
+            if let Some((tile, settlement, tname)) = town {
+                if dist(tile, (x, y), w) <= 10 && !sites.iter().any(|s| s.kind == SiteKind::Cellar && s.tile == tile) {
+                    let boss = BossSpec { def: "cultist".into(), name: format!("the Keeper of the {} Cell", tname), scale: 1.4, legend: None, hoard: vec![Item::new("gold", 90)], story: format!("They worship {} under the streets of {}.", beast, tname) };
+                    let id = add(&mut sites, SiteKind::Cellar, format!("the cellar of {} in {}", c.name, tname), tile, 2, format!("{} meet in secret under {}.", c.name, tname), Some(boss), 2, String::new(), beast.clone());
+                    if let Some(sp) = sites.iter_mut().find(|q| q.id == id) { sp.settlement = settlement; }
+                }
+            }
+            if sites.iter().any(|s| s.tile == (x, y) && s.kind != SiteKind::Cellar) { continue; }
             let boss = BossSpec { def: "cultist".into(), name: format!("the High Priest of {}", c.name), scale: 1.8, legend: None, hoard: vec![Item::new("gold", 140), Item::new("great_mana_potion", 2)], story: format!("They worship {}.", beast) };
-            add(&mut sites, SiteKind::Shrine, format!("the shrine of {}", c.name), (x, y), 3, format!("{} worship {} here{}.", c.name, beast, if c.sacrifices { ", with sacrifices" } else { "" }), Some(boss), 3, String::new(), beast);
+            add(&mut sites, SiteKind::Shrine, format!("the shrine of {}", c.name), (x, y), 3, format!("{} worship {} here{}.", c.name, beast, if c.sacrifices { ", with sacrifices" } else { "" }), Some(boss), 3, String::new(), beast.clone());
+        }
+        // The Shadow's servants meet in cellars under the towns nearest its seat.
+        if let Some(sh) = hist.shadow.as_ref().filter(|sh| sh.broken.is_none()) {
+            let mut towns: Vec<((usize, usize), Option<u64>, String, u32)> = sites.iter().filter(|s| s.kind == SiteKind::Town && !sites.iter().any(|q| q.kind == SiteKind::Cellar && q.tile == s.tile)).map(|s| (s.tile, s.settlement, s.name.clone(), s.id)).collect();
+            towns.sort_by_key(|t| (dist(t.0, sh.seat, w), t.3));
+            for (tile, settlement, tname, _) in towns.into_iter().take(2) {
+                let boss = BossSpec { def: "cultist".into(), name: format!("the Whisperer of {}", tname), scale: 1.4, legend: None, hoard: vec![Item::new("gold", 90)], story: format!("A servant of {} under the streets of {}.", sh.name, tname) };
+                let id = add(&mut sites, SiteKind::Cellar, format!("the cellar of the Shadow's servants in {}", tname), tile, 2, format!("Servants of {} meet in secret under {}.", sh.name, tname), Some(boss), 2, String::new(), sh.name.clone());
+                if let Some(sp) = sites.iter_mut().find(|q| q.id == id) { sp.settlement = settlement; }
+            }
         }
         // The Shadow's seat, and shrines of its cult on its land near it.
         if let Some(sh) = &hist.shadow {
@@ -472,7 +492,7 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
     if built.start == 0 {
         let k = (0..w * h).find(|&k| built.info.land[k] && built.info.ground[k] == Ground::Grass).unwrap_or(0);
         let id = built.sites.iter().map(|s| s.id).max().unwrap_or(0) + 1;
-        built.sites.push(SiteSpec { id, kind: SiteKind::Town, name: "Hearthwater".into(), tile: (k % w, k / w), seed: h64(seed, 7), tier: 1, cause: String::new(), boss: None, treasures: Vec::new(), surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "the old gods".into(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None });
+        built.sites.push(SiteSpec { id, kind: SiteKind::Town, name: "Hearthwater".into(), tile: (k % w, k / w), seed: h64(seed, 7), tier: 1, cause: String::new(), boss: None, treasures: Vec::new(), surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "the old gods".into(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None, notes: Vec::new() });
         built.start = id;
     }
     built

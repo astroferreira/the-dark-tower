@@ -151,7 +151,11 @@
     {"id": "herbs", "name": "bundle of healing herbs", "plural": "bundles of healing herbs", "kind": "potion", "heal": 25, "value": 6, "glyph": "Herbs", "stack": true},
     {"id": "hide", "name": "hide", "kind": "loot", "value": 8, "glyph": "Hide", "stack": true},
     {"id": "sting", "name": "scorpion sting", "kind": "loot", "value": 14, "glyph": "Bone", "stack": true},
-    {"id": "treasure_map", "name": "treasure map", "kind": "map", "value": 40, "glyph": "Book"}
+    {"id": "treasure_map", "name": "treasure map", "kind": "map", "value": 40, "glyph": "Book"},
+    {"id": "trade_goods", "name": "bundle of trade goods", "kind": "loot", "value": 0, "glyph": "Cloth"},
+    {"id": "tribute", "name": "tribute chest", "kind": "loot", "value": 0, "glyph": "Chest"},
+    {"id": "moonpetal", "name": "moonpetal", "kind": "loot", "value": 0, "glyph": "Herbs"},
+    {"id": "ledger", "name": "ledger", "kind": "loot", "value": 0, "glyph": "Book"}
   ],
   "materials": [
     {"name": "oak", "att": 0.8, "arm": 0.8, "colour": [150, 104, 62]},

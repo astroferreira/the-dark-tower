@@ -26,6 +26,7 @@ pub mod people;
 pub mod quest;
 pub mod site;
 pub mod surface;
+pub mod tales;
 pub mod town;
 pub mod world;
 

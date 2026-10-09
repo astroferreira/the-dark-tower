@@ -12,7 +12,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum SiteKind { Town, Cave, Lair, Mine, Ruin, Tomb, Temple, Shrine, Castle, Labyrinth, Camp, Halls, DarkFortress, Wilds }
+pub enum SiteKind { Town, Cave, Lair, Mine, Ruin, Tomb, Temple, Shrine, Castle, Labyrinth, Camp, Halls, DarkFortress, Wilds, Cellar }
 
 impl SiteKind {
     pub fn word(self) -> &'static str {
@@ -20,7 +20,7 @@ impl SiteKind {
             SiteKind::Town => "a town", SiteKind::Cave => "a cave", SiteKind::Lair => "a lair", SiteKind::Mine => "an old mine", SiteKind::Ruin => "a ruin",
             SiteKind::Tomb => "a tomb", SiteKind::Temple => "a temple", SiteKind::Shrine => "a cult's shrine", SiteKind::Castle => "a castle",
             SiteKind::Labyrinth => "a labyrinth", SiteKind::Camp => "a war camp", SiteKind::Halls => "halls under the mountain",
-            SiteKind::DarkFortress => "the dark fortress", SiteKind::Wilds => "the wilds",
+            SiteKind::DarkFortress => "the dark fortress", SiteKind::Wilds => "the wilds", SiteKind::Cellar => "a cellar under the town",
         }
     }
     /// The habitats its floors draw monsters from, by depth (the first floor, then below).
@@ -40,6 +40,7 @@ impl SiteKind {
             SiteKind::Halls => (&["halls"], &["halls", "cave"]),
             SiteKind::DarkFortress => (&["dark_fortress"], &["dark_fortress"]),
             SiteKind::Wilds => (&["wilds"], &["wilds"]),
+            SiteKind::Cellar => (&["shrine", "sewer"], &["shrine"]),
         }
     }
 }
@@ -93,6 +94,9 @@ pub struct SiteSpec {
     /// The beast of the history it is the lair of (`LegendaryCreatureId`).
     #[serde(default)]
     pub creature: Option<u64>,
+    /// What happened here in the adventure (a tale's end), told with its news.
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -159,6 +163,7 @@ impl Builder {
 fn under_style(kind: SiteKind) -> (Wall, Ground, Ground) {
     match kind {
         SiteKind::Cave | SiteKind::Lair | SiteKind::Wilds => (Wall::Rock, Ground::Rock, Ground::Rock),
+        SiteKind::Cellar => (Wall::Brick, Ground::Flags, Ground::Flags),
         SiteKind::Mine => (Wall::Rock, Ground::Earth, Ground::Earth),
         SiteKind::Tomb | SiteKind::Temple | SiteKind::Shrine => (Wall::Brick, Ground::Flags, Ground::Flags),
         SiteKind::Castle => (Wall::Brick, Ground::Flags, Ground::Flags),
@@ -189,6 +194,7 @@ fn floor_name(kind: SiteKind, z: usize, n: usize) -> String {
         SiteKind::Halls => if last { "the throne hall".into() } else { format!("the {} hall", d) },
         SiteKind::DarkFortress => if z == 0 { "the outer ward".into() } else if last { "the seat of the Shadow".into() } else { format!("the {} undercroft", d) },
         SiteKind::Wilds => "the wilds".into(),
+        SiteKind::Cellar => if z == 0 { "the cellar".into() } else { "the cult's hidden chapel".into() },
     }
 }
 
@@ -497,6 +503,7 @@ pub fn treasure(b: &mut Builder, tier: u32) -> Vec<Item> {
 fn floor_size(kind: SiteKind, z: usize, b: &mut Builder) -> (usize, usize) {
     match kind {
         SiteKind::Wilds => (48, 36),
+        SiteKind::Cellar => (40, 30),
         SiteKind::Town => if z == 0 { (72, 56) } else { (56, 44) },
         SiteKind::Labyrinth => (61, 45),
         SiteKind::DarkFortress | SiteKind::Halls | SiteKind::Castle => (64, 48),
@@ -851,7 +858,7 @@ mod tests {
 
     pub fn spec(kind: SiteKind, floors: usize, tier: u32, seed: u64) -> SiteSpec {
         SiteSpec { id: 1, kind, name: "Testplace".into(), tile: (0, 0), seed, tier, cause: String::new(), boss: Some(BossSpec { def: "troll".into(), name: "Gnash the Old".into(), scale: 1.5, legend: None, hoard: vec![Item::new("gold", 200)], story: String::new() }),
-            treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors, people: "human".into(), god: "the gods".into(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None }
+            treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors, people: "human".into(), god: "the gods".into(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None, notes: Vec::new() }
     }
 
     /// Every floor's way down is reachable from where one arrives (doors and gates passable,

@@ -204,7 +204,7 @@ impl Game {
             let (people, god) = super::world::town_people(h, s);
             let shape = super::world::town_shape(h, s, &self.world.land, &self.world.road, w, hh);
             let spec = SiteSpec { id, kind: SiteKind::Town, name: s.name.clone(), tile: (x, y), seed: super::world::site_seed(self.seed, id, (x, y)), tier: 1, cause: format!("{} was founded in {}.", s.name, s.founded.year), boss: None, treasures: Vec::new(),
-                surface: self.world.ground[y * w + x], rock: "granite".into(), floors: 3, people, god, news: super::world::town_news(&knowledge, s), lord: super::world::town_lord(h, s), town: Some(shape), settlement: Some(s.id.0), creature: None };
+                surface: self.world.ground[y * w + x], rock: "granite".into(), floors: 3, people, god, news: super::world::town_news(&knowledge, s), lord: super::world::town_lord(h, s), town: Some(shape), settlement: Some(s.id.0), creature: None, notes: Vec::new() };
             self.sites.push(spec);
             self.rumour((x, y));
             if !self.known.contains(&id) { self.known.push(id); }

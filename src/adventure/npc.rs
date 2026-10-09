@@ -80,7 +80,7 @@ fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
         v.push(("A bed (10 gold)".into(), Topic::Rest(10)));
         if g.companion.is_none() { let p = 80 * g.hero.level.max(1); v.push((format!("A sellsword to go with you ({} gold)", p), Topic::Hire(p))); }
     }
-    if matches!(role, Role::Lord | Role::Guard | Role::Priest | Role::Sage | Role::Trader) {
+    if matches!(role, Role::Lord | Role::Guard | Role::Priest | Role::Sage | Role::Trader | Role::Townsfolk) {
         let mine: Vec<usize> = g.quests.iter().enumerate().filter(|(_, q)| q.town == town_id(g) && q.giver == g.place().map(|p| p.npcs.get(g.talk.as_ref().map_or(usize::MAX, |t| t.npc)).map(|n| n.name.clone()).unwrap_or_default()).unwrap_or_default() && q.state == State::Done).map(|(i, _)| i).collect();
         for i in mine { v.push((format!("Report: {}", g.quests[i].title), Topic::Report(i))); }
         v.push(("Quest".into(), Topic::Quest));
@@ -125,6 +125,8 @@ pub fn greet(g: &mut Game, k: usize) {
     let menu = main_menu(g, n.role);
     if let Some(t) = g.talk.as_mut() { t.options = menu; }
     g.say(Tone::Talk, format!("{}: \"{}\"", n.name, g.talk.as_ref().unwrap().said));
+    // The other house of a feud hears what the hero came to say.
+    super::tales::on_greet(g, &n.name, n.home);
 }
 
 fn stock(role: Role, g: &Game) -> Vec<(&'static str, u32)> {
@@ -234,7 +236,8 @@ pub fn answer_topic(g: &mut Game, topic: Topic) {
                     parcel.tag = *tag;
                     stow(&mut g.hero.pack, parcel);
                 }
-                g.quests.push(q);
+                g.quests.push(q.clone());
+                super::tales::on_accept(g, &q);
             }
         }
         Topic::Report(k) => {
@@ -250,9 +253,9 @@ pub fn answer_topic(g: &mut Game, topic: Topic) {
             // A place the adventurer does not know, near, and what the town has heard of the world.
             let here = g.place().map(|p| p.spec.tile).unwrap_or(g.tile);
             let w = g.world.w;
-            let unknown = g.sites.iter().filter(|s| !g.known.contains(&s.id) && s.kind != super::site::SiteKind::Town && s.kind != super::site::SiteKind::Wilds)
+            let unknown = g.sites.iter().filter(|s| !g.known.contains(&s.id) && s.kind != super::site::SiteKind::Town && s.kind != super::site::SiteKind::Wilds && s.kind != super::site::SiteKind::Cellar)
                 .min_by_key(|s| { let dx = (s.tile.0 as i32 - here.0 as i32).abs(); (dx.min(w as i32 - dx)).max((s.tile.1 as i32 - here.1 as i32).abs()) }).cloned();
-            let news = g.place().and_then(|p| { let n = &p.spec.news; if n.is_empty() { None } else { Some(n[(g.turn as usize / 100) % n.len()].clone()) } });
+            let news = g.site(town_id(g)).and_then(|s| s.notes.last().cloned()).or_else(|| g.place().and_then(|p| { let n = &p.spec.news; if n.is_empty() { None } else { Some(n[(g.turn as usize / 100) % n.len()].clone()) } }));
             let mut parts = Vec::new();
             if let Some(s) = unknown {
                 let d = quest::direction(here, s.tile, w);
@@ -269,7 +272,7 @@ pub fn answer_topic(g: &mut Game, topic: Topic) {
             if g.hero.take_gold(price) {
                 let here = g.place().map(|p| p.spec.tile).unwrap_or(g.tile);
                 let w = g.world.w;
-                let mut near: Vec<(i32, u32)> = g.sites.iter().filter(|s| !g.known.contains(&s.id) && s.kind != super::site::SiteKind::Wilds).map(|s| { let dx = (s.tile.0 as i32 - here.0 as i32).abs(); ((dx.min(w as i32 - dx)).max((s.tile.1 as i32 - here.1 as i32).abs()), s.id) }).collect();
+                let mut near: Vec<(i32, u32)> = g.sites.iter().filter(|s| !g.known.contains(&s.id) && s.kind != super::site::SiteKind::Wilds && s.kind != super::site::SiteKind::Cellar).map(|s| { let dx = (s.tile.0 as i32 - here.0 as i32).abs(); ((dx.min(w as i32 - dx)).max((s.tile.1 as i32 - here.1 as i32).abs()), s.id) }).collect();
                 near.sort();
                 let ids: Vec<u32> = near.iter().take(4).map(|x| x.1).collect();
                 let names: Vec<String> = ids.iter().filter_map(|id| g.site(*id)).map(|s| format!("{} ({}, {})", s.name, s.kind.word(), quest::direction(here, s.tile, w))).collect();

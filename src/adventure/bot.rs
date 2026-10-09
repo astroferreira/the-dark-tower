@@ -41,15 +41,30 @@ pub struct Bot {
     last: (i32, i32, usize, Option<u32>),
     /// Floors walked out fully (place, z).
     walked: HashSet<(u32, usize)>,
+    /// Whether the last `talk_*` spoke (not only walked toward them).
+    #[serde(skip)]
+    talked: bool,
+    /// Times it set out after each tale (quest id): given up after a few.
+    #[serde(skip)]
+    tale_tries: std::collections::HashMap<u32, u32>,
+    /// The town whose errands it is about (kept until it leaves them done, whatever tile the
+    /// border puts it on).
+    #[serde(skip)]
+    visiting: Option<u32>,
+    /// Steps walked toward a place's way in on the land (site, steps): given up past 200.
+    #[serde(skip)]
+    walk_in: (u32, u32),
 }
 
 /// First step from the hero toward the nearest cell where `goal` holds (8-way BFS; doors that
 /// open count as passable). None when none is reachable.
-fn path_to(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize) -> Option<(i32, i32)> { path_avoiding(g, goal, max, None) }
+fn path_to(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize) -> Option<(i32, i32)> { path_avoiding(g, goal, max, None, true) }
 
 /// `path_to`, never through `avoid` (the cell it just left: a quarry dodging between two cells
 /// made it turn back and forth between two routes).
-fn path_avoiding(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize, avoid: Option<(i32, i32)>) -> Option<(i32, i32)> {
+/// (`into`: a way in, out, up or down may be the goal; false when the goal is only somewhere to
+/// stand, such as beside a foe.)
+fn path_avoiding(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize, avoid: Option<(i32, i32)>, into: bool) -> Option<(i32, i32)> {
     let f = g.floor()?;
     let p = g.place()?;
     let keys: Vec<u32> = g.hero.pack.iter().filter(|i| i.id == "key").map(|i| i.tag).collect();
@@ -94,7 +109,7 @@ fn path_avoiding(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize, avoid: O
                 || p.npcs.iter().any(|n| n.z == g.z && n.x == nx && n.y == ny);
             if Some((nx, ny)) == avoid { continue; }
             let transit = matches!(f.at(nx, ny).feature, Feature::Entrance { .. } | Feature::StairsDown | Feature::StairsUp | Feature::LadderDown | Feature::LadderUp | Feature::Hole | Feature::Exit | Feature::Grate | Feature::RopeSpot);
-            let is_goal = goal(nx, ny) && ((pass(nx, ny) || transit) && !blocked_by(nx, ny) || bumpable);
+            let is_goal = goal(nx, ny) && ((pass(nx, ny) || (transit && into)) && !blocked_by(nx, ny) || bumpable);
             if !is_goal && (!pass(nx, ny) || blocked_by(nx, ny)) { continue; }
             prev[idx(nx, ny)] = idx(x, y) as u32;
             if is_goal && !pass(nx, ny) {
@@ -127,6 +142,8 @@ impl Bot {
             if let Some(t) = self.target { let e = self.died.entry(t).or_insert((0, 0)); e.0 += 1; e.1 = g.hero.level; }
             self.homeward = false;
         }
+        // A tale's choice: the first way (the one that goes on with the work).
+        if g.choice.is_some() { self.why = "decide"; return g.act(Action::Decide(0)); }
         let pos = (g.x, g.y, g.z, g.here);
         if pos == self.last { self.stuck += 1; } else { self.stuck = 0; if self.last.3 == pos.3 { self.prev_cell = Some((self.last.0, self.last.1, self.last.2)); } else { self.prev_cell = None; } self.last = pos; }
         if g.talk.is_some() { g.talk = None; }
@@ -158,11 +175,28 @@ impl Bot {
             if g.tile == ptile { return g.act(Action::EnterSite(pid)); }
             if let Some((dx, dy)) = g.world.step_toward(g.tile, ptile) { if g.act(Action::Travel(dx, dy)) { return true; } }
         }
+        // A tale to follow: to its place or its tile.
+        if !self.need_town(g) {
+            if let Some((qid, site, tile)) = self.tale_goal(g) {
+                if site != 0 { self.target = Some(site); self.done.remove(&site); }
+                if g.tile == tile {
+                    let n = self.tale_tries.entry(qid).or_insert(0);
+                    *n += 1;
+                    if *n > 6 {
+                        // Given up: it cannot be done the way it knows.
+                        if let Some(q) = g.quests.iter_mut().find(|q| q.id == qid) { q.state = State::Failed; }
+                        return g.act(Action::Wait);
+                    }
+                    return if site != 0 { g.act(Action::EnterSite(site)) } else { g.act(Action::Land) };
+                }
+                if let Some((dx, dy)) = g.world.step_toward(g.tile, tile) { if g.act(Action::Travel(dx, dy)) { return true; } }
+            }
+        }
         let dest = if self.homeward || self.need_town(g) { self.homeward = true; Some(home) } else {
-            let pick = g.sites.iter().filter(|s| s.kind != SiteKind::Town && s.kind != SiteKind::Wilds && !self.done.contains(&s.id) && s.tier.saturating_sub(1) * 8 <= level && self.died.get(&s.id).map_or(true, |d| d.0 < 2 || level >= d.1 + 3))
+            let pick = g.sites.iter().filter(|s| s.kind != SiteKind::Town && s.kind != SiteKind::Wilds && s.kind != SiteKind::Cellar && !self.done.contains(&s.id) && s.tier.saturating_sub(1) * 8 <= level && self.died.get(&s.id).map_or(true, |d| d.0 < 2 || level >= d.1 + 3))
                 .min_by_key(|s| { let dx = (s.tile.0 as i32 - g.tile.0 as i32).abs(); ((dx.min(w as i32 - dx)).max((s.tile.1 as i32 - g.tile.1 as i32).abs()), s.id) }).map(|s| (s.id, s.tile));
             // Nothing new it can face: back to a place already walked, where things have come back.
-            let pick = pick.or_else(|| g.sites.iter().filter(|s| self.done.contains(&s.id) && s.kind != SiteKind::Town && s.kind != SiteKind::Wilds && s.tier.saturating_sub(1) * 8 <= level && self.died.get(&s.id).map_or(true, |d| d.0 < 2 || level >= d.1 + 3))
+            let pick = pick.or_else(|| g.sites.iter().filter(|s| self.done.contains(&s.id) && s.kind != SiteKind::Town && s.kind != SiteKind::Wilds && s.kind != SiteKind::Cellar && s.tier.saturating_sub(1) * 8 <= level && self.died.get(&s.id).map_or(true, |d| d.0 < 2 || level >= d.1 + 3))
                 .min_by_key(|s| { let dx = (s.tile.0 as i32 - g.tile.0 as i32).abs(); ((dx.min(w as i32 - dx)).max((s.tile.1 as i32 - g.tile.1 as i32).abs()), s.id) }).map(|s| (s.id, s.tile)));
             if let Some((id, _)) = pick { self.done.remove(&id); }
             self.target = pick.map(|p| p.0);
@@ -181,9 +215,24 @@ impl Bot {
         false
     }
 
+    /// Talk to the one of this name here (as `talk_to`).
+    fn talk_named(&mut self, g: &mut Game, name: &str, want: &dyn Fn(&Topic) -> bool, then: &dyn Fn(&Topic) -> bool) -> Option<bool> {
+        let p = g.place()?;
+        let k = p.npcs.iter().position(|n| n.name == name)?;
+        let role = p.npcs[k].role;
+        self.talk_k(g, k, role, want, then)
+    }
+
     fn talk_to(&mut self, g: &mut Game, role: Role, want: &dyn Fn(&Topic) -> bool, then: &dyn Fn(&Topic) -> bool) -> Option<bool> {
         let p = g.place()?;
-        let k = p.npcs.iter().position(|n| n.role == role)?;
+        let here = self.visiting.unwrap_or_else(|| g.site_here());
+        // This town's own (a neighbouring town's people share the land floor).
+        let k = p.npcs.iter().position(|n| n.role == role && n.home == here && n.of != "drunk" && n.of != "farmer")?;
+        self.talk_k(g, k, role, want, then)
+    }
+
+    fn talk_k(&mut self, g: &mut Game, k: usize, role: Role, want: &dyn Fn(&Topic) -> bool, then: &dyn Fn(&Topic) -> bool) -> Option<bool> {
+        let p = g.place()?;
         let (nx, ny) = (p.npcs[k].x, p.npcs[k].y);
         if (nx - g.x).abs() <= 1 && (ny - g.y).abs() <= 1 {
             super::npc::greet(g, k);
@@ -195,6 +244,7 @@ impl Bot {
             }
             g.talk = None;
             self.errands.insert(role.word().to_string());
+            self.talked = true;
             return Some(true);
         }
         let step = path_to(g, &|x, y| x == nx && y == ny, 40_000)?;
@@ -205,19 +255,48 @@ impl Bot {
     /// comes, then walk to the way into the place it came for, or take to the road.
     fn on_land(&mut self, g: &mut Game) -> bool {
         let threat = g.place().map_or(false, |p| p.monsters.iter().any(|m| m.hp > 0 && m.awake && g.visible(m.x, m.y) && (m.x - g.x).abs().max((m.y - g.y).abs()) <= 8));
-        if !threat && g.place().map_or(false, |p| p.spec.kind == SiteKind::Town) { let id = g.site_here(); return self.in_town(g, id); }
+        if std::env::var("PLANET_ADV_TOWN").is_ok() && threat { let near: Vec<String> = g.place().map(|p| p.monsters.iter().filter(|m| m.hp > 0 && m.awake && g.visible(m.x, m.y) && (m.x - g.x).abs().max((m.y - g.y).abs()) <= 8).map(|m| format!("{}@{},{}", m.def, m.x, m.y)).collect()).unwrap_or_default(); eprintln!("   threat at {},{}: {:?}", g.x, g.y, near); }
+        if !threat && g.place().map_or(false, |p| p.spec.kind == SiteKind::Town) { let id = g.site_here(); self.visiting = Some(id); return self.in_town(g, id); }
+        if let Some(t) = self.visiting.filter(|t| !threat && g.site(*t).map_or(false, |s| s.kind == SiteKind::Town && super::world::dist(s.tile, g.tile, g.world.w) <= 1)) { return self.in_town(g, t); }
+        self.visiting = None;
         self.below(g, LAND)
     }
 
     /// The way on from the land: into the place it came for (its way in on this land), else
     /// the road.
+    /// The open tale to follow now: (its place or 0, its tile).
+    fn tale_goal(&self, g: &Game) -> Option<(u32, u32, (usize, usize))> {
+        use super::tales::TaleKind as K;
+        let lvl = g.hero.level;
+        let able = |site: u32| g.site(site).map_or(true, |s| s.tier.saturating_sub(1) * 8 <= lvl) && self.died.get(&site).map_or(true, |d| d.0 < 2);
+        g.quests.iter().filter(|q| q.state == State::Open).find_map(|q| match &q.goal {
+            super::quest::Goal::Tale(t) => match (t.kind, t.stage) {
+                (K::Snatched, _) | (K::Plague, _) | (K::Cult, 0) if able(t.site) => Some((q.id, t.site, g.site(t.site).map(|s| s.tile).unwrap_or(t.tile))),
+                (K::Caravan, 0) | (K::Caravan, 1) | (K::Tribute, 0) => Some((q.id, 0, t.tile)),
+                _ => None,
+            },
+            _ => None,
+        })
+    }
+
     fn land_way(&mut self, g: &mut Game) -> bool {
+        // A caravan's goods lying here: pick them up.
+        let goods: Vec<u32> = g.quests.iter().filter(|q| q.state == State::Open).filter_map(|q| match &q.goal { super::quest::Goal::Tale(t) if t.kind == super::tales::TaleKind::Caravan && t.stage == 1 && t.tile == g.tile => Some(t.tag), _ => None }).collect();
+        if let (Some(&tag), Some(f)) = (goods.first(), g.floor()) {
+            let at: Vec<(i32, i32)> = f.items.iter().filter(|(_, v)| v.iter().any(|i| i.tag == tag)).map(|(k, _)| *k).collect();
+            if let Some(&(x, y)) = at.first() {
+                if (g.x, g.y) == (x, y) { self.why = "goods"; return g.act(Action::PickUp); }
+                if let Some(step) = path_to(g, &|a, b| (a, b) == (x, y), 20_000) { self.why = "to the wreck"; return g.act(Action::Move(step.0, step.1)); }
+            }
+        }
         if let Some(t) = self.target.filter(|t| !self.done.contains(t) && !self.homeward && !self.need_town(g)) {
             if g.site(t).map_or(false, |s| s.tile == g.tile || super::world::dist(s.tile, g.tile, g.world.w) <= 1) {
                 let f = g.floor().unwrap();
                 let is_in = |x: i32, y: i32| matches!(f.at(x, y).feature, Feature::Entrance { site, .. } if site == t);
                 if is_in(g.x, g.y) { self.why = "go in"; return g.act(Action::Climb); }
-                if let Some(step) = path_to(g, &is_in, 40_000) { self.why = "to the way in"; return g.act(Action::Move(step.0, step.1)); }
+                if self.walk_in.0 != t { self.walk_in = (t, 0); }
+                self.walk_in.1 += 1;
+                if self.walk_in.1 <= 200 { if let Some(step) = path_to(g, &is_in, 40_000) { self.why = "to the way in"; return g.act(Action::Move(step.0, step.1)); } }
                 self.done.insert(t);
             }
         }
@@ -227,6 +306,13 @@ impl Bot {
     }
 
     fn in_town(&mut self, g: &mut Game, id: u32) -> bool {
+        if std::env::var("PLANET_ADV_TOWN").is_ok() {
+            let roles: Vec<String> = g.place().map(|p| p.npcs.iter().filter(|n| n.home == id).map(|n| format!("{:?}", n.role)).collect()).unwrap_or_default();
+            let loot: Vec<String> = g.hero.pack.iter().filter(|i| i.def().kind == "loot").map(|i| format!("{}x{}={}", i.id, i.count, i.value())).collect();
+            let tr = g.place().and_then(|p| p.npcs.iter().find(|n| n.role == Role::Trader && n.home == id).map(|n| (n.x, n.y)));
+            let reach = tr.and_then(|(tx, ty)| path_to(g, &|x, y| (x, y) == (tx, ty), 40_000)).is_some();
+            eprintln!("   town {} at {},{}: gold {} fed {} need {} loot {:?} trader {:?} reachable {} errands {:?}", g.site(id).map(|s| s.name.clone()).unwrap_or_default(), g.x, g.y, g.hero.gold(), g.hero.fed, self.need_town(g), loot, tr, reach, self.errands);
+        }
         self.homeward = false;
         let hp_low = g.hero.hp < g.hero.max_hp() * 9 / 10 || g.hero.poisoned > 0;
         // Errands, in order.
@@ -236,7 +322,7 @@ impl Bot {
             if let Some(r) = self.talk_to(g, Role::Trader, &|t| matches!(t, Topic::Trade), &|t| matches!(t, Topic::SellLoot)) {
                 // Buy potions and food after selling.
                 if self.errands.contains("trader") {
-                    if let Some(k) = g.place().and_then(|p| p.npcs.iter().position(|n| n.role == Role::Trader)) {
+                    if let Some(k) = g.place().and_then(|p| p.npcs.iter().position(|n| n.role == Role::Trader && Some(n.home) == self.visiting.or(Some(g.site_here())))) {
                         super::npc::greet(g, k);
                         if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Trade))) { super::npc::answer(g, i); }
                         for _ in 0..want_potions.max(1) { if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Buy(id, _, _) if id == "health_potion"))) { super::npc::answer(g, i); } }
@@ -265,7 +351,7 @@ impl Bot {
             }
         }
         if !self.errands.contains("priest") && (hp_low || (g.hero.fed < 300 && g.hero.gold() < 10) || (!g.hero.blessed && g.hero.gold() > g.hero.blessing_price() * 3) || (g.hero.level >= 8 && g.hero.calling.is_none()) || g.hero.may_learn().iter().any(|s| s.level <= g.hero.level && 40 * s.level.max(1) <= g.hero.gold() / 2)) {
-            let Some(k) = g.place().and_then(|p| p.npcs.iter().position(|n| n.role == Role::Priest)) else { return false };
+            let Some(k) = g.place().and_then(|p| p.npcs.iter().position(|n| n.role == Role::Priest && Some(n.home) == self.visiting.or(Some(g.site_here())))) else { return false };
             let (nx, ny) = { let n = &g.place().unwrap().npcs[k]; (n.x, n.y) };
             if (nx - g.x).abs() > 1 || (ny - g.y).abs() > 1 {
                 if let Some(step) = path_to(g, &|x, y| x == nx && y == ny, 40_000) { return g.act(Action::Move(step.0, step.1)); }
@@ -304,16 +390,40 @@ impl Bot {
         if !self.errands.contains("innkeeper") && g.companion.is_none() && g.hero.level >= 10 && g.hero.gold() > 80 * g.hero.level * 4 {
             if let Some(r) = self.talk_to(g, Role::Innkeeper, &|t| matches!(t, Topic::Hire(_)), &|_| false) { return r; }
         }
-        for role in [Role::Lord, Role::Guard, Role::Sage] {
-            let w = role.word().to_string();
-            if self.errands.contains(&w) { continue; }
-            if let Some(r) = self.talk_to(g, role, &|t| matches!(t, Topic::Report(_) | Topic::Quest), &|t| matches!(t, Topic::Accept)) { return r; }
+        // Tales: done ones reported to whoever gave them; a feud's other house; a townsperson's
+        // trouble and the priest's.
+        let report: Option<String> = g.quests.iter().find(|q| q.state == State::Done && q.town == id && matches!(q.goal, super::quest::Goal::Tale(_))).map(|q| q.giver.clone());
+        if let Some(giver) = report { if let Some(r) = self.talk_named(g, &giver, &|t| matches!(t, Topic::Report(_)), &|_| false) { return r; } }
+        let feud: Option<String> = g.quests.iter().find_map(|q| match &q.goal { super::quest::Goal::Tale(t) if q.state == State::Open && q.town == id && t.kind == super::tales::TaleKind::Feud && t.stage == 0 => Some(t.other.clone()), _ => None });
+        if let Some(other) = feud { if !self.errands.contains("feud") { self.errands.insert("feud".into()); if let Some(r) = self.talk_named(g, &other, &|_| false, &|_| false) { return r; } } }
+        let open_tales = g.quests.iter().filter(|q| q.state == State::Open && matches!(q.goal, super::quest::Goal::Tale(_))).count();
+        for role in [Role::Lord, Role::Guard, Role::Sage, Role::Priest, Role::Townsfolk] {
+            let w = format!("{} quest", role.word());
+            if self.errands.contains(&w) || (role == Role::Townsfolk && g.hero.level < 3) || (matches!(role, Role::Priest | Role::Townsfolk) && open_tales >= 3) { continue; }
+            self.talked = false;
+            if let Some(r) = self.talk_to(g, role, &|t| matches!(t, Topic::Report(_) | Topic::Quest), &|t| matches!(t, Topic::Accept)) {
+                if self.talked { self.errands.insert(w); }
+                return r;
+            }
+        }
+        // A cult's cellar under this town, or the place it set out for on this same tile: its way in.
+        let cellar: Option<u32> = g.quests.iter().find_map(|q| match &q.goal { super::quest::Goal::Tale(t) if q.state == State::Open && t.kind == super::tales::TaleKind::Cult && t.stage == 0 && g.site(t.site).map_or(false, |s| s.tile == g.tile) => Some(t.site), _ => None })
+            .or_else(|| self.target.filter(|t| !self.done.contains(t) && !self.homeward && !self.need_town(g) && g.hero.hp * 5 > g.hero.max_hp() * 4 && *t != id && self.leaving != Some(*t) && g.site(*t).map_or(false, |s| s.tile == g.tile && s.kind != SiteKind::Town)));
+        if let Some(site) = cellar {
+            let f = g.floor().unwrap();
+            let door = |x: i32, y: i32| matches!(f.at(x, y).feature, Feature::Entrance { site: s, .. } if s == site);
+            if door(g.x, g.y) { return g.act(Action::Climb); }
+            self.visiting = None;
+            if self.walk_in.0 != site { self.walk_in = (site, 0); }
+            self.walk_in.1 += 1;
+            if self.walk_in.1 <= 200 { if let Some(step) = path_to(g, &door, 40_000) { self.why = "to the cellar"; return g.act(Action::Move(step.0, step.1)); } }
+            self.done.insert(site);
         }
         // Equip what was bought.
         self.equip_best(g);
         // Then out: the sewers while small, the world after.
         let sewer_done = self.done.contains(&id) || g.hero.level >= 6;
-        if sewer_done { self.why = "road"; return g.act(Action::WorldMap); }
+        if sewer_done { self.why = "road"; self.visiting = None; return g.act(Action::WorldMap); }
         let f = g.floor().unwrap();
         let grate = |x: i32, y: i32| matches!(f.at(x, y).feature, Feature::Entrance { site, .. } if site == id);
         if grate(g.x, g.y) { return g.act(Action::Climb); }
@@ -323,7 +433,7 @@ impl Bot {
     }
 
     fn shop_smith(&mut self, g: &mut Game) {
-        let Some(k) = g.place().and_then(|p| p.npcs.iter().position(|n| n.role == Role::Smith)) else { return };
+        let Some(k) = g.place().and_then(|p| p.npcs.iter().position(|n| n.role == Role::Smith && Some(n.home) == self.visiting.or(Some(g.site_here())))) else { return };
         super::npc::greet(g, k);
         if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Trade))) { super::npc::answer(g, i); }
         // For each slot, the best affordable upgrade (keep a third of the gold for potions).
@@ -370,7 +480,7 @@ impl Bot {
     }
 
     fn below(&mut self, g: &mut Game, id: u32) -> bool {
-        self.errands.clear();
+        if id != LAND { self.errands.clear(); }
         if g.hero.calling.as_deref() == Some("paladin") {
             let arrows = g.hero.count("arrow") > 0;
             let bow = g.hero.weapon().map_or(false, |w| w.id == "bow");
@@ -441,7 +551,7 @@ impl Bot {
                 self.why = "attack"; return g.act(Action::Attack(uid));
             }
             let avoid = self.prev_cell.filter(|c| c.2 == g.z).map(|c| (c.0, c.1));
-            let step = path_avoiding(g, &|x, y| (x - mx).abs() <= 1 && (y - my).abs() <= 1, 3000, avoid).or_else(|| path_to(g, &|x, y| (x - mx).abs() <= 1 && (y - my).abs() <= 1, 3000));
+            let step = path_avoiding(g, &|x, y| (x - mx).abs() <= 1 && (y - my).abs() <= 1, 3000, avoid, false).or_else(|| path_avoiding(g, &|x, y| (x - mx).abs() <= 1 && (y - my).abs() <= 1, 3000, None, false));
             if let Some(step) = step { self.why = "approach"; if g.act(Action::Move(step.0, step.1)) { return true; } }
         }
         // Loot.
@@ -619,6 +729,12 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     if let (Ok(dir), Some(l)) = (std::env::var("PLANET_ADV_LEGENDS"), living.as_ref()) {
         let gaz = crate::lore::build_gazetteer(world, Some(&l.history), seed);
         match crate::lore::legends::write_legends(world, &l.history, &gaz, &[], None, std::path::Path::new(&dir)) { Ok(r) => println!("Legends written to {}: {}", dir, r.line()), Err(e) => println!("Legends failed: {}", e) }
+    }
+    {
+        let mut kinds: Vec<String> = g.quests.iter().filter(|q| matches!(q.state, State::Rewarded | State::Failed)).filter_map(|q| match &q.goal { super::quest::Goal::Tale(t) => Some(format!("{:?}:{}", t.kind, t.chose)), _ => None }).collect();
+        kinds.sort();
+        let open: Vec<String> = g.quests.iter().filter(|q| matches!(q.state, State::Open | State::Done)).filter_map(|q| match &q.goal { super::quest::Goal::Tale(t) => Some(format!("{:?}@{}", t.kind, t.stage)), _ => None }).collect();
+        println!("Tales: {} done [{}]; open [{}]", g.stats.tales_done, kinds.join(", "), open.join(", "));
     }
     let songs: usize = g.songs.values().map(|v| v.len()).sum();
     println!("Songs: {} towns sing of {} ({} songs); deeds in the chronicle: {}", g.songs.len(), g.hero.name, songs, g.hero_events.len());

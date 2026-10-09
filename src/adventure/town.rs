@@ -444,7 +444,7 @@ mod tests {
     fn spec(size: u8, walls: u8, arch: &str, roads: u8, sea: u8, seed: u64) -> SiteSpec {
         SiteSpec { id: 1, kind: SiteKind::Town, name: "Greenburg".into(), tile: (0, 0), seed, tier: 1, cause: String::new(), boss: None, treasures: vec![],
             surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "Balorn".into(), news: Vec::new(), lord: None,
-            town: Some(TownShape { size, walls, arch: arch.into(), population: 1000, port: sea != 0, roads, sea, razed: None }), settlement: None, creature: None }
+            town: Some(TownShape { size, walls, arch: arch.into(), population: 1000, port: sea != 0, roads, sea, razed: None }), settlement: None, creature: None, notes: Vec::new() }
     }
 
     /// Every kind of town has its people, reachable from its gate, a grate to its sewers, and
@@ -490,7 +490,7 @@ mod look {
     #[ignore]
     fn town_plans() {
         for (size, walls, arch, roads, sea) in [(0u8, 0u8, "wood", 0u8, 0u8), (1, 1, "earthen", 0b0100_0100, 0), (2, 2, "stone", 0b0101_0101, 0), (3, 3, "stone", 0xFF, 0b0010), (2, 2, "living", 1, 0)] {
-            let s = SiteSpec { id: 1, kind: super::super::site::SiteKind::Town, name: "T".into(), tile: (0, 0), seed: 9, tier: 1, cause: String::new(), boss: None, treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "G".into(), news: Vec::new(), lord: None, town: Some(TownShape { size, walls, arch: arch.into(), population: 1, port: sea != 0, roads, sea, razed: None }), settlement: None, creature: None };
+            let s = SiteSpec { id: 1, kind: super::super::site::SiteKind::Town, name: "T".into(), tile: (0, 0), seed: 9, tier: 1, cause: String::new(), boss: None, treasures: vec![], surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "G".into(), news: Vec::new(), lord: None, town: Some(TownShape { size, walls, arch: arch.into(), population: 1, port: sea != 0, roads, sea, razed: None }), settlement: None, creature: None, notes: Vec::new() };
             let p = realize(&s);
             let f = &p.floors[0];
             println!("--- size {} walls {} {}: {} people ({} townsfolk)", size, walls, arch, p.npcs.len(), p.npcs.iter().filter(|n| n.role == Role::Townsfolk).count());

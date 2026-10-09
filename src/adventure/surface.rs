@@ -401,6 +401,7 @@ pub fn generate(land: &Land, tx: i64, ty: i64, sites: &[&SiteSpec]) -> Gen {
                 if !stamp_site(land, &mut g, s, tx, ty, &mut taken) { mouth(land, &mut g, s, tx, ty, &mut taken); }
             }
             SiteKind::Wilds => {}
+            SiteKind::Cellar => cellar_door(&mut g, s),
             _ => mouth(land, &mut g, s, tx, ty, &mut taken),
         }
     }
@@ -582,6 +583,16 @@ fn mouth(land: &Land, g: &mut Gen, s: &SiteSpec, tx: i64, ty: i64, taken: &mut V
     set(g, mx, my, Tile { ground: if s.kind == SiteKind::Mine { Ground::Earth } else { ground }, wall: Wall::None, feature: Feature::Entrance { site: s.id, z: 0 } });
     taken.push((mx - 4, my - 4, 9, 9));
     let _ = (tx, ty);
+}
+
+/// A cellar under a town: its door is in a house's floor (beside a bed), else in a street.
+fn cellar_door(g: &mut Gen, s: &SiteSpec) {
+    let beds: Vec<(i32, i32)> = (0..CH * CH).map(|k| (k % CH, k / CH)).filter(|&(x, y)| g.tiles[idx(x, y)].feature == Feature::Bed).collect();
+    let h = s.seed as usize;
+    let near = |(x, y): (i32, i32)| DIRS4.iter().map(|(dx, dy)| (x + dx, y + dy)).find(|&(a, b)| inside(a, b) && g.tiles[idx(a, b)].walkable() && g.tiles[idx(a, b)].feature == Feature::None);
+    let spot = if beds.is_empty() { None } else { (0..beds.len()).map(|k| beds[(h + k) % beds.len()]).find_map(near) };
+    let spot = spot.or_else(|| (0..CH * CH).map(|k| (k % CH, k / CH)).find(|&(x, y)| g.safe[idx(x, y)] && g.tiles[idx(x, y)].walkable() && g.tiles[idx(x, y)].feature == Feature::None && g.tiles[idx(x, y)].ground == Ground::Cobbles));
+    if let Some((x, y)) = spot { g.tiles[idx(x, y)].feature = Feature::Entrance { site: s.id, z: 0 }; }
 }
 
 /// Finds by the land and the history: a camp by the road, a fallen traveller, the old stones,

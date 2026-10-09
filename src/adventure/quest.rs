@@ -18,10 +18,12 @@ pub enum Goal {
     Fetch { tag: u32, name: String, site: u32 },
     /// Carry a sealed parcel (by its tag) to the trader of a town.
     Deliver { tag: u32, town: u32 },
+    /// A tale of the world's state, with its choices (`tales`).
+    Tale(super::tales::Tale),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum State { Open, Done, Rewarded }
+pub enum State { Open, Done, Rewarded, Failed }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Quest {
@@ -42,6 +44,18 @@ impl Quest {
     pub fn progress(&self) -> String {
         match (&self.goal, self.state) {
             (_, State::Rewarded) => "done".into(),
+            (_, State::Failed) => "failed".into(),
+            (Goal::Tale(t), State::Open) => match (t.kind, t.stage) {
+                (super::tales::TaleKind::Caravan, 0) => "find the wreck".into(),
+                (super::tales::TaleKind::Caravan, _) => "the goods".into(),
+                (super::tales::TaleKind::Cult, 0) => "find where they meet".into(),
+                (super::tales::TaleKind::Feud, _) => format!("talk to {}", t.other),
+                (super::tales::TaleKind::Tribute, 0) => "carry the tribute to the lair".into(),
+                (super::tales::TaleKind::Tribute, _) => format!("slay {}", t.other),
+                (super::tales::TaleKind::Plague, _) => "find the moonpetal".into(),
+                _ => "not yet".into(),
+            },
+            (Goal::Tale(_), _) => "not yet".into(),
             (_, State::Done) => format!("go back to {}", self.giver),
             (Goal::Bounty { count, done, .. }, _) => format!("{} of {}", done, count),
             (Goal::Slay { .. }, _) => "not yet".into(),
@@ -66,6 +80,7 @@ pub fn on_kill(g: &mut Game, m: &Monster) {
         }
     }
     for l in lines { g.say(Tone::Quest, l); }
+    if m.boss { super::tales::on_kill(g, &m.name); }
 }
 
 /// Something found: a sought treasure.
@@ -77,6 +92,7 @@ pub fn on_found(g: &mut Game, it: &Item) {
         g.chronicle(super::living::DeedKind::RelicFound(it.tag as u64), format!("{} found {}", who, it.short()), format!("{} found {} in {}, lost for long years.", who, it.short(), place));
     }
     if it.tag == 0 || it.id == "key" { return; }
+    super::tales::on_found(g, it);
     let mut lines = Vec::new();
     for q in g.quests.iter_mut().filter(|q| q.state == State::Open) {
         if let Goal::Fetch { tag, name, .. } = &q.goal { if *tag == it.tag { q.state = State::Done; lines.push(format!("You have found {}. Take it to {}.", name, q.giver)); } }
@@ -109,6 +125,9 @@ pub fn offer(g: &Game, town: u32, giver: &str, role: super::actor::Role) -> Opti
     let lvl = g.hero.level;
     let taken = |site: u32| g.quests.iter().any(|q| matches!(&q.goal, Goal::Slay { site: s, .. } | Goal::Fetch { site: s, .. } if *s == site))
         || g.site(site).and_then(|s| s.boss.as_ref()).map_or(false, |b| g.slain.contains(&b.name));
+    // A tale of the world's state first, where there is one this town has not told.
+    if let Some(t) = super::tales::offer(g, town, giver, role) { return Some(t); }
+    if role == Role::Townsfolk { return None; }
     let id = g.quests.len() as u32 + 1;
     // Fit: a place's tier against the hero's level (tier 1 ~ level 1-6, 2 ~ 6-14, 3 ~ 12-24...).
     let fits = |tier: u32| { let lo = (tier.saturating_sub(1)) * 7; lvl + 3 >= lo.max(4) && lvl <= lo + 22 };
@@ -181,6 +200,7 @@ pub fn report(g: &mut Game, k: usize) -> Vec<String> {
     }
     g.quests[k].state = State::Rewarded;
     g.stats.quests_done += 1;
+    if matches!(q.goal, Goal::Tale(_)) { g.stats.tales_done += 1; let lines = super::tales::on_report(g, &q); out.extend(lines); }
     if !matches!(q.goal, Goal::Bounty { .. } | Goal::Deliver { .. }) {
         let t = g.turn; g.deeds.push((t, format!("finished \"{}\" for {}", q.title, q.giver)));
         let who = g.hero.name.clone();

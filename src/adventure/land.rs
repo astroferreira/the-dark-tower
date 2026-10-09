@@ -122,7 +122,7 @@ impl Game {
         let k = t.1 * self.world.w + t.0;
         let danger = self.world.danger.get(k).copied().unwrap_or(0) as u32;
         SiteSpec { id: LAND, kind: SiteKind::Wilds, name: self.region_name(t), tile: t, seed: 0, tier: (1 + danger * 3 / 255).clamp(1, 5), cause: String::new(), boss: None, treasures: Vec::new(),
-            surface: self.world.ground.get(k).copied().unwrap_or(Ground::Grass), rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None }
+            surface: self.world.ground.get(k).copied().unwrap_or(Ground::Grass), rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None, notes: Vec::new() }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -290,12 +290,13 @@ impl Game {
         if let Some(p) = self.land.as_mut() { p.spec = spec; p.floors[0].name = name; }
         if self.route.last() != Some(&(t.0 as u16, t.1 as u16)) { self.route.push((t.0 as u16, t.1 as u16)); if self.route.len() > 6000 { self.route.drain(0..1000); } }
         let fresh = self.ink(t, on_foot);
+        super::tales::on_tile(self);
         let now = self.region_name(t);
         if on_foot && now != before { self.say(Tone::Info, format!("You come into {}.", now)); }
         if on_foot && fresh > 0 { if let Some(tale) = self.world.tales.get(&(t.1 * self.world.w + t.0)).cloned() { self.say(Tone::Quest, format!("{} Old bones still come up in the grass.", tale)); } }
         let here: Vec<u32> = self.sites.iter().filter(|s| s.tile == t && s.kind != SiteKind::Wilds).map(|s| s.id).collect();
         for id in here {
-            if self.known.contains(&id) { continue; }
+            if self.known.contains(&id) || self.site(id).map_or(false, |s| s.kind == SiteKind::Cellar) { continue; }
             self.known.push(id);
             let s = self.site(id).unwrap();
             let line = format!("You come upon {}: {}.{}", s.name, s.kind.word(), if s.cause.is_empty() { String::new() } else { format!(" {}", s.cause) });
@@ -423,6 +424,7 @@ impl Game {
         let verb = if kind == SiteKind::Town { "You lift the grate and climb down into the sewers of".to_string() } else if z == 0 { "You go into".into() } else { "You go down into".into() };
         self.say(Tone::Info, format!("{} {} ({}).{}", verb, name, floor, if cause.is_empty() || kind == SiteKind::Town { String::new() } else { format!(" {}", cause) }));
         if z > 0 { self.stats.floors_seen = self.stats.floors_seen.max(z as u32 + 1); }
+        super::tales::on_enter(self, site);
         self.companion_follow(true);
         self.look();
     }
@@ -638,6 +640,40 @@ impl Game {
         for t in known { self.rumour(t); }
     }
 
+    /// The people of town `town` wherever they are kept (on the land floor, in its chunks).
+    pub fn town_npcs_mut(&mut self, town: u32) -> Vec<&mut Npc> {
+        let mut v: Vec<&mut Npc> = Vec::new();
+        if let Some(p) = self.land.as_mut() { v.extend(p.npcs.iter_mut().filter(|n| n.home == town)); }
+        let on_land: Vec<String> = v.iter().map(|n| n.name.clone()).collect();
+        for ch in self.chunks.values_mut() { v.extend(ch.npcs.iter_mut().filter(|n| n.home == town && !on_land.contains(&n.name))); }
+        v
+    }
+
+    /// Someone leaves town `town` for good (the land floor and its chunks).
+    pub fn remove_npc(&mut self, town: u32, name: &str, line: &str) {
+        if let Some(p) = self.land.as_mut() { p.npcs.retain(|n| !(n.home == town && n.name == name)); }
+        for ch in self.chunks.values_mut() { ch.npcs.retain(|n| !(n.home == town && n.name == name)); }
+        self.talk = None;
+        self.say(Tone::Quest, line.to_string());
+    }
+
+    /// Someone comes to live in town `town` (by its square).
+    pub fn add_townsperson(&mut self, town: u32, name: &str) {
+        let Some(s) = self.site(town).cloned() else { return };
+        let key = (s.tile.0 as u32, s.tile.1 as u32);
+        let n = Npc { name: name.into(), role: super::actor::Role::Townsfolk, x: CH / 2 + 2, y: CH / 2 + 3, z: 0, post: (CH / 2 + 2, CH / 2 + 3), race: s.people.clone(), female: name.len() % 2 == 0, of: s.people.clone(), home: town, met: super::people::Met { times: 1, last: self.turn, helped: vec!["coming home".into()], wronged: 0 } };
+        let on = self.on_land() && self.chunk_key(s.tile.0 as i64, s.tile.1 as i64).map_or(false, |k| { let (cx, cy) = self.centre; ((k.0 as i32 - cx as i32).rem_euclid(self.world.w as i32) <= 1 || (cx as i32 - k.0 as i32).rem_euclid(self.world.w as i32) <= 1) && (k.1 as i32 - cy as i32).abs() <= 1 });
+        if on {
+            let o = self.origin();
+            if let Some((x, y)) = self.local((key.0 as i32 * CH + n.x, key.1 as i32 * CH + n.y)) {
+                let (x, y) = self.open_near(x, y);
+                let mut n = n; n.x = x; n.y = y; n.post = (x, y);
+                if let Some(p) = self.land.as_mut() { p.npcs.push(n); }
+            }
+            let _ = o;
+        } else if let Some(ch) = self.chunks.get_mut(&key) { ch.npcs.push(n); }
+    }
+
     /// The land's own (the atlas) from the sites; called once the world is set.
     pub fn set_atlas(&mut self) { self.atlas = Atlas::new(&self.world, &self.sites, self.seed); }
 }
@@ -669,9 +705,9 @@ mod tests {
         i.battles = vec![0; w * h];
         let town = SiteSpec { id: 1, kind: SiteKind::Town, name: "Greenburg".into(), tile: (3, 2), seed: 7, tier: 1, cause: String::new(), boss: None, treasures: vec![],
             surface: Ground::Grass, rock: "granite".into(), floors: 3, people: "human".into(), god: "Balorn".into(), news: Vec::new(), lord: None,
-            town: Some(TownShape { size: 1, walls: 1, arch: "wood".into(), population: 500, port: false, roads: 0b0100_0100, sea: 0, razed: None }), settlement: None, creature: None };
+            town: Some(TownShape { size: 1, walls: 1, arch: "wood".into(), population: 500, port: false, roads: 0b0100_0100, sea: 0, razed: None }), settlement: None, creature: None, notes: Vec::new() };
         let cave = SiteSpec { id: 2, kind: SiteKind::Cave, name: "the Bat Hole".into(), tile: (6, 3), seed: 11, tier: 1, cause: String::new(), boss: None, treasures: vec![],
-            surface: Ground::Grass, rock: "granite".into(), floors: 2, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None };
+            surface: Ground::Grass, rock: "granite".into(), floors: 2, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None, notes: Vec::new() };
         (i, vec![town, cave])
     }
 
@@ -779,5 +815,29 @@ mod tests {
         g.land_at((3, 2), None);
         let n = g.place().unwrap().npcs.iter().find(|n| n.name == name).unwrap();
         assert_eq!(n.met.times, 2);
+    }
+
+    /// A feud's tale: siding with the one who asked sends the other house out of town; making
+    /// peace keeps both, and the town remembers it in its news.
+    #[test]
+    fn a_feud_changes_the_town() {
+        use crate::adventure::actor::Role;
+        for (pick, leaves) in [(1u8, true), (3u8, false)] {
+            let mut g = game();
+            g.land_at((3, 2), None);
+            g.hero.pack.push(crate::adventure::item::Item::new("gold", 100));
+            let folk: Vec<String> = g.place().unwrap().npcs.iter().filter(|n| n.home == 1 && n.role == Role::Townsfolk && n.of != "drunk").map(|n| n.name.clone()).collect();
+            let q = crate::adventure::tales::offer(&g, 1, &folk[1], Role::Townsfolk).expect("a feud");
+            let other = match &q.goal { crate::adventure::quest::Goal::Tale(t) => t.other.clone(), _ => unreachable!() };
+            g.quests.push(q);
+            let k = g.place().unwrap().npcs.iter().position(|n| n.name == other).unwrap();
+            crate::adventure::npc::greet(&mut g, k);
+            let c = g.choice.clone().expect("the other house hears it out");
+            let i = c.options.iter().position(|o| o.1 == pick).expect("that way");
+            g.act(crate::adventure::game::Action::Decide(i));
+            let gone = !g.place().unwrap().npcs.iter().any(|n| n.name == other);
+            assert_eq!(gone, leaves, "pick {}: {} gone {}", pick, other, gone);
+            assert!(!g.site(1).unwrap().notes.is_empty(), "the town remembers");
+        }
     }
 }

@@ -246,6 +246,42 @@ everywhere).
   the game holds it during a step; `sync` lets go first).
 - Test: `tests/adventure.rs::a_sage_and_a_drunk_tell_it_differently` (`PLANET_ADV_ASK=1`).
 
+## Tales (`tales.rs`; card adv-world-quests)
+- Quests from the world's state, offered before the old commissions (`quest::offer` asks
+  `tales::offer` first), one of each kind a town, the hero's level fitting: the guard's
+  **snatched child** (raiders of a camp, cave, lair or ruin near hold them; entering it the
+  raiders call their price: fight or pay; the child comes home and lives in the town), the
+  trader's **lost caravan** (on a real trade route of the history to its partner town; the wreck
+  is set in the land where the hero comes on it, with its raiders; return the goods or keep them),
+  the lord's **cult in the cellar** (`SiteKind::Cellar`, appended: cells of the history's cults
+  under the nearest town, and of the Shadow's servants under the two towns nearest its seat,
+  made at build so no town is remade; the door is beside a bed in a house; the keeper's ledger
+  names a townsman: expose them (taken in chains) or sell them their silence), a
+  townsperson's **feud** with another house (make peace for a feast, or side with one: the other
+  leaves town), a **beast's tribute** (carry it to the lair's mouth, go in and end the beast, or
+  keep the gold), the priest's **plague** (moonpetal set on the last floor of a place near:
+  bring it, or sell it to a rival town).
+- `quest::Goal::Tale(Tale)` (kind, stage, site, tile, the other one, the other town, a tag,
+  a price, what was chosen), `State::Failed` (appended), `Stats::tales_done`. Turning points
+  are choice cards (`Game::choice`, `Action::Decide`; the window draws them, 1-9 or a click; no
+  other act while one waits). Hooks: `on_accept` (the tribute chest; the herb placed),
+  `on_tile` (the wreck, the lair's mouth), `on_enter` (the raiders' price), `on_kill` (the
+  chief, the keeper's ledger, the beast), `on_found` (the goods, the herb), `on_greet` (the other
+  house), `decide`, `on_report`. Ends change the town: people leave (`Game::remove_npc`) or come
+  (`add_townsperson`), the town remembers (`SiteSpec::notes`, told first in rumours), the
+  townsfolk remember who helped and who wronged them (`people::Met`).
+- New items (tagged, never sold): trade goods, a tribute chest, moonpetal, a ledger.
+- Bot: decides every card by its first way; takes tales from the lord, guard, sage, trader,
+  priest and a townsperson (at most three open); travels to a tale's place or tile, picks up a
+  wreck's goods, settles a feud, reports to any giver by name; gives up a tale after 6 fruitless
+  arrivals and a walk to a way in after 200 steps. Fixed on the way: talk now finds this town's
+  own people (a neighbouring town's lord shares the land floor), a town visit lasts until its
+  errands are done whichever side of a tile border the hero stands, errands reset only on the
+  road or in a place, approaching a foe never targets a way out, and a chase never steps on
+  one. 40,000 acts: knight 19-25, paladin 24, casters 19-26, 6-12 tales of 3 kinds done.
+- Test: `land::tests::a_feud_changes_the_town` (siding: the other house leaves; peace: both
+  stay; the town's notes).
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the

@@ -65,14 +65,14 @@ fn an_adventure_saves_and_loads_whole() {
     assert!(line.contains("round trip ok") && line.contains("the same"), "{line}");
 }
 
-/// The history goes on while the adventure is played (towns fall, towns are founded, lords
+/// The history goes on while the adventure is played (26,000 acts reach the first season) (towns fall, towns are founded, lords
 /// change), the adventurer's deeds enter its chronicle, bards in many towns sing them, the
 /// world's legends name the adventurer, and a loaded adventure replays the same history.
 #[test]
 fn the_world_moves_and_remembers() {
     let dir = std::env::temp_dir().join(format!("adv_legends_{}", std::process::id()));
     let save = std::env::temp_dir().join(format!("adv_world_{}.adv", std::process::id()));
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--adventure-bot", "16000"])
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--adventure-bot", "26000"])
         .env("PLANET_ADV_WORLD", "1").env("PLANET_ADV_LEGENDS", &dir).env("PLANET_ADV_SAVE", &save).output().expect("run");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let _ = std::fs::remove_file(&save);

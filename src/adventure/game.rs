@@ -121,6 +121,8 @@ pub enum Action {
     WorldMap,
     /// On the world map: walk the land where one is.
     Land,
+    /// Answer the choice card (`Game::choice`).
+    Decide(usize),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -228,10 +230,13 @@ pub struct Game {
     /// A name being typed in talk (the window fills it; Enter asks).
     #[serde(skip)]
     pub typing: Option<String>,
+    /// A choice to make (a tale's turning point).
+    #[serde(default)]
+    pub choice: Option<super::tales::Choice>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32 }
+pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32, #[serde(default)] pub tales_done: u32 }
 
 impl Game {
     pub fn new(world: WorldInfo, sites: Vec<SiteSpec>, hero: Hero, start_town: u32, seed: u64) -> Game {
@@ -240,14 +245,14 @@ impl Game {
             corpses: HashMap::new(), known: Vec::new(), respawn: Vec::new(), quests: Vec::new(), talk: None, chosen: Vec::new(), facing: (0, 1),
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
-            seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None,
+            seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None, choice: None,
         };
         g.set_atlas();
         g.hero.temple = start_town;
         if let Some(s) = g.site(start_town) { g.tile = s.tile; }
         // They know the towns and what lies near their home.
         let home = g.tile;
-        let known: Vec<u32> = g.sites.iter().filter(|s| s.kind == SiteKind::Town || ((s.tile.0 as i32 - home.0 as i32).abs() + (s.tile.1 as i32 - home.1 as i32).abs()) <= 4).map(|s| s.id).collect();
+        let known: Vec<u32> = g.sites.iter().filter(|s| s.kind == SiteKind::Town || (s.kind != SiteKind::Cellar && ((s.tile.0 as i32 - home.0 as i32).abs() + (s.tile.1 as i32 - home.1 as i32).abs()) <= 4)).map(|s| s.id).collect();
         g.known = known;
         g.start_map();
         // Wake in the temple.
@@ -367,12 +372,15 @@ impl Game {
     /// Do `a`; returns whether time passed.
     pub fn act(&mut self, a: Action) -> bool {
         if self.banner.is_some() { self.banner = None; }
+        // A choice waits to be made.
+        if self.choice.is_some() && !matches!(a, Action::Decide(_)) { return false; }
         let cost = match a {
             Action::Travel(dx, dy) => return self.travel(dx, dy),
             Action::Enter => return self.enter_here(),
             Action::EnterSite(id) => { if self.here.is_none() && self.site(id).map_or(false, |s| s.tile == self.tile) { return self.land_here(Some(id)); } return false; }
             Action::WorldMap => return self.to_world_map(),
             Action::Land => return self.land_here(None),
+            Action::Decide(k) => return super::tales::decide(self, k),
             Action::Move(dx, dy) => self.step(dx, dy),
             Action::Wait => Some(100),
             Action::Rest => return self.rest(),
@@ -664,7 +672,9 @@ impl Game {
         if !ranged {
             // Out of reach: go after it (Tibia's chase), a step down the way to it.
             let f = self.floor()?;
-            let d = f.distances(mx, my, 40, |x, y| f.at(x, y).walkable() || (x, y) == (self.x, self.y) || (x, y) == (mx, my));
+            // (Never over a way in, out, up or down: a chase must not carry one off the floor.)
+            let transit = |x: i32, y: i32| matches!(f.at(x, y).feature, Feature::Exit | Feature::Entrance { .. } | Feature::StairsDown | Feature::StairsUp | Feature::LadderDown | Feature::LadderUp | Feature::Hole | Feature::Grate | Feature::RopeSpot);
+            let d = f.distances(mx, my, 40, |x, y| (f.at(x, y).walkable() && !transit(x, y)) || (x, y) == (self.x, self.y) || (x, y) == (mx, my));
             let cur = d.get(self.y as usize * f.w + self.x as usize).copied().unwrap_or(i32::MAX);
             let step = DIRS8.iter().copied().filter(|(dx, dy)| { let (nx, ny) = (self.x + dx, self.y + dy); f.inside(nx, ny) && d[ny as usize * f.w + nx as usize] < cur }).min_by_key(|(dx, dy)| d[(self.y + dy) as usize * f.w + (self.x + dx) as usize]);
             match step { Some((dx, dy)) => return self.step(dx, dy), None => { self.say(Tone::Info, "You cannot reach it from here."); return None; } }

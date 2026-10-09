@@ -52,7 +52,7 @@ pub struct View {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Hit { Pack(usize), Slot(Slot), Choice(usize), Tab(Tab), Spell(usize), Chest(usize) }
+enum Hit { Pack(usize), Slot(Slot), Choice(usize), Tab(Tab), Spell(usize), Chest(usize), Decide(usize) }
 
 impl View {
     pub fn new(g: &Game) -> View {
@@ -170,7 +170,8 @@ pub fn draw(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize) {
     if g.here.is_some() { draw_place(g, v, buf, w, h, map_w, dt); } else { draw_world(g, v, buf, w, h, map_w); }
     draw_panel(g, v, buf, w, h, map_w);
     draw_log(g, buf, w, h, map_w);
-    if g.talk.is_some() { draw_talk(g, v, buf, w, h, map_w); }
+    if g.choice.is_some() { draw_choice(g, v, buf, w, h, map_w); }
+    else if g.talk.is_some() { draw_talk(g, v, buf, w, h, map_w); }
     else { draw_chest_choice(g, v, buf, w, h, map_w); }
     if let Some((title, text)) = &g.banner {
         let r = Rect { x: (map_w / 2).saturating_sub(220), y: (h / 2).saturating_sub(60), w: 440.min(w), h: 110 };
@@ -456,6 +457,7 @@ fn site_mark(put: &mut dyn FnMut(i64, i64, Rgb, f32), kind: SiteKind, x: f32, y:
         SiteKind::Camp => { pen.poly(&[(-0.6, 0.5), (-0.2, -0.4), (0.2, 0.5)], [176.0, 140.0, 96.0]); pen.poly(&[(0.0, 0.5), (0.35, -0.2), (0.7, 0.5)], [160.0, 124.0, 84.0]); pen.glow(0.0, 0.5, 0.4, [255.0, 180.0, 80.0], 0.5); }
         SiteKind::DarkFortress => { pen.rect(-0.35, -0.7, 0.35, 0.6, [50.0, 44.0, 48.0]); pen.poly(&[(-0.45, -0.7), (0.0, -1.0), (0.45, -0.7)], [40.0, 34.0, 38.0]); pen.glow(0.0, -0.3, 0.4, [230.0, 60.0, 40.0], 0.8); }
         SiteKind::Wilds => {}
+        SiteKind::Cellar => { pen.rect(-0.5, -0.4, 0.5, 0.5, [150.0, 132.0, 112.0]); pen.rect_f(-0.3, -0.1, 0.3, 0.5, [40.0, 34.0, 30.0], super::ink::Finish::Plain); pen.glow(0.0, 0.2, 0.4, [200.0, 60.0, 50.0], 0.6); }
     }
 }
 
@@ -754,6 +756,28 @@ fn draw_talk(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w:
     }
 }
 
+/// A tale's turning point: what happened, and the ways on (1-9 or a click).
+fn draw_choice(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w: usize) {
+    let c = g.choice.as_ref().unwrap();
+    let cw = (map_w as f32 * 0.7).min(660.0) as usize;
+    let text = fonts::wrap(&c.text, Face::Italic, 16.0, cw as f32 - 60.0);
+    let opts: Vec<Vec<String>> = c.options.iter().enumerate().map(|(k, (s, _))| fonts::wrap(&format!("{}  {}", k + 1, s), Face::Roman, 16.0, cw as f32 - 70.0)).collect();
+    let ch = 64 + text.len() * 20 + opts.iter().map(|o| o.len() * 20 + 6).sum::<usize>() + 20;
+    let r = Rect { x: map_w.saturating_sub(cw) / 2, y: 80, w: cw, h: ch.min(h.saturating_sub(100)) };
+    card(buf, w, r);
+    fonts::draw(buf, w, h, (r.x + 30) as f32, (r.y + 16) as f32, &c.title, Face::SmallCaps, 22.0, 0.5, 0x009A_2A1E, None);
+    let mut y = r.y + 52;
+    for l in &text { fonts::draw(buf, w, h, (r.x + 30) as f32, y as f32, l, Face::Italic, 16.0, 0.0, 0x0038_2A20, None); y += 20; }
+    y += 10;
+    for (k, o) in opts.iter().enumerate() {
+        let rr = Rect { x: r.x + 36, y, w: cw - 72, h: o.len() * 20 + 2 };
+        let hover = rr.contains(v.mouse.0, v.mouse.1);
+        for (i, l) in o.iter().enumerate() { fonts::draw(buf, w, h, rr.x as f32, (y + i * 20) as f32, l, Face::Roman, 16.0, 0.0, if hover { 0x009A_2A1E } else { 0x0046_3A6E }, None); }
+        v.hits.push((rr, Hit::Decide(k)));
+        y += o.len() * 20 + 6;
+    }
+}
+
 /// A quest chest beside the adventurer: its rewards to choose from.
 fn draw_chest_choice(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w: usize) {
     let Some(f) = g.floor() else { return };
@@ -865,6 +889,7 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
                     Hit::Tab(t) => v.tab = t,
                     Hit::Spell(k) => { let t = v.target; act(&mut g, &mut v, Action::Cast(k, t)) }
                     Hit::Chest(k) => act(&mut g, &mut v, Action::Choose(k)),
+                    Hit::Decide(k) => act(&mut g, &mut v, Action::Decide(k)),
                 }
             } else if v.mouse.0 < map_w as f32 && g.here.is_some() && g.talk.is_none() && click {
                 // Click on the map: strike what is there, else walk to it.
@@ -877,7 +902,10 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
             }
         }
         // Keys.
-        if g.talk.is_some() && g.typing.is_some() {
+        if g.choice.is_some() {
+            let digits = [Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5, Key::Key6, Key::Key7, Key::Key8, Key::Key9];
+            for (k, key) in digits.iter().enumerate() { if pressed(*key) { act(&mut g, &mut v, Action::Decide(k)); } }
+        } else if g.talk.is_some() && g.typing.is_some() {
             // Typing a name to ask about.
             let letters = [(Key::A, 'a'), (Key::B, 'b'), (Key::C, 'c'), (Key::D, 'd'), (Key::E, 'e'), (Key::F, 'f'), (Key::G, 'g'), (Key::H, 'h'), (Key::I, 'i'), (Key::J, 'j'), (Key::K, 'k'), (Key::L, 'l'), (Key::M, 'm'),
                 (Key::N, 'n'), (Key::O, 'o'), (Key::P, 'p'), (Key::Q, 'q'), (Key::R, 'r'), (Key::S, 's'), (Key::T, 't'), (Key::U, 'u'), (Key::V, 'v'), (Key::W, 'w'), (Key::X, 'x'), (Key::Y, 'y'), (Key::Z, 'z'), (Key::Space, ' '), (Key::Apostrophe, '\''), (Key::Minus, '-')];
@@ -1014,9 +1042,11 @@ pub fn snapshots(world: &crate::world::WorldData, history: Option<&crate::histor
     g.talk = None;
     // Play until the sewers, then until a fight, then deeper.
     let mut took = [false; 8];
+    let mut took_choice = false;
     for k in 0..60_000 {
         // (Only the last act's effects are shown, as the window would.)
         let _ = g.take_effects();
+        if g.choice.is_some() && !took_choice { took_choice = true; shoot(&mut g, &mut v, "choice", &mut files)?; }
         if !bot.step(&mut g) { let _ = g.act(Action::Wait); }
         follow_shift(&mut g, &mut v);
         let in_town = g.place().map_or(false, |p| p.spec.kind == SiteKind::Town);
@@ -1048,7 +1078,7 @@ pub fn gallery(world: &crate::world::WorldData, history: Option<&crate::history:
         let floors = if *kind == SiteKind::Wilds { 1 } else { 3 };
         let boss = BossSpec { def: "troll".into(), name: "the Gallery Boss".into(), scale: 1.4, legend: None, hoard: vec![], story: String::new() };
         g.sites.push(SiteSpec { id, kind: *kind, name: format!("{:?}", kind), tile: g.tile, seed: seed ^ (n as u64 * 7919), tier: 3, cause: String::new(), boss: Some(boss), treasures: vec![],
-            surface: crate::adventure::map::Ground::Grass, rock: "granite".into(), floors, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None });
+            surface: crate::adventure::map::Ground::Grass, rock: "granite".into(), floors, people: String::new(), god: String::new(), news: Vec::new(), lord: None, town: None, settlement: None, creature: None, notes: Vec::new() });
         g.enter_site(id, true);
         let z = if floors > 1 { 1 } else { 0 };
         g.z = z;
