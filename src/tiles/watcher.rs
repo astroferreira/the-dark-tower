@@ -669,6 +669,13 @@ struct View<'a> {
     timeline: Rect,
     /// Smooth zoom: the zoom the wheel asked for, eased towards each frame around `zoom_at`.
     zoom_target: f32,
+    /// Album recording (A): a plate is saved for each great event as it plays.
+    album: Option<(String, usize)>,
+    /// What the album has already shown (titles) and the year of its last plate.
+    album_seen: Vec<String>,
+    album_last: u32,
+    /// The largest continent's name, for plates ("the Lands of ...").
+    world_name: String,
     zoom_at: (f32, f32),
     /// Last time the view moved (pan, zoom, drag); the map is drawn at full quality again once
     /// it has been still for a moment.
@@ -693,7 +700,8 @@ impl<'a> View<'a> {
             bg: Vec::new(), map_buf: Vec::new(), map_dirty: true, lay, cam, fitted: true,
             last_render: Instant::now() - Duration::from_secs(1), entry_hits: Vec::new(),
             timeline: Rect::default(),
-            zoom_target: cam.tile_px, zoom_at: (0.0, 0.0), moved: Instant::now() - Duration::from_secs(1),
+            zoom_target: cam.tile_px, album: None, album_seen: Vec::new(), album_last: 0,
+            world_name: crate::lore::gazetteer::build_gazetteer(world, None, world.seed()).features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into()), zoom_at: (0.0, 0.0), moved: Instant::now() - Duration::from_secs(1),
             preview: false, full_ms: 0.0, last_frame: Instant::now(),
         }
     }
@@ -751,6 +759,16 @@ impl<'a> View<'a> {
             if self.log_scroll > 0 && (e.key || self.show_all) { self.log_scroll += 1; }
             let great = e.kind.is_major() || matches!(e.kind, EventType::Authored | EventType::SettlementDestroyed | EventType::LandScarred | EventType::ShadowRepelled);
             if great { self.banner_msg = Some((ascii(&e.title), now)); }
+            // The album keeps one plate a title, and lesser great events five years apart.
+            let worth = great && e.location.is_some() && !self.album_seen.contains(&e.title) && (e.kind.is_major() || e.year >= self.album_last + 5 || self.album_last == 0);
+            if worth { if let Some((dir, n)) = self.album.clone() {
+                let e = e.clone();
+                let path = album_plate(self, k, &e, &dir, n);
+                self.album = Some((dir, n + 1));
+                self.album_seen.push(e.title.clone());
+                self.album_last = e.year;
+                self.status = path;
+            } }
             self.log.push_front(e.clone());
         }
         self.log.truncate(LOG_CAP);
@@ -1062,8 +1080,25 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
     let mut drag: Option<((f32, f32), (f32, f32))> = None;
     let mut scrubbing = false;
     let mut was_down = false;
+    // PLANET_WATCH_SCRIPT=FILE: "<frame> key <K>", "<frame> shot <file>", "<frame> status",
+    // "<frame> quit" (keys by the viewer's names; the viewer after it reads PLANET_UI_SCRIPT).
+    let script: Vec<(u64, String, Vec<String>)> = std::env::var("PLANET_WATCH_SCRIPT").ok().and_then(|f| std::fs::read_to_string(f).ok())
+        .map(|t| t.lines().filter_map(|l| { let mut it = l.split_whitespace(); let f = it.next()?.parse().ok()?; let v = it.next()?.to_string(); Some((f, v, it.map(String::from).collect())) }).collect()).unwrap_or_default();
+    let mut frame: u64 = 0;
 
     while window.is_open() {
+        frame += 1;
+        let mut script_keys: Vec<Key> = Vec::new();
+        let mut script_shot: Option<String> = None;
+        for (_, verb, args) in script.iter().filter(|e| e.0 == frame) {
+            match verb.as_str() {
+                "key" => if let Some(k) = args.first().and_then(|n| super::viewer::script_key_pub(n)) { script_keys.push(k); },
+                "shot" => script_shot = args.first().cloned(),
+                "status" => println!("Watcher script frame {}: year {} | {}", frame, view.current().map_or(0, |s| s.year), view.status),
+                "quit" => return Ok(()),
+                _ => {}
+            }
+        }
         while let Ok(msg) = rx.try_recv() { view.receive(msg); }
         let (w, h) = window.get_size();
         view.resize(w, h);
@@ -1074,7 +1109,7 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         let down = window.get_mouse_down(MouseButton::Left);
         let clicked = down && !was_down;
         was_down = down;
-        let pressed = |k: Key| window.is_key_pressed(k, KeyRepeat::No);
+        let pressed = |k: Key| window.is_key_pressed(k, KeyRepeat::No) || script_keys.contains(&k);
         if pressed(Key::Escape) && !view.complete() { break; }
         if view.complete() && (pressed(Key::Enter) || pressed(Key::Escape) || pressed(Key::Q)) { break; }
         // A site chosen on the closing card: the viewer embarks there.
@@ -1095,16 +1130,18 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         if pressed(Key::LeftBracket) || pressed(Key::Minus) {
             let p = ctl.pace.load(Ordering::Relaxed);
             ctl.pace.store(p.saturating_sub(1), Ordering::Relaxed);
+            view.status = format!("pace: {}", PACES[p.saturating_sub(1)].1);
         }
         if pressed(Key::RightBracket) || pressed(Key::Equal) {
             let p = ctl.pace.load(Ordering::Relaxed);
             ctl.pace.store((p + 1).min(PACES.len() - 1), Ordering::Relaxed);
+            view.status = format!("pace: {}", PACES[(p + 1).min(PACES.len() - 1)].1);
         }
         // Step one season back or forward while paused.
-        if window.is_key_pressed(Key::Comma, KeyRepeat::Yes) {
+        if window.is_key_pressed(Key::Comma, KeyRepeat::Yes) || script_keys.contains(&Key::Comma) {
             if let Some(k) = view.shown { view.jump(k.saturating_sub(1)); }
         }
-        if window.is_key_pressed(Key::Period, KeyRepeat::Yes) { view.step_forward(); }
+        if window.is_key_pressed(Key::Period, KeyRepeat::Yes) || script_keys.contains(&Key::Period) { view.step_forward(); }
         if pressed(Key::L) { view.show_all = !view.show_all; view.log_scroll = 0; }
         if pressed(Key::H) || pressed(Key::Home) { view.fit(); }
         // Keyboard panning (Shift: faster), steady per second.
@@ -1118,6 +1155,13 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         if pressed(Key::P) {
             let path = format!("watch_{}_{}.png", world.seed(), view.current().map(|s| s.year).unwrap_or(0));
             view.status = save_png(&path, &view.buf, w, h);
+        }
+        // A: record an album: a plate for each great event from here on.
+        if pressed(Key::A) {
+            view.album = match view.album.take() {
+                Some((dir, n)) => { view.status = format!("album closed: {} plates in {}", n, dir); None }
+                None => { let dir = format!("plates/album_{}", world.seed()); let _ = std::fs::create_dir_all(&dir); view.status = format!("recording an album in {}: a plate at each great event", dir); Some((dir, 0)) }
+            };
         }
         // G: the history recorded so far as a timelapse GIF.
         if pressed(Key::G) {
@@ -1169,6 +1213,7 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         view.play(ctl);
         view.draw(mouse, drag.is_none() && !scrubbing, ctl);
         window.update_with_buffer(&view.buf, w, h)?;
+        if let Some(path) = script_shot.take() { println!("Watcher script frame {}: {}", frame, save_png(&path, &view.buf, w, h)); }
     }
     Ok(())
 }
@@ -1354,6 +1399,79 @@ pub fn watch_atlas(world: &WorldData, game_data: &GameData, config: HistoryConfi
         super::ui::outline(&mut plate, pw, Rect { x: 13, y: 13, w: pw - 26, h: ph - 26 }, super::ui::INK_FADED);
         super::viewer::save_rgb_png_pub(path, pw, ph, |x, y| { let q = plate[y * pw + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
         println!("Atlas of ages: 4 maps (years {}), written to {}", [0, total / 3, total * 2 / 3, total - 1].iter().map(|&k| view.steps[k].year.to_string()).collect::<Vec<_>>().join(", "), path);
+        history
+    })
+}
+
+/// One plate of the album: the world at step `k` (as it stood that season), centred on the
+/// event's place at 12 px a tile, the place ringed in rubric, framed as a plate with the event
+/// as its caption. Returns what it says it saved.
+fn album_plate(view: &View, k: usize, e: &LogItem, dir: &str, n: usize) -> String {
+    let (world, atlas) = (view.world, view.atlas);
+    let Some((x, y)) = e.location else { return String::new() };
+    let mut tw = view.base.clone();
+    tw.apply_overlay(world, &view.cur, atlas);
+    let (w, h) = (1280usize, 800usize);
+    // About forty tiles across: close enough to read the place, wide enough for its country.
+    let tile_px = (w as f32 / 40.0).max(12.0);
+    let half_h = h as f32 / 2.0 / tile_px;
+    let cy = (y as f32 + 0.5).clamp(half_h.min(world.height as f32 / 2.0), (world.height as f32 - half_h).max(world.height as f32 / 2.0));
+    let cam = Camera { cx: x as f32 + 0.5, cy, tile_px };
+    let mut buf = vec![0u32; w * h];
+    render_world_lod(&tw, atlas, &cam, &mut buf, w, h, 1);
+    overlay_realms(&tw, &cam, &mut buf, w, h);
+    let step = &*view.steps[k];
+    let labels = settlement_labels(step, &tw);
+    let ww = world.width as f32;
+    place_labels(&labels, cam.tile_px, w, h, &mut buf, &[], |lx, ly| {
+        let mut dx = lx - cam.cx;
+        if dx > ww / 2.0 { dx -= ww; }
+        if dx < -ww / 2.0 { dx += ww; }
+        (w as f32 / 2.0 + dx * cam.tile_px, h as f32 / 2.0 + (ly - cam.cy) * cam.tile_px)
+    });
+    // The place: a rubric ring with a fine ink rim.
+    let (sx, sy) = (w as f32 / 2.0, h as f32 / 2.0 + (y as f32 + 0.5 - cy) * tile_px);
+    for py in (sy as i64 - 22).max(0)..(sy as i64 + 22).min(h as i64) {
+        for px in (sx as i64 - 22).max(0)..(sx as i64 + 22).min(w as i64) {
+            let d = (((px as f32 - sx).powi(2) + (py as f32 - sy).powi(2)) as f32).sqrt();
+            let k2 = py as usize * w + px as usize;
+            if (d - 16.0).abs() < 1.6 { buf[k2] = super::ui::mix(buf[k2], RUBRIC, 0.9); } else if (d - 18.4).abs() < 0.7 { buf[k2] = super::ui::mix(buf[k2], INK, 0.7); }
+        }
+    }
+    let info = super::plates::PlateInfo { world_name: view.world_name.clone(), year: Some(e.year), season: format!("{:?}", step.season), seed: world.seed(), caption: e.title.clone(), realms: Vec::new() };
+    super::plates::decorate(&mut buf, w, h, &info);
+    let slug: String = e.title.chars().filter(|c| c.is_ascii_alphanumeric() || *c == ' ').collect::<String>().split_whitespace().take(5).collect::<Vec<_>>().join("_").to_lowercase();
+    let path = format!("{}/{:03}_{}_{}.png", dir, n + 1, e.year, slug);
+    super::viewer::save_rgb_png_pub(&path, w, h, |px, py| { let q = buf[py * w + px]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] });
+    format!("album: {}", path)
+}
+
+/// `--watch-album DIR`: simulate the history and play it through as the window would, saving a
+/// plate for each great event with a place (a falling town, a great battle, the Shadow's
+/// conquests and its check, beasts, scars) into DIR.
+pub fn watch_album(world: &WorldData, game_data: &GameData, config: HistoryConfig, engine: HistoryEngine, atlas: &Atlas, dir: &str) -> WorldHistory {
+    let mut base = TileWorld::build(world, atlas);
+    base.set_season(world, Season::Summer);
+    let ctl = Control { paused: AtomicBool::new(true), pace: AtomicUsize::new(PACES.len() - 1), detached: AtomicBool::new(false) };
+    let (tx, rx) = mpsc::channel();
+    let _ = std::fs::create_dir_all(dir);
+    std::thread::scope(|scope| {
+        let sim = {
+            let ctl = &ctl;
+            scope.spawn(move || simulate(world, game_data, config, engine, ctl, tx))
+        };
+        let mut view = View::new(world, atlas, base);
+        view.resize(LAPSE_SIZE.0, LAPSE_SIZE.1);
+        for msg in rx.iter() { view.receive(msg); }
+        let history = sim.join().expect("history simulation panicked");
+        let gaz = crate::lore::gazetteer::build_gazetteer(world, Some(&history), world.seed());
+        view.world_name = gaz.features.iter().filter(|f| f.kind == crate::lore::FeatureKind::Continent).max_by_key(|f| f.size).map(|f| f.name.clone()).unwrap_or_else(|| "the World".into());
+        view.album = Some((dir.to_string(), 0));
+        view.jump(0);
+        let total = view.steps.len();
+        while view.shown.map_or(false, |k| k + 1 < total) { view.step_forward(); }
+        let n = view.album.as_ref().map_or(0, |a| a.1);
+        println!("Album: {} plates of great events written to {}", n, dir);
         history
     })
 }
@@ -1547,7 +1665,8 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
     y += 14;
     fell(buf, w, h, x as i64, y, &format!("{} of {} years", f.step / 4, years), INK_FADED, 1, false);
     let paused = ctl.paused.load(Ordering::Relaxed);
-    let state = if done { "complete" } else if paused { "- paused -" } else { PACES[ctl.pace.load(Ordering::Relaxed).min(PACES.len() - 1)].1 };
+    let paused_label = format!("- paused ({}) -", PACES[ctl.pace.load(Ordering::Relaxed).min(PACES.len() - 1)].1);
+    let state = if done { "complete" } else if paused { paused_label.as_str() } else { PACES[ctl.pace.load(Ordering::Relaxed).min(PACES.len() - 1)].1 };
     let sc = if paused { RUBRIC } else { INK_FADED };
     fell(buf, w, h, (x + iw - fell_width(state, 1)) as i64, y, state, sc, 1, paused);
     y += LINE + 4;
@@ -1654,7 +1773,7 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
     hline(buf, w, x, x + iw, fy as usize - 4, INK_FADED);
     for line in [
         "SPACE pause   [ ] pace   < > one season",
-        "drag the timeline to any year   L log   G gif",
+        "drag the timeline to any year   L log   G gif   A album",
         "wheel zoom   drag/WASD pan   H fit map",
         if done { "ENTER choose where to settle" } else { "click an entry: go there   ESC hurry" },
     ] {

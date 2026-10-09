@@ -268,6 +268,10 @@ struct Args {
     #[arg(long, value_name = "FILE")]
     watch_atlas: Option<String>,
 
+    /// Simulate the history and save a plate for each great event into DIR (an album)
+    #[arg(long, value_name = "DIR")]
+    watch_album: Option<String>,
+
     /// Print where the world's ore, farmland, timber and fish are
     #[arg(long)]
     resource_stats: bool,
@@ -1628,7 +1632,7 @@ fn main() {
     // in the legacy terminal explorer.
     let wants_tiles = (!args.legacy_explorer && !args.headless) || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
     // A saved world's history is reused unless --history-years (or --watch) asks for a fresh simulation.
-    if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() { loaded_history = None; }
+    if args.history_years > 0 || args.watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() || args.watch_album.is_some() { loaded_history = None; }
     // The watcher opens its own window for the history; otherwise the making window waits on it.
     if args.watch && !args.headless { tiles::making::close(); }
     let mut history = if loaded_history.is_some() {
@@ -1646,7 +1650,7 @@ fn main() {
                 None
             }
         }
-    } else if args.history_years > 0 || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() || (wants_tiles && !args.no_history) {
+    } else if args.history_years > 0 || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() || args.watch_album.is_some() || (wants_tiles && !args.no_history) {
         let history_seed = args.history_seed.unwrap_or(master_seed.wrapping_add(1000));
         // The tile viewer shows history on the land, so it simulates some by default.
         let years = if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS };
@@ -1682,6 +1686,9 @@ fn main() {
             let (h, files) = tiles::watcher::watch_snapshots(&world_data, &game_data, config, engine, &atlas, prefix);
             println!("Saved watcher snapshots: {}", files.join(", "));
             h
+        } else if let Some(dir) = &args.watch_album {
+            let atlas = load_atlas(args.tileset.as_deref());
+            tiles::watcher::watch_album(&world_data, &game_data, config, engine, &atlas, dir)
         } else if let Some(path) = &args.watch_atlas {
             let atlas = load_atlas(args.tileset.as_deref());
             tiles::watcher::watch_atlas(&world_data, &game_data, config, engine, &atlas, path)

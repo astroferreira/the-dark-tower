@@ -478,3 +478,17 @@ the Claude Doc "Ink graphics: sprites and examples".
   from their persona, race and age (`portraits::of_figure`; a scar for a battle they fought);
   governments read as words ("tribal council"); the marker sits on the place even when the
   camera is held off a pole.
+- Every control driven (2026-10-09): `PLANET_UI_SCRIPT` (viewer) and `PLANET_WATCH_SCRIPT`
+  (watcher) take `key`, `mouse X Y` (point without clicking), `click`, `status` (mode, window,
+  pointer and status line in any mode), `shot`, `quit`; typing (notes, names, captions) reads
+  scripted keys too. Sweeps in real windows of every bound key on the world map (O x8 cycles back,
+  N, T, R, Minus/Plus, P, M + typing, Z, Q), the region walker (T seasons, Plus/Minus, F, X, Escape),
+  the camp (C I O L T, 1-4, M, B, F, X, H, K, V, U, [ ], < >, G, R, P, N + typing, Escape, Enter
+  to leave) and the watcher (Space, < >, L, [ ], P, N, G, A). Found and fixed: the camp card opened
+  with the world map's key hints; [ / ] said nothing when there was no level to go to; typed names
+  were all lowercase (now title case); the watcher's pace change was invisible while paused (the
+  label now names it, and [ ] say it); < > in the watcher ignored scripted keys. Not driven: J (it
+  opens the browser) and the held pan keys (WASD/arrows).
+- The album: `--watch-album DIR`, or A in the watcher window, saves a plate for each great event
+  with a place (one per title; lesser ones five years apart): the world that season, about forty
+  tiles across, centred on the place and ringed in rubric, the event as its caption. Dev: 49 plates.

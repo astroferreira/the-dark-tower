@@ -23,16 +23,30 @@ use super::render::{render_local, render_minimap, render_world, render_zoom, scr
 use crate::local::{generate_local, LocalMap, Plant, Shape, LOCAL_SIZE, TILE_M};
 
 const MIN_TILE_PX: f32 = 1.0;
+/// A typed name with each word capitalised ("ember fall" -> "Ember Fall"); small words inside
+/// stay small ("the ford of ash" -> "The Ford of Ash").
+fn title_case(t: &str) -> String {
+    t.split(' ').enumerate().map(|(i, w)| {
+        if i > 0 && matches!(w, "of" | "the" | "and" | "by" | "in" | "on") { return w.to_string(); }
+        let mut c = w.chars();
+        match c.next() { Some(f) => f.to_uppercase().collect::<String>() + c.as_str(), None => String::new() }
+    }).collect::<Vec<_>>().join(" ")
+}
+
+/// The world map's key hints, the status line until something else is said.
+const WORLD_HINTS: &str = "click: inspect | wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | J: journal | P: screenshot | Q: quit";
 
 /// A key named in a `PLANET_UI_SCRIPT` line: a letter, a digit, or Space, Escape, Enter, Tab,
 /// Backspace, `<` (Comma), `>` (Period), `[`, `]`.
+pub(crate) fn script_key_pub(n: &str) -> Option<Key> { script_key(n) }
+
 fn script_key(n: &str) -> Option<Key> {
     const LETTERS: [Key; 26] = [Key::A, Key::B, Key::C, Key::D, Key::E, Key::F, Key::G, Key::H, Key::I, Key::J, Key::K, Key::L, Key::M, Key::N, Key::O, Key::P, Key::Q, Key::R, Key::S, Key::T, Key::U, Key::V, Key::W, Key::X, Key::Y, Key::Z];
     const DIGITS: [Key; 10] = [Key::Key0, Key::Key1, Key::Key2, Key::Key3, Key::Key4, Key::Key5, Key::Key6, Key::Key7, Key::Key8, Key::Key9];
     let b = n.as_bytes();
     if b.len() == 1 && b[0].is_ascii_alphabetic() { return Some(LETTERS[(b[0].to_ascii_uppercase() - b'A') as usize]); }
     if b.len() == 1 && b[0].is_ascii_digit() { return Some(DIGITS[(b[0] - b'0') as usize]); }
-    Some(match n { "Space" => Key::Space, "Escape" => Key::Escape, "Enter" => Key::Enter, "Tab" => Key::Tab, "Backspace" => Key::Backspace, "Shift" => Key::LeftShift, "<" | "Comma" => Key::Comma, ">" | "Period" => Key::Period, "[" => Key::LeftBracket, "]" => Key::RightBracket, _ => return None })
+    Some(match n { "Space" => Key::Space, "Escape" => Key::Escape, "Enter" => Key::Enter, "Tab" => Key::Tab, "Backspace" => Key::Backspace, "Shift" => Key::LeftShift, "PageUp" => Key::PageUp, "PageDown" => Key::PageDown, "Plus" => Key::Equal, "Minus" => Key::Minus, "<" | "Comma" => Key::Comma, ">" | "Period" => Key::Period, "[" => Key::LeftBracket, "]" => Key::RightBracket, _ => return None })
 }
 
 /// Seconds per season when the automatic year cycle is on.
@@ -662,7 +676,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut was_down = false;
         let mut was_right = false;
         let mut minimap_rect = (0usize, 0usize, 0usize, 0usize);
-        let mut status = String::from("click: inspect | wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | J: journal | P: screenshot | Q: quit");
+        let mut status = String::from(WORLD_HINTS);
         let mut last_title = String::new();
 
         // PLANET_UI_SCRIPT=FILE: input fed into this very loop by frame, for testing the window
@@ -709,7 +723,10 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                             }
                         }
                     }
+                    "mouse" => { if let (Some(x), Some(y)) = (args.first().and_then(|v| v.parse().ok()), args.get(1).and_then(|v| v.parse().ok())) { script_mouse = Some((x, y)); } }
                     "shot" => script_shot = args.first().cloned(),
+                    // The mode and status line in any mode (the key sweep reads it).
+                    "status" => println!("UI script frame {}: mode {} {} | window {}x{} mouse {:?} | {}", ui_frame, if local_active { "camp" } else if zoom_active { "region" } else { "world" }, args.join(" "), w, h, script_mouse, status),
                     "quit" => script_quit = true,
                     "report" => {
                         if let Some((colony, _)) = local.as_ref() {
@@ -736,7 +753,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             if let (Some((at, text)), true) = (place_input.as_mut(), local_active) {
                 let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
                 let mut done = None;
-                for k in window.get_keys_pressed(KeyRepeat::Yes) {
+                for k in window.get_keys_pressed(KeyRepeat::Yes).into_iter().chain(script_keys.iter().copied()) {
                     match k {
                         Key::Enter => { done = Some(true); break; }
                         Key::Escape => { done = Some(false); break; }
@@ -745,7 +762,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                 }
                 if let Some(keep) = done {
-                    let (at, name) = (*at, text.trim().to_string());
+                    let (at, name) = (*at, title_case(text.trim()));
                     place_input = None;
                     if keep && !name.is_empty() {
                         let (colony, _) = local.as_mut().unwrap();
@@ -758,7 +775,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
             if let (Some(text), true) = (name_input.as_mut(), local_active) {
                 let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
                 let mut done = None;
-                for k in window.get_keys_pressed(KeyRepeat::Yes) {
+                for k in window.get_keys_pressed(KeyRepeat::Yes).into_iter().chain(script_keys.iter().copied()) {
                     match k {
                         Key::Enter => { done = Some(true); break; }
                         Key::Escape => { done = Some(false); break; }
@@ -770,8 +787,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let name = name_input.take().unwrap_or_default();
                     if keep && !name.trim().is_empty() {
                         let (colony, _) = local.as_mut().unwrap();
-                        colony.name_colony(name.trim());
-                        status = format!("The settlement is called {}.", name.trim());
+                        let name = title_case(name.trim());
+                        colony.name_colony(&name);
+                        status = format!("The settlement is called {}.", name);
                     }
                 }
                 dirty = true;
@@ -789,7 +807,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 dirty = true;
             } else if note_input.is_some() {
                 let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-                for k in window.get_keys_pressed(KeyRepeat::Yes) {
+                for k in window.get_keys_pressed(KeyRepeat::Yes).into_iter().chain(script_keys.iter().copied()) {
                     let (at, text) = note_input.as_mut().unwrap();
                     match k {
                         Key::Enter => {
@@ -1112,8 +1130,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let next = if jump_dn { levels.iter().copied().find(|&z| z < cur) } else { levels.iter().rev().copied().find(|&z| z > cur) };
                     match next {
                         Some(z) => { lcam.z = z; lcam.surface_view = false; }
-                        None if jump_up => { lcam.surface_view = true; }
-                        None => {}
+                        None if jump_up && !lcam.surface_view => { lcam.surface_view = true; }
+                        None if jump_up => { status = "Already at the surface: nothing raised above the camp yet (a lookout tower would be).".into(); }
+                        None => { status = if colony.spine.is_none() { "Nothing dug below the camp yet: ] goes down once they cut a cellar or a hall.".into() } else { "This is the deepest level dug.".into() }; }
                     }
                     dirty = true;
                 }
@@ -1521,7 +1540,9 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                     let right = super::colony_ui::reserve_right(&ui, w);
                     let hide_chip = super::colony_ui::over_ui(&ui, w, h, mouse);
-                    log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: &status, mouse, right, selected: ui.selected, hide_chip, bar: false }, &mut buf, w, h);
+                    // (The world map's key hints mean nothing in the camp: its card starts empty.)
+                    let camp_status = if status == WORLD_HINTS { "" } else { status.as_str() };
+                    log_hits = super::colony_hud::draw(colony, lcam, &super::colony_hud::HudState { speed: speed as u32, status: camp_status, mouse, right, selected: ui.selected, hide_chip, bar: false }, &mut buf, w, h);
                     ui_hits = super::colony_ui::draw(colony, &mut ui, history, speed as u32, mouse, &mut buf, w, h);
                     let card = moment_card.as_ref().and_then(|m| super::colony_hud::draw_moment(m, Some(&colony), &mut buf, w, h));
                     dream_hits = match dream_for { Some(i) => super::colony_ui::dream_buttons(i, &mut buf, w, h, mouse, right), None => Vec::new() };
