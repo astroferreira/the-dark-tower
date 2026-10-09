@@ -638,7 +638,7 @@ fn finds(land: &Land, g: &mut Gen, tx: i64, ty: i64, taken: &[(i32, i32, i32, i3
         put(g, x + 2, y - 1, Feature::Bookshelf);
         for yy in y - 2..=y + 2 { for xx in x - 3..=x + 3 { if inside(xx, yy) { g.safe[idx(xx, yy)] = true; } } }
         let people = ["human", "elf", "dwarf", "halfling"][b.range(0, 3) as usize];
-        g.npcs.push(Npc { name: super::town::person_name(people, hash(land.seed(), tx, ty, 0x4E)), role: Role::Sage, x: x + 1, y, z: 0, post: (x + 1, y), race: people.into(), female: b.chance(0.5), of: "hermit".into(), home: 0 });
+        g.npcs.push(Npc { name: super::town::person_name(people, hash(land.seed(), tx, ty, 0x4E)), role: Role::Sage, x: x + 1, y, z: 0, post: (x + 1, y), race: people.into(), female: b.chance(0.5), of: "hermit".into(), home: 0, met: Default::default() });
     } }
     // A farmstead where the land is farmed.
     if !town_here && info.farmland[k] > 90 && b.chance(0.6) { if let Some((x, y)) = free_near(g, &mut b, None, 0) {
@@ -648,7 +648,7 @@ fn finds(land: &Land, g: &mut Gen, tx: i64, ty: i64, taken: &[(i32, i32, i32, i3
         put(g, x + 1, y - 1, Feature::Barrel);
         put(g, x + 3, y + 2, Feature::Well);
         for yy in y - 2..=y + 2 { for xx in x - 2..=x + 3 { if inside(xx, yy) { g.safe[idx(xx, yy)] = true; } } }
-        g.npcs.push(Npc { name: super::town::person_name("human", hash(land.seed(), tx, ty, 0xFA4)), role: Role::Townsfolk, x, y: y + 2, z: 0, post: (x, y + 2), race: "human".into(), female: b.chance(0.5), of: "farmer".into(), home: 0 });
+        g.npcs.push(Npc { name: super::town::person_name("human", hash(land.seed(), tx, ty, 0xFA4)), role: Role::Townsfolk, x, y: y + 2, z: 0, post: (x, y + 2), race: "human".into(), female: b.chance(0.5), of: "farmer".into(), home: 0, met: Default::default() });
     } }
     // A battlefield of the history: bones and rusted arms in the grass.
     if info.battles[k] > 0 {

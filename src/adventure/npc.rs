@@ -37,6 +37,19 @@ fn town_id(g: &Game) -> u32 {
     if home != 0 { home } else { g.site_here() }
 }
 
+/// The one spoken to: who they are (their temper) and what they remember of the adventurer.
+fn speaker(g: &Game) -> Option<(super::actor::Npc, super::people::Temper)> {
+    let n = g.talk.as_ref().and_then(|t| g.place().and_then(|p| p.npcs.get(t.npc))).cloned()?;
+    let t = super::people::temper(&super::people::persona(&n));
+    Some((n, t))
+}
+
+/// Their price for something worth `v` (their temper and memory).
+fn their_price(g: &Game, v: u32) -> u32 { speaker(g).map_or(v, |(n, t)| ((v as f32) * super::people::price_factor(t, &n.met)).round().max(1.0) as u32) }
+
+/// How many towns sing of the adventurer.
+fn fame(g: &Game) -> usize { g.songs.len() }
+
 /// What a sage pays for a tile inked on foot.
 fn chart_price(g: &Game) -> u32 { 3 + g.hero.level / 4 }
 
@@ -77,18 +90,16 @@ pub fn greet(g: &mut Game, k: usize) {
     let Some(n) = g.place().and_then(|p| p.npcs.get(k)).cloned() else { return };
     let hero = g.hero.name.clone();
     let town = g.site(n.home).map(|s| s.name.clone()).or_else(|| g.place().map(|p| p.spec.name.clone())).unwrap_or_default();
+    let temper = super::people::temper(&super::people::persona(&n));
     let said = match n.role {
-        Role::Sage if n.of == "hermit" => format!("Few come this way. I am {}, and I have walked this country forty years. I know where things lie, {}.", n.name, hero),
-        Role::Townsfolk if n.of == "farmer" => format!("Morning, {}. Mind the fields. And the wolves, after dark.", hero),
-        Role::Priest => format!("Welcome, {}, to the temple of {}. The god's light on you.", hero, n.of),
-        Role::Smith => format!("Hello, {}. Iron and steel, sharp and true. Looking for a blade?", hero),
-        Role::Trader => format!("Welcome, {}! Potions, food, torches, rope, arrows. And I buy what you drag out of the dark.", hero),
-        Role::Innkeeper => format!("Come in, {}, sit by the fire. A meal, a bed, the news of the road.", hero),
-        Role::Lord => if g.site(n.home).map_or(false, |s| s.lord.is_some()) { format!("You stand before {}, {}. Speak, {}.", n.name, n.of, hero) } else { format!("You stand before the lord of {}. Speak, {}.", town, hero) },
-        Role::Guard => format!("Halt. Ah, {}. The roads are bad and the bounties are good.", hero),
-        Role::Sage => format!("Ah, a visitor. I am {}, and I keep what is known of the old days. What would you learn, {}?", n.name, hero),
-        Role::Townsfolk => format!("Good day, {}.", hero),
+        Role::Sage if n.of == "hermit" && n.met.times == 0 => format!("Few come this way. I am {}, and I have walked this country forty years. I know where things lie, {}.", n.name, hero),
+        Role::Townsfolk if n.of == "farmer" && n.met.times == 0 => format!("Morning, {}. Mind the fields. And the wolves, after dark.", hero),
+        Role::Lord if n.met.times == 0 && n.met.wronged == 0 && g.site(n.home).map_or(false, |s| s.lord.is_some()) => format!("You stand before {}, {}. Speak, {}.", n.name, n.of, hero),
+        _ => super::people::greeting(&n, temper, &n.met, &hero, &town, fame(g), g.turn),
     };
+    // They will remember this meeting.
+    let turn = g.turn;
+    if let Some(p) = g.place_mut() { if let Some(m) = p.npcs.get_mut(k) { m.met.times += 1; m.met.last = turn; } }
     g.talk = Some(Talk { npc: k, name: n.name.clone(), role: n.role, said, options: Vec::new(), offer: None });
     // A parcel for this town's trader: delivered and paid for here.
     if n.role == Role::Trader {
@@ -142,7 +153,13 @@ pub fn answer(g: &mut Game, i: usize) {
     let mut offer = t.offer.clone();
     let town = g.site(n.home).map(|s| s.name.clone()).or_else(|| g.place().map(|p| p.spec.name.clone())).unwrap_or_default();
     match topic {
-        Topic::Name => said = format!("I am {}, {} of {}.", n.name, n.role.word(), town),
+        Topic::Name => {
+            let p = super::people::persona(&n);
+            let looks = p.looks_text(&n.name, 20 + (crate::persona::seed_of(&n.name, 7) % 45) as u32);
+            said = format!("I am {}, {} of {}.", n.name, n.role.word(), town);
+            let more: Vec<String> = [Some(looks), p.character_text(), Some(p.likes_text())].into_iter().flatten().filter(|t| !t.is_empty()).collect();
+            if !more.is_empty() { g.say(Tone::Info, more.join(" ")); }
+        }
         Topic::Job => said = match n.role {
             Role::Priest => format!("I tend the temple of {}. I heal the hurt, I give callings to those of level 8, and I teach the words of power.", n.of),
             Role::Smith => "I make and mend arms and armour, and buy what is worth melting down.".into(),
@@ -155,7 +172,7 @@ pub fn answer(g: &mut Game, i: usize) {
         },
         Topic::Trade => {
             said = "Have a look.".into();
-            let mut v: Vec<(String, Topic)> = stock(n.role, g).into_iter().map(|(id, cnt)| { let d = data().item(id).unwrap(); let price = d.value * cnt; (format!("Buy {}{} ({} gold)", if cnt > 1 { format!("{} ", cnt) } else { String::new() }, if cnt > 1 { super::item::plural(&d.name) } else { d.name.clone() }, price), Topic::Buy(id.into(), cnt, price)) }).collect();
+            let mut v: Vec<(String, Topic)> = stock(n.role, g).into_iter().map(|(id, cnt)| { let d = data().item(id).unwrap(); let price = their_price(g, d.value * cnt); (format!("Buy {}{} ({} gold)", if cnt > 1 { format!("{} ", cnt) } else { String::new() }, if cnt > 1 { super::item::plural(&d.name) } else { d.name.clone() }, price), Topic::Buy(id.into(), cnt, price)) }).collect();
             if matches!(n.role, Role::Trader) { v.insert(0, ("Sell all loot".into(), Topic::SellLoot)); }
             if matches!(n.role, Role::Smith) { v.insert(0, ("Sell arms and armour from the pack".into(), Topic::SellGear)); }
             v.push(("Back".into(), Topic::Back));
@@ -171,7 +188,8 @@ pub fn answer(g: &mut Game, i: usize) {
             let sold: Vec<Item> = g.hero.pack.iter().filter(|i| want(i)).cloned().collect();
             if sold.is_empty() { said = "You have nothing I buy.".into(); }
             else {
-                let pay: u32 = sold.iter().map(|i| if topic == Topic::SellLoot { i.value() } else { (i.value() / 2).max(1) }).sum();
+                let f = speaker(g).map_or(1.0, |(n, t)| super::people::price_factor(t, &n.met));
+                let pay: u32 = (sold.iter().map(|i| if topic == Topic::SellLoot { i.value() } else { (i.value() / 2).max(1) }).sum::<u32>() as f32 / f).round() as u32;
                 g.hero.pack.retain(|i| !want(i));
                 stow(&mut g.hero.pack, Item::new("gold", pay));
                 said = format!("{} for {} gold. Pleasure.", sold.iter().map(|i| i.describe()).collect::<Vec<_>>().join(", "), pay);
@@ -186,7 +204,7 @@ pub fn answer(g: &mut Game, i: usize) {
                 said = format!("{} I will pay {} gold.", q.text, q.gold);
                 offer = Some(q);
                 options = Some(vec![("Accept".into(), Topic::Accept), ("Not now".into(), Topic::Back)]);
-            } else { said = "I have no work for you now. Come back when you are stronger, or when the land is worse.".into(); }
+            } else { said = speaker(g).map_or("I have no work for you now.", |(_, t)| super::people::refusal(t)).into(); }
         }
         Topic::Accept => {
             if let Some(q) = offer.take() {
@@ -203,7 +221,15 @@ pub fn answer(g: &mut Game, i: usize) {
                 g.quests.push(q);
             }
         }
-        Topic::Report(k) => { let lines = quest::report(g, k); said = lines.join(" "); for l in &lines { g.say(Tone::Quest, l.clone()); } }
+        Topic::Report(k) => {
+            let title = g.quests.get(k).map(|q| q.title.clone()).unwrap_or_default();
+            let lines = quest::report(g, k);
+            said = lines.join(" ");
+            for l in &lines { g.say(Tone::Quest, l.clone()); }
+            // They remember who did it.
+            let who = t.npc;
+            if let Some(p) = g.place_mut() { if let Some(m) = p.npcs.get_mut(who) { m.met.helped.push(title); } }
+        }
         Topic::Rumours => {
             // A place the adventurer does not know, near, and what the town has heard of the world.
             let here = g.place().map(|p| p.spec.tile).unwrap_or(g.tile);
@@ -239,7 +265,8 @@ pub fn answer(g: &mut Game, i: usize) {
             } else { said = format!("The maps are {} gold.", price); }
         }
         Topic::Heal => {
-            let free = g.hero.level <= 15;
+            // (The young are healed free; a timid priest asks nothing of a hero the songs tell of.)
+            let free = g.hero.level <= 15 || (fame(g) >= 3 && speaker(g).map_or(false, |(_, t)| t == super::people::Temper::Timid));
             let cost = if free { 0 } else { g.hero.level * 5 };
             // The temple feeds the hungry who cannot pay.
             if g.hero.fed < 300 && g.hero.gold() < 10 && !g.hero.pack.iter().any(|i| i.def().kind == "food") { stow(&mut g.hero.pack, Item::new("bread", 2)); g.say(Tone::Info, "The priest presses two loaves into your hands. \"The god feeds the hungry.\""); }
@@ -314,9 +341,10 @@ pub fn answer(g: &mut Game, i: usize) {
                 let race = g.place().map(|p| p.spec.people.clone()).filter(|r| !r.is_empty()).unwrap_or_else(|| "human".into());
                 let name = super::town::person_name(&race, g.seed ^ g.turn ^ 0x5E11);
                 let lvl = g.hero.level as i32;
-                g.companion = Some(super::game::Companion { name: name.clone(), race, hp: 50 + 12 * lvl, max_hp: 50 + 12 * lvl, x: g.x, y: g.y, energy: 0, left: false, kills: 0, struck_at: 0 });
+                g.companion = Some(super::game::Companion { name: name.clone(), race, hp: 50 + 12 * lvl, max_hp: 50 + 12 * lvl, x: g.x, y: g.y, energy: 0, left: false, kills: 0, struck_at: 0, morale: 100, paid_day: g.turn / super::land::DAY });
                 g.companion_follow(true);
-                said = format!("{} drains the cup, takes your coin and picks up a spear. \"Lead on.\"", name);
+                let t = g.companion.as_ref().map(|c| c.temper()).unwrap_or(super::people::Temper::Plain);
+                said = format!("{} drains the cup, takes your coin and picks up a spear. \"Lead on.\" ({} by the look of them{})", name, t.word(), if t == super::people::Temper::Greedy { "; they will want wages every ten days" } else { "" });
                 g.say(Tone::Level, format!("{} goes with you now.", name));
             } else { said = format!("A good blade costs {} gold.", price); }
         }

@@ -270,7 +270,7 @@ fn lay_out(spec: &SiteSpec, b: &mut Builder) -> (Floor, Vec<Npc>, (i32, i32), (i
                 if let Some((sx, sy)) = spot {
                     let name = person_name(&race, spec.seed ^ (k as u64 * 0x9E37 + 11));
                     post_of.push((role, (sx, sy), (sx, sy, 1, 1)));
-                    npcs.push(Npc { name, role, x: sx, y: sy, z: 0, post: (sx, sy), race: race.clone(), female: b.rng.gen_bool(0.5), of: if role == Role::Priest { spec.god.clone() } else { spec.people.clone() }, home: spec.id });
+                    npcs.push(Npc { name, role, x: sx, y: sy, z: 0, post: (sx, sy), race: race.clone(), female: b.rng.gen_bool(0.5), of: if role == Role::Priest { spec.god.clone() } else { spec.people.clone() }, home: spec.id, met: Default::default() });
                 }
             }
             continue;
@@ -323,7 +323,7 @@ fn lay_out(spec: &SiteSpec, b: &mut Builder) -> (Floor, Vec<Npc>, (i32, i32), (i
         let female = b.rng.gen_bool(0.5);
         let name = match (role, &spec.lord) { (Role::Lord, Some((n, _))) => n.clone(), _ => person_name(&race, spec.seed ^ (k as u64 * 0x9E37 + 11)) };
         let of = match (role, &spec.lord) { (Role::Priest, _) => spec.god.clone(), (Role::Lord, Some((_, title))) => title.clone(), _ => spec.people.clone() };
-        npcs.push(Npc { name, role, x: post.0, y: post.1, z: 0, post, race: race.clone(), female, of, home: spec.id });
+        npcs.push(Npc { name, role, x: post.0, y: post.1, z: 0, post, race: race.clone(), female, of, home: spec.id, met: Default::default() });
     }
     // Gardens and trees in the open (a living town grows inside its hedges).
     for y in y0 + thick..=y1 - thick { for x in x0 + thick..=x1 - thick {
@@ -355,7 +355,7 @@ fn lay_out(spec: &SiteSpec, b: &mut Builder) -> (Floor, Vec<Npc>, (i32, i32), (i
     for k in 0..(3 + 2 * s) {
         let Some(&(x, y)) = b.pick(&streets).as_ref() else { break };
         if npcs.iter().any(|n| (n.x, n.y) == (x, y)) { continue; }
-        npcs.push(Npc { name: person_name(&race, spec.seed ^ (0xF0 + k as u64)), role: Role::Townsfolk, x, y, z: 0, post: (x, y), race: race.clone(), female: k % 2 == 0, of: spec.people.clone(), home: spec.id });
+        npcs.push(Npc { name: person_name(&race, spec.seed ^ (0xF0 + k as u64)), role: Role::Townsfolk, x, y, z: 0, post: (x, y), race: race.clone(), female: k % 2 == 0, of: spec.people.clone(), home: spec.id, met: Default::default() });
     }
     let entry = (main_gate.0, main_gate.1 - thick - 1);
     (p.f, npcs, grate, entry)

@@ -21,6 +21,7 @@ pub mod land;
 pub mod living;
 pub mod map;
 pub mod npc;
+pub mod people;
 pub mod quest;
 pub mod site;
 pub mod surface;

@@ -94,4 +94,7 @@ pub struct Npc {
     /// The town they belong to (0: the land's own, a hermit or a farmer).
     #[serde(default)]
     pub home: u32,
+    /// What they remember of the adventurer.
+    #[serde(default)]
+    pub met: super::people::Met,
 }

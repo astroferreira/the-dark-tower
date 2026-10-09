@@ -211,6 +211,25 @@ everywhere).
   founded or a lord changes, the history replays the same, 2+ towns sing, the legends have the
   hero's page of deeds).
 
+## People (`people.rs`; card adv-personas)
+- Every townsperson has a persona rolled from their name and town (`people::persona`, the same
+  `Persona::roll` as the history's figures) and a temper read off its strongest facets
+  (`Temper`: kindly, grasping, gruff, timid, cheerful, gloomy, proud, curious, plain). Their
+  greeting (`people::greeting`), their prices (`price_factor`: grasping 1.2, proud 1.1, kindly
+  0.9, timid 0.95; a friend 0.9 more; each wrong +25%), their refusal (`refusal`) and the Name
+  topic (looks, character, likes) follow it. A timid priest heals a famous hero (3+ towns sing
+  of them) for nothing.
+- `Npc.met` (`people::Met`: times met, last meeting, deeds done for them, wrongs): greetings
+  change for one met before, met long ago, a friend ("We still speak of the beast of the Bat
+  Pit"), or one who wronged them; a quest reported is remembered by its giver. It is kept with
+  the land's chunks. A stranger famous in songs is greeted as such.
+- Companions have tempers too (rolled from their name) and `morale`: a day mends it (kindly and
+  cheerful more), being badly hurt lowers it (timid more), a boss slain raises it, grasping ones
+  want 8 x level gold every ten days; at 0 they leave with a line in their temper.
+- Tests: `people::tests::people_differ_and_remember` (12 priests, 3+ greetings and 2+ terms;
+  a deed named), `land::tests::townsfolk_remember_the_hero` (met twice, the deed named, kept
+  after leaving and coming back).
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the

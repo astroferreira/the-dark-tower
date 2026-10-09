@@ -38,7 +38,48 @@ pub enum Effect {
 /// A sellsword hired at an inn (DF's companions): follows the adventurer between floors and
 /// places, strikes what is beside them, and can die.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Companion { pub name: String, pub race: String, pub hp: i32, pub max_hp: i32, pub x: i32, pub y: i32, pub energy: i32, pub left: bool, pub kills: u32, pub struck_at: u64 }
+pub struct Companion {
+    pub name: String, pub race: String, pub hp: i32, pub max_hp: i32, pub x: i32, pub y: i32, pub energy: i32, pub left: bool, pub kills: u32, pub struck_at: u64,
+    /// Their heart for the road (0 and they leave): fights won raise it, wounds and unpaid
+    /// wages lower it; a day's rest mends it.
+    #[serde(default = "full_morale")]
+    pub morale: i32,
+    /// The day their wage was last paid (the grasping ones want it every ten days).
+    #[serde(default)]
+    pub paid_day: u64,
+}
+
+fn full_morale() -> i32 { 100 }
+
+impl Companion {
+    /// Who they are: their temper (rolled like any townsperson's).
+    pub fn temper(&self) -> super::people::Temper {
+        super::people::temper(&crate::persona::Persona::roll(&self.race, None, crate::persona::seed_of(&self.name, 0xC0A1)))
+    }
+    /// What they say when something happens to them, in their temper's words.
+    pub fn line(&self, what: &str) -> String {
+        use super::people::Temper as T;
+        let t = self.temper();
+        let s = match (what, t) {
+            ("hurt", T::Timid) => "This is madness! We will die here!",
+            ("hurt", T::Gruff) | ("hurt", T::Proud) => "Is that all you have?",
+            ("hurt", T::Gloomy) => "I knew it would end like this.",
+            ("hurt", _) => "I'm bleeding, watch my back!",
+            ("won", T::Cheerful) | ("won", T::Kind) => "Ha! We did it! Drinks are on you tonight.",
+            ("won", T::Greedy) => "Now that is worth a bonus, wouldn't you say?",
+            ("won", T::Gloomy) => "We live another day. Don't get used to it.",
+            ("won", _) => "Well fought.",
+            ("pay", T::Greedy) => "No coin, no blade. That was the bargain.",
+            ("pay", _) => "My wages are late.",
+            ("leave", T::Timid) => "I can't do this any more. I'm sorry. I'm going home.",
+            ("leave", T::Greedy) => "Find another fool to bleed for you. I'm done.",
+            ("leave", T::Proud) => "I will not follow one who leads like this. Farewell.",
+            ("leave", _) => "I've had enough of this road. Good luck to you.",
+            _ => "",
+        };
+        format!("{}: \"{}\"", self.name, s)
+    }
+}
 
 impl Companion {
     pub fn attack(&self, level: u32) -> i32 { 10 + level as i32 }
@@ -904,6 +945,11 @@ impl Game {
             let kind = match creature { Some(c) => super::living::DeedKind::BeastSlain(c), None => super::living::DeedKind::BossSlain };
             self.chronicle(kind, format!("{} slew {}", who, dead.name), format!("{} slew {} in {}.", who, dead.name, place));
         }
+        if dead.boss && self.companion.is_some() {
+            if let Some(c) = self.companion.as_mut() { c.morale = (c.morale + 25).min(100); }
+            let line = self.companion.as_ref().unwrap().line("won");
+            self.say(Tone::Talk, line);
+        }
         if dead.boss && self.place().map_or(false, |p| p.spec.kind == SiteKind::DarkFortress) && !self.victory {
             self.victory = true;
             let who = self.hero.name.clone();
@@ -984,8 +1030,26 @@ impl Game {
             if self.hero.fed == 0 && self.turn / 100 % 50 == 0 { self.say(Tone::Danger, "You are hungry, and you will not heal until you eat (F eats, or click food in the pack)."); }
         }
         if self.here.is_some() { self.monsters_act(cost); }
+        if before * 100 / super::land::DAY != self.turn / super::land::DAY { self.companion_day(); }
         self.land_tick(before * 100);
         self.corpses.values_mut().for_each(|v| v.retain(|c| self.turn < c.turn + 3000));
+    }
+
+    /// A day on the road with a companion: their heart mends a little; the grasping ones want
+    /// their wage every ten days; one whose heart is gone leaves.
+    fn companion_day(&mut self) {
+        let Some(c) = self.companion.clone() else { return };
+        let day = self.turn / super::land::DAY;
+        let t = c.temper();
+        let mut morale = (c.morale + if matches!(t, super::people::Temper::Kind | super::people::Temper::Cheerful) { 10 } else { 5 }).min(100);
+        let mut paid = c.paid_day;
+        if t == super::people::Temper::Greedy && day >= c.paid_day + 10 {
+            let wage = 8 * self.hero.level.max(1);
+            if self.hero.take_gold(wage) { paid = day; self.say(Tone::Talk, format!("{} counts out {} gold of wages and pockets it.", c.name, wage)); }
+            else { morale -= 50; let l = c.line("pay"); self.say(Tone::Talk, l); }
+        }
+        if let Some(cc) = self.companion.as_mut() { cc.morale = morale; cc.paid_day = paid; }
+        if morale <= 0 { let l = c.line("leave"); self.say(Tone::Danger, l); self.say(Tone::Info, format!("{} leaves you.", c.name)); self.companion = None; }
     }
 
     fn monsters_act(&mut self, cost: i32) {
@@ -1094,6 +1158,15 @@ impl Game {
             if dmg > 0 {
                 self.effects.push(Effect::Number { x: c.x, y: c.y, z, value: dmg, tone: Tone::Hurt });
                 let dead = { let cc = self.companion.as_mut().unwrap(); cc.hp -= dmg; cc.hp <= 0 };
+                if !dead {
+                    let low = self.companion.as_ref().map_or(false, |cc| cc.hp * 4 < cc.max_hp);
+                    if low && self.rng.gen_bool(0.25) {
+                        let timid = self.companion.as_ref().map_or(false, |cc| cc.temper() == super::people::Temper::Timid);
+                        if let Some(cc) = self.companion.as_mut() { cc.morale -= if timid { 25 } else { 12 }; }
+                        let line = self.companion.as_ref().unwrap().line("hurt");
+                        self.say(Tone::Talk, line);
+                    }
+                }
                 if dead {
                     let name = c.name.clone();
                     self.say(Tone::Death, format!("{} falls to {}. You fight on alone.", name, m.the()));

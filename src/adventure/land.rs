@@ -757,4 +757,27 @@ mod tests {
         let f = g.floor().unwrap();
         assert!(f.items.get(&(g.x, g.y)).map_or(false, |v| v.iter().any(|i| i.id == "rope")), "the rope lies where it was dropped");
     }
+
+    /// A townsperson remembers: met once, they greet one as known; done a deed for, they name it.
+    #[test]
+    fn townsfolk_remember_the_hero() {
+        let mut g = game();
+        g.land_at((3, 2), None);
+        let k = g.place().unwrap().npcs.iter().position(|n| n.role == crate::adventure::actor::Role::Lord).expect("a lord");
+        crate::adventure::npc::greet(&mut g, k);
+        g.talk = None;
+        assert_eq!(g.place().unwrap().npcs[k].met.times, 1);
+        g.place_mut().unwrap().npcs[k].met.helped.push("Slay the beast of the Bat Pit".into());
+        crate::adventure::npc::greet(&mut g, k);
+        let said = g.talk.as_ref().unwrap().said.clone();
+        assert!(said.contains("Tess") && said.to_lowercase().contains("beast of the bat pit"), "{}", said);
+        // And it is kept with the land when one walks away and back.
+        g.talk = None;
+        g.store_land();
+        let name = g.place().unwrap().npcs[k].name.clone();
+        g.to_world_map();
+        g.land_at((3, 2), None);
+        let n = g.place().unwrap().npcs.iter().find(|n| n.name == name).unwrap();
+        assert_eq!(n.met.times, 2);
+    }
 }
