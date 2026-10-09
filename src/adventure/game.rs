@@ -1,0 +1,1024 @@
+//! The adventure's state and its rules: one adventurer, the world's places (realized when first
+//! entered and kept), time in ticks (a step at walking pace is 100), the log. Turn-based as DF's
+//! adventure mode: each act costs time and every creature acts when its banked time allows.
+//! Bump to act (Tibia and every roguelike): into a monster to strike it, a door to open it (with
+//! its key), a chest to open it, a lever to pull it, a person to talk to them.
+
+use super::actor::Monster;
+use super::data::data;
+use super::hero::{Hero, Skill, Slot};
+use super::item::{stow, Item};
+use super::map::{Feature, Ground, Wall, DIRS8};
+use super::site::{realize, Place, SiteKind, SiteSpec};
+use super::world::WorldInfo;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use std::collections::HashMap;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tone { Info, Hit, Hurt, Loot, Level, Talk, Quest, Danger, Death }
+
+#[derive(Clone, Debug)]
+pub struct Line { pub turn: u64, pub text: String, pub tone: Tone }
+
+/// Something for the window to show for a moment.
+#[derive(Clone, Debug)]
+pub enum Effect {
+    /// A number over a cell (damage red, healing green, mana blue).
+    Number { x: i32, y: i32, z: usize, value: i32, tone: Tone },
+    Missile { from: (i32, i32), to: (i32, i32), z: usize, kind: String },
+    /// Cells struck by a spell or a breath.
+    Area { cells: Vec<(i32, i32)>, z: usize, kind: String },
+    Speech { x: i32, y: i32, z: usize, text: String },
+    Puff { x: i32, y: i32, z: usize },
+}
+
+/// A body left where something fell (drawn until it rots).
+#[derive(Clone, Debug)]
+pub struct Corpse { pub x: i32, pub y: i32, pub z: usize, pub def: String, pub name: String, pub turn: u64 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Move(i32, i32),
+    Wait,
+    /// Rest until healed or something comes into sight.
+    Rest,
+    PickUp,
+    Drop(usize),
+    Equip(usize),
+    Unequip(Slot),
+    /// Eat, drink, light, read.
+    UseItem(usize),
+    /// Strike or shoot at a monster by uid.
+    Attack(u32),
+    /// Cast a known spell (by index in `hero.spells`) at a monster (or the nearest).
+    Cast(usize, Option<u32>),
+    /// Take one of a quest chest's rewards (the chest at the hero's side).
+    Choose(usize),
+    /// On the world map: walk a tile.
+    Travel(i32, i32),
+    /// On the world map: go into the place on this tile.
+    Enter,
+    /// Take the stairs, ladder, hole, rope or way out underfoot.
+    Climb,
+    /// On the world map: go into this place (several may share a tile).
+    EnterSite(u32),
+}
+
+#[derive(Clone, Debug)]
+pub struct Game {
+    pub seed: u64,
+    pub hero: Hero,
+    pub world: WorldInfo,
+    pub sites: Vec<SiteSpec>,
+    pub places: HashMap<u32, Place>,
+    /// Inside a place: its id; None on the world map.
+    pub here: Option<u32>,
+    pub z: usize,
+    pub x: i32,
+    pub y: i32,
+    pub tile: (usize, usize),
+    pub turn: u64,
+    pub log: Vec<Line>,
+    pub effects: Vec<Effect>,
+    pub corpses: HashMap<u32, Vec<Corpse>>,
+    /// Places the adventurer knows of (heard of or seen).
+    pub known: Vec<u32>,
+    /// Slain monsters to come back (place, monster as it was, turn slain).
+    pub respawn: Vec<(u32, Monster, u64)>,
+    pub quests: Vec<super::quest::Quest>,
+    /// A conversation under way (with the person at this index of the place's npcs).
+    pub talk: Option<super::npc::Talk>,
+    /// The quest chests already chosen from (Tibia: one reward each).
+    pub chosen: Vec<u32>,
+    /// Facing (for waves and the figure).
+    pub facing: (i32, i32),
+    pub rng: ChaCha8Rng,
+    /// Visible cells of the current floor (recomputed after each act).
+    pub sight: Vec<bool>,
+    /// What the adventurer is told on the screen when something must be answered (a death).
+    pub banner: Option<(String, String)>,
+    /// Statistics for the tests and the bot.
+    pub stats: Stats,
+    /// Named enemies slain (bosses do not come back, and no one asks for them again).
+    pub slain: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32 }
+
+impl Game {
+    pub fn new(world: WorldInfo, sites: Vec<SiteSpec>, hero: Hero, start_town: u32, seed: u64) -> Game {
+        let mut g = Game {
+            seed, hero, world, sites, places: HashMap::new(), here: None, z: 0, x: 0, y: 0, tile: (0, 0), turn: 0, log: Vec::new(), effects: Vec::new(),
+            corpses: HashMap::new(), known: Vec::new(), respawn: Vec::new(), quests: Vec::new(), talk: None, chosen: Vec::new(), facing: (0, 1),
+            rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(),
+        };
+        g.hero.temple = start_town;
+        if let Some(s) = g.site(start_town) { g.tile = s.tile; }
+        // They know the towns and what lies near their home.
+        let home = g.tile;
+        let known: Vec<u32> = g.sites.iter().filter(|s| s.kind == SiteKind::Town || ((s.tile.0 as i32 - home.0 as i32).abs() + (s.tile.1 as i32 - home.1 as i32).abs()) <= 4).map(|s| s.id).collect();
+        g.known = known;
+        g.enter_site(start_town, true);
+        // Wake in the temple.
+        g.wake_at_temple();
+        let town = g.site(start_town).map(|s| s.name.clone()).unwrap_or_default();
+        g.say(Tone::Level, format!("{} wakes in the temple of {}. The world is wide, and you are nobody yet: a club, a patched tunic, twenty coins. Below the square, the townsfolk say, the sewers are full of rats.", g.hero.name, town));
+        g
+    }
+
+    pub fn site(&self, id: u32) -> Option<&SiteSpec> { self.sites.iter().find(|s| s.id == id) }
+    pub fn place(&self) -> Option<&Place> { self.here.and_then(|id| self.places.get(&id)) }
+    pub fn place_mut(&mut self) -> Option<&mut Place> { let id = self.here?; self.places.get_mut(&id) }
+    pub fn floor(&self) -> Option<&super::map::Floor> { self.place().and_then(|p| p.floors.get(self.z)) }
+    pub fn say(&mut self, tone: Tone, text: impl Into<String>) { let t = text.into(); self.log.push(Line { turn: self.turn, text: t, tone }); if self.log.len() > 400 { self.log.drain(0..100); } }
+    pub fn take_effects(&mut self) -> Vec<Effect> { std::mem::take(&mut self.effects) }
+
+    /// A roll seeded by the act (DF reseeds from the actors and the tick so a reload repeats it).
+    fn roll(&mut self, salt: u64) -> ChaCha8Rng { let s = self.rng.gen::<u64>() ^ self.turn.wrapping_mul(0x9E37_79B9) ^ salt; ChaCha8Rng::seed_from_u64(s) }
+
+    // -----------------------------------------------------------------------------------------
+    // Places
+
+    pub fn enter_site(&mut self, id: u32, quiet: bool) {
+        if !self.places.contains_key(&id) {
+            let Some(spec) = self.site(id).cloned() else { return };
+            let p = realize(&spec);
+            self.places.insert(id, p);
+        }
+        // Bring back what was slain long ago (Tibia's respawns; bosses stay dead).
+        let turn = self.turn;
+        let back: Vec<Monster> = self.respawn.iter().filter(|(p, m, t)| *p == id && !m.boss && turn > t + 12_000).map(|(_, m, _)| m.clone()).collect();
+        self.respawn.retain(|(p, m, t)| !(*p == id && !m.boss && turn > t + 12_000));
+        if let Some(p) = self.places.get_mut(&id) {
+            for mut m in back { m.hp = m.max_hp; m.x = m.home.0; m.y = m.home.1; m.awake = false; p.monsters.push(m); }
+        }
+        let p = &self.places[&id];
+        self.here = Some(id);
+        self.z = 0;
+        // One step inside the way in (standing on the way out, one would have to step off and
+        // back on to leave).
+        let f = &p.floors[0];
+        let (ex, ey) = p.entry;
+        let inside = [(0, -1), (-1, -1), (1, -1), (-1, 0), (1, 0), (0, 1)].iter().map(|(dx, dy)| (ex + dx, ey + dy)).find(|&(x, y)| f.walkable(x, y) && f.at(x, y).feature == Feature::None).unwrap_or((ex, ey));
+        self.x = inside.0;
+        self.y = inside.1;
+        if !self.known.contains(&id) { self.known.push(id); }
+        if self.site(id).map_or(false, |s| s.kind != SiteKind::Wilds) { self.stats.sites_entered += 1; }
+        if !quiet {
+            let (name, kind, cause, floor) = (p.spec.name.clone(), p.spec.kind, p.spec.cause.clone(), p.floors[0].name.clone());
+            self.say(Tone::Info, format!("You come to {}{} ({}).{}", name, if kind == SiteKind::Town { String::new() } else { format!(", {}", kind.word()) }, floor, if cause.is_empty() { String::new() } else { format!(" {}", cause) }));
+        }
+        self.look();
+    }
+
+    fn wake_at_temple(&mut self) {
+        let t = self.hero.temple;
+        if self.here != Some(t) { self.enter_site(t, true); }
+        self.z = 0;
+        if let Some(p) = self.places.get(&t) {
+            let f = &p.floors[0];
+            if let Some((ax, ay)) = f.find(|x| matches!(x, Feature::Altar)) {
+                // Beside the altar.
+                for (dx, dy) in [(0, 1), (0, 2), (1, 1), (-1, 1)] { if f.walkable(ax + dx, ay + dy) { self.x = ax + dx; self.y = ay + dy; break; } }
+            }
+        }
+        if let Some(s) = self.site(t) { self.tile = s.tile; }
+        self.look();
+    }
+
+    fn leave_site(&mut self) {
+        let name = self.place().map(|p| p.spec.name.clone()).unwrap_or_default();
+        self.here = None;
+        self.talk = None;
+        self.say(Tone::Info, format!("You leave {} and take to the road.", name));
+    }
+
+    /// What the adventurer sees now.
+    pub fn look(&mut self) {
+        let Some(id) = self.here else { return };
+        let r = { let f = &self.places[&id].floors[self.z]; if f.outdoor { 12 } else { self.hero.light() + 1 } };
+        let (x, y) = (self.x, self.y);
+        let p = self.places.get_mut(&id).unwrap();
+        let f = &mut p.floors[self.z];
+        let vis = f.sight(x, y, r);
+        for (k, v) in vis.iter().enumerate() { if *v { f.seen[k] = true; } }
+        // Lit places (sconces, braziers, fires) are seen when in line of sight, however far.
+        self.sight = vis;
+    }
+
+    pub fn visible(&self, x: i32, y: i32) -> bool {
+        self.floor().map_or(false, |f| f.inside(x, y) && self.sight.get(y as usize * f.w + x as usize).copied().unwrap_or(false))
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Acting
+
+    /// Do `a`; returns whether time passed.
+    pub fn act(&mut self, a: Action) -> bool {
+        if self.banner.is_some() { self.banner = None; }
+        let cost = match a {
+            Action::Travel(dx, dy) => return self.travel(dx, dy),
+            Action::Enter => return self.enter_here(),
+            Action::EnterSite(id) => { if self.here.is_none() && self.site(id).map_or(false, |s| s.tile == self.tile) { self.enter_site(id, false); return true; } return false; }
+            Action::Move(dx, dy) => self.step(dx, dy),
+            Action::Wait => Some(100),
+            Action::Rest => return self.rest(),
+            Action::PickUp => self.pick_up(),
+            Action::Drop(k) => { if k < self.hero.pack.len() { let it = self.hero.pack.remove(k); self.say(Tone::Info, format!("You drop {}.", it.describe())); let (x, y, z) = (self.x, self.y, self.z); if let Some(p) = self.place_mut() { p.floors[z].drop_item(x, y, it); } Some(50) } else { None } }
+            Action::Equip(k) => match self.hero.equip(k) { Ok(l) => { self.say(Tone::Info, l); Some(60) } Err(e) => { self.say(Tone::Info, e); None } },
+            Action::Unequip(s) => self.hero.unequip(s).map(|l| { self.say(Tone::Info, l); 60 }),
+            Action::UseItem(k) => self.use_item(k),
+            Action::Attack(uid) => self.attack(uid),
+            Action::Cast(k, t) => self.cast(k, t),
+            Action::Choose(k) => self.choose(k),
+            Action::Climb => self.climb(),
+        };
+        match cost { Some(c) => { self.pass(c); true } None => false }
+    }
+
+    fn monster_at(&self, x: i32, y: i32) -> Option<usize> {
+        let p = self.place()?;
+        p.monsters.iter().position(|m| m.z == self.z && m.x == x && m.y == y && m.hp > 0)
+    }
+    fn npc_at(&self, x: i32, y: i32) -> Option<usize> {
+        let p = self.place()?;
+        p.npcs.iter().position(|n| n.z == self.z && n.x == x && n.y == y)
+    }
+
+    fn step(&mut self, dx: i32, dy: i32) -> Option<i32> {
+        self.facing = (dx, dy);
+        let (nx, ny) = (self.x + dx, self.y + dy);
+        if let Some(k) = self.monster_at(nx, ny) {
+            let uid = self.place().unwrap().monsters[k].uid;
+            return self.melee(uid);
+        }
+        if let Some(k) = self.npc_at(nx, ny) { super::npc::greet(self, k); return None; }
+        let z = self.z;
+        let f = self.floor()?;
+        if !f.inside(nx, ny) { return None; }
+        // No squeezing between two walls on a diagonal.
+        if dx != 0 && dy != 0 && !f.at(self.x + dx, self.y).walkable() && !f.at(self.x, self.y + dy).walkable() { return None; }
+        let t = f.at(nx, ny).clone();
+        match &t.feature {
+            Feature::Door { open: false, lock } => {
+                let lock = *lock;
+                if lock > 0 {
+                    let has = self.hero.pack.iter().any(|i| i.id == "key" && i.tag == lock);
+                    if !has { self.say(Tone::Info, "The door is locked. Somewhere there is a key."); return None; }
+                    self.say(Tone::Info, "You turn the key in the lock.");
+                }
+                if let Some(p) = self.place_mut() { p.floors[z].at_mut(nx, ny).feature = Feature::Door { open: true, lock: 0 }; }
+                self.look();
+                return Some(60);
+            }
+            Feature::Gate { open: false, .. } => { self.say(Tone::Info, "A portcullis bars the way. A lever must raise it."); return None; }
+            Feature::Lever { id, pulled } => {
+                let (id, pulled) = (*id, *pulled);
+                if let Some(p) = self.place_mut() {
+                    let f = &mut p.floors[z];
+                    f.at_mut(nx, ny).feature = Feature::Lever { id, pulled: !pulled };
+                    for t in f.tiles.iter_mut() { if let Feature::Gate { lever, open } = &mut t.feature { if *lever == id { *open = !pulled; } } }
+                }
+                self.say(Tone::Info, if pulled { "You push the lever back. Somewhere a portcullis grinds down." } else { "You pull the lever. Somewhere a portcullis grinds up." });
+                self.look();
+                return Some(80);
+            }
+            Feature::Chest { opened: false, .. } => { self.open_chest(nx, ny); return Some(80); }
+            Feature::Sarcophagus { opened: false, .. } => { self.open_sarcophagus(nx, ny); return Some(150); }
+            Feature::QuestChest { taken, choices, .. } => {
+                if *taken || self.chosen.contains(&self.here.unwrap_or(0)) { self.say(Tone::Info, "The chest is empty."); }
+                else {
+                    let list: Vec<String> = choices.iter().enumerate().map(|(k, c)| format!("{} {}", k + 1, c.describe())).collect();
+                    self.say(Tone::Quest, format!("An iron-bound chest. You may take one thing of what lies in it: {}. (Press 1-{} beside it.)", list.join("; "), choices.len()));
+                }
+                return None;
+            }
+            Feature::Plinth { item: Some(it) } => {
+                let it = it.clone();
+                self.say(Tone::Loot, format!("You lift {} from its plinth.{}", it.describe(), it.story.as_ref().map(|s| format!(" {}", s)).unwrap_or_default()));
+                if let Some(p) = self.place_mut() { p.floors[z].at_mut(nx, ny).feature = Feature::Plinth { item: None }; }
+                super::quest::on_found(self, &it);
+                stow(&mut self.hero.pack, it);
+                return Some(100);
+            }
+            Feature::Sign { text } => { let t = text.clone(); self.say(Tone::Info, format!("The sign reads: \"{}\"", t)); return None; }
+            Feature::Well | Feature::Fountain => { self.say(Tone::Info, "Cold, clear water. You drink."); return Some(100); }
+            Feature::Altar if self.place().map_or(false, |p| p.spec.kind == SiteKind::Town) => { self.say(Tone::Info, "The altar of the temple. The priest is near."); return None; }
+            _ => {}
+        }
+        if !t.walkable() {
+            match t.wall { Wall::None => {} _ => {} }
+            return None;
+        }
+        self.x = nx;
+        self.y = ny;
+        let mut cost = self.hero.step_time() * if dx != 0 && dy != 0 { 14 } else { 10 } / 10;
+        if matches!(t.ground, Ground::Shallows | Ground::Mud) { cost = cost * 3 / 2; }
+        if matches!(t.feature, Feature::Web) { cost *= 2; self.say(Tone::Info, "You tear through a web."); if let Some(p) = self.place_mut() { p.floors[z].at_mut(nx, ny).feature = Feature::None; } }
+        if let Feature::Trap { armed: true, damage } = t.feature {
+            let d = damage;
+            self.say(Tone::Hurt, "Click. Darts hiss from the walls!");
+            self.hurt(d, "a dart trap");
+            if let Some(p) = self.place_mut() { p.floors[z].at_mut(nx, ny).feature = Feature::Trap { armed: false, damage: d }; }
+        }
+        // Floors and the way out.
+        match t.feature {
+            Feature::StairsDown | Feature::LadderDown | Feature::Hole | Feature::Grate => { self.change_floor(1, &t.feature); }
+            Feature::StairsUp | Feature::LadderUp => { self.change_floor(-1, &t.feature); }
+            Feature::RopeSpot => {
+                if self.hero.count("rope") > 0 { self.say(Tone::Info, "You climb your rope back up."); self.change_floor(-1, &t.feature); }
+                else { self.say(Tone::Info, "The hole you fell through is above you. Without a rope there is no climbing it; find another way."); }
+            }
+            Feature::Exit => { self.leave_site(); }
+            _ => {}
+        }
+        // Things lying here.
+        if let Some(f) = self.floor() { if let Some(items) = f.items.get(&(self.x, self.y)) { if !items.is_empty() {
+            let list: Vec<String> = items.iter().take(4).map(|i| i.describe()).collect();
+            self.say(Tone::Loot, format!("Here lies {}{}. (G to take.)", list.join(", "), if items.len() > 4 { ", ..." } else { "" }));
+        } } }
+        self.look();
+        Some(cost)
+    }
+
+    fn climb(&mut self) -> Option<i32> {
+        let f = self.floor()?;
+        let feat = f.at(self.x, self.y).feature.clone();
+        match feat {
+            Feature::StairsDown | Feature::LadderDown | Feature::Hole | Feature::Grate => { self.change_floor(1, &feat); Some(100) }
+            Feature::StairsUp | Feature::LadderUp => { self.change_floor(-1, &feat); Some(100) }
+            Feature::RopeSpot if self.hero.count("rope") > 0 => { self.say(Tone::Info, "You climb your rope back up."); self.change_floor(-1, &feat); Some(100) }
+            Feature::RopeSpot => { self.say(Tone::Info, "Without a rope there is no climbing back up."); None }
+            Feature::Exit => { self.leave_site(); Some(100) }
+            _ => { self.say(Tone::Info, "There is no way up or down here."); None }
+        }
+    }
+
+    fn change_floor(&mut self, dz: i32, how: &Feature) {
+        let n = self.place().map_or(0, |p| p.floors.len());
+        let nz = self.z as i32 + dz;
+        if nz < 0 || nz as usize >= n { return; }
+        self.z = nz as usize;
+        let name = self.floor().map(|f| f.name.clone()).unwrap_or_default();
+        let verb = match how { Feature::Hole => "You drop through the hole", Feature::Grate => "You lift the grate and climb down", Feature::LadderDown => "You climb down the ladder", Feature::LadderUp | Feature::RopeSpot => "You climb up", Feature::StairsUp => "You go up the stairs", _ => "You go down the stairs" };
+        self.say(Tone::Info, format!("{} to {}.", verb, name));
+        if dz > 0 { self.stats.floors_seen = self.stats.floors_seen.max(self.z as u32 + 1); }
+        // Arriving: wherever one stands must be open (the matching way up or down is here).
+        self.look();
+    }
+
+    fn open_chest(&mut self, x: i32, y: i32) {
+        let z = self.z;
+        let Some(p) = self.place_mut() else { return };
+        let Feature::Chest { items, .. } = std::mem::replace(&mut p.floors[z].at_mut(x, y).feature, Feature::Chest { items: Vec::new(), opened: true, lock: 0, quest: 0 }) else { return };
+        self.stats.chests += 1;
+        if items.is_empty() { self.say(Tone::Info, "The chest is empty."); return; }
+        let list: Vec<String> = items.iter().map(|i| i.describe()).collect();
+        self.say(Tone::Loot, format!("You open the chest: {}.", list.join(", ")));
+        for it in items { if it.id == "gold" { self.stats.gold_found += it.count; } stow(&mut self.hero.pack, it); }
+    }
+
+    fn open_sarcophagus(&mut self, x: i32, y: i32) {
+        let z = self.z;
+        let tier = self.place().map_or(1, |p| p.spec.tier);
+        let mut r = self.roll(0x5A2C);
+        let Some(p) = self.place_mut() else { return };
+        let Feature::Sarcophagus { items, .. } = std::mem::replace(&mut p.floors[z].at_mut(x, y).feature, Feature::Sarcophagus { items: Vec::new(), opened: true }) else { return };
+        self.say(Tone::Info, "You heave the lid aside.");
+        for it in items { self.say(Tone::Loot, format!("Among the grave goods: {}.", it.describe())); stow(&mut self.hero.pack, it); }
+        // The dead do not like it.
+        if r.gen_bool(0.35) {
+            let def = if tier >= 3 { "mummy" } else { "skeleton" };
+            if let Some(p) = self.place_mut() {
+                let uid = p.next_uid; p.next_uid += 1;
+                let mut m = Monster::new(uid, def, x, y, z);
+                m.awake = true;
+                let (mx, my) = (x, y);
+                // It rises beside its coffin.
+                let f = &p.floors[z];
+                let spot = DIRS8.iter().map(|(dx, dy)| (mx + dx, my + dy)).find(|&(a, b)| f.walkable(a, b));
+                if let Some((a, b)) = spot { m.x = a; m.y = b; m.home = (a, b); p.monsters.push(m); }
+            }
+            self.say(Tone::Danger, format!("Something stirs in the sarcophagus: a {} rises!", if tier >= 3 { "mummy" } else { "skeleton" }));
+        }
+    }
+
+    fn pick_up(&mut self) -> Option<i32> {
+        let (x, y, z) = (self.x, self.y, self.z);
+        let items = self.place_mut()?.floors[z].items.remove(&(x, y))?;
+        if items.is_empty() { return None; }
+        let list: Vec<String> = items.iter().map(|i| i.describe()).collect();
+        self.say(Tone::Loot, format!("You take {}.", list.join(", ")));
+        for it in items { if it.id == "gold" { self.stats.gold_found += it.count; } super::quest::on_found(self, &it); stow(&mut self.hero.pack, it); }
+        Some(50)
+    }
+
+    fn use_item(&mut self, k: usize) -> Option<i32> {
+        let it = self.hero.pack.get(k)?.clone();
+        let d = it.def();
+        match d.kind.as_str() {
+            "potion" => {
+                self.hero.spend(&it.id, 1);
+                if d.heal > 0 { let before = self.hero.hp; self.hero.hp = (self.hero.hp + d.heal).min(self.hero.max_hp()); let g = self.hero.hp - before; self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: g, tone: Tone::Level }); }
+                if d.mana > 0 { self.hero.mana = (self.hero.mana + d.mana).min(self.hero.max_mana()); self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: d.mana, tone: Tone::Info }); }
+                self.say(Tone::Info, format!("You drink {}. Aaaah...", super::item::article(&d.name)));
+                Some(60)
+            }
+            "food" => {
+                if self.hero.fed > 6000 { self.say(Tone::Info, "You are full."); return None; }
+                self.hero.spend(&it.id, 1);
+                self.hero.fed += d.food;
+                self.say(Tone::Info, format!("You eat {}. Munch.", super::item::article(&d.name)));
+                Some(80)
+            }
+            "light" => {
+                self.hero.spend(&it.id, 1);
+                self.hero.torch += d.burn;
+                self.say(Tone::Info, "You light a torch.");
+                self.look();
+                Some(50)
+            }
+            _ => match d.slot { Some(_) => { match self.hero.equip(k) { Ok(l) => { self.say(Tone::Info, l); Some(60) } Err(e) => { self.say(Tone::Info, e); None } } } None => { self.say(Tone::Info, format!("You look at {}: {}.", it.describe(), it.stats())); None } },
+        }
+    }
+
+    fn rest(&mut self) -> bool {
+        if self.here.is_none() { return false; }
+        if self.hero.fed == 0 { self.say(Tone::Danger, "You are too hungry to recover. Eat something first."); return false; }
+        let mut n = 0;
+        while n < 60 && (self.hero.hp < self.hero.max_hp() || self.hero.mana < self.hero.max_mana()) {
+            if self.monsters_in_sight() > 0 { if n == 0 { self.say(Tone::Danger, "You cannot rest with enemies near."); } break; }
+            self.pass(100);
+            n += 1;
+            if self.hero.hp <= 0 || self.here.is_none() { break; }
+        }
+        if n > 0 { self.say(Tone::Info, format!("You rest a while ({} turns).", n)); }
+        n > 0
+    }
+
+    pub fn monsters_in_sight(&self) -> usize {
+        let Some(p) = self.place() else { return 0 };
+        p.monsters.iter().filter(|m| m.z == self.z && m.hp > 0 && self.visible(m.x, m.y)).count()
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Fighting
+
+    fn find_monster(&self, uid: u32) -> Option<usize> { self.place()?.monsters.iter().position(|m| m.uid == uid && m.hp > 0) }
+
+    fn attack(&mut self, uid: u32) -> Option<i32> {
+        let k = self.find_monster(uid)?;
+        let m = &self.place()?.monsters[k];
+        let (mx, my) = (m.x, m.y);
+        let adjacent = (mx - self.x).abs() <= 1 && (my - self.y).abs() <= 1 && m.z == self.z;
+        let w = self.hero.weapon().cloned();
+        let ranged = w.as_ref().map_or(false, |w| w.def().range > 0);
+        if adjacent && !(ranged && w.as_ref().map_or(false, |w| w.def().ammo.is_some() || w.def().kind == "wand")) { return self.melee(uid); }
+        if !ranged { self.say(Tone::Info, "Too far to strike. Walk up to it, or take a bow."); return None; }
+        self.shoot(uid)
+    }
+
+    /// Damage words by the share of the foe's life a blow took.
+    fn wound_words(share: f32, skill: Skill) -> (&'static str, &'static str) {
+        let verb = match skill { Skill::Sword => ["nick", "slash", "gash", "cleave through"], Skill::Axe => ["nick", "hack", "chop deep into", "split"], Skill::Club => ["bruise", "bash", "smash", "crush"], Skill::Distance => ["graze", "hit", "pierce", "skewer"], Skill::Magic => ["sear", "burn", "blast", "engulf"], _ => ["punch", "hit", "pummel", "batter"] };
+        let mark = ["", "", ", tearing the muscle", ", and something breaks"];
+        let k = if share < 0.12 { 0 } else if share < 0.3 { 1 } else if share < 0.55 { 2 } else { 3 };
+        (verb[k], mark[k])
+    }
+
+    fn body_part(m: &Monster, r: &mut ChaCha8Rng) -> &'static str {
+        let look = &m.def().look;
+        let parts: &[&str] = if look.starts_with("folk") { &["head", "upper body", "lower body", "left arm", "right arm", "left leg", "right leg"] }
+            else if look.contains("spider") { &["cephalothorax", "abdomen", "first leg", "third leg", "fang"] }
+            else if look.contains("bat") || look.contains("dragon") { &["head", "body", "left wing", "right wing", "tail"] }
+            else if look.contains("adder") || look.contains("serpent") { &["head", "body", "tail"] }
+            else { &["head", "body", "foreleg", "hind leg", "tail"] };
+        parts[r.gen_range(0..parts.len())]
+    }
+
+    fn melee(&mut self, uid: u32) -> Option<i32> {
+        let k = self.find_monster(uid)?;
+        let skill = self.hero.weapon_skill();
+        let (attack, wname, holy, poison, burns) = match self.hero.weapon() {
+            Some(w) if w.def().kind == "weapon" && w.def().ammo.is_none() => (w.attack(), w.short(), w.material.as_deref().and_then(|m| data().material(m)).map_or(false, |m| m.holy), w.def().poison, w.def().burns),
+            Some(w) => (4, format!("the {}", w.short()), false, 0, false),
+            None => (5, "your fists".into(), false, 0, false),
+        };
+        let sk = self.hero.skill(if skill == Skill::Magic { Skill::Fist } else { skill }) as f32;
+        let level = self.hero.level as f32;
+        let strength = (self.hero.strength as f32 / 1000.0).clamp(0.5, 2.0).powf(0.3);
+        let max = (0.085 * sk * attack as f32 + level / 5.0) * strength;
+        let mut r = self.roll(uid as u64 * 999 + 11);
+        let m = self.place()?.monsters[k].clone();
+        let mut dmg = r.gen_range(0.0..=max.max(1.0)).round() as i32;
+        let block = r.gen_range(0..=(m.defense() / 2).max(0));
+        let soak = if m.armor() > 0 { r.gen_range(m.armor() / 2..=m.armor()) } else { 0 };
+        if holy && m.def().undead { dmg = dmg * 3 / 2; }
+        self.hero.train(skill, 1).map(|l| self.say(Tone::Level, format!("You advance to {} {}.", skill.word(), l)));
+        let left = m.x < self.x;
+        self.facing = ((m.x - self.x).signum(), (m.y - self.y).signum());
+        let _ = left;
+        if dmg <= block {
+            self.say(Tone::Info, format!("You miss {}.", m.the()));
+            self.effects.push(Effect::Puff { x: m.x, y: m.y, z: m.z });
+            return Some(100);
+        }
+        let dmg = dmg - soak;
+        if dmg <= 0 {
+            self.say(Tone::Info, format!("Your blow glances off {}'s hide.", m.the()));
+            self.effects.push(Effect::Puff { x: m.x, y: m.y, z: m.z });
+            return Some(100);
+        }
+        let part = Self::body_part(&m, &mut r);
+        let (verb, mark) = Self::wound_words(dmg as f32 / m.max_hp as f32, skill);
+        let with = if wname == "your fists" { String::new() } else { format!(" with your {}", wname) };
+        self.say(Tone::Hit, format!("You {} {} in the {}{}{}! ({})", verb, m.the(), part, with, mark, dmg));
+        if poison > 0 { if let Some(p) = self.place_mut() { p.monsters[k].poisoned += poison * 3; } }
+        if burns { if let Some(p) = self.place_mut() { p.monsters[k].poisoned += 4; } }
+        self.damage_monster(k, dmg);
+        Some(100)
+    }
+
+    fn shoot(&mut self, uid: u32) -> Option<i32> {
+        let k = self.find_monster(uid)?;
+        let m = self.place()?.monsters[k].clone();
+        let w = self.hero.weapon()?.clone();
+        let d = w.def();
+        let range = d.range.max(1);
+        if (m.x - self.x).abs().max((m.y - self.y).abs()) > range { self.say(Tone::Info, format!("{} is out of range ({} cells).", cap(&m.the()), range)); return None; }
+        if !self.floor()?.clear_line((self.x, self.y), (m.x, m.y)) { self.say(Tone::Info, "Something is in the way."); return None; }
+        let mut r = self.roll(uid as u64 * 31 + 7);
+        let (attack, skill, kind, element) = if d.kind == "wand" {
+            if self.hero.mana < d.mana { self.say(Tone::Info, "You have no mana for the wand."); return None; }
+            self.hero.mana -= d.mana;
+            (w.attack(), Skill::Magic, d.element.clone().unwrap_or("fire".into()), true)
+        } else if let Some(ammo) = &d.ammo {
+            if !self.hero.spend(ammo, 1) { self.say(Tone::Info, format!("You have no {}s.", ammo)); return None; }
+            (data().item(ammo).map_or(10, |a| a.attack), Skill::Distance, ammo.clone(), false)
+        } else {
+            // Thrown: the weapon flies and lands there.
+            let thrown = w.clone();
+            let mut one = thrown.clone(); one.count = 1;
+            let slot = &mut self.hero.equipped[Slot::Hand as usize];
+            if let Some(s) = slot { if s.count > 1 { s.count -= 1; } else { *slot = None; } }
+            let (mx, my, z) = (m.x, m.y, self.z);
+            if let Some(p) = self.place_mut() { p.floors[z].drop_item(mx, my, one); }
+            (w.attack(), Skill::Distance, d.id.clone(), false)
+        };
+        self.effects.push(Effect::Missile { from: (self.x, self.y), to: (m.x, m.y), z: self.z, kind: kind.clone() });
+        let sk = self.hero.skill(skill) as f32;
+        let level = self.hero.level as f32;
+        let dmg = if element {
+            let max = attack as f32 * (1.0 + sk * 0.05);
+            r.gen_range(max * 0.66..=max).round() as i32
+        } else {
+            let hit = (0.4 + sk * 0.012 + level * 0.004).min(0.95);
+            if !r.gen_bool(hit as f64) { self.hero.train(skill, 1); self.say(Tone::Info, format!("Your {} misses {}.", kind, m.the())); return Some(100); }
+            let max = 0.09 * sk * attack as f32 + level / 5.0;
+            let soak = if m.armor() > 0 { r.gen_range(m.armor() / 2..=m.armor()) } else { 0 };
+            r.gen_range(max * 0.3..=max.max(1.0)).round() as i32 - soak
+        };
+        if let Some(l) = self.hero.train(skill, 1) { self.say(Tone::Level, format!("You advance to {} {}.", skill.word(), l)); }
+        if dmg <= 0 { self.say(Tone::Info, format!("Your {} glances off {}.", kind, m.the())); return Some(100); }
+        let part = Self::body_part(&m, &mut r);
+        let (verb, mark) = Self::wound_words(dmg as f32 / m.max_hp as f32, skill);
+        self.say(Tone::Hit, format!("You {} {} in the {}{}! ({})", verb, m.the(), part, mark, dmg));
+        self.damage_monster(k, dmg);
+        Some(100)
+    }
+
+    /// Spells: a heal, a strike at a target, a wave before the caster, a ball, a ring of blows.
+    fn cast(&mut self, k: usize, target: Option<u32>) -> Option<i32> {
+        let id = self.hero.spells.get(k)?.clone();
+        let sp = data().spell(&id)?;
+        if self.hero.level < sp.level { self.say(Tone::Info, format!("You need level {} for {}.", sp.level, sp.name)); return None; }
+        if self.hero.mana < sp.mana { self.say(Tone::Info, "You do not have enough mana."); return None; }
+        let ml = self.hero.skill(Skill::Magic) as f32;
+        let lvl = self.hero.level as f32;
+        let mut r = self.roll(0x5BE11 + k as u64);
+        let power = |p: f32, r: &mut ChaCha8Rng| (p * (1.0 + ml * 0.08 + lvl * 0.02) * r.gen_range(0.85..1.15)).round() as i32;
+        let pick_target = |g: &Game, range: i32| -> Option<usize> {
+            let p = g.place()?;
+            if let Some(t) = target { if let Some(i) = p.monsters.iter().position(|m| m.uid == t && m.hp > 0 && m.z == g.z) { return Some(i); } }
+            p.monsters.iter().enumerate().filter(|(_, m)| m.z == g.z && m.hp > 0 && g.visible(m.x, m.y) && (m.x - g.x).abs().max((m.y - g.y).abs()) <= range)
+                .min_by_key(|(_, m)| (m.x - g.x).abs() + (m.y - g.y).abs()).map(|(i, _)| i)
+        };
+        let element = sp.element.clone().unwrap_or_else(|| "energy".into());
+        match sp.kind.as_str() {
+            "heal" => {
+                let h = power(sp.power, &mut r);
+                let before = self.hero.hp;
+                self.hero.hp = (self.hero.hp + h).min(self.hero.max_hp());
+                self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: self.hero.hp - before, tone: Tone::Level });
+                self.effects.push(Effect::Area { cells: vec![(self.x, self.y)], z: self.z, kind: "heal".into() });
+            }
+            "light" => { self.hero.glow = 2000; self.look(); }
+            "haste" => { self.hero.hasted = 800; }
+            "strike" | "strike_distance" | "strike_melee" => {
+                let range = if sp.kind == "strike_melee" { 1 } else { sp.range.max(1) };
+                let Some(i) = pick_target(self, range) else { self.say(Tone::Info, "There is nothing to strike."); return None };
+                let m = self.place()?.monsters[i].clone();
+                if !self.floor()?.clear_line((self.x, self.y), (m.x, m.y)) { self.say(Tone::Info, "Something is in the way."); return None; }
+                let dmg = if sp.kind == "strike" {
+                    let mut d = power(sp.power, &mut r);
+                    if element == "holy" && m.def().undead { d *= 2; }
+                    d
+                } else {
+                    // A weapon blow made stronger.
+                    let attack = self.hero.weapon().map_or(5, |w| w.attack().max(10));
+                    let sk = self.hero.skill(if sp.kind == "strike_distance" { Skill::Distance } else { self.hero.weapon_skill() }) as f32;
+                    ((0.085 * sk * attack as f32 + lvl / 5.0) * sp.power * r.gen_range(0.6..1.0)).round() as i32 - m.armor() / 2
+                };
+                self.effects.push(Effect::Missile { from: (self.x, self.y), to: (m.x, m.y), z: self.z, kind: element.clone() });
+                self.effects.push(Effect::Area { cells: vec![(m.x, m.y)], z: self.z, kind: element.clone() });
+                self.say(Tone::Hit, format!("\"{}!\" {} strikes {}. ({})", cap(&sp.words), sp.name, m.the(), dmg.max(0)));
+                if dmg > 0 { self.damage_monster(i, dmg); }
+            }
+            "around" | "ball" | "wave" => {
+                let cells: Vec<(i32, i32)> = match sp.kind.as_str() {
+                    "around" => DIRS8.iter().map(|(dx, dy)| (self.x + dx, self.y + dy)).collect(),
+                    "ball" => {
+                        let Some(i) = pick_target(self, sp.range.max(1)) else { self.say(Tone::Info, "There is nothing to strike."); return None };
+                        let m = &self.place()?.monsters[i];
+                        let c = (m.x, m.y);
+                        (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (c.0 + dx, c.1 + dy))).collect()
+                    }
+                    _ => {
+                        let (fx, fy) = self.facing;
+                        let (fx, fy) = if (fx, fy) == (0, 0) { (0, 1) } else { (fx, fy) };
+                        let mut v = Vec::new();
+                        for d in 1..=sp.range.max(1) { v.push((self.x + fx * d, self.y + fy * d)); if d >= 2 { v.push((self.x + fx * d + fy, self.y + fy * d + fx)); v.push((self.x + fx * d - fy, self.y + fy * d - fx)); } }
+                        v
+                    }
+                };
+                let f = self.floor()?;
+                let cells: Vec<(i32, i32)> = cells.into_iter().filter(|&(x, y)| f.inside(x, y) && f.at(x, y).wall == Wall::None).collect();
+                self.effects.push(Effect::Area { cells: cells.clone(), z: self.z, kind: if sp.kind == "around" { "blow".into() } else { element.clone() } });
+                let hit: Vec<usize> = self.place()?.monsters.iter().enumerate().filter(|(_, m)| m.z == self.z && m.hp > 0 && cells.contains(&(m.x, m.y))).map(|(i, _)| i).collect();
+                self.say(Tone::Hit, format!("\"{}!\"", cap(&sp.words)));
+                for i in hit {
+                    let m = self.place()?.monsters[i].clone();
+                    if m.hp <= 0 { continue; }
+                    let dmg = if sp.kind == "around" {
+                        let attack = self.hero.weapon().map_or(5, |w| w.attack().max(10));
+                        let sk = self.hero.skill(self.hero.weapon_skill()) as f32;
+                        ((0.085 * sk * attack as f32 + lvl / 5.0) * sp.power * r.gen_range(0.5..1.0)).round() as i32 - m.armor() / 2
+                    } else { power(sp.power, &mut r) };
+                    if dmg > 0 { self.say(Tone::Hit, format!("{} is struck. ({})", cap(&m.the()), dmg)); self.damage_monster(i, dmg); }
+                }
+            }
+            _ => {}
+        }
+        self.hero.mana -= sp.mana;
+        if let Some(l) = self.hero.train(Skill::Magic, sp.mana as u32) { self.say(Tone::Level, format!("You advance to magic level {}.", l)); }
+        Some(100)
+    }
+
+    fn choose(&mut self, k: usize) -> Option<i32> {
+        let (x, y, z) = (self.x, self.y, self.z);
+        let here = self.here?;
+        let p = self.place_mut()?;
+        let f = &mut p.floors[z];
+        let spot = DIRS8.iter().map(|(dx, dy)| (x + dx, y + dy)).find(|&(a, b)| matches!(f.at(a, b).feature, Feature::QuestChest { .. }))?;
+        let Feature::QuestChest { choices, taken, quest } = &mut f.at_mut(spot.0, spot.1).feature else { return None };
+        if *taken { return None; }
+        let it = choices.get(k)?.clone();
+        *taken = true;
+        let q = *quest;
+        self.chosen.push(here);
+        self.say(Tone::Quest, format!("You take {} from the iron-bound chest. The rest you leave; the chest closes.", it.describe()));
+        let _ = q;
+        super::quest::on_found(self, &it);
+        stow(&mut self.hero.pack, it);
+        self.stats.chests += 1;
+        Some(100)
+    }
+
+    fn damage_monster(&mut self, k: usize, dmg: i32) {
+        let turn = self.turn;
+        let here = self.here.unwrap_or(0);
+        let Some(p) = self.place_mut() else { return };
+        let m = &mut p.monsters[k];
+        m.hp -= dmg;
+        m.awake = true;
+        let (x, y, z) = (m.x, m.y, m.z);
+        self.effects.push(Effect::Number { x, y, z, value: dmg, tone: Tone::Hit });
+        if self.place().unwrap().monsters[k].hp > 0 { return; }
+        // Slain.
+        let m = self.place().unwrap().monsters[k].clone();
+        let xp = m.xp();
+        let mut r = self.roll(m.uid as u64 ^ 0x100D);
+        let mut loot: Vec<Item> = Vec::new();
+        for (id, chance, lo, hi) in &m.def().loot {
+            if r.gen_range(0..1000) < *chance { stow(&mut loot, Item::new(id, r.gen_range(*lo..=*hi))); }
+        }
+        // Gear from the loot table gets a material and quality by the place's tier.
+        let tier = self.place().map_or(1, |p| p.spec.tier);
+        for it in loot.iter_mut() {
+            let d = it.def();
+            if matches!(d.kind.as_str(), "weapon" | "armour" | "shield") && !d.stack && r.gen_bool(0.3) { it.quality = r.gen_range(0..=tier.min(4)) as u8; }
+        }
+        for it in m.carries.iter().cloned() { stow(&mut loot, it); }
+        let name = m.the();
+        let p = self.place_mut().unwrap();
+        // (Not on a stair, a hole or the way out: stepping there to take it would carry one off.)
+        let transit = |f: &super::map::Floor, x: i32, y: i32| matches!(f.at(x, y).feature, Feature::StairsDown | Feature::StairsUp | Feature::LadderDown | Feature::LadderUp | Feature::Hole | Feature::RopeSpot | Feature::Exit | Feature::Grate);
+        let (lx, ly) = if transit(&p.floors[z], x, y) {
+            let f = &p.floors[z];
+            DIRS8.iter().map(|(dx, dy)| (x + dx, y + dy)).find(|&(a, b)| f.walkable(a, b) && !transit(f, a, b)).unwrap_or((x, y))
+        } else { (x, y) };
+        for it in loot.iter().cloned() { p.floors[z].drop_item(lx, ly, it); }
+        let dead = p.monsters.remove(k);
+        self.corpses.entry(here).or_default().push(Corpse { x, y, z, def: dead.def.clone(), name: dead.name.clone(), turn });
+        if !dead.boss { self.respawn.push((here, dead.clone(), turn)); }
+        self.stats.kills += 1;
+        self.hero.kills += 1;
+        if dead.boss { self.stats.bosses += 1; self.slain.push(dead.name.clone()); }
+        let lead = if dead.boss { format!("{} falls, and does not rise.", cap(&name)) } else { format!("You slay {}.", name) };
+        self.say(if dead.boss { Tone::Quest } else { Tone::Hit }, format!("{} ({} experience)", lead, xp));
+        if !loot.is_empty() {
+            let list: Vec<String> = loot.iter().map(|i| i.describe()).collect();
+            self.say(Tone::Loot, format!("Loot of {}: {}.", dead.name, list.join(", ")));
+        }
+        for l in self.hero.gain_xp(xp as u64) { self.say(Tone::Level, format!("You advanced from level {} to level {}.{}", l - 1, l, if l == 8 && self.hero.calling.is_none() { " Go to a temple: the priest will give you a calling." } else { "" })); }
+        super::quest::on_kill(self, &dead);
+    }
+
+    /// The adventurer takes `dmg` from `what`.
+    pub fn hurt(&mut self, dmg: i32, what: &str) {
+        if dmg <= 0 { return; }
+        self.hero.hp -= dmg;
+        self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: dmg, tone: Tone::Hurt });
+        if self.hero.hp <= 0 { self.die(what); }
+    }
+
+    fn die(&mut self, what: &str) {
+        self.stats.deaths += 1;
+        self.hero.deaths += 1;
+        let lost_xp = self.hero.xp / 10;
+        let gold = self.hero.gold() / 2;
+        self.hero.take_gold(gold);
+        let (x, y, z) = (self.x, self.y, self.z);
+        if gold > 0 { if let Some(p) = self.place_mut() { p.floors[z].drop_item(x, y, Item::new("gold", gold)); } }
+        self.hero.xp -= lost_xp;
+        while self.hero.level > 1 && self.hero.xp < super::hero::xp_for(self.hero.level) { self.hero.level -= 1; }
+        let place = self.place().map(|p| p.spec.name.clone()).unwrap_or_default();
+        self.say(Tone::Death, format!("You are dead, slain by {} in {}. You lose {} experience{}.", what, place, lost_xp, if gold > 0 { format!(" and drop {} gold where you fell", gold) } else { String::new() }));
+        self.banner = Some(("You are dead.".into(), format!("Slain by {}. You wake in the temple, poorer and wiser.", what)));
+        self.hero.hp = self.hero.max_hp();
+        self.hero.mana = self.hero.max_mana();
+        self.hero.poisoned = 0;
+        self.talk = None;
+        self.wake_at_temple();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Time
+
+    /// `cost` ticks pass: the adventurer's body, then every creature on this floor acts as its
+    /// speed allows.
+    pub fn pass(&mut self, cost: i32) {
+        let before = self.turn / 100;
+        self.turn += cost.max(1) as u64;
+        let ticks = self.turn / 100 - before;
+        for _ in 0..ticks {
+            let h = &mut self.hero;
+            if h.fed > 0 { h.fed -= 1; }
+            if h.torch > 0 { h.torch -= 1; if h.torch == 0 { self.say(Tone::Info, "Your torch gutters out."); } }
+            let h = &mut self.hero;
+            if h.glow > 0 { h.glow -= 1; }
+            if h.hasted > 0 { h.hasted -= 1; }
+            if h.fed > 0 && self.turn / 100 % 3 == 0 {
+                h.hp = (h.hp + 1 + h.level as i32 / 6).min(h.max_hp());
+                h.mana = (h.mana + 1 + h.level as i32 / 4 + h.skill(Skill::Magic) as i32 / 3).min(h.max_mana());
+            }
+            if h.poisoned > 0 { h.poisoned -= 1; let d = 1 + h.poisoned / 8; self.hurt(d, "poison"); if self.hero.poisoned == 0 { self.say(Tone::Info, "The poison has run its course."); } }
+            if self.hero.fed == 0 && self.turn / 100 % 50 == 0 { self.say(Tone::Danger, "You are hungry. Eat something (U on food)."); }
+        }
+        if self.here.is_some() { self.monsters_act(cost); }
+        self.corpses.values_mut().for_each(|v| v.retain(|c| self.turn < c.turn + 3000));
+    }
+
+    fn monsters_act(&mut self, cost: i32) {
+        let Some(id) = self.here else { return };
+        let z = self.z;
+        let (hx, hy) = (self.x, self.y);
+        let dist = {
+            let p = &self.places[&id];
+            let f = &p.floors[z];
+            f.distances(hx, hy, 30, |x, y| f.at(x, y).walkable() || matches!(f.at(x, y).feature, Feature::Door { lock: 0, .. }))
+        };
+        let n = self.places[&id].monsters.len();
+        let mut k = 0;
+        while k < n.min(self.places[&id].monsters.len()) {
+            if self.here != Some(id) || self.z != z { break; }
+            let m = &self.places[&id].monsters[k];
+            if m.z != z || m.hp <= 0 { k += 1; continue; }
+            let speed = m.speed();
+            {
+                let m = &mut self.places.get_mut(&id).unwrap().monsters[k];
+                m.energy += speed * cost / 100;
+                if m.poisoned > 0 { m.poisoned -= 1; m.hp -= 1 + m.poisoned / 6; }
+                let regen = m.def().regen;
+                if regen > 0 && m.hp < m.max_hp { m.hp = (m.hp + regen).min(m.max_hp); }
+            }
+            let mut acts = 0;
+            while self.places[&id].monsters.get(k).map_or(false, |m| m.energy >= 100) && acts < 4 {
+                self.places.get_mut(&id).unwrap().monsters[k].energy -= 100;
+                self.monster_turn(id, k, &dist);
+                acts += 1;
+                if self.here != Some(id) || self.z != z { return; }
+            }
+            k += 1;
+        }
+        // Poison may have killed something.
+        let dead: Vec<usize> = self.places[&id].monsters.iter().enumerate().filter(|(_, m)| m.hp <= 0).map(|(i, _)| i).collect();
+        for i in dead.into_iter().rev() { let hp = self.places[&id].monsters[i].hp; self.places.get_mut(&id).unwrap().monsters[i].hp = 1; self.damage_monster(i, 1 - hp); }
+    }
+
+    fn monster_turn(&mut self, id: u32, k: usize, dist: &[i32]) {
+        let (hx, hy, z) = (self.x, self.y, self.z);
+        let m = self.places[&id].monsters[k].clone();
+        let (dx, sees, outdoor) = {
+            let f = &self.places[&id].floors[z];
+            let dx = (hx - m.x).abs().max((hy - m.y).abs());
+            (dx, dx <= 8 && f.clear_line((m.x, m.y), (hx, hy)), f.outdoor)
+        };
+        let d = m.def();
+        if !m.awake {
+            if sees && (dx <= 5 || outdoor) {
+                self.places.get_mut(&id).unwrap().monsters[k].awake = true;
+                if !d.sounds.is_empty() && self.rng.gen_bool(0.5) { let s = d.sounds[self.rng.gen_range(0..d.sounds.len())].clone(); self.effects.push(Effect::Speech { x: m.x, y: m.y, z, text: s }); }
+            } else if self.rng.gen_bool(0.25) {
+                // Wander a little about home.
+                let (ddx, ddy) = DIRS8[self.rng.gen_range(0..8)];
+                let (nx, ny) = (m.x + ddx, m.y + ddy);
+                let ok = self.places[&id].floors[z].walkable(nx, ny) && (nx - m.home.0).abs() + (ny - m.home.1).abs() < 6 && self.free(id, nx, ny);
+                if ok { let mm = &mut self.places.get_mut(&id).unwrap().monsters[k]; mm.x = nx; mm.y = ny; mm.left = ddx < 0 || (ddx == 0 && mm.left); }
+            }
+            return;
+        }
+        // Lost the scent: go home.
+        if dx > 14 && !m.boss { self.places.get_mut(&id).unwrap().monsters[k].awake = false; return; }
+        let coward = d.ai == "coward" || (!m.boss && m.hp < m.max_hp / 6 && d.ai != "slow" && !d.undead);
+        // Casters heal themselves when hurt.
+        if d.heals > 0 && m.hp < m.max_hp / 2 && self.rng.gen_bool(0.3) {
+            let mm = &mut self.places.get_mut(&id).unwrap().monsters[k];
+            mm.hp = (mm.hp + d.heals).min(mm.max_hp);
+            self.effects.push(Effect::Area { cells: vec![(m.x, m.y)], z, kind: "heal".into() });
+            return;
+        }
+        // Ranged: shoot when in range and in sight.
+        if let Some((range, dmg, kind)) = &d.range {
+            if sees && dx <= *range && dx >= 2 && self.rng.gen_bool(if m.boss { 0.6 } else { 0.5 }) {
+                let mut r = self.roll(m.uid as u64 ^ 0xA1);
+                let raw = r.gen_range(0..=((*dmg as f32 * m.scale) as i32).max(1));
+                let elemental = matches!(kind.as_str(), "fire" | "poison" | "dark" | "energy" | "ice");
+                let soak = if elemental { 0 } else { r.gen_range(0..=self.hero.armor().max(0)) };
+                self.effects.push(Effect::Missile { from: (m.x, m.y), to: (hx, hy), z, kind: kind.clone() });
+                if elemental { self.effects.push(Effect::Area { cells: vec![(hx, hy)], z, kind: kind.clone() }); }
+                let dmgv = raw - soak;
+                let what = match kind.as_str() { "fire" => "breathes fire at you", "poison" => "spits venom at you", "dark" => "hurls a bolt of darkness at you", "spear" => "throws a spear at you", _ => "shoots at you" };
+                if dmgv > 0 {
+                    self.say(Tone::Hurt, format!("{} {}. ({})", cap(&m.the()), what, dmgv));
+                    if kind == "poison" { self.hero.poisoned += 6; }
+                    self.hurt(dmgv, &m.a());
+                } else { self.say(Tone::Info, format!("{} {}, and misses.", cap(&m.the()), what)); }
+                return;
+            }
+        }
+        // Adjacent: strike.
+        if dx <= 1 && !coward {
+            self.monster_strikes(id, k);
+            return;
+        }
+        // Step toward (or away from) the adventurer along the distance map.
+        let (best, cur, door) = {
+            let f = &self.places[&id].floors[z];
+            let mut best: Option<(i32, i32, i32)> = None;
+            for (ddx, ddy) in DIRS8 {
+                let (nx, ny) = (m.x + ddx, m.y + ddy);
+                if !f.inside(nx, ny) || (nx, ny) == (hx, hy) { continue; }
+                let t = f.at(nx, ny);
+                if !t.walkable() && !matches!(t.feature, Feature::Door { lock: 0, .. }) { continue; }
+                if ddx != 0 && ddy != 0 && !f.at(m.x + ddx, m.y).walkable() && !f.at(m.x, m.y + ddy).walkable() { continue; }
+                if !self.free(id, nx, ny) { continue; }
+                let dd = dist[ny as usize * f.w + nx as usize];
+                if dd == i32::MAX { continue; }
+                let score = if coward { -dd } else { dd };
+                if best.map_or(true, |b| score < b.2) { best = Some((nx, ny, score)); }
+            }
+            let cur = dist[m.y as usize * f.w + m.x as usize];
+            let door = best.map_or(false, |(nx, ny, _)| matches!(f.at(nx, ny).feature, Feature::Door { open: false, .. }));
+            (best, cur, door)
+        };
+        // Cornered: a coward with nowhere to run turns and fights.
+        let fled = best.map_or(false, |(_, _, s)| coward && s < -cur.min(10_000));
+        if coward && !fled && dx <= 1 { self.monster_strikes(id, k); return; }
+        if let Some((nx, ny, s)) = best {
+            if (!coward && (cur == i32::MAX || s < cur)) || (coward && s < -cur.min(10_000)) {
+                let p = self.places.get_mut(&id).unwrap();
+                // Open a door on the way.
+                if door { p.floors[z].at_mut(nx, ny).feature = Feature::Door { open: true, lock: 0 }; return; }
+                let mm = &mut p.monsters[k];
+                mm.left = nx < mm.x || (nx == mm.x && mm.left);
+                mm.x = nx; mm.y = ny;
+            }
+        }
+    }
+
+    fn free(&self, id: u32, x: i32, y: i32) -> bool {
+        !(x == self.x && y == self.y) && !self.places[&id].monsters.iter().any(|m| m.z == self.z && m.x == x && m.y == y && m.hp > 0)
+            && !self.places[&id].npcs.iter().any(|n| n.z == self.z && n.x == x && n.y == y)
+    }
+
+    fn monster_strikes(&mut self, id: u32, k: usize) {
+        let m = self.places[&id].monsters[k].clone();
+        let d = m.def();
+        let mut r = self.roll(m.uid as u64 * 11 + self.hero.level as u64);
+        self.places.get_mut(&id).unwrap().monsters[k].struck_at = self.turn;
+        self.places.get_mut(&id).unwrap().monsters[k].left = self.x < m.x;
+        // A beast of the history uses its own attack now and then.
+        if let Some(legend) = &m.legend { if let Some(att) = &legend.attack { if r.gen_bool(0.2) {
+            let dmg = (m.attack() as f32 * (1.0 + att.deadly)).round() as i32;
+            let dmg = r.gen_range(dmg / 2..=dmg.max(1));
+            self.say(Tone::Hurt, format!("{} {} ({})", cap(&m.the()), att.did_to("you"), dmg));
+            self.effects.push(Effect::Area { cells: vec![(self.x, self.y)], z: self.z, kind: "fire".into() });
+            self.hurt(dmg, &m.a());
+            return;
+        } } }
+        let raw = r.gen_range(0..=m.attack().max(1));
+        let block = r.gen_range(0..=self.hero.defense().max(0));
+        if let Some(l) = self.hero.train(Skill::Shielding, 1) { self.say(Tone::Level, format!("You advance to shielding {}.", l)); }
+        if raw <= block / 2 {
+            if self.rng.gen_bool(0.3) { self.say(Tone::Info, format!("You block {}'s attack.", m.the())); }
+            self.effects.push(Effect::Puff { x: self.x, y: self.y, z: self.z });
+            return;
+        }
+        let armor = self.hero.armor();
+        let soak = if armor > 0 { r.gen_range(armor / 2..=armor) } else { 0 };
+        let dmg = raw - soak;
+        if dmg <= 0 { self.effects.push(Effect::Puff { x: self.x, y: self.y, z: self.z }); return; }
+        let how = match d.look.as_str() { l if l.starts_with("folk") => "hits you", "rat" | "giant rat" | "wolf" | "bear" | "wild boar" => "bites you", "spider" | "giant spider" => "bites you with its fangs", "bat" => "bites you", "adder" => "strikes at you", _ => "hits you" };
+        let t = if dmg * 3 > self.hero.max_hp() { Tone::Danger } else { Tone::Hurt };
+        self.say(t, format!("{} {}. ({})", cap(&m.the()), how, dmg));
+        if d.poison > 0 && r.gen_bool(0.4) && !self.hero.equipped.iter().flatten().any(|i| i.def().resist.as_deref() == Some("poison")) { self.hero.poisoned += d.poison; self.say(Tone::Hurt, "You are poisoned."); }
+        if d.lifesteal { let p = self.places.get_mut(&id).unwrap(); let mm = &mut p.monsters[k]; mm.hp = (mm.hp + dmg / 2).min(mm.max_hp); }
+        self.hurt(dmg, &m.a());
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The world map
+
+    fn travel(&mut self, dx: i32, dy: i32) -> bool {
+        if self.here.is_some() { return false; }
+        let (nx, ny) = (self.tile.0 as i32 + dx, self.tile.1 as i32 + dy);
+        if ny < 0 || ny >= self.world.h as i32 { return false; }
+        let nx = nx.rem_euclid(self.world.w as i32) as usize;
+        let ny = ny as usize;
+        if !self.world.land[ny * self.world.w + nx] { self.say(Tone::Info, "The sea. Without a ship there is no going on."); return false; }
+        self.tile = (nx, ny);
+        self.facing = (dx, dy);
+        // A day's walk (a tile is ~25 km... a few hours of game time at this scale).
+        self.turn += 2400;
+        self.hero.fed = (self.hero.fed - 24).max(0);
+        // Healing on the road.
+        self.hero.hp = (self.hero.hp + 6 + self.hero.level as i32).min(self.hero.max_hp());
+        self.hero.mana = (self.hero.mana + 8 + self.hero.level as i32).min(self.hero.max_mana());
+        if self.hero.fed == 0 { self.hurt(3, "hunger"); }
+        // What is on this tile.
+        let here: Vec<u32> = self.sites.iter().filter(|s| s.tile == (nx, ny)).map(|s| s.id).collect();
+        for id in &here { if !self.known.contains(id) { self.known.push(*id); let s = self.site(*id).unwrap(); let line = format!("You come upon {}: {}.{}", s.name, s.kind.word(), if s.cause.is_empty() { String::new() } else { format!(" {}", s.cause) }); self.say(Tone::Quest, line); } }
+        if let Some(id) = here.first() { let s = self.site(*id).unwrap(); let n = s.name.clone(); self.say(Tone::Info, format!("{} is here. (Enter to go in.)", n)); return true; }
+        // Something on the road (an ambush in the wilds, by the land's danger).
+        let danger = self.world.danger[ny * self.world.w + nx] as f64 / 255.0;
+        let mut r = self.roll(0x7A5E ^ (nx * 131 + ny) as u64);
+        if r.gen_bool((0.02 + danger * 0.12).min(0.15)) {
+            let tier = (1 + (danger * 4.0) as u32 + self.hero.level / 10).min(5);
+            let id = 900_000 + self.turn as u32 % 100_000;
+            let spec = SiteSpec { id, kind: SiteKind::Wilds, name: format!("the wilds near {},{}", nx, ny), tile: (nx, ny), seed: r.gen(), tier, cause: String::new(), boss: None, treasures: Vec::new(),
+                surface: self.world.ground[ny * self.world.w + nx], rock: "granite".into(), floors: 1, people: String::new(), god: String::new(), news: Vec::new() };
+            self.sites.retain(|s| !(s.kind == SiteKind::Wilds && s.id >= 900_000 && Some(s.id) != self.here));
+            self.places.retain(|k, _| *k < 900_000);
+            self.sites.push(spec);
+            self.say(Tone::Danger, "Something moves on the road ahead. You are set upon!");
+            self.enter_site(id, true);
+            // Wilds: arrive at the middle, the way out at the south edge.
+            return true;
+        }
+        true
+    }
+
+    fn enter_here(&mut self) -> bool {
+        if self.here.is_some() { return false; }
+        // A town first where a town stands on its own ruins.
+        let here: Vec<&SiteSpec> = self.sites.iter().filter(|s| s.tile == self.tile && s.kind != SiteKind::Wilds).collect();
+        let Some(id) = here.iter().find(|s| s.kind == SiteKind::Town).or(here.first()).map(|s| s.id) else { self.say(Tone::Info, "There is nothing here to enter."); return false };
+        self.enter_site(id, false);
+        true
+    }
+}
+
+pub fn cap(s: &str) -> String { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }

@@ -182,6 +182,14 @@ struct Args {
     #[arg(long)]
     sim_bench: Option<usize>,
 
+    /// Adventure mode: play one person across the world (towns, ruins, lairs, tombs, temples...)
+    #[arg(long)]
+    adventure: bool,
+
+    /// Adventure mode played by itself for N acts on the dev world, headless; prints its record
+    #[arg(long)]
+    adventure_bot: Option<usize>,
+
     /// Frame budget benchmark at game speed N (1, 3 or 10): the colony window's work per frame
     /// (ticks and drawing) on the dev embark, headless; with --frame-days and --frame-mode
     #[arg(long)]
@@ -654,7 +662,7 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways || args.adventure_bot.is_some() { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
     // A world code fills in the world and the site.
@@ -2183,6 +2191,10 @@ fn main() {
         }
         if let (true, Some(tile)) = (args.sim_patron, center) {
             tiles::viewer::patron_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
+        if let Some(n) = args.adventure_bot {
+            planet_generator::adventure::bot::report(&world_data, history.as_ref(), n, world_data.seeds.master);
             return;
         }
         if let (true, Some(tile)) = (args.frame_bench_world, center) {
