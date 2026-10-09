@@ -13,7 +13,7 @@ use crate::biomes::ExtendedBiome;
 use crate::history::world_state::WorldHistory;
 use crate::world::WorldData;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WorldInfo {
     pub w: usize,
     pub h: usize,
@@ -22,6 +22,54 @@ pub struct WorldInfo {
     /// 0 safe .. 255 deadly: far from towns, under the Shadow, near lairs.
     pub danger: Vec<u8>,
     pub elevation: Vec<f32>,
+}
+
+impl WorldInfo {
+    /// The first step (dx, dy) on a shortest walk over land from a to b.
+    pub fn step_toward(&self, a: (usize, usize), b: (usize, usize)) -> Option<(i32, i32)> {
+        let (w, h) = (self.w, self.h);
+        let mut prev = vec![usize::MAX; w * h];
+        let mut q = std::collections::VecDeque::new();
+        prev[b.1 * w + b.0] = b.1 * w + b.0;
+        q.push_back(b);
+        // From the goal back toward a: the step is a's neighbour nearer the goal.
+        while let Some((x, y)) = q.pop_front() {
+            if (x, y) == a { break; }
+            for dy in -1i32..=1 { for dx in -1i32..=1 {
+                let ny = y as i32 + dy;
+                if ny < 0 || ny >= h as i32 || (dx, dy) == (0, 0) { continue; }
+                let nx = (x as i32 + dx).rem_euclid(w as i32) as usize;
+                let k = ny as usize * w + nx;
+                if prev[k] == usize::MAX && (self.land[k] || (nx, ny as usize) == a) { prev[k] = y * w + x; q.push_back((nx, ny as usize)); }
+            } }
+        }
+        let p = prev[a.1 * w + a.0];
+        if p == usize::MAX || p == a.1 * w + a.0 { return None; }
+        let (px, py) = (p % w, p / w);
+        let mut dx = px as i32 - a.0 as i32;
+        if dx > 1 { dx -= w as i32; } else if dx < -1 { dx += w as i32; }
+        Some((dx, py as i32 - a.1 as i32))
+    }
+
+    /// Whether b can be walked to from a over land (8-way, the map wrapping east-west).
+    pub fn reachable(&self, a: (usize, usize), b: (usize, usize)) -> bool {
+        let (w, h) = (self.w, self.h);
+        let mut seen = vec![false; w * h];
+        let mut q = std::collections::VecDeque::new();
+        seen[a.1 * w + a.0] = true;
+        q.push_back(a);
+        while let Some((x, y)) = q.pop_front() {
+            if (x, y) == b { return true; }
+            for dy in -1i32..=1 { for dx in -1i32..=1 {
+                let ny = y as i32 + dy;
+                if ny < 0 || ny >= h as i32 { continue; }
+                let nx = (x as i32 + dx).rem_euclid(w as i32) as usize;
+                let k = ny as usize * w + nx;
+                if !seen[k] && self.land[k] { seen[k] = true; q.push_back((nx, ny as usize)); }
+            } }
+        }
+        false
+    }
 }
 
 fn h64(a: u64, b: u64) -> u64 { let mut x = a.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ b.wrapping_mul(0xC2B2_AE3D_27D4_EB4F); x ^= x >> 31; x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9); x ^ (x >> 29) }
@@ -284,6 +332,9 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
             SiteKind::Halls => (format!("the Halls of {}", who), 4, 4, format!("Dwarves of the house of {} cut these halls; the house is gone.", who), Some(BossSpec { def: "stone_golem".into(), name: format!("the Iron Guardian of {}", who), scale: 1.5, legend: None, hoard: vec![Item::new("gold", 300), Item::of("battle_axe", "steel", 4)], story: "It still keeps the throne hall.".into() })),
             _ => continue,
         };
+        // (Names are never shared: a second Damp Hollow is someone's.)
+        let name = if sites.iter().any(|s| s.name == name) { format!("{} of {}", name, who) } else { name };
+        let boss = boss.map(|mut b| { if sites.iter().any(|s| s.boss.as_ref().map_or(false, |o| o.name == b.name)) { b.name = format!("{} of {}", b.name, who); } b });
         add(&mut sites, kind, name, (x, y), tier.max(1), cause, boss, floors, String::new(), String::new());
     } }
     // Danger: distance from the nearest town, the Shadow's corruption, lairs near.

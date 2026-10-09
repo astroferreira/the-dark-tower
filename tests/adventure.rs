@@ -54,3 +54,13 @@ fn the_same_seed_tells_the_same_adventure() {
     let strip = |s: &str| s.lines().filter(|l| !l.contains(" ms") && !l.contains(" µs")).collect::<Vec<_>>().join("\n");
     assert_eq!(strip(&a), strip(&b), "two runs diverged");
 }
+
+#[test]
+fn an_adventure_saves_and_loads_whole() {
+    let path = std::env::temp_dir().join(format!("adv_test_{}.adv", std::process::id()));
+    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--adventure-bot", "6000"]).env("PLANET_ADV_SAVE", &path).output().expect("run");
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let _ = std::fs::remove_file(&path);
+    let line = text.lines().find(|l| l.starts_with("Save:")).unwrap_or_else(|| panic!("no save line:\n{text}"));
+    assert!(line.contains("round trip ok") && line.contains("the same"), "{line}");
+}

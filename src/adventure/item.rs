@@ -11,7 +11,7 @@ pub const QUALITY: [(&str, &str, f32); 7] = [
     ("≡", "exceptional", 1.32), ("☼", "masterwork", 1.45), ("!", "legendary", 1.7),
 ];
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Item {
     pub id: String,
     pub count: u32,

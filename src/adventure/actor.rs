@@ -5,7 +5,7 @@
 use super::data::{data, MonsterDef};
 use super::item::Item;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Monster {
     pub uid: u32,
     pub def: String,
@@ -65,7 +65,7 @@ impl Monster {
 }
 
 /// What a townsperson does: it decides what they say and trade.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Role { Priest, Smith, Trader, Innkeeper, Lord, Guard, Sage, Townsfolk }
 
 impl Role {
@@ -74,7 +74,7 @@ impl Role {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Npc {
     pub name: String,
     pub role: Role,

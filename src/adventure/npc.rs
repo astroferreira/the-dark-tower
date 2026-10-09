@@ -8,13 +8,14 @@ use super::game::{Game, Tone};
 use super::item::{stow, Item};
 use super::quest::{self, Quest, State};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Topic {
     Name, Job, Trade, Buy(String, u32, u32), SellLoot, SellGear, SellOne(usize), Quest, Accept, Report(usize), Rumours, Places,
     Heal, Calling, Become(String), Spells, Learn(String, u32), Rest(u32), Bye, Back,
+    Bless(u32), Improve, Refine(super::hero::Slot, u32),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Talk {
     pub npc: usize,
     pub name: String,
@@ -31,13 +32,18 @@ fn town_id(g: &Game) -> u32 { g.here.unwrap_or(0) }
 fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
     let mut v = vec![("Name".to_string(), Topic::Name), ("Job".into(), Topic::Job)];
     match role {
-        Role::Smith | Role::Trader | Role::Innkeeper => v.push(("Trade".into(), Topic::Trade)),
-        Role::Priest => { v.push(("Heal".into(), Topic::Heal)); if g.hero.calling.is_none() { v.push(("Calling".into(), Topic::Calling)); } v.push(("Spells".into(), Topic::Spells)); }
+        Role::Smith | Role::Trader | Role::Innkeeper => { v.push(("Trade".into(), Topic::Trade)); if role == Role::Smith { v.push(("Improve what you wear".into(), Topic::Improve)); } }
+        Role::Priest => {
+            v.push(("Heal".into(), Topic::Heal));
+            if g.hero.calling.is_none() { v.push(("Calling".into(), Topic::Calling)); }
+            v.push(("Spells".into(), Topic::Spells));
+            if !g.hero.blessed { let p = g.hero.blessing_price(); v.push((format!("A blessing: your next death costs nothing ({} gold)", p), Topic::Bless(p))); }
+        }
         Role::Sage => v.push(("Places".into(), Topic::Places)),
         _ => {}
     }
     if role == Role::Innkeeper { v.push(("A bed (10 gold)".into(), Topic::Rest(10))); }
-    if matches!(role, Role::Lord | Role::Guard | Role::Priest | Role::Sage) {
+    if matches!(role, Role::Lord | Role::Guard | Role::Priest | Role::Sage | Role::Trader) {
         let mine: Vec<usize> = g.quests.iter().enumerate().filter(|(_, q)| q.town == town_id(g) && q.giver == g.place().map(|p| p.npcs.get(g.talk.as_ref().map_or(usize::MAX, |t| t.npc)).map(|n| n.name.clone()).unwrap_or_default()).unwrap_or_default() && q.state == State::Done).map(|(i, _)| i).collect();
         for i in mine { v.push((format!("Report: {}", g.quests[i].title), Topic::Report(i))); }
         v.push(("Quest".into(), Topic::Quest));
@@ -63,6 +69,20 @@ pub fn greet(g: &mut Game, k: usize) {
         Role::Townsfolk => format!("Good day, {}.", hero),
     };
     g.talk = Some(Talk { npc: k, name: n.name.clone(), role: n.role, said, options: Vec::new(), offer: None });
+    // A parcel for this town's trader: delivered and paid for here.
+    if n.role == Role::Trader {
+        let here = g.here.unwrap_or(0);
+        if let Some(qk) = g.quests.iter().position(|q| q.state == State::Open && matches!(q.goal, quest::Goal::Deliver { town, .. } if town == here)) {
+            let quest::Goal::Deliver { tag, .. } = g.quests[qk].goal.clone() else { unreachable!() };
+            if let Some(i) = g.hero.pack.iter().position(|i| i.tag == tag) {
+                g.hero.pack.remove(i);
+                g.quests[qk].state = State::Done;
+                let lines = quest::report(g, qk);
+                for l in &lines { g.say(Tone::Quest, l.clone()); }
+                if let Some(t) = g.talk.as_mut() { t.said = format!("A parcel from afar? Ah, I've been waiting for that. {}", lines.join(" ")); }
+            }
+        }
+    }
     let menu = main_menu(g, n.role);
     if let Some(t) = g.talk.as_mut() { t.options = menu; }
     g.say(Tone::Talk, format!("{}: \"{}\"", n.name, g.talk.as_ref().unwrap().said));
@@ -151,7 +171,13 @@ pub fn answer(g: &mut Game, i: usize) {
                 said = "Good. Do not come back without it done.".into();
                 g.say(Tone::Quest, format!("New quest: {}. {}", q.title, q.text));
                 // Where it is: the adventurer now knows the place.
-                if let quest::Goal::Slay { site, .. } | quest::Goal::Fetch { site, .. } = &q.goal { if !g.known.contains(site) { g.known.push(*site); } }
+                if let quest::Goal::Slay { site, .. } | quest::Goal::Fetch { site, .. } | quest::Goal::Deliver { town: site, .. } = &q.goal { if !g.known.contains(site) { g.known.push(*site); } }
+                if let quest::Goal::Deliver { tag, town } = &q.goal {
+                    let mut parcel = Item::new("linen", 1);
+                    parcel.name = Some(format!("a sealed parcel for {}", g.site(*town).map(|s| s.name.clone()).unwrap_or_default()));
+                    parcel.tag = *tag;
+                    stow(&mut g.hero.pack, parcel);
+                }
                 g.quests.push(q);
             }
         }
@@ -189,6 +215,8 @@ pub fn answer(g: &mut Game, i: usize) {
         Topic::Heal => {
             let free = g.hero.level <= 15;
             let cost = if free { 0 } else { g.hero.level * 5 };
+            // The temple feeds the hungry who cannot pay.
+            if g.hero.fed < 300 && g.hero.gold() < 10 && !g.hero.pack.iter().any(|i| i.def().kind == "food") { stow(&mut g.hero.pack, Item::new("bread", 2)); g.say(Tone::Info, "The priest presses two loaves into your hands. \"The god feeds the hungry.\""); }
             if g.hero.hp >= g.hero.max_hp() && g.hero.poisoned == 0 { said = "You are whole. Go with the god.".into(); }
             else if g.hero.take_gold(cost) { g.hero.hp = g.hero.max_hp(); g.hero.poisoned = 0; said = if free { "You are healed. The god asks nothing of the young.".into() } else { format!("You are healed. ({} gold to the temple.)", cost) }; }
             else { said = format!("The temple asks {} gold of one of your standing.", cost); }
@@ -206,11 +234,15 @@ pub fn answer(g: &mut Game, i: usize) {
             g.hero.calling = Some(c.clone());
             g.hero.hp = g.hero.max_hp();
             g.hero.mana = g.hero.max_mana();
-            said = format!("Kneel. Rise, {} the {}.", g.hero.name, c);
+            // The calling's first weapon, from the temple.
+            let gift: Vec<Item> = match c.as_str() { "paladin" => vec![Item::new("bow", 1), Item::new("arrow", 60)], "sorcerer" => vec![Item::new("wand_of_embers", 1)], "druid" => vec![Item::new("snakebite_rod", 1)], _ => vec![Item::of("sword", "iron", 1)] };
+            let gift_words: Vec<String> = gift.iter().map(|i| i.describe()).collect();
+            for it in gift { stow(&mut g.hero.pack, it); }
+            said = format!("Kneel. Rise, {} the {}. Take {}: it is the temple's gift to every {}.", g.hero.name, c, crate::persona::list(&gift_words), c);
             g.say(Tone::Level, format!("You are a {} now.", c));
         }
         Topic::Spells => {
-            let mut v: Vec<(String, Topic)> = g.hero.may_learn().into_iter().map(|s| { let price = 30 * s.level * s.level / 2; (format!("{} \"{}\": level {}, {} mana ({} gold)", s.name, s.words, s.level, s.mana, price), Topic::Learn(s.id.clone(), price)) }).collect();
+            let mut v: Vec<(String, Topic)> = g.hero.may_learn().into_iter().map(|s| { let price = 40 * s.level.max(1); (format!("{} \"{}\": level {}, {} mana ({} gold)", s.name, s.words, s.level, s.mana, price), Topic::Learn(s.id.clone(), price)) }).collect();
             said = if v.is_empty() { "I have nothing more to teach you.".into() } else { "These words I can teach you.".into() };
             v.push(("Back".into(), Topic::Back));
             options = Some(v);
@@ -220,7 +252,7 @@ pub fn answer(g: &mut Game, i: usize) {
             if g.hero.level < sp.level { said = format!("You need level {} for {}.", sp.level, sp.name); }
             else if g.hero.take_gold(price) { g.hero.spells.push(id.clone()); said = format!("Say it with me: \"{}\". You know {} now.", sp.words, sp.name); g.say(Tone::Level, format!("You learned {} ({}).", sp.name, sp.words)); }
             else { said = format!("That is {} gold.", price); }
-            let mut v: Vec<(String, Topic)> = g.hero.may_learn().into_iter().map(|s| { let price = 30 * s.level * s.level / 2; (format!("{} \"{}\": level {}, {} mana ({} gold)", s.name, s.words, s.level, s.mana, price), Topic::Learn(s.id.clone(), price)) }).collect();
+            let mut v: Vec<(String, Topic)> = g.hero.may_learn().into_iter().map(|s| { let price = 40 * s.level.max(1); (format!("{} \"{}\": level {}, {} mana ({} gold)", s.name, s.words, s.level, s.mana, price), Topic::Learn(s.id.clone(), price)) }).collect();
             v.push(("Back".into(), Topic::Back));
             options = Some(v);
         }
@@ -230,6 +262,25 @@ pub fn answer(g: &mut Game, i: usize) {
                 g.turn += 6000;
                 said = "You sleep through the night and wake whole, with breakfast.".into();
             } else { said = "Ten gold for the bed.".into(); }
+        }
+        Topic::Bless(price) => {
+            if g.hero.blessed { said = "You are blessed already.".into(); }
+            else if g.hero.take_gold(price) { g.hero.blessed = true; said = format!("Kneel. {} keeps you: the next time you fall, you lose nothing.", n.of); g.say(Tone::Level, "You are blessed."); }
+            else { said = format!("The blessing asks {} gold of one of your standing.", price); }
+        }
+        Topic::Improve => {
+            let mut v: Vec<(String, Topic)> = super::hero::Slot::ALL.iter().filter_map(|s| g.hero.equipped[*s as usize].as_ref().filter(|i| i.quality < 5 && !i.is_artifact() && matches!(i.def().kind.as_str(), "weapon" | "armour" | "shield")).map(|i| {
+                let price = super::hero::Hero::refine_price(i);
+                (format!("Your {}: to {} ({} gold)", i.short(), super::item::QUALITY[(i.quality + 1) as usize].1, price), Topic::Refine(*s, price))
+            })).collect();
+            said = if v.is_empty() { "There is nothing on you I can make finer.".into() } else { "Let me see what you wear. Each step finer costs more.".into() };
+            v.push(("Back".into(), Topic::Back));
+            options = Some(v);
+        }
+        Topic::Refine(slot, price) => {
+            if g.hero.take_gold(price) {
+                if let Some(it) = g.hero.equipped[slot as usize].as_mut() { it.quality = (it.quality + 1).min(5); said = format!("Hammer and file and a night at the forge: it is {} now.", it.describe()); }
+            } else { said = format!("That is {} gold.", price); }
         }
         Topic::Back => {}
         Topic::Bye => { g.say(Tone::Talk, format!("{}: \"Good bye, {}.\"", n.name, g.hero.name)); g.talk = None; return; }

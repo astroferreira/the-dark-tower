@@ -30,6 +30,8 @@ pub struct StartConfig {
     pub civilizations: u32,
     pub shadow: bool,
     pub watch: bool,
+    /// Play one adventurer across the world instead of founding a colony.
+    pub adventure: bool,
 }
 
 const SIZES: [(usize, usize, &str, &str); 4] = [
@@ -46,9 +48,9 @@ const YEARS: [u32; 5] = [0, 100, 250, 500, 1000];
 const PEOPLES: [u32; 9] = [4, 6, 8, 12, 20, 30, 45, 60, 100];
 
 #[derive(Clone, Copy, PartialEq)]
-enum Row { Size, Seed, Style, Plates, Myr, Fantasy, Years, Peoples, Shadow, Watch, Begin }
+enum Row { Play, Size, Seed, Style, Plates, Myr, Fantasy, Years, Peoples, Shadow, Watch, Begin }
 
-const ROWS: [Row; 11] = [Row::Size, Row::Seed, Row::Style, Row::Plates, Row::Myr, Row::Fantasy, Row::Years, Row::Peoples, Row::Shadow, Row::Watch, Row::Begin];
+const ROWS: [Row; 12] = [Row::Play, Row::Size, Row::Seed, Row::Style, Row::Plates, Row::Myr, Row::Fantasy, Row::Years, Row::Peoples, Row::Shadow, Row::Watch, Row::Begin];
 
 fn nearest<T: Copy>(list: &[T], key: impl Fn(T) -> f32, target: f32) -> usize {
     (0..list.len()).min_by(|&a, &b| (key(list[a]) - target).abs().partial_cmp(&(key(list[b]) - target).abs()).unwrap()).unwrap_or(0)
@@ -123,6 +125,7 @@ impl Menu {
             Row::Peoples => self.peoples = step_index(self.peoples, PEOPLES.len(), d),
             Row::Shadow => self.cfg.shadow = !self.cfg.shadow,
             Row::Watch => self.cfg.watch = !self.cfg.watch,
+            Row::Play => self.cfg.adventure = !self.cfg.adventure,
             Row::Begin => {}
         }
         self.sync();
@@ -154,6 +157,7 @@ impl Menu {
             Row::Peoples => "Founding peoples",
             Row::Shadow => "The Shadow",
             Row::Watch => "Watch it unfold",
+            Row::Play => "Play",
             Row::Begin => "Begin",
         }
     }
@@ -175,6 +179,7 @@ impl Menu {
             Row::Peoples => c.civilizations.to_string(),
             Row::Shadow => if c.shadow { "Rises".into() } else { "None (sandbox)".into() },
             Row::Watch => if c.watch { "Yes".into() } else { "No".into() },
+            Row::Play => if c.adventure { "An adventure".into() } else { "A colony".into() },
             Row::Begin => String::new(),
         }
     }
@@ -192,6 +197,8 @@ impl Menu {
             Row::Peoples => "The peoples who found the first realms. Fewer means each one matters more.".into(),
             Row::Shadow => "A dark power rises at the dawn of history and spreads across the land, taking town after town. Turn it off for a world without a central enemy.".into(),
             Row::Watch => "Open a window that plays the history back as it is written: towns, roads and borders spreading, wars and falls in the chronicle.".into(),
+            Row::Play => if self.cfg.adventure { "One person of the world, from nobody to a name in its history: start in a town's sewers with a club, take a calling at level 8, and go out to the ruins, lairs, tombs and temples the history left, for loot, quests and the beasts of legend.".into() }
+                else { "Found a camp of settlers with pasts and watch them live: they build, dig, quarrel, pray and fight what the history sends against them.".into() },
             Row::Begin => "Make this world.".into(),
         }
     }
@@ -474,6 +481,14 @@ fn row_picture(buf: &mut [u32], w: usize, h: usize, row: Row, cx: f32, cy: f32, 
             pen.rect(-0.45, 0.65, 0.45, 0.75, [122.0, 86.0, 54.0]);
             pen.poly(&[(-0.38, -0.65), (0.38, -0.65), (0.05, 0.0), (0.38, 0.65), (-0.38, 0.65), (-0.05, 0.0)], [236.0, 232.0, 220.0]);
             pen.poly_f(&[(-0.25, 0.62), (0.25, 0.62), (0.0, 0.3)], [206.0, 176.0, 110.0], Finish::Paint);
+        }
+        Row::Play => {
+            // A sword over a shield (an adventure), or a little keep (a colony): both drawn.
+            pen.rect(-0.55, -0.1, 0.05, 0.6, [176.0, 168.0, 156.0]);
+            for dx in [-0.5f32, -0.3, -0.1] { pen.rect(dx - 0.06, -0.25, dx + 0.06, -0.1, [176.0, 168.0, 156.0]); }
+            pen.poly(&[(0.15, -0.3), (0.75, -0.3), (0.75, 0.2), (0.45, 0.55), (0.15, 0.2)], [150.0, 52.0, 44.0]);
+            pen.bone(&[(0.45, 0.7), (0.45, -0.75)], [200.0, 202.0, 210.0], lw * 1.4);
+            pen.line((0.3, 0.45), (0.6, 0.45), K, lw * 1.4);
         }
         Row::Begin => {}
     }

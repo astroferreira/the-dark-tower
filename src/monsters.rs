@@ -25,7 +25,7 @@ impl AttackDef {
     pub fn did_to(&self, whom: &str) -> String { self.verb.replace("{}", whom) }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct AttackDef {
     pub name: String,
     pub warning: String,
@@ -144,7 +144,7 @@ pub struct Request {
 }
 
 /// One generated monster.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Monster {
     /// Its kind's word ("forgotten beast") and the body it was made on ("hornet").
     pub kind_word: String,

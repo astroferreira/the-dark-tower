@@ -191,6 +191,10 @@ struct Args {
     #[arg(long)]
     adventure_snapshot: Option<String>,
 
+    /// Resume a saved adventure (adventures/SEED_NAME.adv; the same world must be generated)
+    #[arg(long)]
+    adventure_load: Option<String>,
+
     /// Adventure mode: one revealed floor of every kind of place, PREFIX_KIND.png (headless)
     #[arg(long)]
     adventure_gallery: Option<String>,
@@ -670,6 +674,7 @@ fn parse_args() -> Args {
     use clap::parser::ValueSource;
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    if args.adventure_load.is_some() { args.adventure = true; }
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
     if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways || args.adventure_bot.is_some() || args.adventure_snapshot.is_some() || args.adventure_gallery.is_some() { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
@@ -802,7 +807,7 @@ fn main() {
             width: args.width, height: args.height, seed: args.seed.unwrap_or(42),
             style: plates::WorldStyle::from_str(&args.world_style).unwrap_or_default(), plates: args.plates, tectonic_myr: args.tectonic_myr,
             fantasy: args.fantasy, history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
-            civilizations: args.civilizations, shadow: !args.no_shadow, watch: true,
+            civilizations: args.civilizations, shadow: !args.no_shadow, watch: true, adventure: args.adventure,
         };
         match tiles::start::save_start_snapshot(initial, path) { Ok(()) => { println!("Start screen drawn to {}", path); std::process::exit(0); } Err(e) => { eprintln!("--start-snapshot: {e}"); std::process::exit(1); } }
     }
@@ -851,6 +856,7 @@ fn main() {
             shadow: !args.no_shadow,
             // Watching the history being written is the game's opening: on unless turned off.
             watch: true,
+            adventure: args.adventure,
         };
         match tiles::start::run_start_screen(initial) {
             Ok(Some(cfg)) => {
@@ -867,6 +873,7 @@ fn main() {
                 args.civilizations = cfg.civilizations;
                 args.no_shadow = !cfg.shadow;
                 args.watch = cfg.watch;
+                args.adventure = cfg.adventure;
                 println!("Making a {}x{} {} world, seed {}", cfg.width, cfg.height, cfg.style, cfg.seed);
             }
             Ok(None) => return,
@@ -2299,7 +2306,7 @@ fn main() {
             return;
         }
         if args.adventure {
-            if let Err(e) = tiles::adventure::run(&world_data, history.as_ref(), &atlas, world_data.seeds.master) { eprintln!("Adventure error: {}", e); }
+            if let Err(e) = tiles::adventure::run(&world_data, history.as_ref(), &atlas, world_data.seeds.master, args.adventure_load.as_deref()) { eprintln!("Adventure error: {}", e); }
             return;
         }
         // A site chosen on the watcher's closing card: embark there at once.

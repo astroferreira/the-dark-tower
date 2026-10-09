@@ -8,7 +8,7 @@ use super::game::{Game, Tone};
 use super::item::Item;
 use super::site::SiteKind;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Goal {
     /// Kill the named boss of a place.
     Slay { site: u32, boss: String },
@@ -16,12 +16,14 @@ pub enum Goal {
     Bounty { def: String, count: u32, done: u32 },
     /// Find a treasure (by its tag) and bring it back.
     Fetch { tag: u32, name: String, site: u32 },
+    /// Carry a sealed parcel (by its tag) to the trader of a town.
+    Deliver { tag: u32, town: u32 },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum State { Open, Done, Rewarded }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Quest {
     pub id: u32,
     /// The town and the name of whoever gave it.
@@ -44,6 +46,7 @@ impl Quest {
             (Goal::Bounty { count, done, .. }, _) => format!("{} of {}", done, count),
             (Goal::Slay { .. }, _) => "not yet".into(),
             (Goal::Fetch { .. }, _) => "not found yet".into(),
+            (Goal::Deliver { .. }, _) => "on the road".into(),
         }
     }
 }
@@ -132,6 +135,20 @@ pub fn offer(g: &Game, town: u32, giver: &str, role: super::actor::Role) -> Opti
             Some(Quest { id, town, giver: giver.into(), title: format!("Bounty: {} {}", count, super::item::plural(&m.name)), goal: Goal::Bounty { def: m.id.clone(), count, done: 0 },
                 text: format!("Too many {} about. Kill {} of them and I'll pay the bounty. Where they live: {}.", super::item::plural(&m.name), count, m.habitats.iter().map(|h| h.replace('_', " ")).collect::<Vec<_>>().join(", ")),
                 gold: m.xp * count / 2 + 10, xp: (m.xp * count) as u64 / 2, item: None, state: State::Open })
+        }
+        Role::Trader => {
+            // A parcel for the trader of a town farther off (a reason to walk the world).
+            // Once for each town it can be sent to, and not again for a while (the road is the work,
+            // not a living: a parcel pays in gold more than in experience).
+            let sent: Vec<u32> = g.quests.iter().filter(|q| q.town == town).filter_map(|q| match q.goal { Goal::Deliver { town, .. } => Some(town), _ => None }).collect();
+            let last = g.quests.iter().filter(|q| q.town == town && matches!(q.goal, Goal::Deliver { .. })).count();
+            if last > 0 && g.turn < (last as u64) * 400_000 { return None; }
+            let t = g.sites.iter().filter(|s| s.kind == SiteKind::Town && s.id != town && !sent.contains(&s.id) && { let d = dist(s.tile, home, w); d >= 4 && d <= 6 + lvl as i32 } && g.world.reachable(home, s.tile)).min_by_key(|s| (dist(s.tile, home, w), s.id))?;
+            let d = dist(t.tile, home, w);
+            let tag = 0x0D00_0000 + id;
+            Some(Quest { id, town, giver: giver.into(), title: format!("A parcel for {}", t.name), goal: Goal::Deliver { tag, town: t.id },
+                text: format!("Take this sealed parcel to the trader of {}, {} days' walk {} of here. Don't open it. They'll pay you there.", t.name, d, direction(home, t.tile, w)),
+                gold: 30 + 25 * d as u32, xp: 20 * d as u64, item: None, state: State::Open })
         }
         Role::Sage => {
             let (s, t) = g.sites.iter().filter(|s| !taken(s.id)).flat_map(|s| s.treasures.iter().map(move |t| (s, t))).min_by_key(|(s, _)| (dist(s.tile, home, w), s.id))?;

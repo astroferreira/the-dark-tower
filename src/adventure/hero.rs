@@ -6,7 +6,7 @@
 use super::data::data;
 use super::item::{stow, Item};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Skill { Fist, Sword, Axe, Club, Distance, Shielding, Magic }
 
 impl Skill {
@@ -19,7 +19,7 @@ impl Skill {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Slot { Head, Neck, Body, Hand, Shield, Legs, Feet, Ring }
 
 impl Slot {
@@ -45,7 +45,7 @@ fn tries_for(level: u32, mult: f32, magic: bool) -> u32 {
     else { (50.0 * mult * 1.1f32.powf(level as f32 - 10.0)).max(8.0) as u32 }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Hero {
     pub name: String,
     pub race: String,
@@ -72,6 +72,8 @@ pub struct Hero {
     pub temple: u32,
     pub deaths: u32,
     pub kills: u32,
+    /// A temple's blessing: the next death costs nothing.
+    pub blessed: bool,
     /// The persona's look (skin, hair) for the figure.
     pub skin: [f32; 3],
     pub hair: [f32; 3],
@@ -85,7 +87,7 @@ impl Hero {
         let mut h = Hero {
             name: name.into(), race: race.into(), female, calling: None, level: 1, xp: 0, hp: 0, mana: 0,
             skills: [(10, 0); 7], equipped: Default::default(), pack: Vec::new(), spells: Vec::new(), fed: 300, torch: 0, glow: 0,
-            poisoned: 0, hasted: 0, temple: 0, deaths: 0, kills: 0,
+            poisoned: 0, hasted: 0, temple: 0, deaths: 0, kills: 0, blessed: false,
             skin: crate::persona::colour(&p.skin).unwrap_or([214.0, 172.0, 140.0]), hair: crate::persona::colour(&p.hair).unwrap_or([90.0, 60.0, 40.0]),
             beard: p.beard && !female, strength: p.attr(crate::persona::Attr::Strength) as u32,
         };
@@ -207,6 +209,11 @@ impl Hero {
     pub fn may_learn(&self) -> Vec<&'static super::data::SpellDef> {
         data().spells.iter().filter(|s| !self.spells.contains(&s.id) && (s.callings.is_empty() || self.calling.as_ref().map_or(false, |c| s.callings.contains(c)))).collect()
     }
+    /// What the blessing costs at this level.
+    pub fn blessing_price(&self) -> u32 { (100 * self.level).clamp(100, 4000) }
+    /// What the smith asks to work `it` one step finer.
+    pub fn refine_price(it: &Item) -> u32 { let q = it.quality as u32 + 1; (it.def().value.max(10) * q * 2 + 60 * q * q).min(60_000) }
+
     pub fn title(&self) -> String {
         format!("{}, {} {}{}", self.name, if self.level >= 20 { "the renowned" } else if self.level >= 8 { "the" } else { "a" },
             self.calling.as_deref().unwrap_or(if self.level >= 8 { "wanderer" } else { "commoner" }), if self.level >= 8 && self.calling.is_none() { " without a calling" } else { "" })

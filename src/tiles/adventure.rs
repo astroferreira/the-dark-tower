@@ -671,8 +671,13 @@ fn step_toward(g: &Game, tx: i32, ty: i32) -> Option<(i32, i32)> {
         .min_by_key(|(dx, dy)| d[(g.y + dy) as usize * f.w + (g.x + dx) as usize]).copied()
 }
 
-pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::world_state::WorldHistory>, atlas: &super::atlas::Atlas, seed: u64) -> Result<(), Box<dyn std::error::Error>> {
-    let mut g = crate::adventure::new_game(world, history, seed, None);
+pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::world_state::WorldHistory>, atlas: &super::atlas::Atlas, seed: u64, load: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut g = match load {
+        Some(path) => crate::adventure::Game::load(std::path::Path::new(path), world.width, world.height)?,
+        None => crate::adventure::new_game(world, history, seed, None),
+    };
+    if load.is_some() { let n = g.hero.name.clone(); g.say(Tone::Level, format!("{} takes up the road again.", n)); }
+    else { g.say(Tone::Info, "Keys: arrows or WASD walk (Q E Z C diagonals), bump to strike, open and talk. ? for all the keys."); }
     let mut v = View::new(&g);
     take_effects(&mut g, &mut v);
     let (mut w, mut h) = (1280usize, 800usize);
@@ -688,6 +693,7 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
     let mut was_down = false;
     let mut was_right = false;
     let mut esc_once = false;
+    let mut show_help = false;
     while window.is_open() {
         let (nw, nh) = window.get_size();
         if (nw, nh) != (w, h) && nw > PANEL_W + 200 && nh > 300 { w = nw; h = nh; buf = vec![0u32; w * h]; }
@@ -777,10 +783,13 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
             // The target dies or leaves sight: let it go.
             if let Some(t) = v.target { if !g.place().map_or(false, |p| p.monsters.iter().any(|m| m.uid == t && m.hp > 0 && m.z == g.z)) { v.target = None; } }
         }
-        if pressed(Key::Escape) && g.talk.is_none() {
-            if esc_once { break; }
+        if pressed(Key::F10) { match g.save(&g.save_path()) { Ok(()) => { let p = g.save_path().display().to_string(); g.say(Tone::Level, format!("Saved to {}.", p)); } Err(e) => g.say(Tone::Danger, format!("Could not save: {}", e)) } }
+        if pressed(Key::Slash) { show_help = !show_help; }
+        if pressed(Key::Escape) && show_help { show_help = false; }
+        else if pressed(Key::Escape) && g.talk.is_none() {
+            if esc_once { let _ = g.save(&g.save_path()); break; }
             esc_once = true;
-            g.say(Tone::Info, "Press Esc again to leave the adventure.");
+            g.say(Tone::Info, "Press Esc again to leave the adventure (it is saved).");
         } else if window.get_keys_pressed(KeyRepeat::No).iter().any(|k| *k != Key::Escape) { esc_once = false; }
         // Draw.
         let map_w = w.saturating_sub(PANEL_W);
@@ -791,6 +800,7 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
             v.world_cam = super::render::snap_world_camera(&v.world_cam, map_w, h);
         }
         draw(&g, &mut v, &mut buf, w, h);
+        if show_help { draw_help(&mut buf, w, h, w.saturating_sub(PANEL_W)); }
         let title = format!("The Dark Tower — {} — level {}", g.hero.name, g.hero.level);
         window.set_title(&title);
         window.update_with_buffer(&buf, w, h)?;
@@ -893,4 +903,37 @@ pub fn gallery(world: &crate::world::WorldData, history: Option<&crate::history:
         files.push(path);
     }
     Ok(files)
+}
+
+/// The keys, on a card (? toggles it).
+fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
+    let lines: [(&str, &str); 17] = [
+        ("Arrows, WASD, numpad", "walk; Q E Z C the diagonals; bump into a thing to strike it, open it or talk"),
+        ("Mouse", "click to walk there or to strike; click a thing in the pack to use or wear it, right click to drop it"),
+        ("Space / Tab", "strike or shoot the target / choose the next target in sight"),
+        ("F1 - F9", "cast the spells you know (the Spells tab lists them)"),
+        ("G", "take what lies here"),
+        ("R", "rest until whole (not with enemies near, not hungry)"),
+        ("H / J / F", "drink a health potion / a mana potion / eat"),
+        ("< > Enter", "take the stairs, ladder, hole or way out underfoot; Enter on the map goes in"),
+        ("1 - 9", "answer in a conversation; choose from a quest chest beside you"),
+        ("I K M L", "the Pack, Skills, Spells and Quests tabs"),
+        ("Wheel", "zoom"),
+        ("F10", "save (leaving saves too)"),
+        ("Esc", "close a card; twice to leave"),
+        ("Towns", "the priest heals, gives a calling at level 8, teaches spells and blesses"),
+        ("", "the smith and the trader buy and sell; the lord, the guard and the sage give work"),
+        ("The world", "walk tile by tile; places are named on the map; the farther from towns, the worse"),
+        ("Death", "costs a tenth of your experience and half your gold, unless you were blessed"),
+    ];
+    let cw = 720usize.min(map_w.saturating_sub(40));
+    let r = Rect { x: (map_w - cw) / 2, y: 40, w: cw, h: 60 + lines.len() * 24 };
+    card(buf, w, r);
+    fonts::draw(buf, w, h, (r.x + 24) as f32, (r.y + 14) as f32, "How to play", Face::SmallCaps, 22.0, 0.5, 0x009A_2A1E, None);
+    for (k, (key, what)) in lines.iter().enumerate() {
+        let y = (r.y + 50 + k * 24) as f32;
+        fonts::draw(buf, w, h, (r.x + 24) as f32, y, key, Face::SmallCaps, 15.0, 0.3, 0x0038_2A20, None);
+        let t = super::ui::truncate(what, 90);
+        fonts::draw(buf, w, h, (r.x + 210) as f32, y, &t, Face::Italic, 14.0, 0.0, 0x005A_4634, None);
+    }
 }

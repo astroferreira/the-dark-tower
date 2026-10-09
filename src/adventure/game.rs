@@ -15,14 +15,14 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Tone { Info, Hit, Hurt, Loot, Level, Talk, Quest, Danger, Death }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Line { pub turn: u64, pub text: String, pub tone: Tone }
 
 /// Something for the window to show for a moment.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Effect {
     /// A number over a cell (damage red, healing green, mana blue).
     Number { x: i32, y: i32, z: usize, value: i32, tone: Tone },
@@ -34,10 +34,10 @@ pub enum Effect {
 }
 
 /// A body left where something fell (drawn until it rots).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Corpse { pub x: i32, pub y: i32, pub z: usize, pub def: String, pub name: String, pub turn: u64 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Action {
     Move(i32, i32),
     Wait,
@@ -65,7 +65,7 @@ pub enum Action {
     EnterSite(u32),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Game {
     pub seed: u64,
     pub hero: Hero,
@@ -93,8 +93,10 @@ pub struct Game {
     pub chosen: Vec<u32>,
     /// Facing (for waves and the figure).
     pub facing: (i32, i32),
+    #[serde(skip, default = "fresh_rng")]
     pub rng: ChaCha8Rng,
     /// Visible cells of the current floor (recomputed after each act).
+    #[serde(skip)]
     pub sight: Vec<bool>,
     /// What the adventurer is told on the screen when something must be answered (a death).
     pub banner: Option<(String, String)>,
@@ -104,7 +106,7 @@ pub struct Game {
     pub slain: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32 }
 
 impl Game {
@@ -559,6 +561,8 @@ impl Game {
             (w.attack(), Skill::Magic, d.element.clone().unwrap_or("fire".into()), true)
         } else if let Some(ammo) = &d.ammo {
             if !self.hero.spend(ammo, 1) { self.say(Tone::Info, format!("You have no {}s.", ammo)); return None; }
+            // Half the shafts can be gathered again where they fell.
+            if r.gen_bool(0.5) { let (mx, my, z) = (m.x, m.y, self.z); let a = Item::new(ammo, 1); if let Some(p) = self.place_mut() { p.floors[z].drop_item(mx, my, a); } }
             (data().item(ammo).map_or(10, |a| a.attack), Skill::Distance, ammo.clone(), false)
         } else {
             // Thrown: the weapon flies and lands there.
@@ -760,8 +764,10 @@ impl Game {
     fn die(&mut self, what: &str) {
         self.stats.deaths += 1;
         self.hero.deaths += 1;
-        let lost_xp = self.hero.xp / 10;
-        let gold = self.hero.gold() / 2;
+        let blessed = std::mem::replace(&mut self.hero.blessed, false);
+        let lost_xp = if blessed { 0 } else { self.hero.xp / 10 };
+        let gold = if blessed { 0 } else { self.hero.gold() / 2 };
+        if blessed { self.say(Tone::Level, "The god's blessing takes the blow: you lose nothing, but the blessing is spent."); }
         self.hero.take_gold(gold);
         let (x, y, z) = (self.x, self.y, self.z);
         if gold > 0 { if let Some(p) = self.place_mut() { p.floors[z].drop_item(x, y, Item::new("gold", gold)); } }
@@ -1022,6 +1028,37 @@ impl Game {
         self.enter_site(id, false);
         true
     }
+}
+
+fn fresh_rng() -> ChaCha8Rng { ChaCha8Rng::seed_from_u64(0xADE0) }
+
+/// The head of a saved adventure: what world it belongs to.
+const SAVE_MAGIC: &[u8; 8] = b"ADVENT01";
+
+impl Game {
+    /// Write the adventure to `path` (bincode after a header naming its world).
+    pub fn save(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(dir) = path.parent() { std::fs::create_dir_all(dir)?; }
+        let mut out = SAVE_MAGIC.to_vec();
+        out.extend(bincode::serialize(&(self.world.w as u64, self.world.h as u64, self.seed))?);
+        out.extend(bincode::serialize(self)?);
+        std::fs::write(path, out)?;
+        Ok(())
+    }
+    /// Read an adventure saved by `save`; refused for another world.
+    pub fn load(path: &std::path::Path, world_w: usize, world_h: usize) -> Result<Game, Box<dyn std::error::Error>> {
+        let data = std::fs::read(path)?;
+        if data.len() < 8 || &data[..8] != SAVE_MAGIC { return Err("not a saved adventure".into()); }
+        let (w, h, _seed): (u64, u64, u64) = bincode::deserialize(&data[8..])?;
+        if (w as usize, h as usize) != (world_w, world_h) { return Err(format!("that adventure belongs to a {}x{} world", w, h).into()); }
+        let head = bincode::serialized_size(&(w, h, _seed))? as usize;
+        let mut g: Game = bincode::deserialize(&data[8 + head..])?;
+        g.rng = ChaCha8Rng::seed_from_u64(g.seed ^ g.turn);
+        g.look();
+        Ok(g)
+    }
+    /// Where this adventure is saved by default.
+    pub fn save_path(&self) -> std::path::PathBuf { std::path::PathBuf::from(format!("adventures/{}_{}.adv", self.seed, self.hero.name.to_lowercase().replace(|c: char| !c.is_alphanumeric(), "_"))) }
 }
 
 pub fn cap(s: &str) -> String { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }

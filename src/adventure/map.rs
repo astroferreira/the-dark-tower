@@ -6,13 +6,13 @@
 use super::item::Item;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Ground { Rock, Flags, Earth, Grass, Sand, Snow, Wood, Shallows, Water, Lava, Rubble, Mud, Marble, Cobbles, Moss, Ash, Carpet, Void }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Wall { None, Rock, Brick, Timber, Tree, Bars, Palisade, Hedge, Shadow }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Feature {
     None,
     /// A door: open or shut, locked by a key's tag (0: no lock).
@@ -100,7 +100,7 @@ impl Feature {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tile { pub ground: Ground, pub wall: Wall, pub feature: Feature }
 
 impl Tile {
@@ -113,7 +113,7 @@ impl Tile {
 }
 
 /// One floor of a place.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Floor {
     pub w: usize,
     pub h: usize,

@@ -11,7 +11,7 @@ use super::map::{Feature, Floor, Ground, Tile, Wall, DIRS4, DIRS8};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SiteKind { Town, Cave, Lair, Mine, Ruin, Tomb, Temple, Shrine, Castle, Labyrinth, Camp, Halls, DarkFortress, Wilds }
 
 impl SiteKind {
@@ -46,7 +46,7 @@ impl SiteKind {
 
 /// A named enemy at the bottom of a place: a beast of the history (with its generated monster),
 /// a risen captain, a cult's high priest, the Shadow's lord.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BossSpec {
     pub def: String,
     pub name: String,
@@ -57,7 +57,7 @@ pub struct BossSpec {
     pub story: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SiteSpec {
     pub id: u32,
     pub kind: SiteKind,
@@ -84,7 +84,7 @@ pub struct SiteSpec {
 }
 
 /// A realized place.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Place {
     pub spec: SiteSpec,
     pub floors: Vec<Floor>,
@@ -96,7 +96,7 @@ pub struct Place {
 }
 
 /// The rooms a layout made (for furnishing): x, y, w, h.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Room { pub x: i32, pub y: i32, pub w: i32, pub h: i32 }
 
 impl Room {

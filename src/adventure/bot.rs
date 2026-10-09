@@ -11,7 +11,7 @@ use super::quest::State;
 use super::site::SiteKind;
 use std::collections::{HashSet, VecDeque};
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Bot {
     /// Places it has finished (boss dead or every floor walked).
     pub done: HashSet<u32>,
@@ -137,7 +137,7 @@ impl Bot {
         let loot: u32 = g.hero.pack.iter().filter(|i| i.def().kind == "loot").map(|i| i.value()).sum();
         g.hero.count("health_potion") + g.hero.count("strong_health_potion") == 0 && g.hero.gold() >= 60
             || loot > 250 || (g.hero.level >= 8 && g.hero.calling.is_none())
-            || g.quests.iter().any(|q| q.state == State::Done) || g.hero.fed < 300 && g.hero.pack.iter().all(|i| i.def().kind != "food")
+            || g.hero.fed < 300 && g.hero.gold() >= 10 && g.hero.pack.iter().all(|i| i.def().kind != "food")
     }
 
     fn on_road(&mut self, g: &mut Game) -> bool {
@@ -145,25 +145,32 @@ impl Bot {
         let home = g.site(g.hero.temple).map(|s| s.tile).unwrap_or(g.tile);
         let level = g.hero.level;
         let w = g.world.w;
+        // A parcel to deliver, or work done to report: to that town first.
+        let parcel = g.quests.iter().find_map(|q| match (&q.goal, q.state) { (super::quest::Goal::Deliver { town, .. }, State::Open) => g.site(*town).map(|s| (s.id, s.tile)), _ => None })
+            .or_else(|| g.quests.iter().find(|q| q.state == State::Done).and_then(|q| g.site(q.town)).map(|s| (s.id, s.tile)));
+        if let (Some((pid, ptile)), false) = (parcel, self.need_town(g)) {
+            if g.tile == ptile { return g.act(Action::EnterSite(pid)); }
+            if let Some((dx, dy)) = g.world.step_toward(g.tile, ptile) { if g.act(Action::Travel(dx, dy)) { return true; } }
+        }
         let dest = if self.homeward || self.need_town(g) { self.homeward = true; Some(home) } else {
             let pick = g.sites.iter().filter(|s| s.kind != SiteKind::Town && s.kind != SiteKind::Wilds && !self.done.contains(&s.id) && s.tier.saturating_sub(1) * 8 <= level && self.died.get(&s.id).map_or(true, |d| d.0 < 2 || level >= d.1 + 3))
                 .min_by_key(|s| { let dx = (s.tile.0 as i32 - g.tile.0 as i32).abs(); ((dx.min(w as i32 - dx)).max((s.tile.1 as i32 - g.tile.1 as i32).abs()), s.id) }).map(|s| (s.id, s.tile));
+            // Nothing new it can face: back to a place already walked, where things have come back.
+            let pick = pick.or_else(|| g.sites.iter().filter(|s| self.done.contains(&s.id) && s.kind != SiteKind::Town && s.kind != SiteKind::Wilds && s.tier.saturating_sub(1) * 8 <= level && self.died.get(&s.id).map_or(true, |d| d.0 < 2 || level >= d.1 + 3))
+                .min_by_key(|s| { let dx = (s.tile.0 as i32 - g.tile.0 as i32).abs(); ((dx.min(w as i32 - dx)).max((s.tile.1 as i32 - g.tile.1 as i32).abs()), s.id) }).map(|s| (s.id, s.tile)));
+            if let Some((id, _)) = pick { self.done.remove(&id); }
             self.target = pick.map(|p| p.0);
             pick.map(|p| p.1).or(Some(home))
         };
         let dest = dest.unwrap();
+        if std::env::var("PLANET_ADV_TRACE").is_ok() { eprintln!("   road: at {:?} dest {:?} target {:?} homeward {} need_town {} parcel {:?}", g.tile, dest, self.target.and_then(|t| g.site(t)).map(|s| (s.name.clone(), s.tier)), self.homeward, self.need_town(g), parcel); }
         if g.tile == dest {
             let id = if self.homeward { g.hero.temple } else { self.target.unwrap_or(g.hero.temple) };
             self.homeward = false;
             return g.act(Action::EnterSite(id));
         }
-        let mut dx = dest.0 as i32 - g.tile.0 as i32;
-        if dx > w as i32 / 2 { dx -= w as i32; } else if dx < -(w as i32 / 2) { dx += w as i32; }
-        let dy = dest.1 as i32 - g.tile.1 as i32;
-        let step = (dx.signum(), dy.signum());
-        if g.act(Action::Travel(step.0, step.1)) { return true; }
-        // The sea in the way: try around.
-        for (ax, ay) in [(step.0, 0), (0, step.1), (step.1, step.0), (-step.1, -step.0), (1, 1), (-1, 1), (1, -1), (-1, -1)] { if (ax, ay) != (0, 0) && g.act(Action::Travel(ax, ay)) { return true; } }
+        // Over land by the shortest way (the coast in the way had stopped it).
+        if let Some((dx, dy)) = g.world.step_toward(g.tile, dest) { if g.act(Action::Travel(dx, dy)) { return true; } }
         self.done.extend(self.target);
         false
     }
@@ -204,6 +211,21 @@ impl Bot {
                         for _ in 0..want_potions.max(1) { if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Buy(id, _, _) if id == "health_potion"))) { super::npc::answer(g, i); } }
                         if g.hero.count("bread") + g.hero.count("meat") < 3 { for _ in 0..3 { if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Buy(id, _, _) if id == "bread"))) { super::npc::answer(g, i); } } }
                         if g.hero.count("torch") < 2 { if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Buy(id, _, _) if id == "torch"))) { super::npc::answer(g, i); super::npc::answer(g, i); } }
+                        let wand = match g.hero.calling.as_deref() { Some("sorcerer") => Some("wand_of_embers"), Some("druid") => Some("snakebite_rod"), _ => None };
+                        if let Some(wd) = wand { if g.hero.weapon().map_or(true, |w| w.id != wd) && !g.hero.pack.iter().any(|i| i.id == wd) { if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Buy(id, _, _) if id == wd))) { super::npc::answer(g, i); } } }
+                        if g.hero.calling.as_deref() == Some("paladin") {
+                            if !g.hero.pack.iter().any(|i| i.id == "bow") && g.hero.weapon().map_or(true, |w| w.id != "bow") { if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Buy(id, _, _) if id == "bow"))) { super::npc::answer(g, i); } }
+                            for _ in 0..6 { if g.hero.count("arrow") >= 80 || g.hero.gold() < 40 { break; } if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Buy(id, _, _) if id == "arrow"))) { super::npc::answer(g, i); } }
+                        }
+                        let mine = match g.hero.calling.as_deref() { Some("sorcerer") => Some("wand_of_embers"), Some("druid") => Some("snakebite_rod"), Some("paladin") => Some("bow"), _ => None };
+                        if let Some(wd) = mine { if let Some(k) = g.hero.pack.iter().position(|i| i.id == wd) { let _ = g.hero.equip(k); } }
+                        // A parcel to carry, from level 6 (once the sewers are behind).
+                        if g.hero.level >= 6 && !g.quests.iter().any(|q| q.state == super::quest::State::Open && matches!(q.goal, super::quest::Goal::Deliver { .. })) {
+                            g.talk = None;
+                            super::npc::greet(g, k);
+                            if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Quest))) { super::npc::answer(g, i); }
+                            if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Accept))) { super::npc::answer(g, i); }
+                        }
                         if g.hero.count("rope") == 0 && g.hero.gold() > 60 { if let Some(i) = g.talk.as_ref().and_then(|t| t.options.iter().position(|(_, tp)| matches!(tp, Topic::Buy(id, _, _) if id == "rope"))) { super::npc::answer(g, i); } }
                         g.talk = None;
                     }
@@ -211,7 +233,7 @@ impl Bot {
                 return r;
             }
         }
-        if !self.errands.contains("priest") && (hp_low || (g.hero.level >= 8 && g.hero.calling.is_none()) || g.hero.may_learn().iter().any(|s| s.level <= g.hero.level && 30 * s.level * s.level / 2 <= g.hero.gold() / 2)) {
+        if !self.errands.contains("priest") && (hp_low || (g.hero.fed < 300 && g.hero.gold() < 10) || (!g.hero.blessed && g.hero.gold() > g.hero.blessing_price() * 3) || (g.hero.level >= 8 && g.hero.calling.is_none()) || g.hero.may_learn().iter().any(|s| s.level <= g.hero.level && 40 * s.level.max(1) <= g.hero.gold() / 2)) {
             let Some(k) = g.place().and_then(|p| p.npcs.iter().position(|n| n.role == Role::Priest)) else { return false };
             let (nx, ny) = { let n = &g.place().unwrap().npcs[k]; (n.x, n.y) };
             if (nx - g.x).abs() > 1 || (ny - g.y).abs() > 1 {
@@ -224,8 +246,10 @@ impl Bot {
             if hp_low { if let Some(i) = pick(g, &|t| matches!(t, Topic::Heal)) { super::npc::answer(g, i); } }
             if g.hero.level >= 8 && g.hero.calling.is_none() {
                 if let Some(i) = pick(g, &|t| matches!(t, Topic::Calling)) { super::npc::answer(g, i); }
-                if let Some(i) = pick(g, &|t| matches!(t, Topic::Become(c) if c == "knight")) { super::npc::answer(g, i); }
+                let want = std::env::var("PLANET_ADV_CALLING").unwrap_or_else(|_| "knight".into());
+                if let Some(i) = pick(g, &|t| matches!(t, Topic::Become(c) if *c == want)) { super::npc::answer(g, i); }
             }
+            if !g.hero.blessed && g.hero.gold() > g.hero.blessing_price() * 3 { if let Some(i) = pick(g, &|t| matches!(t, Topic::Bless(_))) { super::npc::answer(g, i); } }
             if let Some(i) = pick(g, &|t| matches!(t, Topic::Spells)) { super::npc::answer(g, i); }
             for _ in 0..6 {
                 let afford = g.hero.gold() / 2;
@@ -235,6 +259,8 @@ impl Bot {
             }
             g.talk = None;
             self.errands.insert("priest".into());
+            let mine = match g.hero.calling.as_deref() { Some("sorcerer") => Some("wand_of_embers"), Some("druid") => Some("snakebite_rod"), Some("paladin") => Some("bow"), _ => None };
+            if let Some(wd) = mine { if g.hero.weapon().map_or(true, |w| w.id != wd) { if let Some(k) = g.hero.pack.iter().position(|i| i.id == wd) { let _ = g.hero.equip(k); } } }
             return true;
         }
         if !self.errands.contains("smith") {
@@ -297,6 +323,9 @@ impl Bot {
                 let Some(slot) = d.slot.as_deref().and_then(Slot::of) else { continue };
                 if (d.range > 0 && !d.thrown) || d.thrown || d.kind == "wand" || d.two_handed { continue; }
                 if !d.calling.is_empty() { continue; }
+                // Casters keep their wand, paladins their bow.
+                let has_ammo = g.hero.count("arrow") + g.hero.count("bolt") > 0;
+                if slot == Slot::Hand && (matches!(g.hero.calling.as_deref(), Some("sorcerer") | Some("druid")) || (g.hero.calling.as_deref() == Some("paladin") && has_ammo)) { continue; }
                 let cur = g.hero.equipped[slot as usize].as_ref().map_or(0, score);
                 let gain = score(it) - cur;
                 if gain > 0 && best.map_or(true, |b| gain > b.1) { best = Some((k, gain)); }
@@ -307,6 +336,12 @@ impl Bot {
 
     fn below(&mut self, g: &mut Game, id: u32) -> bool {
         self.errands.clear();
+        if g.hero.calling.as_deref() == Some("paladin") {
+            let arrows = g.hero.count("arrow") > 0;
+            let bow = g.hero.weapon().map_or(false, |w| w.id == "bow");
+            if bow && !arrows { let _ = g.hero.unequip(Slot::Hand); self.equip_best(g); }
+            if !bow && arrows { if let Some(k) = g.hero.pack.iter().position(|i| i.id == "bow") { let _ = g.hero.equip(k); } }
+        }
         if self.was_in != Some(id) { self.walked.retain(|w| w.0 != id); self.leaving = None; self.hunt = None; }
         if self.leaving == Some(id) { self.why = "leaving"; return self.go_up(g, id); }
         let h = &g.hero;
@@ -344,6 +379,17 @@ impl Bot {
         self.hunt = target.map(|t| t.0);
         if std::env::var("PLANET_ADV_TRACE").is_ok() { if let Some((uid, mx, my)) = target { eprintln!("   target {} at {},{} from {},{}", uid, mx, my, g.x, g.y); } }
         if let Some((uid, mx, my)) = target {
+            // A bow, a thrown spear or a wand: shoot from where it stands.
+            let ranged = g.hero.weapon().map_or(0, |w| w.def().range);
+            if ranged > 1 && (mx - g.x).abs().max((my - g.y).abs()) <= ranged && g.visible(mx, my) && g.floor().map_or(false, |f| f.clear_line((g.x, g.y), (mx, my))) {
+                let wand = g.hero.weapon().map_or(false, |w| w.def().kind == "wand");
+                let ammo_ok = g.hero.weapon().map_or(false, |w| w.def().ammo.as_ref().map_or(true, |a| g.hero.count(a) > 0));
+                if (!wand || g.hero.mana >= 3) && ammo_ok {
+                    // Strike spells first for the casters.
+                    if let Some(k) = g.hero.spells.iter().position(|s| matches!(s.as_str(), "flame" | "ice" | "holy" | "ethereal")) { if g.hero.mana >= 40 { self.why = "cast"; return g.act(Action::Cast(k, Some(uid))); } }
+                    self.why = "shoot"; return g.act(Action::Attack(uid));
+                }
+            }
             if (mx - g.x).abs() <= 1 && (my - g.y).abs() <= 1 {
                 // A strong blow when there is mana to spare.
                 if let Some(k) = g.hero.spells.iter().position(|s| s == "brutal") { if g.hero.mana >= 60 { return g.act(Action::Cast(k, Some(uid))); } }
@@ -470,6 +516,19 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
             println!("  act {:>6}: level {:>2} ({}), {}/{} hp, {} gold, kills {}, bosses {}, chests {}, deaths {}, quests {}, places {}; at {}",
                 k + 1, g.hero.level, g.hero.calling.as_deref().unwrap_or("no calling"), g.hero.hp, g.hero.max_hp(), g.hero.gold(), s.kills, s.bosses, s.chests, s.deaths, s.quests_done, s.sites_entered, at);
         }
+    }
+    // A save and a load give the same adventure back, and it goes on the same way.
+    if let Ok(path) = std::env::var("PLANET_ADV_SAVE") {
+        let p = std::path::Path::new(&path);
+        g.save(p).expect("save");
+        let mut back = super::Game::load(p, g.world.w, g.world.h).expect("load");
+        let same = back.hero.level == g.hero.level && back.hero.xp == g.hero.xp && back.places.len() == g.places.len() && back.log.len() == g.log.len() && back.hero.pack == g.hero.pack;
+        let mut b2 = b.clone();
+        let mut g2 = g.clone();
+        g2.rng = back.rng.clone();
+        for _ in 0..500 { if !b2.step(&mut back) { let _ = back.act(Action::Wait); } }
+        for _ in 0..500 { if !b.step(&mut g2) { let _ = g2.act(Action::Wait); } }
+        println!("Save: {} bytes; round trip {}; 500 acts after: {}", std::fs::metadata(p).map(|m| m.len()).unwrap_or(0), if same { "ok" } else { "DIFFERS" }, if back.hero.xp == g2.hero.xp && back.turn == g2.turn { "the same" } else { "different" });
     }
     let skills: Vec<String> = super::hero::Skill::ALL.iter().map(|s| format!("{} {}", s.word(), g.hero.skill(*s))).collect();
     println!("Skills: {}", skills.join(", "));
