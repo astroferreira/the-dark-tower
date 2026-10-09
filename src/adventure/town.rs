@@ -147,9 +147,10 @@ pub fn realize(spec: &SiteSpec) -> Place {
             Some(best.0)
         } else { None };
         // Rats (and in the lower sewer, what eats them).
-        let table: &[&str] = if z == 1 { &["rat", "rat", "rat", "cave_rat", "bat", "spider"] } else { &["cave_rat", "cave_rat", "spider", "snake", "poison_spider", "goblin"] };
+        // The upper sewer is for the newly come: rats and the odd bat. Worse below.
+        let table: &[&str] = if z == 1 { &["rat", "rat", "rat", "rat", "rat", "bat"] } else { &["rat", "cave_rat", "cave_rat", "spider", "snake", "poison_spider", "goblin"] };
         let cells = s.cells(|t| t.walkable() && t.feature == Feature::None);
-        for _ in 0..(cells.len() / 30) {
+        for _ in 0..(cells.len() / if z == 1 { 45 } else { 32 }) {
             let (x, y) = cells[b.rng.gen_range(0..cells.len())];
             if (x - arrive.0).abs() + (y - arrive.1).abs() < 6 { continue; }
             let id = table[b.rng.gen_range(0..table.len())];

@@ -126,6 +126,7 @@ pub struct Floor {
     /// Open sky: lit by day, the whole floor in sight to the light's reach.
     pub outdoor: bool,
     /// Things lying on cells.
+    #[serde(with = "cell_map")]
     pub items: HashMap<(i32, i32), Vec<Item>>,
     /// Cells the adventurer has seen (remembered on the map).
     pub seen: Vec<bool>,
@@ -231,3 +232,18 @@ impl Floor {
 
 pub const DIRS8: [(i32, i32); 8] = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
 pub const DIRS4: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+
+/// A map keyed by cells, saved as a list of pairs (JSON keys must be strings).
+mod cell_map {
+    use super::Item;
+    use std::collections::HashMap;
+    pub fn serialize<S: serde::Serializer>(m: &HashMap<(i32, i32), Vec<Item>>, s: S) -> Result<S::Ok, S::Error> {
+        let mut v: Vec<(&(i32, i32), &Vec<Item>)> = m.iter().collect();
+        v.sort_by_key(|e| *e.0);
+        serde::Serialize::serialize(&v, s)
+    }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<HashMap<(i32, i32), Vec<Item>>, D::Error> {
+        let v: Vec<((i32, i32), Vec<Item>)> = serde::Deserialize::deserialize(d)?;
+        Ok(v.into_iter().collect())
+    }
+}

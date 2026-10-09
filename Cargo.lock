@@ -2084,6 +2084,7 @@ dependencies = [
  "clap",
  "crossterm 0.27.0",
  "exr",
+ "flate2",
  "font8x8",
  "fontdue",
  "gif",

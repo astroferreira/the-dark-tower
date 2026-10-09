@@ -106,7 +106,7 @@ pub fn offer(g: &Game, town: u32, giver: &str, role: super::actor::Role) -> Opti
         || g.site(site).and_then(|s| s.boss.as_ref()).map_or(false, |b| g.slain.contains(&b.name));
     let id = g.quests.len() as u32 + 1;
     // Fit: a place's tier against the hero's level (tier 1 ~ level 1-6, 2 ~ 6-14, 3 ~ 12-24...).
-    let fits = |tier: u32| { let lo = (tier.saturating_sub(1)) * 7; lvl + 6 >= lo && lvl <= lo + 22 };
+    let fits = |tier: u32| { let lo = (tier.saturating_sub(1)) * 7; lvl + 3 >= lo.max(4) && lvl <= lo + 22 };
     match role {
         Role::Lord => {
             let s = g.sites.iter().filter(|s| matches!(s.kind, SiteKind::Lair | SiteKind::Camp | SiteKind::Cave | SiteKind::Castle | SiteKind::Labyrinth | SiteKind::Halls) && s.boss.is_some() && fits(s.tier) && !taken(s.id))
@@ -118,7 +118,9 @@ pub fn offer(g: &Game, town: u32, giver: &str, role: super::actor::Role) -> Opti
                 gold: 60 * s.tier * s.tier + 20 * d as u32, xp: (80 * s.tier * s.tier * s.tier) as u64, item: None, state: State::Open })
         }
         Role::Priest => {
-            let s = g.sites.iter().filter(|s| matches!(s.kind, SiteKind::Tomb | SiteKind::Temple | SiteKind::Shrine | SiteKind::Ruin) && s.boss.is_some() && fits(s.tier) && !taken(s.id))
+            // The risen dead only (a ruin's bandit chief is the lord's business).
+            let undead = |s: &super::site::SiteSpec| s.boss.as_ref().and_then(|b| super::data::data().monster(&b.def)).map_or(false, |m| m.undead);
+            let s = g.sites.iter().filter(|s| matches!(s.kind, SiteKind::Tomb | SiteKind::Temple | SiteKind::Shrine | SiteKind::Ruin | SiteKind::Castle) && undead(s) && fits(s.tier) && !taken(s.id))
                 .min_by_key(|s| (dist(s.tile, home, w), s.id))?;
             let b = s.boss.as_ref()?;
             let d = dist(s.tile, home, w);

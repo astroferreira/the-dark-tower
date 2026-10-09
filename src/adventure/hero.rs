@@ -86,7 +86,7 @@ impl Hero {
         let p = crate::persona::Persona::roll(race, None, seed);
         let mut h = Hero {
             name: name.into(), race: race.into(), female, calling: None, level: 1, xp: 0, hp: 0, mana: 0,
-            skills: [(10, 0); 7], equipped: Default::default(), pack: Vec::new(), spells: Vec::new(), fed: 300, torch: 0, glow: 0,
+            skills: [(10, 0); 7], equipped: Default::default(), pack: Vec::new(), spells: Vec::new(), fed: 1500, torch: 0, glow: 0,
             poisoned: 0, hasted: 0, temple: 0, deaths: 0, kills: 0, blessed: false,
             skin: crate::persona::colour(&p.skin).unwrap_or([214.0, 172.0, 140.0]), hair: crate::persona::colour(&p.hair).unwrap_or([90.0, 60.0, 40.0]),
             beard: p.beard && !female, strength: p.attr(crate::persona::Attr::Strength) as u32,
@@ -105,7 +105,7 @@ impl Hero {
     pub fn max_hp(&self) -> i32 {
         let per = self.calling_def().map_or(8, |c| c.hp / 2 + 2);
         let ring: i32 = self.equipped.iter().flatten().map(|i| i.def().hp).sum();
-        60 + per * (self.level as i32 - 1) + ring
+        80 + per * (self.level as i32 - 1) + ring
     }
     pub fn max_mana(&self) -> i32 { let per = self.calling_def().map_or(4, |c| c.mana / 2 + 1); 20 + per * (self.level as i32 - 1) }
     pub fn skill(&self, s: Skill) -> u32 {
@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(h.level, 1);
         let up = h.gain_xp(xp_for(5));
         assert_eq!(up, vec![2, 3, 4, 5]);
-        assert!(h.max_hp() > 60);
+        assert!(h.max_hp() > 80);
         let mut rose = 0;
         for _ in 0..2000 { if h.train(Skill::Club, 1).is_some() { rose += 1; } }
         assert!(rose >= 3, "club rose {} times", rose);

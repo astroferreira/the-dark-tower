@@ -191,6 +191,10 @@ struct Args {
     #[arg(long)]
     adventure_snapshot: Option<String>,
 
+    /// Print a saved adventure's hero, place and the end of its log (no world needed)
+    #[arg(long)]
+    adventure_inspect: Option<String>,
+
     /// Resume a saved adventure (adventures/SEED_NAME.adv; the same world must be generated)
     #[arg(long)]
     adventure_load: Option<String>,
@@ -675,6 +679,21 @@ fn parse_args() -> Args {
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     if args.adventure_load.is_some() { args.adventure = true; }
+    if let Some(path) = &args.adventure_inspect {
+        match planet_generator::adventure::Game::peek(std::path::Path::new(path)) {
+            Ok(g) => {
+                let place = g.place().map(|p| format!("{} ({})", p.spec.name, p.floors[g.z].name)).unwrap_or_else(|| format!("the road at {},{}", g.tile.0, g.tile.1));
+                println!("{} of the {}: level {} {}, {} xp, {}/{} life, {} gold; turn {}; at {}", g.hero.name, g.hero.race, g.hero.level, g.hero.calling.as_deref().unwrap_or("commoner"), g.hero.xp, g.hero.hp, g.hero.max_hp(), g.hero.gold(), g.turn, place);
+                println!("Kills {}, bosses {}, chests {}, deaths {}, quests {}, places {}; skills {:?}", g.stats.kills, g.stats.bosses, g.stats.chests, g.stats.deaths, g.stats.quests_done, g.stats.sites_entered, g.hero.skills);
+                println!("Wears: {}", g.hero.equipped.iter().flatten().map(|i| i.describe()).collect::<Vec<_>>().join(", "));
+                println!("Pack: {}", g.hero.pack.iter().map(|i| i.describe()).collect::<Vec<_>>().join(", "));
+                println!("Quests: {}", g.quests.iter().map(|q| format!("{} [{}]", q.title, q.progress())).collect::<Vec<_>>().join("; "));
+                for l in g.log.iter().rev().take(60).collect::<Vec<_>>().into_iter().rev() { println!("  {}", l.text); }
+            }
+            Err(e) => eprintln!("--adventure-inspect: {}", e),
+        }
+        std::process::exit(0);
+    }
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
     if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways || args.adventure_bot.is_some() || args.adventure_snapshot.is_some() || args.adventure_gallery.is_some() { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }

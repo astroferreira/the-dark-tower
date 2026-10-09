@@ -50,7 +50,7 @@
     {"id": "axe", "name": "axe", "kind": "weapon", "skill": "axe", "slot": "hand", "attack": 16, "defense": 10, "value": 80, "glyph": "Axe", "material": "iron"},
     {"id": "battle_axe", "name": "battle axe", "kind": "weapon", "skill": "axe", "slot": "hand", "attack": 28, "defense": 16, "value": 520, "glyph": "Axe", "material": "iron", "two_handed": true},
     {"id": "fire_axe", "name": "fire axe", "kind": "weapon", "skill": "axe", "slot": "hand", "attack": 40, "defense": 22, "value": 6000, "glyph": "Axe", "material": "adamantine", "burns": true},
-    {"id": "club", "name": "club", "kind": "weapon", "skill": "club", "slot": "hand", "attack": 7, "defense": 7, "value": 3, "glyph": "Mace", "material": "oak"},
+    {"id": "club", "name": "club", "kind": "weapon", "skill": "club", "slot": "hand", "attack": 9, "defense": 7, "value": 3, "glyph": "Mace", "material": "oak"},
     {"id": "mace", "name": "mace", "kind": "weapon", "skill": "club", "slot": "hand", "attack": 16, "defense": 11, "value": 90, "glyph": "Mace", "material": "iron"},
     {"id": "battle_hammer", "name": "battle hammer", "kind": "weapon", "skill": "club", "slot": "hand", "attack": 30, "defense": 18, "value": 600, "glyph": "Mace", "material": "iron", "two_handed": true},
     {"id": "spear", "name": "spear", "kind": "weapon", "skill": "distance", "slot": "hand", "attack": 14, "defense": 0, "value": 12, "glyph": "Spear", "material": "iron", "range": 4, "thrown": true, "stack": true},

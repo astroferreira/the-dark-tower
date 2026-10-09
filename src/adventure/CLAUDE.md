@@ -73,8 +73,11 @@ death that costs experience). Turn-based and deterministic (`Game::act`).
   chase by distance map, open doors, flee when beaten unless cornered, shoot, heal, regenerate,
   a beast of the history's own attack), death (a tenth of experience and half the gold where
   one fell, unless blessed; wake at the temple), travel on the world map (food, healing,
-  ambushes by the land's danger as a Wilds floor), the companion, saving and loading (bincode,
-  header `ADVENT01` with the world's size).
+  ambushes by the land's danger as a Wilds floor), the companion, saving and loading (header
+  `ADVENT02`, then gzipped JSON of the world's size and the game: a field added to any saved
+  type needs `#[serde(default)]` so older saves still load; the first builds' bincode saves,
+  `ADVENT01`, are refused with a message). `--adventure-inspect FILE` prints a save without its
+  world.
 - `npc.rs`: talk by keyword choices: name, job, trade (buy by role and level; sell loot or old
   gear), quest and report, rumours (an unknown place near and the town's news of the world),
   the sage's maps, the priest's healing (free to 15; bread for the hungry poor), calling at
@@ -113,6 +116,14 @@ death that costs experience). Turn-based and deterministic (`Game::act`).
   `Game::deeds`; `PLANET_ADV_LEGEND=FILE` from the bot).
 - Exploits found and closed by the bot: parcels between two towns (one per pair, cooldown,
   small experience), the same quest for the same beast (slain bosses remembered).
+
+## From the first real play (2026-10-09)
+- A halfling commoner died at level 2 in the upper sewer: a 30-exchange fight with a cave spider
+  at 1-4 damage a blow, "Too far to strike" when targeting at range, hungry (the hint named a key
+  that does not exist), then a bat. Now: attacking out of reach walks toward the foe (Tibia's
+  chase); every blow does a third of its best at least; a commoner has 80 life and sets out fed;
+  the upper sewer holds rats and the odd bat (spiders and cave rats below); quests are offered
+  from four levels under their place's level, and the priest's only for the risen dead.
 
 ## Not yet
 - Factions' regard (killing a people's soldiers angers their towns), houses, a bank, night and

@@ -533,7 +533,14 @@ impl Game {
         let w = self.hero.weapon().cloned();
         let ranged = w.as_ref().map_or(false, |w| w.def().range > 0);
         if adjacent && !(ranged && w.as_ref().map_or(false, |w| w.def().ammo.is_some() || w.def().kind == "wand")) { return self.melee(uid); }
-        if !ranged { self.say(Tone::Info, "Too far to strike. Walk up to it, or take a bow."); return None; }
+        if !ranged {
+            // Out of reach: go after it (Tibia's chase), a step down the way to it.
+            let f = self.floor()?;
+            let d = f.distances(mx, my, 40, |x, y| f.at(x, y).walkable() || (x, y) == (self.x, self.y) || (x, y) == (mx, my));
+            let cur = d.get(self.y as usize * f.w + self.x as usize).copied().unwrap_or(i32::MAX);
+            let step = DIRS8.iter().copied().filter(|(dx, dy)| { let (nx, ny) = (self.x + dx, self.y + dy); f.inside(nx, ny) && d[ny as usize * f.w + nx as usize] < cur }).min_by_key(|(dx, dy)| d[(self.y + dy) as usize * f.w + (self.x + dx) as usize]);
+            match step { Some((dx, dy)) => return self.step(dx, dy), None => { self.say(Tone::Info, "You cannot reach it from here."); return None; } }
+        }
         self.shoot(uid)
     }
 
@@ -569,7 +576,8 @@ impl Game {
         let max = (0.085 * sk * attack as f32 + level / 5.0) * strength;
         let mut r = self.roll(uid as u64 * 999 + 11);
         let m = self.place()?.monsters[k].clone();
-        let mut dmg = r.gen_range(0.0..=max.max(1.0)).round() as i32;
+        // (Every blow does some harm: a third of its best at least; misses come from the foe's defense.)
+        let mut dmg = r.gen_range(max.max(1.0) / 3.0..=max.max(1.0)).round() as i32;
         let block = r.gen_range(0..=(m.defense() / 2).max(0));
         let soak = if m.armor() > 0 { r.gen_range(m.armor() / 2..=m.armor()) } else { 0 };
         if holy && m.def().undead { dmg = dmg * 3 / 2; }
@@ -879,7 +887,7 @@ impl Game {
                 h.mana = (h.mana + 1 + h.level as i32 / 4 + h.skill(Skill::Magic) as i32 / 3).min(h.max_mana());
             }
             if h.poisoned > 0 { h.poisoned -= 1; let d = 1 + h.poisoned / 8; self.hurt(d, "poison"); if self.hero.poisoned == 0 { self.say(Tone::Info, "The poison has run its course."); } }
-            if self.hero.fed == 0 && self.turn / 100 % 50 == 0 { self.say(Tone::Danger, "You are hungry. Eat something (U on food)."); }
+            if self.hero.fed == 0 && self.turn / 100 % 50 == 0 { self.say(Tone::Danger, "You are hungry, and you will not heal until you eat (F eats, or click food in the pack)."); }
         }
         if self.here.is_some() { self.monsters_act(cost); }
         self.corpses.values_mut().for_each(|v| v.retain(|c| self.turn < c.turn + 3000));
@@ -1208,30 +1216,43 @@ impl Game {
 }
 
 /// The head of a saved adventure: what world it belongs to.
-const SAVE_MAGIC: &[u8; 8] = b"ADVENT01";
+const SAVE_MAGIC: &[u8; 8] = b"ADVENT02";
+/// Saves of the first builds (bincode): they cannot be read once the game has changed.
+const OLD_MAGIC: &[u8; 8] = b"ADVENT01";
 
 impl Game {
-    /// Write the adventure to `path` (bincode after a header naming its world).
+    /// Write the adventure to `path`: the header, then gzipped JSON of the world's size and the
+    /// game (JSON keeps old saves readable as the game grows: new fields take their defaults).
     pub fn save(&self, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(dir) = path.parent() { std::fs::create_dir_all(dir)?; }
+        use std::io::Write;
+        if let Some(dir) = path.parent() { if !dir.as_os_str().is_empty() { std::fs::create_dir_all(dir)?; } }
         let mut out = SAVE_MAGIC.to_vec();
-        out.extend(bincode::serialize(&(self.world.w as u64, self.world.h as u64, self.seed))?);
-        out.extend(bincode::serialize(self)?);
-        std::fs::write(path, out)?;
+        let mut z = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        serde_json::to_writer(&mut z, &((self.world.w as u64, self.world.h as u64, self.seed), self))?;
+        out.extend(z.finish()?);
+        let tmp = path.with_extension("tmp");
+        std::fs::File::create(&tmp)?.write_all(&out)?;
+        std::fs::rename(&tmp, path)?;
         Ok(())
+    }
+    fn read_save(path: &std::path::Path) -> Result<((u64, u64, u64), Game), Box<dyn std::error::Error>> {
+        let data = std::fs::read(path)?;
+        if data.len() >= 8 && &data[..8] == OLD_MAGIC { return Err("that adventure was saved by an earlier build of the game and cannot be read any more".into()); }
+        if data.len() < 8 || &data[..8] != SAVE_MAGIC { return Err("not a saved adventure".into()); }
+        let z = flate2::read::GzDecoder::new(&data[8..]);
+        Ok(serde_json::from_reader(z)?)
     }
     /// Read an adventure saved by `save`; refused for another world.
     pub fn load(path: &std::path::Path, world_w: usize, world_h: usize) -> Result<Game, Box<dyn std::error::Error>> {
-        let data = std::fs::read(path)?;
-        if data.len() < 8 || &data[..8] != SAVE_MAGIC { return Err("not a saved adventure".into()); }
-        let (w, h, _seed): (u64, u64, u64) = bincode::deserialize(&data[8..])?;
+        let ((w, h, _), mut g) = Self::read_save(path)?;
         if (w as usize, h as usize) != (world_w, world_h) { return Err(format!("that adventure belongs to a {}x{} world", w, h).into()); }
-        let head = bincode::serialized_size(&(w, h, _seed))? as usize;
-        let mut g: Game = bincode::deserialize(&data[8 + head..])?;
         g.rng = ChaCha8Rng::seed_from_u64(g.seed ^ g.turn);
         g.look();
         Ok(g)
     }
+    /// A saved adventure read without its world (for `--adventure-inspect`).
+    pub fn peek(path: &std::path::Path) -> Result<Game, Box<dyn std::error::Error>> { Ok(Self::read_save(path)?.1) }
+
     /// Where this adventure is saved by default.
     pub fn save_path(&self) -> std::path::PathBuf { std::path::PathBuf::from(format!("adventures/{}_{}.adv", self.seed, self.hero.name.to_lowercase().replace(|c: char| !c.is_alphanumeric(), "_"))) }
 }
