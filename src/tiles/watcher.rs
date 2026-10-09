@@ -29,7 +29,7 @@ use crate::world::WorldData;
 
 use super::atlas::Atlas;
 use super::classify::{faction_color, HistoryOverlay, Site, TileWorld};
-use super::render::{render_world_lod, screen_to_world, Camera};
+use super::render::{render_world_cached, render_world_lod, screen_to_world, snap_world_camera, Camera};
 use super::text::{draw_ink, place_labels, text_width, Label};
 use super::ui::*;
 
@@ -902,6 +902,7 @@ impl<'a> View<'a> {
         self.cam.cx = self.cam.cx.rem_euclid(world.width as f32);
         let lay = self.lay;
         let now = Instant::now();
+        let mut tm = [0.0f64; 5];
         if self.tw_dirty {
             let mut tw = self.base.clone();
             tw.apply_overlay(world, &self.cur, self.atlas);
@@ -913,14 +914,21 @@ impl<'a> View<'a> {
             self.tw_dirty = false;
             self.map_dirty = true;
         }
+        tm[0] = now.elapsed().as_secs_f64() * 1e3;
         let moving = now.duration_since(self.moved) < Duration::from_millis(120);
         if self.preview && !moving { self.map_dirty = true; }
         if self.map_dirty && (moving || now.duration_since(self.last_render) > Duration::from_millis(30)) {
-            let cam = self.cam;
             let t0 = Instant::now();
-            let lod = if moving && self.full_ms > 14.0 { 2 } else { 1 };
-            render_world_lod(&self.tw, self.atlas, &cam, &mut self.map_buf, lay.map.w, lay.map.h, lod);
+            // (Kept between frames: a pan draws only what comes into view, a season of history
+            // only the tiles it changed. Debug: PLANET_WATCH_NOCACHE draws it afresh as before.)
+            let fresh = std::env::var("PLANET_WATCH_NOCACHE").is_ok();
+            let lod = if fresh && moving && self.full_ms > 14.0 { 2 } else { 1 };
+            let cam = if fresh { self.cam } else { snap_world_camera(&self.cam, lay.map.w, lay.map.h) };
+            if fresh { render_world_lod(&self.tw, self.atlas, &cam, &mut self.map_buf, lay.map.w, lay.map.h, lod); }
+            else { render_world_cached(&self.tw, self.atlas, &cam, &mut self.map_buf, lay.map.w, lay.map.h); }
+            tm[1] = t0.elapsed().as_secs_f64() * 1e3;
             overlay_realms(&self.tw, &cam, &mut self.map_buf, lay.map.w, lay.map.h);
+            tm[2] = t0.elapsed().as_secs_f64() * 1e3 - tm[1];
             if lod == 1 { self.full_ms = t0.elapsed().as_secs_f32() * 1e3; }
             self.preview = lod > 1;
             if let Some(step) = self.shown.map(|k| &*self.steps[k]).filter(|_| !self.preview) {
@@ -934,9 +942,11 @@ impl<'a> View<'a> {
                     (mw as f32 / 2.0 + dx * cam.tile_px, mh as f32 / 2.0 + (y - cam.cy) * cam.tile_px)
                 });
             }
+            tm[3] = t0.elapsed().as_secs_f64() * 1e3 - tm[1] - tm[2];
             self.map_dirty = false;
             self.last_render = now;
         }
+        let trest = Instant::now();
 
         let complete = self.complete();
         let buf = &mut self.buf;
@@ -989,6 +999,8 @@ impl<'a> View<'a> {
         let written = self.steps.len().saturating_sub(1) as u32;
         self.timeline = draw_panel(buf, w, h, lay.panel, current, &souls, &status, ctl, complete, written);
         self.entry_hits = draw_log(buf, w, h, lay.log, &self.log, self.show_all, &mut self.log_scroll, mouse);
+        tm[4] = trest.elapsed().as_secs_f64() * 1e3;
+        if std::env::var("PLANET_TIME_WATCH").is_ok() { eprintln!("WATCH tw {:.2} map {:.2} realms {:.2} labels {:.2} panel {:.2}", tm[0], tm[1], tm[2], tm[3], tm[4]); }
 
         // The world today: once the age is written, the present the game inherits, and three
         // places to settle. Lettered in IM Fell.

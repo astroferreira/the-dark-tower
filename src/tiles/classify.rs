@@ -82,6 +82,13 @@ pub struct TileWorld {
     pub dominion_edge: Vec<bool>,
 }
 
+/// A revision number never given before (a `TileWorld` cloned and changed must not share its
+/// revision with another: the world map kept between frames is keyed on it).
+pub fn next_revision() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Distinct, muted colour for a faction's border (ink-like, to sit on the parchment palette).
 pub fn faction_color(id: u64) -> u32 {
     let hue = (hash(id as usize, 7) % 360) as f32;
@@ -207,7 +214,7 @@ impl TileWorld {
         let volcano: std::collections::HashSet<(usize, usize)> = world.volcanoes.iter().map(|v| (v.x, v.y)).collect();
 
         let mut tw = TileWorld {
-            revision: 0,
+            revision: next_revision(),
             width: w,
             height: h,
             ground: Vec::with_capacity(n),
@@ -426,7 +433,7 @@ impl TileWorld {
 
     /// Recompute snow cover, foliage colour and frozen water for a season.
     pub fn set_season(&mut self, world: &WorldData, season: crate::seasons::Season) {
-        self.revision += 1;
+        self.revision = next_revision();
         use crate::seasons::Season;
         let (w, h) = (self.width, self.height);
         let sc = world.seasonal_climate.as_ref();
@@ -461,14 +468,14 @@ impl TileWorld {
     /// Overlay what history left on the land: settlements and ruins as sprites, roads, and
     /// territory ownership.
     pub fn apply_history(&mut self, world: &WorldData, history: &crate::history::world_state::WorldHistory, atlas: &Atlas) {
-        self.revision += 1;
+        self.revision = next_revision();
         let overlay = HistoryOverlay::from_history(history, self.width, self.height);
         self.apply_overlay(world, &overlay, atlas);
     }
 
     /// Apply a history overlay (see `HistoryOverlay`) to a freshly built tile world.
     pub fn apply_overlay(&mut self, world: &WorldData, o: &HistoryOverlay, atlas: &Atlas) {
-        self.revision += 1;
+        self.revision = next_revision();
         let (w, h) = (self.width, self.height);
         for i in 0..w * h {
             self.owner[i] = o.owner[i];

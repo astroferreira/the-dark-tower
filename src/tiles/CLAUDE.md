@@ -344,6 +344,20 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   core's worth of work for the colony: median 2.6 ms, 7 frames of 57,600 over 16.7 ms (the first
   frame and the season's regrowth across the screen). Spikes left in wall time on this machine
   are the scheduler (they fall on different frames each run and vanish in CPU time).
-- Not done: the level view (`render_level_ink`) and the watcher are still drawn afresh (3-9 ms
-  with all cores, 10-35 ms on one); the world shader costs ~150 ns a pixel on one core, so fast
-  pans at 2560x1440 on a single core miss frames.
+- The level view (`render_level_ink`) is kept the same way: the slice is drawn per pixel over
+  the kept ground in the same passes (`level_pixel`), the cache keyed on its level, each
+  column's snapshot holding the floor at that level and the two cells over it; `draw_level`'s
+  mask is filled from per-column cells (a float test per pixel had cost ~5 ms at 2560x1440).
+  One core at 2560x1440: terrain 25 -> 1.1 ms, p99 37 -> 14 ms.
+- The world map's tiles are compared when the map changes (`tile_sig`: everything the shader
+  reads of a tile, hashed; `global_sig` for the overlay and resources, in the key): only tiles
+  whose hash changed are drawn again, with two tiles round (`TILE_REACH`); a pan carries the
+  hashes over and hashes only the tiles come into view (`carry_sigs`). Revisions are unique
+  (`classify::next_revision`: the watcher's map is a clone of the base with the season's overlay,
+  and had the same revision every season). The watcher draws with `render_world_cached` (its
+  overlays on the snapped camera; `PLANET_WATCH_NOCACHE` for the old path, `PLANET_TIME_WATCH`
+  prints its parts). Watcher on one core: a season a frame 105 -> 11.5 ms, panning 28 -> 2 ms
+  (all cores: 2.7 and 1.5 ms). 0 pixels differ (`PLANET_WORLD_CHECK`) over 400 seasons and the
+  world bench's pans.
+- Left: the world shader costs ~150 ns a pixel on one core, so fast diagonal pans at 2560x1440 and
+  16-32 px a tile on a single core reach 17-18 ms at p95 (1-2.5 ms with all cores).

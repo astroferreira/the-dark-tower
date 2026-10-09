@@ -370,33 +370,35 @@ pub fn snap_world_camera(cam: &Camera, w: usize, h: usize) -> Camera {
 
 /// The world map as `render_world` draws it, kept between frames: unchanged, the last frame is
 /// shown again; panned, it is shifted and only what comes into view is drawn (the camera is on
-/// whole pixels, `snap_world_camera`, and the Shadow's hatching is keyed on world pixels). A
-/// change to the map (`TileWorld::revision`), the zoom or the window size draws it afresh.
+/// whole pixels, `snap_world_camera`, and the Shadow's hatching is keyed on world pixels); a
+/// changed map (`TileWorld::revision`) redraws only the tiles whose drawing changed. The zoom,
+/// the window size or the map's global state (overlay, resources) draws it afresh.
 pub fn render_world_cached(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mut [u32], w: usize, h: usize) {
-    use rayon::prelude::*;
     let t = cam.tile_px;
     let ox = (cam.cx * t - w as f32 / 2.0).round() as i64;
     let oy = (cam.cy * t - h as f32 / 2.0).round() as i64;
-    let key = (t.to_bits(), w, h, tw as *const TileWorld as usize, tw.revision);
+    let key = WorldKey { t: t.to_bits(), w, h, tw: tw as *const TileWorld as usize, tw_w: tw.width, tw_h: tw.height, global: global_sig(tw) };
     WORLD_CACHE.with(|cell| {
         let mut cache = cell.borrow_mut();
-        let usable = std::env::var("PLANET_WORLD_NOCACHE").is_err() && cache.as_ref().map_or(false, |c| c.0 == key && (ox - c.1).abs() < w as i64 && (oy - c.2).abs() < h as i64);
+        let nocache = std::env::var("PLANET_WORLD_NOCACHE").is_ok();
+        let usable = !nocache && cache.as_ref().map_or(false, |c| c.key == key && (ox - c.ox).abs() < w as i64 && (oy - c.oy).abs() < h as i64);
         if !usable {
             // A large window is first drawn coarse (`lod` 2) and refined a block of rows a frame
             // after (a zoom step at 2560x1440 had cost three frames).
-            let coarse = w * h >= 1_500_000 && std::env::var("PLANET_WORLD_NOCACHE").is_err() && std::env::var("PLANET_WORLD_CHECK").is_err();
+            let coarse = w * h >= 1_500_000 && !nocache && std::env::var("PLANET_WORLD_CHECK").is_err();
             let t0 = std::time::Instant::now();
             render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), buf, w, h, if coarse { 2 } else { 1 }, None);
             // How fast this machine draws the map (pixels a millisecond), for the refining.
             let px = if coarse { w * h / 4 } else { w * h } as f64;
             let rate = px / (t0.elapsed().as_secs_f64() * 1000.0).max(0.1);
             WORLD_RATE.with(|r| r.set(rate));
-            *cache = Some((key, ox, oy, buf.to_vec(), vec![coarse; h]));
+            let win = tile_window(tw, t, ox, oy, w, h);
+            *cache = Some(WorldCache { key, revision: tw.revision, ox, oy, win, sigs: tile_sigs(tw, win), buf: buf.to_vec(), coarse: vec![coarse; h] });
         } else {
             let c = cache.as_mut().unwrap();
-            let (dx, dy) = (ox - c.1, oy - c.2);
+            let (dx, dy) = (ox - c.ox, oy - c.oy);
             if dx != 0 || dy != 0 {
-                let old = std::mem::take(&mut c.3);
+                let old = std::mem::take(&mut c.buf);
                 let mut moved = vec![OFF_MAP; w * h];
                 moved.chunks_mut(w).enumerate().for_each(|(sy, row)| {
                     let oy2 = sy as i64 + dy;
@@ -407,23 +409,64 @@ pub fn render_world_cached(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mu
                 });
                 let exposed = move |sx: usize, sy: usize| { let (px, py) = (sx as i64 + dx, sy as i64 + dy); px < 0 || py < 0 || px >= w as i64 || py >= h as i64 };
                 render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut moved, w, h, 1, Some(&exposed));
-                c.1 = ox; c.2 = oy; c.3 = moved;
-                let old_coarse = std::mem::take(&mut c.4);
-                c.4 = (0..h).map(|sy| { let o = sy as i64 + dy; o >= 0 && o < h as i64 && old_coarse[o as usize] }).collect();
+                c.ox = ox; c.oy = oy; c.buf = moved;
+                let old_coarse = std::mem::take(&mut c.coarse);
+                c.coarse = (0..h).map(|sy| { let o = sy as i64 + dy; o >= 0 && o < h as i64 && old_coarse[o as usize] }).collect();
+            }
+            // The map changed (a season of history, a season's snow): each tile under the screen
+            // is compared by what it is drawn from, and only those that changed are drawn again,
+            // with the pixels they reach (`TILE_REACH`). The watcher had drawn the whole map for
+            // every season played.
+            let win = tile_window(tw, t, ox, oy, w, h);
+            if tw.revision != c.revision || win != c.win {
+                // (Unchanged, the tiles still under the screen keep their hashes: a pan hashes
+                // only the tiles come into view, which at 4 px a tile had been 236,000 a frame.)
+                let sigs = if tw.revision == c.revision { carry_sigs(tw, c.win, &c.sigs, win) } else { tile_sigs(tw, win) };
+                if tw.revision != c.revision {
+                    let (tx0, ty0, tx1, ty1) = win;
+                    let (gw, gh) = ((tx1 - tx0) as usize, (ty1 - ty0) as usize);
+                    let (otx0, oty0, otx1, oty1) = c.win;
+                    let ogw = (otx1 - otx0) as usize;
+                    let mut dirty = vec![false; gw * gh];
+                    let mut n = 0usize;
+                    for i in 0..gw * gh {
+                        let (tx, ty) = (tx0 + (i % gw) as i64, ty0 + (i / gw) as i64);
+                        let same = tx >= otx0 && tx < otx1 && ty >= oty0 && ty < oty1 && c.sigs[(ty - oty0) as usize * ogw + (tx - otx0) as usize] == sigs[i];
+                        if same { continue; }
+                        n += 1;
+                        let (cx, cy) = ((i % gw) as i64, (i / gw) as i64);
+                        for ddy in -TILE_REACH..=TILE_REACH { for ddx in -TILE_REACH..=TILE_REACH {
+                            let (qx, qy) = (cx + ddx, cy + ddy);
+                            if qx >= 0 && qy >= 0 && (qx as usize) < gw && (qy as usize) < gh { dirty[qy as usize * gw + qx as usize] = true; }
+                        } }
+                    }
+                    if n > 0 {
+                        let need = |sx: usize, sy: usize| -> bool {
+                            let tx = ((ox + sx as i64) as f32 + 0.5) / t;
+                            let ty = ((oy + sy as i64) as f32 + 0.5) / t;
+                            let (qx, qy) = (tx.floor() as i64 - tx0, ty.floor() as i64 - ty0);
+                            qx < 0 || qy < 0 || qx as usize >= gw || qy as usize >= gh || dirty[qy as usize * gw + qx as usize]
+                        };
+                        render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut c.buf, w, h, 1, Some(&need));
+                    }
+                    c.revision = tw.revision;
+                }
+                c.win = win;
+                c.sigs = sigs;
             }
             // Refine rows still coarse: about six milliseconds' worth a frame (at the rate the
             // coarse frame was drawn), top first.
-            if let Some(r0) = c.4.iter().position(|&b| b) {
+            if let Some(r0) = c.coarse.iter().position(|&b| b) {
                 let budget = WORLD_RATE.with(|r| r.get()) * 6.0;
                 let n = ((budget as usize) / w).max(1);
-                let r1 = (r0..h).take(n).take_while(|&r| c.4[r]).last().map_or(r0 + 1, |r| r + 1);
+                let r1 = (r0..h).take(n).take_while(|&r| c.coarse[r]).last().map_or(r0 + 1, |r| r + 1);
                 let need = move |_: usize, sy: usize| sy >= r0 && sy < r1;
-                render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut c.3, w, h, 1, Some(&need));
-                for r in r0..r1 { c.4[r] = false; }
+                render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut c.buf, w, h, 1, Some(&need));
+                for r in r0..r1 { c.coarse[r] = false; }
             }
-            buf.copy_from_slice(&c.3);
+            buf.copy_from_slice(&c.buf);
             // (Debug: PLANET_WORLD_CHECK=1 draws the map afresh and counts pixels that differ.)
-            if std::env::var("PLANET_WORLD_CHECK").is_ok() && !c.4.iter().any(|&b| b) {
+            if std::env::var("PLANET_WORLD_CHECK").is_ok() && !c.coarse.iter().any(|&b| b) {
                 let mut fresh = vec![0u32; w * h];
                 render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut fresh, w, h, 1, None);
                 let bad = fresh.iter().zip(buf.iter()).filter(|(a, b)| a != b).count();
@@ -434,12 +477,94 @@ pub fn render_world_cached(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mu
     draw_shadow_seat(tw, &snap_world_camera(cam, w, h), buf, w, h);
 }
 
+/// How far (tiles) a tile's change can show on the map: the warped shores and borders, the
+/// blending between tile centres, a range's peaks standing up into the tiles above.
+const TILE_REACH: i64 = 2;
+
+/// The tiles under the screen whose top-left world pixel is (ox, oy), and a margin, in unwrapped
+/// columns (the map wraps east-west).
+fn tile_window(tw: &TileWorld, t: f32, ox: i64, oy: i64, w: usize, h: usize) -> (i64, i64, i64, i64) {
+    let m = TILE_REACH + 1;
+    let tx0 = (ox as f32 / t).floor() as i64 - m;
+    let tx1 = ((ox + w as i64) as f32 / t).ceil() as i64 + m;
+    let ty0 = ((oy as f32 / t).floor() as i64 - m).clamp(0, tw.height as i64);
+    let ty1 = (((oy + h as i64) as f32 / t).ceil() as i64 + m).clamp(0, tw.height as i64);
+    (tx0, ty0, tx1.max(tx0), ty1.max(ty0))
+}
+
+/// What each tile of the window is drawn from, hashed.
+fn tile_sigs(tw: &TileWorld, win: (i64, i64, i64, i64)) -> Vec<u64> {
+    let (tx0, ty0, tx1, ty1) = win;
+    let gw = (tx1 - tx0) as usize;
+    (0..gw * (ty1 - ty0) as usize).map(|i| {
+        let x = (tx0 + (i % gw) as i64).rem_euclid(tw.width as i64) as usize;
+        let y = ty0 as usize + i / gw;
+        tile_sig(tw, y * tw.width + x)
+    }).collect()
+}
+
+/// `tile_sigs` for `win` from those of `old` (the map unchanged since), hashing only tiles
+/// outside it.
+fn carry_sigs(tw: &TileWorld, old: (i64, i64, i64, i64), old_sigs: &[u64], win: (i64, i64, i64, i64)) -> Vec<u64> {
+    let (tx0, ty0, tx1, ty1) = win;
+    let (otx0, oty0, otx1, oty1) = old;
+    let (gw, ogw) = ((tx1 - tx0) as usize, (otx1 - otx0) as usize);
+    (0..gw * (ty1 - ty0) as usize).map(|i| {
+        let (tx, ty) = (tx0 + (i % gw) as i64, ty0 + (i / gw) as i64);
+        if tx >= otx0 && tx < otx1 && ty >= oty0 && ty < oty1 { return old_sigs[(ty - oty0) as usize * ogw + (tx - otx0) as usize]; }
+        tile_sig(tw, ty as usize * tw.width + tx.rem_euclid(tw.width as i64) as usize)
+    }).collect()
+}
+
+/// Everything the map shader reads of tile `i`, hashed.
+fn tile_sig(tw: &TileWorld, i: usize) -> u64 {
+    let mut hsh: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut put = |v: u64| { hsh = (hsh ^ v).wrapping_mul(0x0100_0000_01b3); hsh ^= hsh >> 29; };
+    put(tw.ground[i] as u64);
+    put(tw.sprite[i].map_or(u64::MAX, |k| k as u64));
+    put(tw.variant[i] as u64);
+    put(tw.shade[i].to_bits() as u64);
+    put(tw.river[i] as u64 | (tw.shore[i] as u64) << 8 | (tw.road[i] as u64) << 16 | (tw.river_near[i] as u64) << 24 | (tw.road_near[i] as u64) << 25
+        | (tw.owner_edge[i] as u64) << 26 | (tw.season_frozen[i] as u64) << 27 | (tw.lake_ice[i] as u64) << 28);
+    put(tw.river_width[i].to_bits() as u64);
+    put(tw.color[i][0] as u64 | (tw.color[i][1] as u64) << 8 | (tw.color[i][2] as u64) << 16);
+    put(tw.owner[i]);
+    put(tw.settlement[i].map_or(u64::MAX, |s| s.0 as u64));
+    put(tw.elev[i].to_bits() as u64);
+    put(tw.season_snow[i].to_bits() as u64);
+    for c in tw.season_tint[i] { put(c.to_bits() as u64); }
+    for st in [&tw.road_strokes, &tw.river_strokes] {
+        let (a, n) = (st.start[i] as usize, st.len[i] as usize);
+        put(n as u64);
+        for seg in &st.segs[a..a + n] { for v in seg { put(v.to_bits() as u64); } }
+    }
+    if tw.show_resources { put(tw.deposit[i].map_or(u64::MAX, |(c, r)| c[0] as u64 | (c[1] as u64) << 8 | (c[2] as u64) << 16 | (r as u64) << 24)); }
+    if let Some(o) = tw.overlay.get(i) { for c in o { put(c.to_bits() as u64); } }
+    if let Some(s) = tw.shadow.get(i) { put(s.to_bits() as u64); }
+    if let Some(&d) = tw.dominion.get(i) { put(d as u64); }
+    if let Some(&d) = tw.shadow_near.get(i) { put(d as u64); }
+    if let Some(&d) = tw.dominion_edge.get(i) { put(d as u64); }
+    hsh
+}
+
+/// What the whole map is drawn under besides its tiles.
+fn global_sig(tw: &TileWorld) -> u64 {
+    (tw.show_resources as u64) | (tw.overlay_smooth as u64) << 1 | (tw.overlay.is_empty() as u64) << 2 | (tw.shadow.is_empty() as u64) << 3
+        | tw.shadow_seat.map_or(0, |(x, y)| ((x as u64) << 32 | y as u64) << 4)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct WorldKey { t: u32, w: usize, h: usize, tw: usize, tw_w: usize, tw_h: usize, global: u64 }
+
+/// The last world map drawn: its zoom, window and map, the map's revision, where the screen
+/// stood (world pixels), the tiles under it and what each was drawn from, its pixels, and its
+/// rows still drawn coarse.
+struct WorldCache { key: WorldKey, revision: u64, ox: i64, oy: i64, win: (i64, i64, i64, i64), sigs: Vec<u64>, buf: Vec<u32>, coarse: Vec<bool> }
+
 thread_local! {
     /// Pixels a millisecond this machine draws the world map at (`render_world_cached`).
     static WORLD_RATE: std::cell::Cell<f64> = std::cell::Cell::new(60_000.0);
-    /// The last world map drawn: (zoom, window, map and its revision), where the screen stood, its
-    /// pixels, and its rows still drawn coarse.
-    static WORLD_CACHE: std::cell::RefCell<Option<((u32, usize, usize, usize, u64), i64, i64, Vec<u32>, Vec<bool>)>> = std::cell::RefCell::new(None);
+    static WORLD_CACHE: std::cell::RefCell<Option<WorldCache>> = std::cell::RefCell::new(None);
 }
 
 /// The world map's pixels for the screen whose top-left is the world pixel (ox, oy): every

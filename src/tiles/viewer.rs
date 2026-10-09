@@ -1176,13 +1176,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         status = "no history to write a journal from (run without --no-history)".to_string();
                     }
                 }
-                if pressed(Key::R) { tw.show_resources = !tw.show_resources; tw.revision += 1; dirty = true; }
+                if pressed(Key::R) { tw.show_resources = !tw.show_resources; tw.revision = super::classify::next_revision(); dirty = true; }
                 if pressed(Key::O) {
                     let back = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
                     overlay = overlay.cycle(if back { -1 } else { 1 });
                     tw.overlay = overlays::colors(world, overlay);
                     tw.overlay_smooth = overlay.smooth();
-                    tw.revision += 1;
+                    tw.revision = super::classify::next_revision();
                     dirty = true;
                 }
                 if pressed(Key::C) {
