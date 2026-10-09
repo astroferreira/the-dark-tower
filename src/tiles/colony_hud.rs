@@ -216,7 +216,7 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
             let chip_w = 320.0f32.min(w as f32 - 20.0);
             let lines = wrap_px(b, Face::Italic, SMALL, chip_w - 24.0);
             let chip_h = 16 + lines.len().min(5) * 16;
-            let x = (st.mouse.0 + 18.0).min(w as f32 - chip_w - 10.0).max(10.0) as usize;
+            let x = chip_x(st, w, chip_w);
             let y = (st.mouse.1 + 18.0).min((h - chip_h - 10) as f32).max(10.0) as usize;
             ui::card(buf, w, Rect { x, y, w: chip_w as usize, h: chip_h });
             for (k, l) in lines.iter().take(5).enumerate() {
@@ -231,7 +231,7 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
             if colony.patron.favourite.map_or(false, |f| colony.settlers[f].name == s.name) { head.push_str(", the patron's favourite"); }
             let feels = match s.mind.broken { Some((b, _)) => format!("{}  -  {}{}", s.job.verb(), if b.word().starts_with("wander") { "" } else { "in " }, b.word()), None => format!("{}  -  {}", s.job.verb(), crate::colony::mind::mood(s.mind.stress)) };
             let chip_h = 48 + why.len().min(4) * 16;
-            let x = (st.mouse.0 + 18.0).min(w as f32 - chip_w - 10.0).max(10.0) as usize;
+            let x = chip_x(st, w, chip_w);
             let y = (st.mouse.1 + 18.0).min((h - chip_h - 10) as f32).max(10.0) as usize;
             let r = Rect { x, y, w: chip_w as usize, h: chip_h };
             ui::card(buf, w, r);
@@ -243,6 +243,14 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
         }
     }
     hits
+}
+
+/// Where a hover chip starts: right of the mouse, else left of it, never under the open panel
+/// on the right (`st.right`).
+fn chip_x(st: &HudState, w: usize, chip_w: f32) -> usize {
+    let edge = w as f32 - st.right as f32 - 10.0;
+    let x = if st.mouse.0 + 18.0 + chip_w <= edge { st.mouse.0 + 18.0 } else { st.mouse.0 - 18.0 - chip_w };
+    x.min(edge - chip_w).max(10.0) as usize
 }
 
 /// A great moment's card, across the top middle: its title, what happened and why, until Space.

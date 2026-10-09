@@ -394,3 +394,15 @@ the Claude Doc "Ink graphics: sprites and examples".
   window's own click code): 24 of 24 steps; `tests/sprites.rs`. Not yet tried by a person.
 - The full inventory (every simulated kind and its sprite) is in the Claude Doc "Ink graphics:
   sprites and examples".
+- `--inventory PREFIX` renders every simulated kind in the game's own frame (a test camp, works
+  raised by `project_step`; `<prefix>_inventory.png`); tested. It found legibility bugs the sprite
+  sheet hid (office headgear 2 px wide at the camp's zoom, names over hats, fliers too high).
+- The real window can be driven by `PLANET_UI_SCRIPT=FILE` (with `--dev-embark`): lines
+  `<frame> click X Y | key K | act <Action> | clicksettler | report | shot FILE | quit`; `act`
+  clicks the centre of the hit area the window returned for that action. A full session
+  (welcome card, tabs, sheet and pause, shrine and bless tools on the map, bell, speed, a
+  settler clicked on the map, Esc order) runs as it should; it found the hover chip running
+  under the open panel (now clamped beside it). Needs a desktop session; not in the tests.
+- Thoughts, the dream of a lifetime, a vow, the patron's dream and the trading town's request
+  have icons in the ledger (`status_ink::thought_emblem`, `life_emblem`, `draw_icon`); the talk
+  bubble shows its topic. `PatronStyle` is a test harness (`raid_trial`), not game state.

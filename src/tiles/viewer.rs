@@ -605,6 +605,15 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut status = String::from("click: inspect | wheel: zoom | drag/arrows: pan | Z: walk here | N: minimap | J: journal | P: screenshot | Q: quit");
         let mut last_title = String::new();
 
+        // PLANET_UI_SCRIPT=FILE: input fed into this very loop by frame, for testing the window
+        // without hands: "<frame> click <x> <y>", "<frame> key <C|I|O|L|T|Space|Escape|1|2|3|B|F>",
+        // "<frame> shot <file.png>" (saves the frame as shown), "<frame> quit". A click presses on
+        // its frame and releases on the next, so the loop's own click detection sees it.
+        let ui_script: Vec<(u64, String, Vec<String>)> = std::env::var("PLANET_UI_SCRIPT").ok().and_then(|f| std::fs::read_to_string(f).ok())
+            .map(|t| t.lines().filter_map(|l| { let mut it = l.split_whitespace(); let f = it.next()?.parse().ok()?; let v = it.next()?.to_string(); Some((f, v, it.map(String::from).collect())) }).collect()).unwrap_or_default();
+        let mut ui_frame: u64 = 0;
+        let mut script_mouse: Option<(f32, f32)> = None;
+        let mut script_shot: Option<String> = None;
         while window.is_open() {
             let (w, h) = window.get_size();
             if (w, h) != size {
@@ -612,9 +621,49 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 buf = vec![0; w * h];
                 dirty = true;
             }
-            let mouse = window.get_mouse_pos(MouseMode::Clamp).unwrap_or((w as f32 / 2.0, h as f32 / 2.0));
+            ui_frame += 1;
+            let mut script_keys: Vec<Key> = Vec::new();
+            let mut script_down = false;
+            let mut script_quit = false;
+            for (f, verb, args) in ui_script.iter().filter(|e| e.0 == ui_frame) {
+                let _ = f;
+                match verb.as_str() {
+                    "click" => { if let (Some(x), Some(y)) = (args.first().and_then(|v| v.parse().ok()), args.get(1).and_then(|v| v.parse().ok())) { script_mouse = Some((x, y)); script_down = true; } }
+                    "key" => { if let Some(k) = args.first().and_then(|n| match n.as_str() { "C" => Some(Key::C), "I" => Some(Key::I), "O" => Some(Key::O), "L" => Some(Key::L), "T" => Some(Key::T), "Space" => Some(Key::Space), "Escape" => Some(Key::Escape), "1" => Some(Key::Key1), "2" => Some(Key::Key2), "3" => Some(Key::Key3), "B" => Some(Key::B), "F" => Some(Key::F), _ => None }) { script_keys.push(k); } }
+                    // Click the centre of the hit area the window drew for an action (by its name).
+                    "act" => {
+                        let want = args.join(" ");
+                        if let Some(hh) = dream_hits.iter().chain(ui_hits.iter()).find(|hh| format!("{:?}", hh.action).contains(&want)) {
+                            script_mouse = Some((hh.rect.x as f32 + hh.rect.w as f32 / 2.0, hh.rect.y as f32 + hh.rect.h as f32 / 2.0));
+                            script_down = true;
+                        } else { println!("UI script frame {}: no button for {}", ui_frame, want); }
+                    }
+                    // Click the first settler standing in the open, where the window draws them.
+                    "clicksettler" => {
+                        if let Some((colony, lcam)) = local.as_ref() {
+                            if let Some(i) = (0..colony.settlers.len()).find(|&i| colony.settlers[i].alive && !colony.below(i) && colony.roof_over(colony.settlers[i].pos).is_none()) {
+                                let p = colony.draw_pos(i);
+                                script_mouse = Some(((p.0 + 0.5 - lcam.cx) * lcam.tile_px + w as f32 / 2.0, (p.1 + 0.5 - lcam.cy) * lcam.tile_px + h as f32 / 2.0));
+                                script_down = true;
+                                println!("UI script frame {}: clicking {} on the map", ui_frame, colony.settlers[i].name);
+                            }
+                        }
+                    }
+                    "shot" => script_shot = args.first().cloned(),
+                    "quit" => script_quit = true,
+                    "report" => {
+                        if let Some((colony, _)) = local.as_ref() {
+                            println!("UI script frame {}: speed {} open {:?} sheet {:?} tool {:?} favour {} marks {} stones {} bell {} status \"{}\"", ui_frame, speed, ui.open, ui.sheet, ui.tool, colony.patron.favour, colony.patron.marks.len(), colony.stones.len(), colony.bell_rung(), status);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if script_quit { break; }
+            if !ui_script.is_empty() { dirty = true; }
+            let mouse = script_mouse.unwrap_or_else(|| window.get_mouse_pos(MouseMode::Clamp).unwrap_or((w as f32 / 2.0, h as f32 / 2.0)));
             let wheel = window.get_scroll_wheel().map(|s| s.1).unwrap_or(0.0);
-            let down = window.get_mouse_down(MouseButton::Left);
+            let down = window.get_mouse_down(MouseButton::Left) || script_down;
             let right = window.get_mouse_down(MouseButton::Right);
             // A click is a press and release without moving (a drag pans instead).
             if down && !was_down { press_at = Some(mouse); press_over_ui = local_active && super::colony_ui::over_ui(&ui, w, h, mouse); }
@@ -686,7 +735,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
                 dirty = true;
             }
-            let pressed = |k: Key| !typing && window.is_key_pressed(k, KeyRepeat::No);
+            let pressed = |k: Key| !typing && (window.is_key_pressed(k, KeyRepeat::No) || script_keys.contains(&k));
             let held = |k: Key| !typing && window.is_key_down(k);
             let pan_x = (held(Key::Right) || held(Key::D)) as i32 - (held(Key::Left) || held(Key::A)) as i32;
             let pan_y = (held(Key::Down) || held(Key::S)) as i32 - (held(Key::Up) || held(Key::W)) as i32;
@@ -1488,6 +1537,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                 }
                 window.update_with_buffer(&buf, w, h)?;
+                if let Some(path) = script_shot.take() { save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] }); println!("UI script frame {}: saved {}", ui_frame, path); }
                 dirty = false;
             } else {
                 window.update();
