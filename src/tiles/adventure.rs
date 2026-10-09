@@ -937,6 +937,7 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
             let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
             for (key, (dx, dy)) in dirs { if repeat(key) { v.walk_to = None; act(&mut g, &mut v, if shift { Action::Assault(dx, dy) } else { Action::Move(dx, dy) }); break; } }
             if pressed(Key::G) { act(&mut g, &mut v, Action::PickUp); }
+            if pressed(Key::X) { act(&mut g, &mut v, Action::Search); }
             // Travel: the world map (not with enemies at one's heels).
             if pressed(Key::T) { act(&mut g, &mut v, Action::WorldMap); }
             if pressed(Key::R) { act(&mut g, &mut v, Action::Rest); }
@@ -1163,7 +1164,7 @@ fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
         ("Mouse", "click to walk there or to strike; click a thing in the pack to use or wear it, right click to drop it"),
         ("Space / Tab", "strike or shoot the target / choose the next target in sight; Shift + a direction strikes anyone"),
         ("F1 - F9", "cast the spells you know (the Spells tab lists them)"),
-        ("G", "take what lies here"),
+        ("G / X", "take what lies here / search the walls about for hidden doors"),
         ("R", "rest until whole (not with enemies near, not hungry)"),
         ("H / J / F", "drink a health potion / a mana potion / eat"),
         ("< > Enter", "take the stairs, ladder, hole, cave mouth or grate underfoot"),

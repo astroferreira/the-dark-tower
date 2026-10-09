@@ -54,6 +54,9 @@ pub struct Bot {
     /// Steps walked toward a place's way in on the land (site, steps): given up past 200.
     #[serde(skip)]
     walk_in: (u32, u32),
+    /// Searches made on each floor (place, z).
+    #[serde(skip)]
+    searches: std::collections::HashMap<(u32, usize), u32>,
 }
 
 /// First step from the hero toward the nearest cell where `goal` holds (8-way BFS; doors that
@@ -143,7 +146,12 @@ impl Bot {
             self.homeward = false;
         }
         // A tale's choice: the first way (the one that goes on with the work).
-        if g.choice.is_some() { self.why = "decide"; return g.act(Action::Decide(0)); }
+        if let Some(c) = &g.choice {
+            self.why = "decide";
+            // (A riddle it answers right: the bot has read the books.)
+            let k = if c.riddle.is_some() { c.options.iter().position(|o| o.1 == 1).unwrap_or(0) } else { 0 };
+            return g.act(Action::Decide(k));
+        }
         let pos = (g.x, g.y, g.z, g.here);
         if pos == self.last { self.stuck += 1; } else { self.stuck = 0; if self.last.3 == pos.3 { self.prev_cell = Some((self.last.0, self.last.1, self.last.2)); } else { self.prev_cell = None; } self.last = pos; }
         if g.talk.is_some() { g.talk = None; }
@@ -577,7 +585,9 @@ impl Bot {
                 Feature::Chest { opened: false, .. } | Feature::Sarcophagus { opened: false, .. } => return true,
                 Feature::Plinth { item: Some(_) } => return true,
                 Feature::QuestChest { taken: false, .. } => return !g.chosen.contains(&id),
-                Feature::Lever { pulled: false, .. } => return true,
+                // A puzzle's levers only in their order (it has read the engraving).
+                Feature::Lever { pulled: false, id: lid } => return g.place().map_or(true, |p| p.levers.iter().filter(|l| l.z == g.z && l.order.contains(lid)).all(|l| l.order.get(l.pulled.len()) == Some(lid))),
+                Feature::RiddleDoor { open: false, .. } => return true,
                 Feature::Door { open: false, lock } if *lock > 0 && keys.contains(lock) => return true,
                 _ => {}
             }
@@ -590,6 +600,13 @@ impl Bot {
         };
         if !self.walked.contains(&(id, g.z)) {
             if let Some(step) = path_to(g, &interesting, 20_000) { self.why = "explore"; return g.act(Action::Move(step.0, step.1)); }
+            // Walked: tap the walls where a hidden door is (it has a nose for drafts), a few times.
+            let secret: Option<(i32, i32)> = f.cells(|t| t.feature == Feature::SecretDoor).into_iter().next();
+            let tries = self.searches.entry((id, g.z)).or_insert(0);
+            if let (Some((sx, sy)), true) = (secret, *tries < 12) {
+                if (sx - g.x).abs().max((sy - g.y).abs()) <= 2 { *tries += 1; self.why = "search"; return g.act(Action::Search); }
+                if let Some(step) = path_to(g, &|x, y| (x - sx).abs().max((y - sy).abs()) <= 1, 20_000) { *tries += 1; self.why = "to the wall"; return g.act(Action::Move(step.0, step.1)); }
+            }
             self.walked.insert((id, g.z));
         }
         // All walked: down if there is a way, else this place is done.
@@ -615,6 +632,8 @@ impl Bot {
         g.act(Action::Wait)
     }
 }
+
+fn self_walked_count(b: &Bot) -> usize { b.walked.len() }
 
 /// Play `turns` acts with the bot; returns the bot (for its record).
 pub fn run(g: &mut Game, acts: usize) -> Bot {
@@ -735,6 +754,12 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
         kinds.sort();
         let open: Vec<String> = g.quests.iter().filter(|q| matches!(q.state, State::Open | State::Done)).filter_map(|q| match &q.goal { super::quest::Goal::Tale(t) => Some(format!("{:?}@{}", t.kind, t.stage)), _ => None }).collect();
         println!("Tales: {} done [{}]; open [{}]", g.stats.tales_done, kinds.join(", "), open.join(", "));
+        let rooms: usize = g.places.values().map(|p| p.rooms.iter().filter(|r| r.seen).count()).sum();
+        let riddles = g.places.values().flat_map(|p| p.floors.iter()).flat_map(|f| f.tiles.iter()).filter(|t| matches!(t.feature, Feature::RiddleDoor { open: true, .. })).count();
+        let gates = g.places.values().filter(|p| p.levers.iter().any(|l| l.pulled.len() == l.order.len() && !l.order.is_empty())).count();
+        let hidden = g.places.values().flat_map(|p| p.floors.iter()).flat_map(|f| f.tiles.iter()).filter(|t| t.feature == Feature::SecretDoor).count();
+        let walked = self_walked_count(&b);
+        println!("Rooms: {} authored rooms seen, {} hidden doors found ({} still hidden), {} riddles answered, {} lever puzzles solved; {} floors walked out", rooms, g.stats.secrets, hidden, riddles, gates, walked);
     }
     let songs: usize = g.songs.values().map(|v| v.len()).sum();
     println!("Songs: {} towns sing of {} ({} songs); deeds in the chronicle: {}", g.songs.len(), g.hero.name, songs, g.hero_events.len());

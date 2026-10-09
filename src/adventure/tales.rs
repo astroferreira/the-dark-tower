@@ -51,7 +51,12 @@ pub struct Tale {
 
 /// A choice to make: (words, code) options.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Choice { pub quest: u32, pub title: String, pub text: String, pub options: Vec<(String, u8)> }
+pub struct Choice {
+    pub quest: u32, pub title: String, pub text: String, pub options: Vec<(String, u8)>,
+    /// A riddle door's question (its cell, floor and riddle): the right answer's code is 1.
+    #[serde(default)]
+    pub riddle: Option<(i32, i32, usize, u32)>,
+}
 
 fn tale(g: &Game, id: u32) -> Option<Tale> { g.quests.iter().find(|q| q.id == id).and_then(|q| match &q.goal { Goal::Tale(t) => Some(t.clone()), _ => None }) }
 fn set_tale(g: &mut Game, id: u32, f: impl FnOnce(&mut Tale, &mut Quest)) {
@@ -184,7 +189,7 @@ pub fn on_accept(g: &mut Game, q: &Quest) {
 
 /// Offer a choice for quest `id`.
 fn ask(g: &mut Game, id: u32, title: &str, text: String, options: Vec<(String, u8)>) {
-    g.choice = Some(Choice { quest: id, title: title.into(), text, options });
+    g.choice = Some(Choice { quest: id, title: title.into(), text, options, riddle: None });
 }
 
 /// The hero walked onto tile `t` (on the land): the wreck of the caravan, the beast's mouth.
@@ -308,6 +313,7 @@ pub fn on_greet(g: &mut Game, name: &str, home: u32) {
 pub fn decide(g: &mut Game, k: usize) -> bool {
     let Some(c) = g.choice.take() else { return false };
     let Some(&(_, code)) = c.options.get(k) else { g.choice = Some(c); return false };
+    if let Some((x, y, z, _)) = c.riddle { g.answer_riddle(x, y, z, code == 1); return true; }
     let Some(x) = tale(g, c.quest) else { return true };
     let id = c.quest;
     let town = g.quests.iter().find(|q| q.id == id).map(|q| q.town).unwrap_or(0);

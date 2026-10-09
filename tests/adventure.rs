@@ -43,6 +43,10 @@ fn a_commoner_grows_into_a_hero() {
     // Never stuck: kills rise in every stretch of the run's first half.
     let kills: Vec<u32> = rows.iter().map(|r| count(r, "kills")).collect();
     for w in kills[..kills.len() / 2].windows(2) { assert!(w[1] > w[0], "no kill for a stretch: {:?}", kills); }
+    // Authored rooms are met, and a hidden door is found.
+    let rooms = out.lines().find(|l| l.starts_with("Rooms:")).expect("rooms line");
+    let found: u32 = rooms.split(" hidden doors found").next().unwrap().rsplit(' ').next().unwrap().parse().unwrap();
+    assert!(after(rooms, "Rooms:") >= 3 && found >= 1, "{rooms}");
     // Start small: the first floors are the town's sewers.
     assert!(out.contains("sets out from"), "{out}");
 }

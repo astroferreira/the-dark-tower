@@ -433,7 +433,7 @@ pub fn realize(spec: &SiteSpec) -> Place {
         floors.push(s);
         if let Some(n) = next { arrive = n; }
     }
-    Place { spec: spec.clone(), floors, monsters, npcs, entry, next_uid: uid, top: 0, origin: None, mouth: None }
+    Place { spec: spec.clone(), floors, monsters, npcs, entry, next_uid: uid, top: 0, origin: None, mouth: None, rooms: Vec::new(), levers: Vec::new() }
 }
 
 #[cfg(test)]

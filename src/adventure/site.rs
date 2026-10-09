@@ -140,6 +140,11 @@ pub struct Place {
     /// The land cell of its way in (a cave's mouth), where one comes out.
     #[serde(default)]
     pub mouth: Option<(i32, i32)>,
+    /// Its authored rooms (`rooms`) and their lever puzzles.
+    #[serde(default)]
+    pub rooms: Vec<super::rooms::Stamped>,
+    #[serde(default)]
+    pub levers: Vec<super::rooms::LeverPuzzle>,
 }
 
 /// The rooms a layout made (for furnishing): x, y, w, h.
@@ -611,6 +616,8 @@ pub fn realize(spec: &SiteSpec) -> Place {
     let mut arrive: Option<(i32, i32)> = None;
     let mut entry = (0, 0);
     let mut lock_id = 1u32;
+    let mut rooms_cut: Vec<super::rooms::Stamped> = Vec::new();
+    let mut levers: Vec<super::rooms::LeverPuzzle> = Vec::new();
     // (One size for every floor: stairs land where they leave.)
     let size = floor_size(spec.kind, 0, &mut b);
     for z in 0..n {
@@ -678,7 +685,17 @@ pub fn realize(spec: &SiteSpec) -> Place {
             }
             down = Some(d);
         }
+        // Authored rooms cut into the rock (after the ways down: none is hidden in one).
+        let (st, pz, spots) = super::rooms::stamp(&mut b, &mut f, spec, z, n, &mut lock_id, under_style(spec.kind).0, under_style(spec.kind).2);
+        rooms_cut.extend(st);
+        if let Some(p) = pz { levers.push(p); }
         furnish(&mut b, &mut f, spec, z, &rs, start);
+        // A tomb names its dead by the stair, on its first floor and in its burial chamber.
+        if spec.kind == SiteKind::Tomb && (z == 0 || z + 1 == n) && !spec.cause.is_empty() {
+            let spot = (2..9).flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| (start.0 + dx, start.1 + dy))))
+                .find(|&(x, y)| f.inside(x, y) && f.at(x, y).walkable() && f.at(x, y).feature == Feature::None && DIRS4.iter().any(|(dx, dy)| f.at(x + dx, y + dy).wall != Wall::None));
+            if let Some((x, y)) = spot { f.at_mut(x, y).feature = Feature::Lore { text: format!("Carved in the stone: {}", spec.cause), look: 0 }; }
+        }
         // Monsters.
         let table = spawn_table(spec.kind, spec.tier, z);
         let cells = open_cells(&f);
@@ -695,6 +712,8 @@ pub fn realize(spec: &SiteSpec) -> Place {
                 uid += 1;
             }
         }
+        // The rooms' own dwellers.
+        for &(x, y) in &spots { if let Some(id) = b.pick(&table) { if f.walkable(x, y) && !monsters.iter().any(|m| m.z == z && (m.x, m.y) == (x, y)) { monsters.push(Monster::new(uid, id, x, y, z)); uid += 1; } } }
         // The boss on the last floor, at its far end, with the hoard and the "choose one" chest.
         if z + 1 == n {
             let bp = farthest(&f, start, &[]);
@@ -753,7 +772,7 @@ pub fn realize(spec: &SiteSpec) -> Place {
         arrive = down;
         floors.push(f);
     }
-    Place { spec: spec.clone(), floors, monsters, npcs: Vec::new(), entry, next_uid: uid, top: 0, origin: None, mouth: None }
+    Place { spec: spec.clone(), floors, monsters, npcs: Vec::new(), entry, next_uid: uid, top: 0, origin: None, mouth: None, rooms: rooms_cut, levers }
 }
 
 /// Dress the rooms and corridors of a floor by what the place is.
@@ -853,7 +872,7 @@ fn furnish(b: &mut Builder, f: &mut Floor, spec: &SiteSpec, z: usize, rs: &[Room
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     pub fn spec(kind: SiteKind, floors: usize, tier: u32, seed: u64) -> SiteSpec {

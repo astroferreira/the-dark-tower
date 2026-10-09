@@ -125,6 +125,8 @@ pub enum Action {
     Decide(usize),
     /// Strike the person in this direction (the town will remember).
     Assault(i32, i32),
+    /// Search the walls about for hidden doors.
+    Search,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -241,7 +243,7 @@ pub struct Game {
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32, #[serde(default)] pub tales_done: u32 }
+pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32, #[serde(default)] pub tales_done: u32, #[serde(default)] pub secrets: u32 }
 
 impl Game {
     pub fn new(world: WorldInfo, sites: Vec<SiteSpec>, hero: Hero, start_town: u32, seed: u64) -> Game {
@@ -386,6 +388,7 @@ impl Game {
             Action::WorldMap => return self.to_world_map(),
             Action::Land => return self.land_here(None),
             Action::Decide(k) => return super::tales::decide(self, k),
+            Action::Search => self.search(),
             Action::Assault(dx, dy) => { let (nx, ny) = (self.x + dx, self.y + dy); match self.npc_at(nx, ny) { Some(k) => self.assault(k), None => self.step(dx, dy) } }
             Action::Move(dx, dy) => self.step(dx, dy),
             Action::Wait => Some(100),
@@ -450,6 +453,13 @@ impl Game {
                 if self.hero.level < *level { let l = *level; self.say(Tone::Info, format!("The rune glows and the door holds: \"Only those of level {} and more may pass.\"", l)); return None; }
                 self.say(Tone::Info, "The rune knows you. The door swings aside.");
             }
+            Feature::Lever { id, pulled } if self.place().map_or(false, |p| p.levers.iter().any(|l| l.z == z && l.order.contains(id))) => {
+                let id = *id;
+                if *pulled { self.say(Tone::Info, "The lever is down. It will not move back of itself."); return None; }
+                self.pull_puzzle_lever(z, nx, ny, id);
+                self.look();
+                return Some(80);
+            }
             Feature::Lever { id, pulled } => {
                 let (id, pulled) = (*id, *pulled);
                 if let Some(p) = self.place_mut() {
@@ -480,6 +490,14 @@ impl Game {
                 return Some(100);
             }
             Feature::Sign { text } => { let t = text.clone(); self.say(Tone::Info, format!("The sign reads: \"{}\"", t)); return None; }
+            Feature::Lore { text, look } if *look != 1 => { let t = text.clone(); self.say(Tone::Quest, t); return None; }
+            Feature::RiddleDoor { riddle, open: false } => {
+                let r = *riddle;
+                let rd = &super::rooms::data().riddles[r as usize % super::rooms::data().riddles.len()];
+                let opts: Vec<(String, u8)> = rd.answers.iter().enumerate().map(|(i, a)| (a.clone(), if i == rd.right { 1 } else { 0 })).collect();
+                self.choice = Some(super::tales::Choice { quest: 0, title: "The door's riddle".into(), text: format!("The stone face opens its eyes and speaks: \"{}\"", rd.q), options: opts, riddle: Some((nx, ny, z, r)) });
+                return None;
+            }
             Feature::Well | Feature::Fountain => { self.say(Tone::Info, "Cold, clear water. You drink."); return Some(100); }
             Feature::Altar if self.place().map_or(false, |p| p.spec.kind == SiteKind::Town) => { self.say(Tone::Info, "The altar of the temple. The priest is near."); return None; }
             Feature::Altar if self.on_land() => {
@@ -501,6 +519,12 @@ impl Game {
         let mut cost = self.hero.step_time() * if dx != 0 && dy != 0 { 14 } else { 10 } / 10;
         if matches!(t.ground, Ground::Shallows | Ground::Mud) { cost = cost * 3 / 2; }
         if matches!(t.feature, Feature::Web) { cost *= 2; self.say(Tone::Info, "You tear through a web."); if let Some(p) = self.place_mut() { p.floors[z].at_mut(nx, ny).feature = Feature::None; } }
+        if let Feature::Lore { text, look: 1 } = &t.feature { let tx = text.clone(); self.say(Tone::Quest, tx); }
+        if let Feature::Plate { safe: false } = t.feature {
+            let d = 6 + self.place().map_or(1, |p| p.spec.tier) as i32 * 4;
+            self.say(Tone::Hurt, "The plate sinks under your foot. Darts hiss from the walls!");
+            self.hurt(d, "a dart from the wall");
+        }
         if let Feature::Trap { armed: true, damage } = t.feature {
             let d = damage;
             self.say(Tone::Hurt, "Click. Darts hiss from the walls!");
@@ -519,7 +543,7 @@ impl Game {
             Feature::Entrance { site, z } => { let g = self.global(nx, ny); self.go_in(site, z, g); }
             _ => {}
         }
-        if self.on_land() { self.after_land_step(); }
+        if self.on_land() { self.after_land_step(); } else { self.after_place_step(); }
         // Things lying here.
         if let Some(f) = self.floor() { if let Some(items) = f.items.get(&(self.x, self.y)) { if !items.is_empty() {
             let list: Vec<String> = items.iter().take(4).map(|i| i.describe()).collect();
@@ -1057,6 +1081,77 @@ impl Game {
         if before * 100 / super::land::DAY != self.turn / super::land::DAY { self.companion_day(); self.regard_day(); }
         self.land_tick(before * 100);
         self.corpses.values_mut().for_each(|v| v.retain(|c| self.turn < c.turn + 3000));
+    }
+
+    /// After a step in a place: a room first come into is told; a hidden door near may be noticed.
+    fn after_place_step(&mut self) {
+        let (x, y, z) = (self.x, self.y, self.z);
+        let mut told = None;
+        if let Some(p) = self.place_mut() {
+            for r in p.rooms.iter_mut().filter(|r| r.z == z && !r.seen) {
+                if x >= r.rect.0 && y >= r.rect.1 && x < r.rect.0 + r.rect.2 && y < r.rect.1 + r.rect.3 { r.seen = true; told = Some(r.text.clone()); }
+            }
+        }
+        if let Some(t) = told { self.say(Tone::Quest, t); }
+        // A draft from the wall: hidden doors within two cells may be noticed.
+        let chance = 0.08 + self.hero.level as f64 * 0.004;
+        let mut r = self.roll(0x5EC2 ^ (x as u64) << 8 ^ y as u64);
+        let near: Vec<(i32, i32)> = self.floor().map(|f| (-2..=2).flat_map(|dy| (-2..=2).map(move |dx| (x + dx, y + dy))).filter(|&(a, b)| f.inside(a, b) && f.at(a, b).feature == Feature::SecretDoor).collect()).unwrap_or_default();
+        for (a, b) in near { if r.gen_bool(chance) { self.reveal_door(a, b); self.say(Tone::Quest, "You feel a draft from the wall... a hidden door!"); } }
+    }
+
+    /// Search the walls about (three cells) for hidden doors.
+    fn search(&mut self) -> Option<i32> {
+        if self.on_land() || self.here.is_none() { self.say(Tone::Info, "You search about, and find nothing hidden."); return Some(100); }
+        let (x, y) = (self.x, self.y);
+        let mut r = self.roll(0x5EA2C4);
+        let near: Vec<(i32, i32)> = self.floor().map(|f| (-3..=3).flat_map(|dy| (-3..=3).map(move |dx| (x + dx, y + dy))).filter(|&(a, b)| f.inside(a, b) && f.at(a, b).feature == Feature::SecretDoor).collect()).unwrap_or_default();
+        let mut found = false;
+        for (a, b) in near { if r.gen_bool(0.7) { self.reveal_door(a, b); found = true; } }
+        self.say(Tone::Info, if found { "You run your hands over the stones... and one gives. A hidden door!" } else { "You search the walls, tapping and listening. Nothing." });
+        self.look();
+        Some(200)
+    }
+
+    fn reveal_door(&mut self, x: i32, y: i32) {
+        let z = self.z;
+        if let Some(p) = self.place_mut() { let t = p.floors[z].at_mut(x, y); if t.feature == Feature::SecretDoor { t.wall = Wall::None; t.feature = Feature::Door { open: false, lock: 0 }; } }
+        self.stats.secrets += 1;
+    }
+
+    /// A lever of an ordered puzzle pulled: on in order, or every lever springs back.
+    fn pull_puzzle_lever(&mut self, z: usize, x: i32, y: i32, id: u32) {
+        let Some(p) = self.place_mut() else { return };
+        p.floors[z].at_mut(x, y).feature = Feature::Lever { id, pulled: true };
+        let Some(k) = p.levers.iter().position(|l| l.z == z && l.order.contains(&id)) else { return };
+        p.levers[k].pulled.push(id);
+        let pz = p.levers[k].clone();
+        let right = pz.order.starts_with(&pz.pulled);
+        let msg;
+        if !right {
+            for t in p.floors[z].tiles.iter_mut() { if let Feature::Lever { id: lid, pulled } = &mut t.feature { if pz.order.contains(lid) { *pulled = false; } } }
+            p.levers[k].pulled.clear();
+            msg = "Wrong. With a clank every lever springs back up.";
+        } else if pz.pulled.len() == pz.order.len() {
+            for t in p.floors[z].tiles.iter_mut() { if let Feature::Gate { lever, open } = &mut t.feature { if *lever == pz.gate { *open = true; } } }
+            msg = "The last lever goes down, and somewhere a portcullis grinds up!";
+        } else { msg = "The lever goes down with a heavy clunk, and stays."; }
+        self.say(Tone::Info, msg);
+    }
+
+    /// A riddle door answered.
+    pub fn answer_riddle(&mut self, x: i32, y: i32, z: usize, right: bool) {
+        if right {
+            if let Some(p) = self.place_mut() { if let Feature::RiddleDoor { open, .. } = &mut p.floors[z].at_mut(x, y).feature { *open = true; } }
+            let xp = 20 * self.place().map_or(1, |p| p.spec.tier) as u64;
+            self.say(Tone::Quest, format!("The stone face smiles, and the door grinds open. ({} experience)", xp));
+            for l in self.hero.gain_xp(xp) { self.say(Tone::Level, format!("You advanced to level {}.", l)); }
+        } else {
+            let d = 10 + self.place().map_or(1, |p| p.spec.tier) as i32 * 6;
+            self.say(Tone::Hurt, "\"Wrong,\" says the face, and spits fire.");
+            self.hurt(d, "a riddle door's fire");
+        }
+        self.look();
     }
 
     /// A day on the road with a companion: their heart mends a little; the grasping ones want

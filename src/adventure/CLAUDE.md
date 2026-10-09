@@ -296,6 +296,35 @@ everywhere).
   The panel says how the town here sees the hero.
 - Test: `land::tests::the_town_remembers_blood_and_deeds`.
 
+## Rooms and puzzles (`rooms.rs`, `data/defaults/adventure_rooms.json`; card adv-set-pieces)
+- 23 authored rooms (flooded crypt, ossuary, hidden reliquary, throne of bones, lever vault,
+  riddle chapel, plate corridor, spider nursery, beast's larder, collapsed gallery, dwarven
+  forge, secret armoury, scriptorium, cult altar, drowned hall, fallen adventurers, statue
+  garden, ritual circle, guard room, fountain court, prison cells, smugglers' cache, hermit's
+  hole), each for some kinds of place and floors (any, first, last, deep), cut into solid rock
+  where it fits after the ways down are placed (`site::realize`: none hides a stair), joined by
+  a passage from its one way in (door, hidden door, riddle door or gap), else not cut. A room's
+  text is told the first time one steps into it (`Place::rooms`); its M cells get the place's
+  monsters.
+- History in the walls: `Feature::Lore { text, look }` (appended; 0 an engraving, 1 remains
+  walked over, 2 a plaque): a tomb's engraving is its cause (the battle and its dead; every tomb
+  also carves it by the stair of its first and last floors), a temple's hymn its god, a ruin's
+  or keep's who held it, a cult's the name it worships; remains in a lair are what its beast ate,
+  elsewhere a dead adventurer's last word.
+- Hidden doors (`Feature::SecretDoor`, a walled cell): noticed by a draft within two cells
+  (8% + level/250 a step), or found by searching (`Action::Search`, X: 70% within three cells,
+  200 ticks); found they are doors (`Stats::secrets`).
+- Puzzles, one kind per kind of place: levers in an order cut in an engraving (labyrinths,
+  halls, keeps: `Place::levers`, a wrong pull springs them all back, the last opens the vault's
+  portcullis), a riddle door (temples, shrines, cellars: a choice card, 8 riddles; right opens it
+  with experience, wrong spits fire), pressure plates (tombs, ruins, the dark fortress: darts
+  unless one treads on the skull-marked ones).
+- Bot: answers riddles right, pulls levers in their order, searches the walls of a walked floor
+  that hides a door (12 tries). `Rooms:` line in its report; the 40,000-act knight sees 8+ rooms
+  and finds hidden doors.
+- Tests: `rooms::tests::rooms_are_whole`, `rooms::made::places_get_their_rooms` (rooms in 84
+  places, hidden doors, a tomb naming its dead), the integration test's Rooms line.
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the

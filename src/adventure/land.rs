@@ -224,7 +224,7 @@ impl Game {
         }
         let spec = self.land_spec(self.tile);
         let origin = self.origin();
-        self.land = Some(Place { spec, floors: vec![f], monsters, npcs, entry: (CH + CH / 2, CH + CH / 2), next_uid: 0, top: 0, origin: Some(origin), mouth: None });
+        self.land = Some(Place { spec, floors: vec![f], monsters, npcs, entry: (CH + CH / 2, CH + CH / 2), next_uid: 0, top: 0, origin: Some(origin), mouth: None, rooms: Vec::new(), levers: Vec::new() });
     }
 
     /// Write the land floor back into its chunks (it stays as it is).

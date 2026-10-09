@@ -183,6 +183,8 @@ pub fn cell_sig(f: &Floor, x: i32, y: i32) -> u64 {
         Feature::Trap { armed, .. } => 8000 + *armed as u64,
         Feature::LevelDoor { level } => 8500 + *level as u64,
         Feature::Entrance { site, z } => 8600 + *site as u64 * 7 + *z as u64,
+        Feature::RiddleDoor { open, .. } => 8700 + *open as u64,
+        Feature::Plate { safe } => 8710 + *safe as u64,
         other => 9000 + std::mem::discriminant(other).hash_u64(),
     };
     (t.ground as u64) | (t.wall as u64) << 8 | feat << 16
@@ -300,6 +302,38 @@ pub fn draw_feature(put: &mut dyn FnMut(i64, i64, Rgb, f32), f: &Floor, cx: i32,
         Feature::Grate => { pen.rect(-0.7, -0.7, 0.7, 0.7, DARK); for k in 0..5 { let a = -0.56 + k as f32 * 0.28; pen.line((a, -0.7), (a, 0.7), iron, 1.5); pen.line((-0.7, a), (0.7, a), iron, 1.5); } }
         Feature::Sign { .. } => { pen.line((0.0, 0.2), (0.0, 0.9), wood, 2.0); pen.rect(-0.6, -0.5, 0.6, 0.25, mix(wood, PARCH, 0.3)); for k in [-0.25f32, -0.05] { pen.line((-0.4, k), (0.4, k), INK, 1.0); } }
         Feature::Trap { armed, .. } => { if *armed { pen.rect_f(-0.45, -0.45, 0.45, 0.45, mix(stone, INK, 0.12), Finish::Plain); } }
+        Feature::SecretDoor => {}
+        Feature::Lore { look: 0, .. } => {
+            // A carved panel: lines of writing in the stone.
+            pen.rect(-0.62, -0.62, 0.62, 0.62, [168.0, 158.0, 144.0]);
+            pen.line((-0.62, -0.62), (0.62, -0.62), INK, 1.0); pen.line((-0.62, 0.62), (0.62, 0.62), INK, 1.0);
+            for k in 0..4 { let y = -0.4 + k as f32 * 0.26; pen.line((-0.45, y), (0.45 - (k % 2) as f32 * 0.25, y), [80.0, 70.0, 64.0], 1.0); }
+        }
+        Feature::Lore { look: 1, .. } => {
+            // Remains: a skull and scattered bones.
+            pen.ellipse(-0.1, -0.1, 0.24, 0.2, [226.0, 218.0, 196.0]);
+            pen.dot(-0.18, -0.12, INK); pen.dot(-0.02, -0.12, INK);
+            pen.line((-0.5, 0.35), (0.3, 0.15), [214.0, 206.0, 186.0], 2.0); pen.line((0.1, 0.45), (0.55, 0.05), [214.0, 206.0, 186.0], 2.0);
+        }
+        Feature::Lore { .. } => {
+            pen.rect(-0.45, -0.35, 0.45, 0.35, [176.0, 130.0, 60.0]);
+            for k in 0..3 { let y = -0.18 + k as f32 * 0.18; pen.line((-0.3, y), (0.3, y), [96.0, 64.0, 30.0], 1.0); }
+        }
+        Feature::Plate { safe } => {
+            pen.rect(-0.8, -0.8, 0.8, 0.8, [150.0, 142.0, 130.0]);
+            pen.line((-0.8, -0.8), (0.8, -0.8), [90.0, 84.0, 78.0], 1.0); pen.line((-0.8, 0.8), (0.8, 0.8), [90.0, 84.0, 78.0], 1.0);
+            pen.line((-0.8, -0.8), (-0.8, 0.8), [90.0, 84.0, 78.0], 1.0); pen.line((0.8, -0.8), (0.8, 0.8), [90.0, 84.0, 78.0], 1.0);
+            if *safe { pen.ellipse(0.0, -0.05, 0.22, 0.2, [214.0, 206.0, 190.0]); pen.dot(-0.08, -0.07, INK); pen.dot(0.08, -0.07, INK); }
+        }
+        Feature::RiddleDoor { open, .. } => {
+            if *open { pen.rect_f(-0.6, -0.8, 0.6, 0.8, DARK, Finish::Plain); }
+            else {
+                pen.rect(-0.7, -0.85, 0.7, 0.85, [150.0, 140.0, 126.0]);
+                pen.ellipse(0.0, -0.1, 0.42, 0.48, [176.0, 166.0, 150.0]);
+                pen.dot(-0.15, -0.22, INK); pen.dot(0.15, -0.22, INK);
+                pen.path(&[(-0.18, 0.15), (0.0, 0.22), (0.18, 0.15)], INK, 1.5);
+            }
+        }
         Feature::Entrance { .. } if matches!(t.ground, Ground::Cobbles | Ground::Flags | Ground::Marble) && t.wall == Wall::None && !matches!(f.at(cx, cy - 1).wall, Wall::Rock | Wall::Timber) => {
             // A town's grate into its sewers.
             pen.rect(-0.7, -0.7, 0.7, 0.7, DARK); for k in 0..5 { let a = -0.56 + k as f32 * 0.28; pen.line((a, -0.7), (a, 0.7), iron, 1.5); pen.line((-0.7, a), (0.7, a), iron, 1.5); }

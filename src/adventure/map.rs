@@ -68,6 +68,15 @@ pub enum Feature {
     /// The way into a place standing in the land (a cave mouth, a ruin's stair, a sewer grate):
     /// the place and the floor one arrives on.
     Entrance { site: u32, z: usize },
+    /// A door hidden in the wall (the cell is walled until it is found: `Action::Search`).
+    SecretDoor,
+    /// What a place tells of its history: an engraving (0), remains that tell (1, walked over),
+    /// a plaque (2).
+    Lore { text: String, look: u8 },
+    /// A pressure plate: the unsafe ones loose darts (the safe ones bear a skull).
+    Plate { safe: bool },
+    /// A door that opens to the answer of its riddle.
+    RiddleDoor { riddle: u32, open: bool },
 }
 
 impl Feature {
@@ -77,13 +86,17 @@ impl Feature {
             Feature::Statue | Feature::Pillar | Feature::Bookshelf | Feature::Anvil | Feature::Counter | Feature::Well
             | Feature::Barrel | Feature::Crate | Feature::Tent | Feature::Fountain | Feature::Sarcophagus { .. } | Feature::Plinth { .. }
             | Feature::Chest { .. } | Feature::QuestChest { .. } | Feature::Lever { .. } | Feature::Altar | Feature::Throne | Feature::Sign { .. } => true,
+            Feature::Lore { look, .. } => *look != 1,
+            Feature::RiddleDoor { open, .. } => !*open,
+            Feature::SecretDoor => true,
             _ => false,
         }
     }
     pub fn blocks_sight(&self) -> bool {
         match self {
             Feature::Door { open, .. } => !*open,
-            Feature::Bookshelf | Feature::Tent => true,
+            Feature::RiddleDoor { open, .. } => !*open,
+            Feature::Bookshelf | Feature::Tent | Feature::SecretDoor => true,
             _ => false,
         }
     }
@@ -103,6 +116,14 @@ impl Feature {
             Feature::Grate => "a grate", Feature::Sign { .. } => "a sign", Feature::Trap { .. } => "a pressure plate", Feature::Rail => "rails",
             Feature::LevelDoor { .. } => "a sealed door with a rune of trial",
             Feature::Entrance { .. } => "a way down",
+            Feature::SecretDoor => "",
+            Feature::Lore { look: 0, .. } => "an engraving",
+            Feature::Lore { look: 1, .. } => "remains",
+            Feature::Lore { .. } => "a plaque",
+            Feature::Plate { safe: true } => "a stone plate with a skull",
+            Feature::Plate { .. } => "a stone plate",
+            Feature::RiddleDoor { open: false, .. } => "a carved door with a face",
+            Feature::RiddleDoor { .. } => "an open carved door",
         }
     }
 }
