@@ -41,13 +41,21 @@ pub struct Monster {
     /// The town it belongs to (one of its people or its watch turned on the hero; 0 none).
     #[serde(default)]
     pub town: u32,
+    /// Turns its arm is maimed (its blows weaker), and turns it is afraid (it flees).
+    #[serde(default)]
+    pub maimed: i32,
+    #[serde(default)]
+    pub fear: i32,
+    /// A boss that has called its own to help (once).
+    #[serde(default)]
+    pub called: bool,
 }
 
 impl Monster {
     pub fn new(uid: u32, def: &str, x: i32, y: i32, z: usize) -> Monster {
         let d = data().monster(def).unwrap_or_else(|| data().monster("rat").unwrap());
         Monster { uid, def: d.id.clone(), name: d.name.clone(), hp: d.hp, max_hp: d.hp, x, y, z, energy: 0, awake: false, boss: false, scale: 1.0,
-            legend: None, carries: Vec::new(), poisoned: 0, slowed: 0, home: (x, y), left: uid % 2 == 0, struck_at: 0, night: false, town: 0 }
+            legend: None, carries: Vec::new(), poisoned: 0, slowed: 0, home: (x, y), left: uid % 2 == 0, struck_at: 0, night: false, town: 0, maimed: 0, fear: 0, called: false }
     }
     /// A named boss over `def`, `scale` times as strong.
     pub fn boss(uid: u32, def: &str, name: &str, scale: f32, x: i32, y: i32, z: usize) -> Monster {
@@ -60,7 +68,7 @@ impl Monster {
         m
     }
     pub fn def(&self) -> &'static MonsterDef { data().monster(&self.def).unwrap() }
-    pub fn attack(&self) -> i32 { (self.def().attack as f32 * self.scale).round() as i32 }
+    pub fn attack(&self) -> i32 { (self.def().attack as f32 * self.scale * if self.maimed > 0 { 0.6 } else { 1.0 }).round() as i32 }
     pub fn defense(&self) -> i32 { (self.def().defense as f32 * self.scale.sqrt()).round() as i32 }
     pub fn armor(&self) -> i32 { (self.def().armor as f32 * self.scale.sqrt()).round() as i32 }
     pub fn speed(&self) -> i32 { let s = self.def().speed; if self.slowed > 0 { s * 2 / 3 } else { s } }

@@ -325,6 +325,57 @@ everywhere).
 - Tests: `rooms::tests::rooms_are_whole`, `rooms::made::places_get_their_rooms` (rooms in 84
   places, hidden doors, a tomb naming its dead), the integration test's Rooms line.
 
+## Fights with decisions (card adv-combat-depth)
+- Flanking: each other foe beside the hero adds a fifth to a blow and splits the guard
+  (`monster_strikes`: block 0..defense / (1 + flank)). A doorway holds: the hero a step inside a
+  corridor meets one at a time (nothing cuts a corner between two walls).
+- Wounds (`Hero::wounds`, part and turns left, 300): a blow of a seventh of one's life or more
+  may hurt a leg (steps x1.5), an arm (the shield halved, blows x0.7) or the head (defence
+  x0.7); they mend with time, a health potion mends one, a spring all. The panel lists them.
+- Stances (V: balanced, defensive x1.5 defence and x0.7 blows, offensive the reverse) and
+  sneaking (N: steps x1.5; sleeping things wake at 2 cells, not 5). A blow on the unaware is
+  x2.5 (x3.5 with a dagger or fists): "You fall on X unawares!".
+- Monsters: a breaking blow lames a leg (`slowed`) or maims a forelimb (`maimed`: blows x0.6);
+  a kin slain within 6 cells frightens a third of the pack (`fear` 25 turns: they run, and turn
+  when cornered); a boss under half its life calls two of its floor's kind once (`called`).
+- Fire (`Floor::fire`, cells and turns left; `Tile::flammable`: trees, hedges, palisades,
+  timber, grass, fields, moss, planks, carpet, webs): Ctrl + a direction with a lit torch, and
+  fire spells' cells. It spreads by a hash of cell and turn (woods 18%, webs 30%, timber 12%,
+  grass alone 3%: a meadow fire dies out, a wood burns), fewer catch the more burns (160 at
+  once at most), burns what stands in it (8 a turn; the hero 10), and leaves ash (walls fall to
+  ash or rubble, furniture burns). The land floor's fires go out when it is put together anew.
+- Tests: `game::fight_tests::a_doorway_holds_where_the_open_does_not` (four winter wolves, a
+  level-2 swordsman, 8 seeds: the open costs 2.5x the life, 7 of 8 die there and 1 in the
+  doorway), `a_torch_sets_a_wood_burning` (a tree lit, 116 cells of wood ash, the wolf in it dead).
+
+## Exploration that pays (`wonders.rs`; card adv-landmarks)
+- Wonders (`WorldInfo::wonders`, by tile; `wonders::find` at build): the focal biomes
+  (`lore::focal`) and the gazetteer's named peaks, one a patch (21 on the dev world, 7 kinds).
+  Stamped near the tile's middle (`surface::stamp_wonder`) as `Feature::Wonder { kind, used }`
+  (appended) and drawn three cells across over the plan (`adventure_ink::draw_wonder`). Bump
+  for the gift (`Game::wonder`): the Eldest Tree's blessing (`Hero::boons` "grove", +10 life for
+  good), a spring or oasis (all mended, fed), a summit's cairn (the map inked 7 tiles about,
+  experience), a star-crater (star-iron), a fire mountain (a fire salamander climbs out; fire-
+  glass), a giant's bones (a giant's bone; its wight rises), a monolith (the oldest event of
+  the chronicle, experience), a deep well (a coin: paid back, a potion, or nothing).
+- Stories on standing stones (`WorldInfo::stones`, `stories`): each war of the history with
+  four located fights (`collections::war_events`: the first, two between, the last) is carved
+  on four stones (`Feature::Lore` look 3) by where they were fought (40 wars, 160 stones on the
+  dev world). Reading one marks the others on the map and says where the nearest is; all four
+  tell the whole tale (experience, a deed; `Game::stones_read`, `Stats::stories`).
+- No wild land is empty (`Gen::finds`): roads get a waystone naming the two nearest towns in
+  days and a direction (`Atlas::names`), now and then a roadside inn (an innkeeper, a bed;
+  not within two tiles of a town) or a wayside shrine (an altar: bump to mend); a tile still
+  bare gets a cairn over a cache, a lone grave with its board, or an empty hut with a chest.
+- Far sight: tall things (a castle's towers, the dark fortress, a temple's spire, a ruin's
+  walls, a camp's smoke, a tomb's dome, a town's roofs, every wonder: `Gen::tall`, kept per chunk
+  in `Game::tall` with `pristine`, `Game::far` in land cells) are seen from 64 cells by day
+  (24 at night): their cells are inked and the nearest three named under the title ("Far off:
+  the towers of Highkeep to the east"; `Game::far_seen`).
+- `--adventure-landscape` adds a frame per kind of wonder and prints them.
+- Tests: `surface::tests::every_land_has_something`, `land::tests::a_tower_is_seen_from_far_off`,
+  `land::tests::four_stones_tell_a_tale`.
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the

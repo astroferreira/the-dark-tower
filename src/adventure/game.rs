@@ -127,6 +127,12 @@ pub enum Action {
     Assault(i32, i32),
     /// Search the walls about for hidden doors.
     Search,
+    /// Change stance: balanced, defensive, offensive.
+    Stance,
+    /// Move softly (or stop).
+    Sneak,
+    /// Set fire to what is in this direction (a lit torch).
+    Kindle(i32, i32),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -240,10 +246,21 @@ pub struct Game {
     /// Each town's regard of the adventurer (`regard`).
     #[serde(default)]
     pub regard: HashMap<u32, i32>,
+    /// The standing stones read: (story, part) (`wonders`).
+    #[serde(default)]
+    pub stones_read: Vec<(u32, u8)>,
+    /// Tall things of the land about (land cells, names), and those seen from far off now.
+    #[serde(skip)]
+    pub far: Vec<((i32, i32), String)>,
+    #[serde(skip)]
+    pub far_seen: Vec<String>,
+    /// Tall things of each chunk made (with `pristine`).
+    #[serde(skip)]
+    pub tall: HashMap<(u32, u32), Vec<((i32, i32), String)>>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32, #[serde(default)] pub tales_done: u32, #[serde(default)] pub secrets: u32 }
+pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32, #[serde(default)] pub tales_done: u32, #[serde(default)] pub secrets: u32, #[serde(default)] pub wonders: u32, #[serde(default)] pub stories: u32 }
 
 impl Game {
     pub fn new(world: WorldInfo, sites: Vec<SiteSpec>, hero: Hero, start_town: u32, seed: u64) -> Game {
@@ -253,6 +270,7 @@ impl Game {
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
             seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None, choice: None, regard: HashMap::new(),
+            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(),
         };
         g.set_atlas();
         g.hero.temple = start_town;
@@ -367,6 +385,7 @@ impl Game {
         for (k, v) in vis.iter().enumerate() { if *v { f.seen[k] = true; } }
         // Lit places (sconces, braziers, fires) are seen when in line of sight, however far.
         self.sight = vis;
+        if id == super::land::LAND { self.far_sight(r); }
     }
 
     pub fn visible(&self, x: i32, y: i32) -> bool {
@@ -389,6 +408,9 @@ impl Game {
             Action::Land => return self.land_here(None),
             Action::Decide(k) => return super::tales::decide(self, k),
             Action::Search => self.search(),
+            Action::Stance => { self.hero.stance = (self.hero.stance + 1) % 3; let w = ["balanced", "defensive: shield up, blows softer", "offensive: all in, guard down"][self.hero.stance as usize]; self.say(Tone::Info, format!("You take a {} stance.", w)); None }
+            Action::Sneak => { self.hero.sneaking = !self.hero.sneaking; self.say(Tone::Info, if self.hero.sneaking { "You move softly now, keeping to the shadows." } else { "You stop creeping." }); None }
+            Action::Kindle(dx, dy) => self.kindle(dx, dy),
             Action::Assault(dx, dy) => { let (nx, ny) = (self.x + dx, self.y + dy); match self.npc_at(nx, ny) { Some(k) => self.assault(k), None => self.step(dx, dy) } }
             Action::Move(dx, dy) => self.step(dx, dy),
             Action::Wait => Some(100),
@@ -490,7 +512,9 @@ impl Game {
                 return Some(100);
             }
             Feature::Sign { text } => { let t = text.clone(); self.say(Tone::Info, format!("The sign reads: \"{}\"", t)); return None; }
+            Feature::Lore { text, look: 3 } => { let t = text.clone(); self.read_stone(nx, ny, &t); return None; }
             Feature::Lore { text, look } if *look != 1 => { let t = text.clone(); self.say(Tone::Quest, t); return None; }
+            Feature::Wonder { kind, used } => { let (k, u) = (*kind, *used); return self.wonder(nx, ny, k, u); }
             Feature::RiddleDoor { riddle, open: false } => {
                 let r = *riddle;
                 let rd = &super::rooms::data().riddles[r as usize % super::rooms::data().riddles.len()];
@@ -636,6 +660,7 @@ impl Game {
         match d.kind.as_str() {
             "potion" => {
                 self.hero.spend(&it.id, 1);
+                if d.heal > 0 && !self.hero.wounds.is_empty() { let w = self.hero.wounds.remove(0); self.say(Tone::Info, format!("Your {} mends.", w.0)); }
                 if d.heal > 0 { let before = self.hero.hp; self.hero.hp = (self.hero.hp + d.heal).min(self.hero.max_hp()); let g = self.hero.hp - before; self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: g, tone: Tone::Level }); }
                 if d.mana > 0 { self.hero.mana = (self.hero.mana + d.mana).min(self.hero.max_mana()); self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: d.mana, tone: Tone::Info }); }
                 self.say(Tone::Info, format!("You drink {}. Aaaah...", super::item::article(&d.name)));
@@ -745,7 +770,11 @@ impl Game {
         let mut r = self.roll(uid as u64 * 999 + 11);
         let m = self.place()?.monsters[k].clone();
         // (Every blow does some harm: a third of its best at least; misses come from the foe's defense.)
+        let max = max * self.hero.blow_factor();
         let mut dmg = r.gen_range(max.max(1.0) / 3.0..=max.max(1.0)).round() as i32;
+        // A blow on the unaware: hard (a dagger's, harder).
+        let unaware = !m.awake;
+        if unaware { dmg = dmg * if skill == Skill::Fist || self.hero.weapon().map_or(false, |w| w.id.contains("dagger")) { 7 } else { 5 } / 2; }
         let block = r.gen_range(0..=(m.defense() / 2).max(0));
         let soak = if m.armor() > 0 { r.gen_range(m.armor() / 2..=m.armor()) } else { 0 };
         if holy && m.def().undead { dmg = dmg * 3 / 2; }
@@ -767,7 +796,15 @@ impl Game {
         let part = Self::body_part(&m, &mut r);
         let (verb, mark) = Self::wound_words(dmg as f32 / m.max_hp as f32, skill);
         let with = if wname == "your fists" { String::new() } else { format!(" with your {}", wname) };
+        if unaware { self.say(Tone::Hit, format!("You fall on {} unawares!", m.the())); }
         self.say(Tone::Hit, format!("You {} {} in the {}{}{}! ({})", verb, m.the(), part, with, mark, dmg));
+        // A breaking blow lames a leg or maims an arm.
+        if mark.contains("breaks") || mark.contains("tearing") {
+            let leg = part.contains("leg");
+            let arm = part.contains("arm") || part.contains("fang") || part.contains("wing");
+            if let Some(p) = self.place_mut() { let mm = &mut p.monsters[k]; if leg { mm.slowed = mm.slowed.max(30); } if arm { mm.maimed = mm.maimed.max(30); } }
+            if leg { self.say(Tone::Hit, format!("{} limps.", cap(&m.the()))); } else if arm { self.say(Tone::Hit, format!("{} favours its wounded side.", cap(&m.the()))); }
+        }
         if poison > 0 { if let Some(p) = self.place_mut() { p.monsters[k].poisoned += poison * 3; } }
         if burns { if let Some(p) = self.place_mut() { p.monsters[k].poisoned += 4; } }
         self.damage_monster(k, dmg);
@@ -897,6 +934,8 @@ impl Game {
                 let f = self.floor()?;
                 let cells: Vec<(i32, i32)> = cells.into_iter().filter(|&(x, y)| f.inside(x, y) && f.at(x, y).wall == Wall::None).collect();
                 self.effects.push(Effect::Area { cells: cells.clone(), z: self.z, kind: if sp.kind == "around" { "blow".into() } else { element.clone() } });
+                // Fire catches in what will burn.
+                if element == "fire" { for &(x, y) in cells.iter() { if (x, y) != (self.x, self.y) { self.ignite(x, y); } } }
                 // (By uid: a monster slain leaves the list and moves the others' places in it.)
                 let hit: Vec<u32> = self.place()?.monsters.iter().filter(|m| m.z == self.z && m.hp > 0 && cells.contains(&(m.x, m.y))).map(|m| m.uid).collect();
                 self.say(Tone::Hit, format!("\"{}!\"", cap(&sp.words)));
@@ -950,7 +989,25 @@ impl Game {
         m.awake = true;
         let (x, y, z) = (m.x, m.y, m.z);
         self.effects.push(Effect::Number { x, y, z, value: dmg, tone: Tone::Hit });
-        if self.place().unwrap().monsters[k].hp > 0 { return; }
+        if self.place().unwrap().monsters[k].hp > 0 {
+            // A boss at half its life calls its own to help (once).
+            let m = self.place().unwrap().monsters[k].clone();
+            if m.boss && !m.called && m.hp * 2 < m.max_hp {
+                let kin: Vec<String> = self.place().unwrap().monsters.iter().filter(|o| !o.boss && o.z == m.z && o.hp > 0).map(|o| o.def.clone()).collect();
+                if let Some(p) = self.place_mut() { p.monsters[k].called = true; }
+                if !kin.is_empty() {
+                    let def = kin[(m.uid as usize) % kin.len()].clone();
+                    for q in 0..2 {
+                        let (x, y) = (m.x + if q == 0 { 2 } else { -2 }, m.y + 1);
+                        let spot = self.floor().and_then(|f| (0..4).flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| (x + dx, y + dy)))).find(|&(a, b)| f.walkable(a, b)));
+                        let uid = self.fresh_uid();
+                        if let (Some((a, b)), Some(p)) = (spot, self.place_mut()) { let mut c = Monster::new(uid, &def, a, b, m.z); c.awake = true; p.monsters.push(c); }
+                    }
+                    self.say(Tone::Danger, format!("{} roars for help, and its own come running!", cap(&m.the())));
+                }
+            }
+            return;
+        }
         // Slain.
         let m = self.place().unwrap().monsters[k].clone();
         let xp = m.xp();
@@ -978,6 +1035,10 @@ impl Game {
         } else { (x, y) };
         for it in loot.iter().cloned() { p.floors[z].drop_item(lx, ly, it); }
         let dead = p.monsters.remove(k);
+        // Its kind nearby lose heart (not the dead, not bosses).
+        for o in p.monsters.iter_mut().filter(|o| o.z == z && !o.boss && o.hp > 0 && (o.x - x).abs().max((o.y - y).abs()) <= 6 && o.def == dead.def) {
+            if (o.uid ^ dead.uid) % 3 == 0 { o.fear = o.fear.max(25); }
+        }
         self.corpses.entry(here).or_default().push(Corpse { x, y, z, def: dead.def.clone(), name: dead.name.clone(), turn });
         if !dead.boss && here != LAND { self.respawn.push((here, dead.clone(), turn)); }
         if dead.town != 0 { let (t, n) = (dead.town, dead.name.clone()); self.town_blood(t, &n); }
@@ -1077,10 +1138,79 @@ impl Game {
             if h.poisoned > 0 { h.poisoned -= 1; let d = 1 + h.poisoned / 8; self.hurt(d, "poison"); if self.hero.poisoned == 0 { self.say(Tone::Info, "The poison has run its course."); } }
             if self.hero.fed == 0 && self.turn / 100 % 50 == 0 { self.say(Tone::Danger, "You are hungry, and you will not heal until you eat (F eats, or click food in the pack)."); }
         }
+        // Wounds mend.
+        for w in self.hero.wounds.iter_mut() { w.1 -= ticks as i32; }
+        if self.hero.wounds.iter().any(|w| w.1 <= 0) { self.hero.wounds.retain(|w| w.1 > 0); self.say(Tone::Info, "A wound has mended."); }
+        if ticks > 0 { self.burn(ticks); }
         if self.here.is_some() { self.monsters_act(cost); }
         if before * 100 / super::land::DAY != self.turn / super::land::DAY { self.companion_day(); self.regard_day(); }
         self.land_tick(before * 100);
         self.corpses.values_mut().for_each(|v| v.retain(|c| self.turn < c.turn + 3000));
+    }
+
+    /// Set fire to the cell in a direction (with a lit torch, or a fire beside one).
+    fn kindle(&mut self, dx: i32, dy: i32) -> Option<i32> {
+        if self.hero.torch <= 0 { self.say(Tone::Info, "You need a lit torch to set a fire."); return None; }
+        let (x, y) = (self.x + dx, self.y + dy);
+        if !self.ignite(x, y) { self.say(Tone::Info, "That will not burn."); return None; }
+        self.say(Tone::Danger, "You put the torch to it. It catches.");
+        Some(100)
+    }
+
+    /// Set a cell burning; false if it will not burn.
+    pub fn ignite(&mut self, x: i32, y: i32) -> bool {
+        let z = self.z;
+        let Some(p) = self.place_mut() else { return false };
+        let f = &mut p.floors[z];
+        if !f.inside(x, y) || !f.at(x, y).flammable() || f.fire.contains_key(&(x, y)) || f.fire.len() >= 160 { return false; }
+        let life = if f.at(x, y).wall != Wall::None { 8 } else { 4 };
+        f.fire.insert((x, y), life);
+        true
+    }
+
+    /// Fire burns on: spreading to what will burn, hurting what stands in it, leaving ash.
+    fn burn(&mut self, ticks: u64) {
+        let z = self.z;
+        let (hx, hy) = (self.x, self.y);
+        let Some(p) = self.place_mut() else { return };
+        if p.floors.get(z).map_or(true, |f| f.fire.is_empty()) { return; }
+        let mut hurt: Vec<(i32, i32)> = Vec::new();
+        for t in 0..ticks.min(10) {
+            let f = &mut p.floors[z];
+            let mut cells: Vec<((i32, i32), u16)> = f.fire.iter().map(|(k, v)| (*k, *v)).collect();
+            cells.sort();
+            for ((x, y), left) in cells {
+                // Spread (a hash of the cell and the tick: the same fire twice).
+                for (k, (dx, dy)) in DIRS8.iter().enumerate() {
+                    let (nx, ny) = (x + dx, y + dy);
+                    let h = super::surface::hash(0xF12E, nx as i64, ny as i64, t + left as u64 * 7 + k as u64);
+                    // Woods and webs burn on; grass alone dies out (a cell lights fewer than one other);
+                    // the more already burns, the less catches (160 at once at most).
+                    if !f.inside(nx, ny) { continue; }
+                    let c = f.at(nx, ny);
+                    let p_spread = if matches!(c.feature, Feature::Web) { 30 } else if c.wall == Wall::Tree { 18 } else if c.wall != Wall::None || c.ground == Ground::Wood { 12 } else { 3 };
+                    let p_spread = p_spread * (160 - f.fire.len().min(160) as u64) / 160;
+                    if (h % 100) < p_spread && c.flammable() && !f.fire.contains_key(&(nx, ny)) { f.fire.insert((nx, ny), if f.at(nx, ny).wall != Wall::None { 8 } else { 4 }); }
+                }
+                if left <= 1 {
+                    f.fire.remove(&(x, y));
+                    let c = f.at_mut(x, y);
+                    if c.wall != Wall::None { c.wall = Wall::None; c.ground = if c.ground == Ground::Wood { Ground::Rubble } else { Ground::Ash }; } else { c.ground = Ground::Ash; }
+                    if matches!(c.feature, Feature::Table | Feature::Bed | Feature::Barrel | Feature::Crate | Feature::Bookshelf | Feature::Door { .. } | Feature::Tent | Feature::Web) { c.feature = Feature::None; }
+                } else { f.fire.insert((x, y), left - 1); }
+                hurt.push((x, y));
+            }
+        }
+        let on_fire: std::collections::HashSet<(i32, i32)> = p.floors[z].fire.keys().copied().collect();
+        // What stands in the flames burns.
+        let burning: Vec<u32> = p.monsters.iter().filter(|m| m.z == z && m.hp > 0 && on_fire.contains(&(m.x, m.y))).map(|m| m.uid).collect();
+        for uid in burning {
+            let Some(k) = self.find_monster(uid) else { continue };
+            if let Some(p) = self.place_mut() { p.monsters[k].fear = p.monsters[k].fear.max(5); }
+            self.damage_monster(k, 8 * ticks.min(10) as i32);
+        }
+        if on_fire.contains(&(hx, hy)) { self.say(Tone::Hurt, "You are burning!"); self.hurt(10, "fire"); }
+        let _ = hurt;
     }
 
     /// After a step in a place: a room first come into is told; a hidden door near may be noticed.
@@ -1219,7 +1349,8 @@ impl Game {
         };
         let d = m.def();
         if !m.awake {
-            if sees && (dx <= 5 || outdoor) {
+            let wake = if self.hero.sneaking { 2 } else { 5 };
+            if sees && (dx <= wake || (outdoor && (!self.hero.sneaking || dx <= 4))) {
                 self.pl_mut(id).monsters[k].awake = true;
                 if !d.sounds.is_empty() && self.rng.gen_bool(0.5) { let s = d.sounds[self.rng.gen_range(0..d.sounds.len())].clone(); self.effects.push(Effect::Speech { x: m.x, y: m.y, z, text: s }); }
             } else if self.rng.gen_bool(0.25) {
@@ -1233,7 +1364,8 @@ impl Game {
         }
         // Lost the scent: go home.
         if dx > 14 && !m.boss { self.pl_mut(id).monsters[k].awake = false; return; }
-        let coward = d.ai == "coward" || (!m.boss && m.hp < m.max_hp / 6 && d.ai != "slow" && !d.undead);
+        if m.fear > 0 || m.maimed > 0 { let mm = &mut self.pl_mut(id).monsters[k]; mm.fear = (mm.fear - 1).max(0); mm.maimed = (mm.maimed - 1).max(0); }
+        let coward = d.ai == "coward" || (!m.boss && m.hp < m.max_hp / 6 && d.ai != "slow" && !d.undead) || (m.fear > 0 && !d.undead);
         // Casters heal themselves when hurt.
         if d.heals > 0 && m.hp < m.max_hp / 2 && self.rng.gen_bool(0.3) {
             let mm = &mut self.pl_mut(id).monsters[k];
@@ -1398,8 +1530,11 @@ impl Game {
             self.hurt(dmg, &m.a());
             return;
         } } }
-        let raw = r.gen_range(0..=m.attack().max(1));
-        let block = r.gen_range(0..=self.hero.defense().max(0));
+        // Surrounded: each other foe at one's side splits the guard and finds an opening.
+        let (hx, hy, hz) = (self.x, self.y, self.z);
+        let flank = self.places.get(&id).or(if id == LAND { self.land.as_ref() } else { None }).map_or(0, |p| p.monsters.iter().filter(|o| o.uid != m.uid && o.z == hz && o.hp > 0 && (o.x - hx).abs() <= 1 && (o.y - hy).abs() <= 1).count()) as i32;
+        let raw = (r.gen_range(0..=m.attack().max(1)) as f32 * (1.0 + 0.2 * flank as f32)).round() as i32;
+        let block = r.gen_range(0..=(self.hero.defense().max(0) / (1 + flank)));
         if let Some(l) = self.hero.train(Skill::Shielding, 1) { self.say(Tone::Level, format!("You advance to shielding {}.", l)); }
         if raw <= block / 2 {
             if self.rng.gen_bool(0.3) { self.say(Tone::Info, format!("You block {}'s attack.", m.the())); }
@@ -1413,6 +1548,11 @@ impl Game {
         let how = match d.look.as_str() { l if l.starts_with("folk") => "hits you", "rat" | "giant rat" | "wolf" | "bear" | "wild boar" => "bites you", "spider" | "giant spider" => "bites you with its fangs", "bat" => "bites you", "adder" => "strikes at you", _ => "hits you" };
         let t = if dmg * 3 > self.hero.max_hp() { Tone::Danger } else { Tone::Hurt };
         self.say(t, format!("{} {}. ({})", cap(&m.the()), how, dmg));
+        // A heavy blow wounds a part (a leg slows, an arm weakens, the head dazes).
+        if dmg * 7 >= self.hero.max_hp() && r.gen_bool(0.5) {
+            let part = ["left leg", "right leg", "left arm", "right arm", "head"][r.gen_range(0..5)];
+            if !self.hero.wounded(part) { self.hero.wounds.push((part.to_string(), 300)); self.say(Tone::Danger, format!("Your {} is badly hurt.", part)); }
+        }
         if d.poison > 0 && r.gen_bool(0.4) && !self.hero.equipped.iter().flatten().any(|i| i.def().resist.as_deref() == Some("poison")) { self.hero.poisoned += d.poison; self.say(Tone::Hurt, "You are poisoned."); }
         if d.lifesteal { let p = self.pl_mut(id); let mm = &mut p.monsters[k]; mm.hp = (mm.hp + dmg / 2).min(mm.max_hp); }
         self.hurt(dmg, &m.a());
@@ -1567,3 +1707,107 @@ impl Game {
 }
 
 pub fn cap(s: &str) -> String { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }
+
+#[cfg(test)]
+mod fight_tests {
+    use super::*;
+    use crate::adventure::map::{Floor, Ground, Tile, Wall};
+    use crate::adventure::site::Place;
+    use crate::adventure::hero::{Skill, Slot};
+
+    /// A rock floor with a hall (x 25..36, y 4..17) and, to the west, either open ground (the
+    /// hall runs on to x 5) or a corridor one cell wide whose mouth is the hall's door; three
+    /// winter wolves in the hall, awake; the hero a step inside the mouth (one foe at a time).
+    fn arena(open: bool, seed: u64) -> Game {
+        let mut g = crate::adventure::land::tests::game();
+        g.rng = ChaCha8Rng::seed_from_u64(seed);
+        let mut f = Floor::new(40, 20, Tile::wall(Wall::Rock, Ground::Rock), "the test", false);
+        let x0 = if open { 5 } else { 25 };
+        for y in 4..17 { for x in x0..36 { *f.at_mut(x, y) = Tile::floor(Ground::Flags); } }
+        for x in 5..25 { *f.at_mut(x, 10) = Tile::floor(Ground::Flags); }
+        let spec = g.sites.iter().find(|s| s.id == 2).unwrap().clone();
+        let monsters = [(27, 9), (27, 10), (27, 11), (28, 10)].iter().enumerate().map(|(k, &(x, y))| { let mut m = Monster::new(900 + seed as u32 * 7 + k as u32, "winter_wolf", x, y, 0); m.awake = true; m }).collect();
+        let p = Place { spec, floors: vec![f], monsters, npcs: Vec::new(), entry: (24, 10), next_uid: 2000, top: 0, origin: None, mouth: None, rooms: Vec::new(), levers: Vec::new() };
+        g.places.insert(2, p);
+        g.here = Some(2);
+        g.z = 0;
+        g.x = 23; g.y = 10;
+        g.look();
+        g
+    }
+
+    /// A fighter of some seasons: a sword and a wooden shield, leather, level and skills `lv`.
+    fn armed(g: &mut Game, lv: u32) {
+        let h = &mut g.hero;
+        h.pack.retain(|i| !i.id.contains("potion"));
+        h.level = lv;
+        for s in [Skill::Sword, Skill::Shielding] { h.skills[s as usize] = (10 + lv * 3, 0); }
+        h.equipped[Slot::Hand as usize] = Some(crate::adventure::item::Item::new("sword", 1));
+        h.equipped[Slot::Shield as usize] = Some(crate::adventure::item::Item::new("wooden_shield", 1));
+        h.equipped[Slot::Body as usize] = Some(crate::adventure::item::Item::new("leather_armor", 1));
+        h.pack.retain(|i| !i.id.contains("potion"));
+        h.hp = h.max_hp();
+    }
+
+    /// The old bot's way: strike whatever stands beside one, else wait. With `whole`, life is
+    /// made whole after each act (to measure what a fight costs). Returns the damage taken and
+    /// whether the hero lived.
+    fn fight(g: &mut Game, acts: usize, whole: bool) -> (i32, bool) {
+        let mut taken = 0;
+        for _ in 0..acts {
+            let before = g.hero.hp;
+            let near = g.place().unwrap().monsters.iter().find(|m| m.hp > 0 && (m.x - g.x).abs() <= 1 && (m.y - g.y).abs() <= 1).map(|m| m.uid);
+            match near { Some(u) => { g.act(Action::Attack(u)); } None => { g.act(Action::Wait); } }
+            taken += (before - g.hero.hp).max(0);
+            if g.hero.hp <= 0 || g.banner.is_some() || g.here != Some(2) { return (taken, false); }
+            if whole { g.hero.hp = g.hero.max_hp(); g.hero.wounds.clear(); }
+            if g.place().unwrap().monsters.iter().all(|m| m.hp <= 0) { break; }
+        }
+        (taken, true)
+    }
+
+    /// Four winter wolves at a doorway come one at a time; in the open they surround one, split the
+    /// guard and find openings: the same fight costs far more life there, and kills.
+    #[test]
+    fn a_doorway_holds_where_the_open_does_not() {
+        let lv = 2;
+        let (mut open, mut door, mut died_open, mut died_door) = (0, 0, 0, 0);
+        for seed in 0..8 {
+            // Measured with life made whole: 30 acts.
+            let mut g = arena(true, seed); armed(&mut g, lv); let (t, _) = fight(&mut g, 30, true); open += t;
+            let mut g = arena(false, seed); armed(&mut g, lv); let (t, _) = fight(&mut g, 30, true); door += t;
+            // Fought for real.
+            let mut g = arena(true, seed); armed(&mut g, lv); if !fight(&mut g, 400, false).1 { died_open += 1; }
+            let mut g = arena(false, seed); armed(&mut g, lv); if !fight(&mut g, 400, false).1 { died_door += 1; }
+        }
+        eprintln!("level {}: damage in 30 acts, 8 fights: open {} doorway {}; deaths open {} doorway {}", lv, open, door, died_open, died_door);
+        assert!(open as f32 > door as f32 * 1.6, "the open cost {} and the doorway {}", open, door);
+        assert!(died_open >= 5 && died_door <= 1, "deaths: open {} doorway {}", died_open, died_door);
+    }
+
+    /// A torch put to a tree sets the wood burning: it spreads to the trees beside it, a wolf in
+    /// it burns, and what burned is ash.
+    #[test]
+    fn a_torch_sets_a_wood_burning() {
+        let mut g = arena(true, 1);
+        g.place_mut().unwrap().monsters.clear();
+        { let f = &mut g.place_mut().unwrap().floors[0];
+          for y in 5..16 { for x in 8..20 { if (x + y) % 3 != 0 { *f.at_mut(x, y) = Tile::wall(Wall::Tree, Ground::Grass); } else { *f.at_mut(x, y) = Tile::floor(Ground::Grass); } } } }
+        let mut m = Monster::new(77, "wolf", 12, 9, 0); m.awake = false;
+        *g.place_mut().unwrap().floors[0].at_mut(12, 9) = Tile::floor(Ground::Grass);
+        g.place_mut().unwrap().monsters.push(m);
+        g.x = 20; g.y = 10;
+        g.act(Action::Kindle(-1, 0));
+        assert!(g.place().unwrap().floors[0].fire.is_empty(), "no torch, no fire");
+        g.hero.torch = 500;
+        g.act(Action::Kindle(-1, 0));
+        assert!(!g.place().unwrap().floors[0].fire.is_empty(), "the tree did not catch");
+        let mut most = 0;
+        for _ in 0..60 { g.x = 30; g.y = 10; g.act(Action::Wait); most = most.max(g.place().unwrap().floors[0].fire.len()); }
+        let f = &g.place().unwrap().floors[0];
+        let ash = (5..16).flat_map(|y| (8..20).map(move |x| (x, y))).filter(|&(x, y)| f.at(x, y).ground == Ground::Ash).count();
+        eprintln!("burning at most {} cells; {} cells ash", most, ash);
+        assert!(most >= 6 && ash >= 30, "the wood did not burn: {} at most, {} ash", most, ash);
+        assert!(g.place().unwrap().monsters.iter().all(|m| m.uid != 77), "the wolf in the wood did not burn");
+    }
+}

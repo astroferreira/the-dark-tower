@@ -906,4 +906,26 @@ pub(crate) mod tests {
             }
         }
     }
+
+    /// One who falls down a hole without a rope can walk to a way up (walking as the hero does:
+    /// no fittings in the way, no corner cut between two walls; doors open).
+    #[test]
+    fn below_a_hole_there_is_a_way_up() {
+        let mut bad = Vec::new();
+        for kind in [SiteKind::Cave, SiteKind::Lair] {
+            for seed in 0..40u64 {
+                let s = spec(kind, 3, 2, seed * 7919 + kind as u64);
+                let p = realize(&s);
+                for z in 1..p.floors.len() {
+                    let f = &p.floors[z];
+                    for from in p.floors[z - 1].cells(|t| matches!(t.feature, Feature::Hole)) {
+                        let d = f.distances(from.0, from.1, i32::MAX - 1, |x, y| { let t = f.at(x, y); t.walkable() || matches!(t.feature, Feature::Door { .. } | Feature::LadderUp | Feature::StairsUp | Feature::LadderDown | Feature::Hole) });
+                        let ok = f.cells(|t| matches!(t.feature, Feature::LadderUp | Feature::StairsUp)).iter().any(|&(x, y)| d[y as usize * f.w + x as usize] < i32::MAX);
+                        if !ok { bad.push(format!("{:?} seed {} floor {} below the hole at {:?}", kind, seed, z, from)); }
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "shut in below a hole: {:?}", bad);
+    }
 }

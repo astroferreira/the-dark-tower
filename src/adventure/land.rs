@@ -131,7 +131,7 @@ impl Game {
     /// Make sure chunk `key` is made (and, the first time, its places, people, finds and
     /// creatures set).
     fn ensure_chunk(&mut self, key: (u32, u32)) {
-        if self.pristine.contains_key(&key) && self.chunks.contains_key(&key) { return; }
+        if self.pristine.contains_key(&key) && self.chunks.contains_key(&key) && self.tall.contains_key(&key) { return; }
         let sites: Vec<SiteSpec> = self.sites.iter().filter(|s| s.tile == (key.0 as usize, key.1 as usize) && s.kind != SiteKind::Wilds).cloned().collect();
         let refs: Vec<&SiteSpec> = sites.iter().collect();
         let gen = { let land = Land { info: &self.world, atlas: &self.atlas }; surface::generate(&land, key.0 as i64, key.1 as i64, &refs) };
@@ -149,8 +149,10 @@ impl Game {
         if self.pristine.len() > 40 {
             let keep: Vec<(u32, u32)> = (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (dx, dy))).filter_map(|(dx, dy)| self.chunk_key(self.centre.0 as i64 + dx, self.centre.1 as i64 + dy)).collect();
             self.pristine.retain(|k, _| keep.contains(k));
+            self.tall.retain(|k, _| keep.contains(k));
         }
         self.pristine.insert(key, gen.tiles);
+        self.tall.insert(key, gen.tall);
     }
 
     /// Set the land's creatures in a chunk up to what its perils hold (by day).
@@ -210,6 +212,7 @@ impl Game {
         let mut f = Floor::new(n, n, Tile::wall(Wall::Rock, Ground::Ice), &name, true);
         let mut monsters = Vec::new();
         let mut npcs = Vec::new();
+        let mut far = Vec::new();
         for ((dx, dy), k) in keys {
             let (ox, oy) = ((dx + 1) * CH, (dy + 1) * CH);
             let Some(k) = k else { continue };
@@ -220,8 +223,10 @@ impl Game {
             for ((x, y), items) in &ch.items { f.items.insert((x + ox, y + oy), items.clone()); }
             for m in &ch.monsters { let mut m = m.clone(); m.x += ox; m.y += oy; m.home = (m.home.0 + ox, m.home.1 + oy); monsters.push(m); }
             for p in &ch.npcs { let mut p = p.clone(); p.x += ox; p.y += oy; p.post = (p.post.0 + ox, p.post.1 + oy); npcs.push(p); }
+            for ((x, y), name) in self.tall.get(&k).into_iter().flatten() { far.push(((x + ox, y + oy), name.clone())); }
             for y in 0..CH { for x in 0..CH { let i = (y * CH + x) as usize; if ch.seen.get(i / 64).map_or(false, |w| w >> (i % 64) & 1 == 1) { f.seen[(oy + y) as usize * n + (ox + x) as usize] = true; } } }
         }
+        self.far = far;
         let spec = self.land_spec(self.tile);
         let origin = self.origin();
         self.land = Some(Place { spec, floors: vec![f], monsters, npcs, entry: (CH + CH / 2, CH + CH / 2), next_uid: 0, top: 0, origin: Some(origin), mouth: None, rooms: Vec::new(), levers: Vec::new() });
@@ -695,7 +700,7 @@ impl Game {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::adventure::game::Action;
     use crate::adventure::site::TownShape;
@@ -727,7 +732,48 @@ mod tests {
         (i, vec![town, cave])
     }
 
-    fn game() -> Game {
+    /// A castle's towers stand over the land: seen and named from 60 cells off by day (not past
+    /// 64), its cells inked on the floor.
+    #[test]
+    fn a_tower_is_seen_from_far_off() {
+        let (info, mut sites) = world();
+        let mut castle = sites[1].clone();
+        castle.id = 3; castle.kind = SiteKind::Castle; castle.name = "Highkeep".into(); castle.tile = (5, 2); castle.seed = 13; castle.tier = 2;
+        sites.push(castle);
+        let mut g = Game::new(info, sites, crate::adventure::hero::Hero::new("Tess", "human", true, 5), 1, 5);
+        g.land_at((4, 2), None);
+        let (tx, ty) = g.far.iter().find(|f| f.1.contains("Highkeep")).expect("the castle stands tall in the land").0;
+        g.x = tx - 60; g.y = ty;
+        g.look();
+        assert!(g.far_seen.iter().any(|s| s.contains("the towers of Highkeep to the east")), "not seen from 60 cells: {:?}", g.far_seen);
+        let f = &g.land.as_ref().unwrap().floors[0];
+        assert!(f.seen[ty as usize * f.w + tx as usize], "the towers are not on the map");
+        g.x = tx - 70;
+        g.look();
+        assert!(!g.far_seen.iter().any(|s| s.contains("Highkeep")), "seen from too far: {:?}", g.far_seen);
+    }
+
+    /// A war told on four standing stones: each read is remembered, the last tells the whole tale
+    /// (experience, a deed).
+    #[test]
+    fn four_stones_tell_a_tale() {
+        use crate::adventure::wonders::Stone;
+        let (mut info, sites) = world();
+        for (p, t) in [(0u8, (2usize, 2usize)), (1, (3, 1)), (2, (4, 2)), (3, (4, 3))] { info.stones.insert(t.1 * info.w + t.0, Stone { story: 0, part: p, text: format!("The tale of the War of Tests, part {}.", p + 1) }); }
+        info.stories = vec!["the War of Tests".into()];
+        let mut g = Game::new(info, sites, crate::adventure::hero::Hero::new("Tess", "human", true, 5), 1, 5);
+        g.land_at((3, 2), None);
+        let xp = g.hero.xp;
+        let f = g.land.as_ref().unwrap().floors[0].clone();
+        let stones: Vec<(i32, i32, String)> = (0..f.h as i32).flat_map(|y| (0..f.w as i32).map(move |x| (x, y))).filter_map(|(x, y)| if let Feature::Lore { text, look: 3 } = &f.at(x, y).feature { Some((x, y, text.clone())) } else { None }).collect();
+        assert_eq!(stones.len(), 4, "four stones stand in the land");
+        for (x, y, t) in &stones { g.read_stone(*x, *y, t); }
+        assert_eq!(g.stones_read.len(), 4);
+        assert_eq!(g.stats.stories, 1, "the whole tale was not told");
+        assert!(g.hero.xp > xp && g.deeds.iter().any(|d| d.1.contains("whole tale of the War of Tests")));
+    }
+
+    pub(crate) fn game() -> Game {
         let (info, sites) = world();
         let hero = crate::adventure::hero::Hero::new("Tess", "human", true, 5);
         Game::new(info, sites, hero, 1, 5)
@@ -745,6 +791,8 @@ mod tests {
         let (mut tiles, mut centres) = (vec![g.tile], vec![g.centre]);
         let period = g.world.w as i32 * CH;
         for _ in 0..330 {
+            // (A walk about seams, not a fight: the walker is kept whole.)
+            g.hero.hp = g.hero.max_hp();
             let before = (g.x, g.y, g.here);
             for (dx, dy) in [(1, 0), (1, 1), (1, -1), (0, 1), (0, -1)] { g.act(Action::Move(dx, dy)); if (g.x, g.y, g.here) != before { break; } }
             if g.banner.is_some() || g.here != Some(LAND) { g.banner = None; continue; }

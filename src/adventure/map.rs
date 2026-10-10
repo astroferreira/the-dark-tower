@@ -77,6 +77,8 @@ pub enum Feature {
     Plate { safe: bool },
     /// A door that opens to the answer of its riddle.
     RiddleDoor { riddle: u32, open: bool },
+    /// One of the world's wonders (`wonders`: its kind), its gift taken or not.
+    Wonder { kind: u8, used: bool },
 }
 
 impl Feature {
@@ -88,7 +90,7 @@ impl Feature {
             | Feature::Chest { .. } | Feature::QuestChest { .. } | Feature::Lever { .. } | Feature::Altar | Feature::Throne | Feature::Sign { .. } => true,
             Feature::Lore { look, .. } => *look != 1,
             Feature::RiddleDoor { open, .. } => !*open,
-            Feature::SecretDoor => true,
+            Feature::SecretDoor | Feature::Wonder { .. } => true,
             _ => false,
         }
     }
@@ -119,11 +121,13 @@ impl Feature {
             Feature::SecretDoor => "",
             Feature::Lore { look: 0, .. } => "an engraving",
             Feature::Lore { look: 1, .. } => "remains",
+            Feature::Lore { look: 3, .. } => "a standing stone",
             Feature::Lore { .. } => "a plaque",
             Feature::Plate { safe: true } => "a stone plate with a skull",
             Feature::Plate { .. } => "a stone plate",
             Feature::RiddleDoor { open: false, .. } => "a carved door with a face",
             Feature::RiddleDoor { .. } => "an open carved door",
+            Feature::Wonder { kind, .. } => ["the eldest tree", "a spring", "a summit cairn", "a star-stone", "a fire vent", "a giant's bones", "a monolith", "a deep well"][(*kind as usize).min(7)],
         }
     }
 }
@@ -155,11 +159,14 @@ pub struct Floor {
     pub items: HashMap<(i32, i32), Vec<Item>>,
     /// Cells the adventurer has seen (remembered on the map).
     pub seen: Vec<bool>,
+    /// Cells on fire: ticks of burning left (a hundred ticks each).
+    #[serde(default, with = "fire_map")]
+    pub fire: HashMap<(i32, i32), u16>,
 }
 
 impl Floor {
     pub fn new(w: usize, h: usize, fill: Tile, name: &str, outdoor: bool) -> Floor {
-        Floor { w, h, tiles: vec![fill; w * h], name: name.into(), outdoor, items: HashMap::new(), seen: vec![false; w * h] }
+        Floor { w, h, tiles: vec![fill; w * h], name: name.into(), outdoor, items: HashMap::new(), seen: vec![false; w * h], fire: HashMap::new() }
     }
     pub fn inside(&self, x: i32, y: i32) -> bool { x >= 0 && y >= 0 && (x as usize) < self.w && (y as usize) < self.h }
     pub fn at(&self, x: i32, y: i32) -> &Tile {
@@ -257,6 +264,28 @@ impl Floor {
 
 pub const DIRS8: [(i32, i32); 8] = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
 pub const DIRS4: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+
+/// Burning cells saved as a list of pairs.
+pub mod fire_map {
+    use std::collections::HashMap;
+    pub fn serialize<S: serde::Serializer>(m: &HashMap<(i32, i32), u16>, s: S) -> Result<S::Ok, S::Error> {
+        let mut v: Vec<(&(i32, i32), &u16)> = m.iter().collect();
+        v.sort_by_key(|e| *e.0);
+        serde::Serialize::serialize(&v, s)
+    }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<HashMap<(i32, i32), u16>, D::Error> {
+        let v: Vec<((i32, i32), u16)> = serde::Deserialize::deserialize(d)?;
+        Ok(v.into_iter().collect())
+    }
+}
+
+impl Tile {
+    /// Whether fire takes here: trees, hedges, palisades and timber; grass, fields, moss and planks.
+    pub fn flammable(&self) -> bool {
+        matches!(self.wall, Wall::Tree | Wall::Hedge | Wall::Palisade | Wall::Timber)
+            || (self.wall == Wall::None && (matches!(self.ground, Ground::Grass | Ground::Field | Ground::Wood | Ground::Moss | Ground::Carpet) || matches!(self.feature, Feature::Web)))
+    }
+}
 
 /// A map keyed by cells, saved as a list of pairs (JSON keys must be strings).
 pub mod cell_map {

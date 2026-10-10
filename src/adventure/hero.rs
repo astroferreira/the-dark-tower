@@ -79,6 +79,19 @@ pub struct Hero {
     pub hair: [f32; 3],
     pub beard: bool,
     pub strength: u32,
+    /// Wounds: (part, turns to mend). A leg slows, an arm weakens blows and the shield, the head
+    /// dazes (defense down).
+    #[serde(default)]
+    pub wounds: Vec<(String, i32)>,
+    /// 0 balanced, 1 defensive (blocks more, strikes softer), 2 offensive (the reverse).
+    #[serde(default)]
+    pub stance: u8,
+    /// Moving softly: slower, but sleeping things wake later, and blows on the unaware land hard.
+    #[serde(default)]
+    pub sneaking: bool,
+    /// Gifts of the world's wonders kept for good ("grove": +10 life).
+    #[serde(default)]
+    pub boons: Vec<String>,
 }
 
 impl Hero {
@@ -90,6 +103,7 @@ impl Hero {
             poisoned: 0, hasted: 0, temple: 0, deaths: 0, kills: 0, blessed: false,
             skin: crate::persona::colour(&p.skin).unwrap_or([214.0, 172.0, 140.0]), hair: crate::persona::colour(&p.hair).unwrap_or([90.0, 60.0, 40.0]),
             beard: p.beard && !female, strength: p.attr(crate::persona::Attr::Strength) as u32,
+            wounds: Vec::new(), stance: 0, sneaking: false, boons: Vec::new(),
         };
         h.skills[Skill::Magic as usize] = (0, 0);
         h.hp = h.max_hp();
@@ -105,7 +119,8 @@ impl Hero {
     pub fn max_hp(&self) -> i32 {
         let per = self.calling_def().map_or(8, |c| c.hp / 2 + 2);
         let ring: i32 = self.equipped.iter().flatten().map(|i| i.def().hp).sum();
-        80 + per * (self.level as i32 - 1) + ring
+        let boon = if self.boons.iter().any(|b| b == "grove") { 10 } else { 0 };
+        80 + per * (self.level as i32 - 1) + ring + boon
     }
     pub fn max_mana(&self) -> i32 { let per = self.calling_def().map_or(4, |c| c.mana / 2 + 1); 20 + per * (self.level as i32 - 1) }
     pub fn skill(&self, s: Skill) -> u32 {
@@ -118,7 +133,17 @@ impl Hero {
     pub fn defense(&self) -> i32 {
         let shield = self.equipped[Slot::Shield as usize].as_ref().map_or(0, |s| s.defense());
         let weapon = self.weapon().map_or(0, |w| w.defense());
-        shield.max(weapon / 2) + self.skill(Skill::Shielding) as i32 / 3
+        let base = shield.max(weapon / 2) + self.skill(Skill::Shielding) as i32 / 3;
+        let base = if self.wounded("arm") { (shield / 2).max(weapon / 2) + self.skill(Skill::Shielding) as i32 / 3 } else { base };
+        let base = if self.wounded("head") { base * 7 / 10 } else { base };
+        match self.stance { 1 => base * 3 / 2, 2 => base * 6 / 10, _ => base }
+    }
+    /// Whether a part of the kind is wounded ("leg", "arm", "head").
+    pub fn wounded(&self, part: &str) -> bool { self.wounds.iter().any(|w| w.0.contains(part)) }
+    /// How hard their blows land by stance and wounds (a factor).
+    pub fn blow_factor(&self) -> f32 {
+        let s = match self.stance { 1 => 0.7, 2 => 1.3, _ => 1.0 };
+        s * if self.wounded("arm") { 0.7 } else { 1.0 }
     }
     pub fn light(&self) -> i32 {
         let t = if self.torch > 0 { data().item("torch").map_or(5, |d| d.light) } else { 0 };
@@ -126,7 +151,12 @@ impl Hero {
         (t.max(g)).max(1)
     }
     /// Turns a step takes (lower is faster), and a strike.
-    pub fn step_time(&self) -> i32 { let base = 100 - (self.level as i32 / 2).min(30); if self.hasted > 0 { base * 7 / 10 } else { base } }
+    pub fn step_time(&self) -> i32 {
+        let base = 100 - (self.level as i32 / 2).min(30);
+        let base = if self.hasted > 0 { base * 7 / 10 } else { base };
+        let base = if self.wounded("leg") { base * 3 / 2 } else { base };
+        if self.sneaking { base * 3 / 2 } else { base }
+    }
     pub fn gold(&self) -> u32 { self.pack.iter().filter(|i| i.id == "gold").map(|i| i.count).sum() }
     pub fn take_gold(&mut self, n: u32) -> bool {
         if self.gold() < n { return false; }

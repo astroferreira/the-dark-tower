@@ -185,6 +185,7 @@ pub fn cell_sig(f: &Floor, x: i32, y: i32) -> u64 {
         Feature::Entrance { site, z } => 8600 + *site as u64 * 7 + *z as u64,
         Feature::RiddleDoor { open, .. } => 8700 + *open as u64,
         Feature::Plate { safe } => 8710 + *safe as u64,
+        Feature::Wonder { kind, used } => 8720 + *kind as u64 * 2 + *used as u64,
         other => 9000 + std::mem::discriminant(other).hash_u64(),
     };
     (t.ground as u64) | (t.wall as u64) << 8 | feat << 16
@@ -315,6 +316,13 @@ pub fn draw_feature(put: &mut dyn FnMut(i64, i64, Rgb, f32), f: &Floor, cx: i32,
             pen.dot(-0.18, -0.12, INK); pen.dot(-0.02, -0.12, INK);
             pen.line((-0.5, 0.35), (0.3, 0.15), [214.0, 206.0, 186.0], 2.0); pen.line((0.1, 0.45), (0.55, 0.05), [214.0, 206.0, 186.0], 2.0);
         }
+        Feature::Lore { look: 3, .. } => {
+            // A standing stone, runes cut down its face.
+            pen.poly(&[(-0.4, 0.85), (-0.45, -0.45), (-0.18, -0.95), (0.22, -0.9), (0.42, -0.4), (0.38, 0.85)], [150.0, 146.0, 138.0]);
+            for k in 0..4 { let v = -0.55 + k as f32 * 0.32; pen.line((-0.15, v), (0.12, v + 0.08), [70.0, 66.0, 62.0], 1.0); }
+        }
+        // (Drawn large over the plan by the window: `draw_wonder`.)
+        Feature::Wonder { .. } => { pen.ellipse_f(0.0, 0.3, 0.9, 0.45, mix(PARCH, INK, 0.25), Finish::Paint); }
         Feature::Lore { .. } => {
             pen.rect(-0.45, -0.35, 0.45, 0.35, [176.0, 130.0, 60.0]);
             for k in 0..3 { let y = -0.18 + k as f32 * 0.18; pen.line((-0.3, y), (0.3, y), [96.0, 64.0, 30.0], 1.0); }
@@ -450,6 +458,60 @@ impl Plan {
             if f.at(x, y).feature != Feature::None {
                 draw_feature(&mut put, f, x, y, ((x - lx0) as f32 + 0.5) * cs, ((y - ly0) as f32 + 0.5) * cs, cs);
             }
+        }
+    }
+}
+
+/// A wonder of `kind` (`adventure::wonders`), drawn large at (x, y) (`cs` pixels a cell; the
+/// window passes three cells' worth).
+pub fn draw_wonder(put: &mut dyn FnMut(i64, i64, Rgb, f32), kind: u8, used: bool, x: f32, y: f32, cs: f32) {
+    use crate::adventure::wonders::*;
+    let stone: Rgb = [176.0, 168.0, 156.0];
+    let mut pen = Pen::new(put, x, y, cs);
+    match kind {
+        TREE => {
+            pen.rect(-0.22, 0.1, 0.22, 1.0, [96.0, 66.0, 40.0]);
+            pen.ellipse(0.0, -0.25, 1.15, 0.95, [52.0, 92.0, 48.0]);
+            pen.ellipse(-0.35, -0.45, 0.55, 0.45, [72.0, 120.0, 62.0]);
+            pen.ellipse(0.4, -0.15, 0.45, 0.4, [64.0, 108.0, 56.0]);
+            if !used { pen.glow(0.0, -0.3, 1.0, [220.0, 240.0, 170.0], 0.25); }
+        }
+        SPRING => {
+            pen.ellipse(0.0, 0.1, 0.75, 0.5, [150.0, 196.0, 210.0]);
+            for k in 0..3 { let u = -0.4 + k as f32 * 0.4; pen.line_a((u, 0.0), (u + 0.15, -0.5), [245.0, 245.0, 240.0], 1.5, 0.7); pen.line_a((u + 0.15, -0.5), (u - 0.05, -0.95), [245.0, 245.0, 240.0], 1.5, 0.5); }
+        }
+        SUMMIT => {
+            pen.ellipse(0.0, 0.55, 0.75, 0.35, [140.0, 136.0, 130.0]);
+            pen.ellipse(0.0, 0.1, 0.55, 0.3, [156.0, 150.0, 142.0]);
+            pen.ellipse(0.0, -0.3, 0.36, 0.22, [170.0, 164.0, 156.0]);
+            pen.line((0.0, -0.45), (0.0, -1.05), [96.0, 66.0, 40.0], 1.5);
+            pen.poly(&[(0.0, -1.05), (0.5, -0.9), (0.0, -0.75)], [170.0, 50.0, 40.0]);
+        }
+        STAR => {
+            if !used { pen.glow(0.0, 0.0, 1.2, [150.0, 170.0, 255.0], 0.5); }
+            pen.poly(&[(-0.6, 0.4), (-0.5, -0.3), (0.0, -0.6), (0.55, -0.25), (0.6, 0.45), (0.0, 0.6)], [46.0, 44.0, 56.0]);
+            pen.line((-0.2, -0.2), (0.25, 0.15), [120.0, 140.0, 220.0], 1.0);
+        }
+        FIRE => {
+            pen.glow(0.0, 0.0, 1.2, [255.0, 140.0, 60.0], 0.5);
+            pen.ellipse(0.0, 0.1, 0.7, 0.45, [40.0, 30.0, 28.0]);
+            pen.ellipse(0.0, 0.1, 0.35, 0.22, [230.0, 110.0, 40.0]);
+            for k in 0..2 { let u = -0.2 + k as f32 * 0.4; pen.line_a((u, -0.2), (u + 0.2, -1.0), [90.0, 86.0, 84.0], 2.0, 0.6); }
+        }
+        BONES => {
+            let bone: Rgb = [226.0, 218.0, 196.0];
+            pen.ellipse(0.0, -0.1, 0.95, 0.8, bone);
+            pen.ellipse(-0.35, -0.2, 0.22, 0.25, DARK); pen.ellipse(0.35, -0.2, 0.22, 0.25, DARK);
+            for k in 0..5 { let u = -0.4 + k as f32 * 0.2; pen.line((u, 0.45), (u, 0.75), INK, 1.0); }
+        }
+        MONOLITH => {
+            pen.rect(-0.38, -1.05, 0.38, 0.95, [74.0, 72.0, 80.0]);
+            for k in 0..6 { let v = -0.8 + k as f32 * 0.3; pen.line((-0.2, v), (0.2, v), [150.0, 146.0, 170.0], 1.0); }
+        }
+        _ => {
+            pen.ellipse(0.0, 0.0, 0.85, 0.85, stone);
+            pen.ellipse(0.0, 0.0, 0.55, 0.55, DARK);
+            pen.ellipse(0.0, 0.05, 0.3, 0.3, [40.0, 60.0, 80.0]);
         }
     }
 }

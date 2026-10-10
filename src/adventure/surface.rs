@@ -97,6 +97,8 @@ pub struct Atlas {
     pub seed: u64,
     /// Whether the history gave forest cover (else the biome alone decides).
     pub cover: bool,
+    /// Town names by tile (for waystones).
+    pub names: HashMap<usize, String>,
 }
 
 impl Atlas {
@@ -106,7 +108,8 @@ impl Atlas {
             let (size, roads) = s.town.as_ref().map_or((1, 0), |t| (t.size, t.roads));
             towns.insert(s.tile.1 * info.w + s.tile.0, (size, roads));
         }
-        Atlas { towns, seed: seed ^ 0x1A2D_5EED, cover: info.forest.iter().any(|&v| v > 0) }
+        let names = sites.iter().filter(|s| s.kind == SiteKind::Town).map(|s| (s.tile.1 * info.w + s.tile.0, s.name.clone())).collect();
+        Atlas { towns, seed: seed ^ 0x1A2D_5EED, cover: info.forest.iter().any(|&v| v > 0), names }
     }
 }
 
@@ -212,6 +215,10 @@ pub struct Gen {
     /// Cells where nothing wild is set (in towns and their yards).
     pub safe: Vec<bool>,
     pub kind: Kind,
+    /// Tall things seen from far off (towers, wonders, smoke): chunk cell and name.
+    pub tall: Vec<((i32, i32), String)>,
+    /// How many things the finds set (a wild tile always gets one).
+    pub finds: usize,
 }
 
 fn idx(x: i32, y: i32) -> usize { y as usize * CH as usize + x as usize }
@@ -222,7 +229,7 @@ pub fn generate(land: &Land, tx: i64, ty: i64, sites: &[&SiteSpec]) -> Gen {
     let n = (CH * CH) as usize;
     let tk = land.idx(tx, ty);
     let kind = tk.map_or(Kind::Snow, |k| land.kind(k));
-    let mut g = Gen { tiles: vec![Tile::floor(Ground::Grass); n], items: Vec::new(), monsters: Vec::new(), npcs: Vec::new(), places: Vec::new(), safe: vec![false; n], kind };
+    let mut g = Gen { tiles: vec![Tile::floor(Ground::Grass); n], items: Vec::new(), monsters: Vec::new(), npcs: Vec::new(), places: Vec::new(), safe: vec![false; n], kind, tall: Vec::new(), finds: 0 };
     // Past the poles: the ice wall at the end of the world.
     let Some(tk) = tk else { g.tiles = vec![Tile::wall(Wall::Rock, Ground::Ice); n]; return g; };
     let (ox, oy) = (tx * CH as i64, ty * CH as i64);
@@ -463,6 +470,8 @@ fn stamp_town(_land: &Land, g: &mut Gen, s: &SiteSpec, tx: i64, ty: i64, taken: 
         if let Some(boss) = &s.boss { if let Some(&(x, y)) = b.pick(&cells).as_ref() { g.monsters.push(Monster::boss(0, &boss.def, &boss.name, boss.scale, x, y, 0)); } }
         p.npcs.clear();
     }
+    // The town's walls and roofs are seen from far off (the smoke of a razed one).
+    g.tall.push(((CH / 2, CH / 2), if razed { format!("the smoke over the ruins of {}", s.name) } else { format!("the roofs of {}", s.name) }));
     let mut npcs: Vec<Npc> = p.npcs.drain(..).collect();
     for n in npcs.iter_mut() { n.home = s.id; }
     g.npcs.extend(npcs);
@@ -524,6 +533,13 @@ fn stamp_site(_land: &Land, g: &mut Gen, s: &SiteSpec, tx: i64, ty: i64, taken: 
     p.top = 1;
     p.origin = Some(((tx * CH as i64) as i32 + offx, (ty * CH as i64) as i32 + offy));
     taken.push((sx - 3, sy - 3, bw + 6, bh + 6));
+    // Seen from far off.
+    let seen = match s.kind {
+        SiteKind::Castle => Some(format!("the towers of {}", s.name)), SiteKind::DarkFortress => Some(format!("the black tower of {}", s.name)),
+        SiteKind::Temple => Some(format!("the spire of {}", s.name)), SiteKind::Ruin => Some(format!("the broken walls of {}", s.name)),
+        SiteKind::Camp => Some(format!("the smoke of {}", s.name)), SiteKind::Tomb => Some(format!("the dome of {}", s.name)), _ => None,
+    };
+    if let Some(n) = seen { g.tall.push(((sx + bw / 2, sy + bh / 2), n)); }
     g.places.push(p);
     true
 }
@@ -616,6 +632,16 @@ fn finds(land: &Land, g: &mut Gen, tx: i64, ty: i64, taken: &[(i32, i32, i32, i3
     };
     let road_cell = (0..200).find_map(|_| { let (x, y) = (b.range(8, CH - 9), b.range(8, CH - 9)); let t = &g.tiles[idx(x, y)]; if matches!(t.ground, Ground::Earth | Ground::Cobbles) && t.wall == Wall::None && info.road[k] && !g.safe[idx(x, y)] { Some((x, y)) } else { None } });
     let put = |g: &mut Gen, x: i32, y: i32, f: Feature| { if inside(x, y) { g.tiles[idx(x, y)].wall = Wall::None; g.tiles[idx(x, y)].feature = f; } };
+    let feats = |g: &Gen| g.tiles.iter().filter(|t| t.feature != Feature::None).count() + g.items.len() + g.npcs.len();
+    let before = feats(g);
+    // The tile's wonder, near its middle.
+    if let Some(wd) = info.wonders.get(&k) {
+        let a = land.anchor(tx, ty);
+        let c = ((a.0 as i64 - tx * CH as i64) as i32, (a.1 as i64 - ty * CH as i64) as i32);
+        if let Some((x, y)) = clear_spot(g, taken, c, &mut b, 5) { stamp_wonder(g, x, y, wd.kind); g.tall.push(((x, y), wd.name.clone())); }
+    }
+    // A standing stone of a story.
+    if let Some(st) = info.stones.get(&k) { if let Some((x, y)) = free_near(g, &mut b, None, 0) { put(g, x, y, Feature::Lore { text: st.text.clone(), look: 3 }); } }
     // A camp by the road: abandoned, or the bandits' own.
     if let Some(rc) = road_cell { if b.chance(0.45) { if let Some((x, y)) = free_near(g, &mut b, Some(rc), 7) {
         put(g, x, y, Feature::Campfire);
@@ -675,10 +701,108 @@ fn finds(land: &Land, g: &mut Gen, tx: i64, ty: i64, taken: &[(i32, i32, i32, i3
             if b.chance(0.18) { let id = ["sword", "spear", "axe", "mace", "chain_helmet", "round_shield"][b.range(0, 5) as usize]; g.items.push(((x, y), Item::of(id, "iron", 0))); }
         }
     }
+    // By the road: a waystone, now and then an inn or a wayside shrine.
+    if let Some((rx, ry)) = road_cell.filter(|_| !town_here) {
+        let spot = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, -1)].iter().map(|(dx, dy)| (rx + dx, ry + dy)).find(|&(x, y)| inside(x, y) && { let t = &g.tiles[idx(x, y)]; t.wall == Wall::None && t.feature == Feature::None && !matches!(t.ground, Ground::Earth | Ground::Cobbles | Ground::Water | Ground::Shallows | Ground::Wood) });
+        if let Some((x, y)) = spot {
+            let here = (tx.rem_euclid(info.w as i64) as usize, ty as usize);
+            let mut towns: Vec<(i32, usize, &String)> = land.atlas.names.iter().map(|(t, n)| (super::world::dist((t % info.w, t / info.w), here, info.w), *t, n)).collect();
+            towns.sort();
+            let text = towns.iter().take(2).map(|(d, t, n)| format!("{}, {} day{} {}", n, (d + 1) / 2, if (d + 1) / 2 == 1 { "" } else { "s" }, super::quest::direction(here, (t % info.w, t / info.w), info.w))).collect::<Vec<_>>().join("; ");
+            if !text.is_empty() { put(g, x, y, Feature::Sign { text: format!("A waystone: {}.", text) }); }
+        }
+        let h = hash(land.seed(), tx.rem_euclid(info.w as i64), ty, 0x1AA);
+        let by_town = (-2..=2i64).any(|dy| (-2..=2i64).any(|dx| land.idx(tx + dx, ty + dy).map_or(false, |q| land.atlas.towns.contains_key(&q))));
+        if h % 4 == 0 && !by_town { if let Some((x, y)) = free_near(g, &mut b, Some((rx, ry)), 9) {
+            // A roadside inn: a bed for the night, food, a keeper who hears everything.
+            for yy in y - 2..=y + 2 { for xx in x - 3..=x + 3 { let edge = (xx - x).abs() == 3 || (yy - y).abs() == 2; if inside(xx, yy) { g.tiles[idx(xx, yy)] = if edge { Tile::wall(Wall::Timber, Ground::Wood) } else { Tile::floor(Ground::Wood) }; g.safe[idx(xx, yy)] = true; } } }
+            put(g, x, y + 2, Feature::Door { open: false, lock: 0 });
+            put(g, x - 2, y - 1, Feature::Bed);
+            put(g, x + 2, y - 1, Feature::Barrel);
+            put(g, x, y - 1, Feature::Table);
+            let people = ["human", "dwarf", "halfling"][(h >> 8) as usize % 3];
+            g.npcs.push(Npc { name: super::town::person_name(people, h), role: Role::Innkeeper, x: x + 1, y, z: 0, post: (x + 1, y), race: people.into(), female: (h >> 12) & 1 == 1, of: "roadside inn".into(), home: 0, met: Default::default() });
+        } } else if h % 5 == 1 { if let Some((x, y)) = free_near(g, &mut b, Some((rx, ry)), 6) {
+            // A wayside shrine: a statue over an altar (a blessing for the weary).
+            put(g, x, y - 1, Feature::Statue);
+            put(g, x, y, Feature::Altar);
+            put(g, x - 1, y, Feature::Brazier);
+            put(g, x + 1, y, Feature::Brazier);
+        } }
+    }
     // Herbs in the woods and meadows.
     if matches!(g.kind, Kind::Forest | Kind::Jungle | Kind::Taiga | Kind::Plains | Kind::Swamp) && data().item("herbs").is_some() {
         for _ in 0..b.range(1, 4) { if let Some((x, y)) = free_near(g, &mut b, None, 0) { g.items.push(((x, y), Item::new("herbs", 1))); } }
     }
+    // Nothing yet: every wild land has something (a cairn, a lone grave, a hut left empty).
+    if feats(g) == before && !town_here {
+        if let Some((x, y)) = free_near(g, &mut b, None, 0) {
+            match b.range(0, 2) {
+                0 => {
+                    for (dx, dy) in [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (1, 1)] { if inside(x + dx, y + dy) { g.tiles[idx(x + dx, y + dy)].wall = Wall::Rock; if !matches!(g.tiles[idx(x + dx, y + dy)].ground, Ground::Grass | Ground::Sand | Ground::Snow | Ground::Mud | Ground::Ash | Ground::Moss) { g.tiles[idx(x + dx, y + dy)].ground = Ground::Sand; } } }
+                    g.items.push(((x, y), Item::new("gold", b.range(4, 14) as u32 * tier)));
+                    g.items.push(((x, y), super::site::gear(&mut b, tier)));
+                }
+                1 => {
+                    put(g, x, y, Feature::Grave);
+                    let near = land.atlas.names.iter().map(|(t, n)| (super::world::dist((t % info.w, t / info.w), (tx.rem_euclid(info.w as i64) as usize, ty as usize), info.w), n)).min().map(|(_, n)| n.clone()).unwrap_or_else(|| "home".into());
+                    let who = super::town::person_name(["human", "dwarf", "elf", "halfling"][b.range(0, 3) as usize], hash(land.seed(), tx, ty, 0x6A4E));
+                    let why = ["walked too far from", "would not turn back to", "went looking for a road to", "carried word to"][b.range(0, 3) as usize];
+                    put(g, x + 1, y, Feature::Lore { text: format!("A board over a lone grave: \"Here lies {}, who {} {}.\"", who, why, near), look: 2 });
+                    if b.chance(0.5) { g.items.push(((x, y + 1), Item::new(if b.chance(0.5) { "health_potion" } else { "torch" }, 1))); }
+                }
+                _ => {
+                    for yy in y - 2..=y + 1 { for xx in x - 2..=x + 2 { let edge = (xx - x).abs() == 2 || yy == y - 2 || yy == y + 1; if inside(xx, yy) { g.tiles[idx(xx, yy)] = if edge { Tile::wall(Wall::Timber, Ground::Wood) } else { Tile::floor(Ground::Wood) }; } } }
+                    put(g, x, y + 1, Feature::Door { open: true, lock: 0 });
+                    put(g, x - 1, y - 1, Feature::Bed);
+                    put(g, x + 1, y - 1, Feature::Chest { items: super::site::treasure(&mut b, tier), opened: false, lock: 0, quest: 0 });
+                }
+            }
+        }
+    }
+    g.finds = feats(g).saturating_sub(before);
+}
+
+/// A clear square of land (2 * half + 1 across) near `c`: no water, walls of buildings, fittings
+/// or places.
+fn clear_spot(g: &Gen, taken: &[(i32, i32, i32, i32)], c: (i32, i32), b: &mut Builder, half: i32) -> Option<(i32, i32)> {
+    for t in 0..120 {
+        let r = 2 + t / 6;
+        let (x, y) = (c.0 + b.range(-r, r), c.1 + b.range(-r, r));
+        if x < half + 3 || y < half + 3 || x >= CH - half - 3 || y >= CH - half - 3 || overlaps(taken, (x - half, y - half, 2 * half + 1, 2 * half + 1)) { continue; }
+        let ok = (y - half..=y + half).all(|yy| (x - half..=x + half).all(|xx| { let t = &g.tiles[idx(xx, yy)]; matches!(t.wall, Wall::None | Wall::Tree | Wall::Rock) && t.feature == Feature::None && !matches!(t.ground, Ground::Water | Ground::Shallows | Ground::Wood | Ground::Cobbles) && !g.safe[idx(xx, yy)] }));
+        if ok { return Some((x, y)); }
+    }
+    None
+}
+
+/// Lay a wonder of `kind` (`wonders`) about (x, y).
+fn stamp_wonder(g: &mut Gen, x: i32, y: i32, kind: u8) {
+    use super::wonders::*;
+    let set = |g: &mut Gen, xx: i32, yy: i32, wall: Wall, ground: Option<Ground>, f: Feature| {
+        if !inside(xx, yy) { return; }
+        let t = &mut g.tiles[idx(xx, yy)];
+        t.wall = wall;
+        if let Some(gr) = ground { t.ground = gr; }
+        t.feature = f;
+    };
+    for yy in y - 5..=y + 5 { for xx in x - 5..=x + 5 {
+        let d2 = (xx - x) * (xx - x) + (yy - y) * (yy - y);
+        if d2 > 25 { continue; }
+        let ring = |r: i32| d2 >= r * r - r && d2 <= r * r + r;
+        let h = (xx * 31 + yy * 17).rem_euclid(7);
+        match kind {
+            TREE => if ring(4) && h < 4 { set(g, xx, yy, Wall::Tree, Some(Ground::Moss), Feature::None) } else if d2 < 14 { set(g, xx, yy, Wall::None, Some(Ground::Moss), Feature::None) },
+            SPRING => if d2 <= 5 { set(g, xx, yy, Wall::None, Some(Ground::Shallows), Feature::None) } else if d2 <= 10 { set(g, xx, yy, Wall::None, Some(Ground::Rock), Feature::None) } else { set(g, xx, yy, Wall::None, None, Feature::None) },
+            SUMMIT => if ring(4) && h < 2 { set(g, xx, yy, Wall::Rock, Some(Ground::Snow), Feature::None) } else { set(g, xx, yy, Wall::None, Some(if d2 < 9 { Ground::Rock } else { Ground::Snow }), Feature::None) },
+            STAR => if ring(4) { set(g, xx, yy, Wall::None, Some(Ground::Rubble), Feature::None) } else if d2 < 14 { set(g, xx, yy, Wall::None, Some(Ground::Ash), Feature::None) },
+            FIRE => if d2 >= 5 && d2 <= 8 && h < 3 && (xx - x).abs() > 0 { set(g, xx, yy, Wall::None, Some(Ground::Lava), Feature::None) } else { set(g, xx, yy, Wall::None, Some(Ground::Ash), Feature::None) },
+            BONES => { set(g, xx, yy, Wall::None, None, Feature::None); if (yy - y).abs() == 2 && (xx - x).rem_euclid(2) == 0 && (xx - x).abs() <= 4 { set(g, xx, yy, Wall::None, None, Feature::Bones) } }
+            MONOLITH => { set(g, xx, yy, Wall::None, Some(if d2 < 12 { Ground::Flags } else { Ground::Moss }), Feature::None); if (xx - x).abs() == 3 && (yy - y).abs() == 3 { set(g, xx, yy, Wall::None, None, Feature::Pillar) } }
+            _ => if d2 <= 4 { set(g, xx, yy, Wall::None, Some(Ground::Flags), Feature::None) },
+        }
+    } }
+    set(g, x, y, Wall::None, Some(match kind { SPRING => Ground::Shallows, FIRE | STAR => Ground::Ash, SUMMIT => Ground::Rock, TREE => Ground::Moss, _ => Ground::Flags }), Feature::Wonder { kind, used: false });
 }
 
 /// A treasure map's mark: a tile some way off (packed as y * 65536 + x) where a cache lies.
@@ -776,5 +900,33 @@ mod tests {
         let south: Vec<i32> = (0..CH).filter(|&x| wet(&a.tiles[idx(x, CH - 1)])).collect();
         let north: Vec<i32> = (0..CH).filter(|&x| wet(&c.tiles[idx(x, 0)])).collect();
         assert!(south.iter().any(|x| north.iter().any(|n| (x - n).abs() <= 2)), "the river runs on: {:?} vs {:?}", south, north);
+    }
+
+    /// No wild land is empty: every land tile's chunk has something to find (a camp, bones, a
+    /// waystone, a cairn...); a wonder's tile has its wonder, seen from far off; a road has its
+    /// waystone; a story's tile its standing stone.
+    #[test]
+    fn every_land_has_something() {
+        use crate::adventure::wonders::{Stone, Wonder, TREE};
+        let mut i = info();
+        i.wonders.insert(2 * i.w + 5, Wonder { kind: TREE, name: "the Eldest Tree of the Test".into() });
+        i.stones.insert(3 * i.w + 2, Stone { story: 0, part: 1, text: "A standing stone, carved.".into() });
+        let atlas = Atlas::new(&i, &[], 7);
+        let land = Land { info: &i, atlas: &atlas };
+        let mut empty = Vec::new();
+        for ty in 0..i.h as i64 { for tx in 0..i.w as i64 {
+            let k = ty as usize * i.w + tx as usize;
+            if !i.land[k] { continue; }
+            let g = generate(&land, tx, ty, &[]);
+            if g.finds == 0 { empty.push((tx, ty)); }
+            let has = |f: &dyn Fn(&Feature) -> bool| g.tiles.iter().any(|t| f(&t.feature));
+            if k == 2 * i.w + 5 {
+                assert!(has(&|f| matches!(f, Feature::Wonder { kind: 0, used: false })), "the wonder was not set");
+                assert!(g.tall.iter().any(|t| t.1.contains("Eldest Tree")), "the wonder is not seen from far off");
+            }
+            if k == 3 * i.w + 2 { assert!(has(&|f| matches!(f, Feature::Lore { look: 3, .. })), "no standing stone"); }
+            if i.road[k] { assert!(has(&|f| matches!(f, Feature::Sign { text } if text.starts_with("A waystone"))) || atlas.names.is_empty(), "no waystone by the road at {:?}", (tx, ty)); }
+        } }
+        assert!(empty.is_empty(), "lands with nothing in them: {:?}", empty);
     }
 }

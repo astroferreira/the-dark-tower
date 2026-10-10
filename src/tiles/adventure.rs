@@ -292,6 +292,27 @@ fn draw_place(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
         super::glyphs::draw(&mut put, ai::glyph(&it.def().glyph), x, y + cs * 0.1, cs * 0.6, tint);
         if items.len() > 1 { super::glyphs::draw(&mut put, ai::glyph(&items[1].def().glyph), x + cs * 0.22, y - cs * 0.12, cs * 0.45, None); }
     }
+    // Fire.
+    for (&(fx, fy), &left) in f.fire.iter() {
+        if !vis(fx, fy) { continue; }
+        let (x, y) = to_screen(fx as f32, fy as f32);
+        let flick = ((g.turn as i64 + fx as i64 * 7 + fy as i64 * 13) % 5) as f32 / 5.0;
+        let mut pen = super::ink::Pen::new(&mut put, x, y, cs);
+        pen.ellipse_f(0.0, 0.1, 0.42, 0.34 + flick * 0.06, [214.0, 92.0, 30.0], super::ink::Finish::Paint);
+        pen.ellipse_f(0.0, 0.0, 0.26 + 0.02 * left as f32, 0.28, [246.0, 186.0, 70.0], super::ink::Finish::Paint);
+        pen.ellipse_f(0.0, -0.05, 0.12, 0.16, [255.0, 238.0, 170.0], super::ink::Finish::Paint);
+    }
+    // The world's wonders, three cells across (remembered ones too: landmarks).
+    {
+        let (cx0, cy0) = (((ox as f32 / cs) as i32 - 3).max(0), ((oy as f32 / cs) as i32 - 3).max(0));
+        let (cx1, cy1) = ((((ox as f32 + map_w as f32) / cs) as i32 + 3).min(f.w as i32 - 1), (((oy as f32 + h as f32) / cs) as i32 + 3).min(f.h as i32 - 1));
+        for cy in cy0..=cy1 { for cx in cx0..=cx1 {
+            if let Feature::Wonder { kind, used } = f.at(cx, cy).feature { if f.seen[cy as usize * f.w + cx as usize] {
+                let (x, y) = to_screen(cx as f32, cy as f32);
+                ai::draw_wonder(&mut put, kind, used, x, y - cs * 0.6, cs * 3.0);
+            } }
+        } }
+    }
     // People of the town.
     let mut labels: Vec<(f32, f32, String, u32)> = Vec::new();
     for (k, n) in p.npcs.iter().enumerate().filter(|(_, n)| n.z == g.z && vis(n.x, n.y)) {
@@ -392,6 +413,13 @@ fn draw_place(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     let r = Rect { x: 10, y: 10, w: (fonts::width(&title, Face::SmallCaps, 18.0, 0.5) as usize + 28).min(map_w - 20), h: 34 };
     card(buf, w, r);
     fonts::draw(buf, w, h, 24.0, 17.0, &title, Face::SmallCaps, 18.0, 0.5, 0x0030_1E14, None);
+    // Far off: towers, wonders and smoke seen over the land.
+    if g.on_land() && !g.far_seen.is_empty() {
+        let line = format!("Far off: {}", g.far_seen.join("; "));
+        let r = Rect { x: 10, y: 48, w: (fonts::width(&line, Face::Italic, 14.0, 0.0) as usize + 24).min(map_w - 20), h: 24 };
+        card(buf, w, r);
+        fonts::draw(buf, w, h, 22.0, 52.0, &line, Face::Italic, 14.0, 0.0, 0x005A_4634, None);
+    }
     // Hover: what is under the mouse.
     let (mx, my) = v.mouse;
     if mx >= 0.0 && (mx as usize) < map_w {
@@ -601,6 +629,9 @@ fn draw_panel(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     if hero.torch > 0 { status.push("torch lit".into()); }
     if hero.hasted > 0 { status.push("hasted".into()); }
     if hero.blessed { status.push("blessed".into()); }
+    if hero.stance == 1 { status.push("defensive".into()); } else if hero.stance == 2 { status.push("offensive".into()); }
+    if hero.sneaking { status.push("sneaking".into()); }
+    for (part, _) in hero.wounds.iter() { status.push(format!("hurt {}", part)); }
     // What the town here thinks of them.
     if let Some(p) = g.place().filter(|p| p.spec.kind == SiteKind::Town) {
         let r = g.regard_of(p.spec.id);
@@ -935,7 +966,11 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
                 (Key::Q, (-1, -1)), (Key::E, (1, -1)), (Key::Z, (-1, 1)), (Key::C, (1, 1)), (Key::NumPad8, (0, -1)), (Key::NumPad2, (0, 1)), (Key::NumPad4, (-1, 0)), (Key::NumPad6, (1, 0)), (Key::NumPad7, (-1, -1)), (Key::NumPad9, (1, -1)), (Key::NumPad1, (-1, 1)), (Key::NumPad3, (1, 1))];
             // (Shift and a direction strikes whoever stands there, townsfolk too.)
             let shift = window.is_key_down(Key::LeftShift) || window.is_key_down(Key::RightShift);
-            for (key, (dx, dy)) in dirs { if repeat(key) { v.walk_to = None; act(&mut g, &mut v, if shift { Action::Assault(dx, dy) } else { Action::Move(dx, dy) }); break; } }
+            // (Ctrl and a direction sets fire there with a lit torch.)
+            let ctrl = window.is_key_down(Key::LeftCtrl) || window.is_key_down(Key::RightCtrl);
+            for (key, (dx, dy)) in dirs { if repeat(key) { v.walk_to = None; act(&mut g, &mut v, if ctrl { Action::Kindle(dx, dy) } else if shift { Action::Assault(dx, dy) } else { Action::Move(dx, dy) }); break; } }
+            if pressed(Key::V) { act(&mut g, &mut v, Action::Stance); }
+            if pressed(Key::N) { act(&mut g, &mut v, Action::Sneak); }
             if pressed(Key::G) { act(&mut g, &mut v, Action::PickUp); }
             if pressed(Key::X) { act(&mut g, &mut v, Action::Search); }
             // Travel: the world map (not with enemies at one's heels).
@@ -1132,6 +1167,12 @@ pub fn landscape(world: &crate::world::WorldData, history: Option<&crate::histor
     if let Some(t) = site_of(&g, &|s| matches!(s.kind, SiteKind::Ruin | SiteKind::Castle | SiteKind::Temple)) { picks.push(("ruin".into(), t)); }
     if let Some(t) = site_of(&g, &|s| matches!(s.kind, SiteKind::Cave | SiteKind::Mine | SiteKind::Lair)) { picks.push(("cave".into(), t)); }
     if let Some(t) = (0..ww * wh).filter(|&i| g.world.river[i] && g.world.road[i]).min_by_key(|&i| crate::adventure::world::dist((i % ww, i / ww), home, ww)).map(|i| (i % ww, i / ww)) { picks.push(("ford".into(), t)); }
+    // The world's wonders, one of each kind (the nearest).
+    let mut kinds_done = Vec::new();
+    let mut wonders: Vec<(usize, &crate::adventure::wonders::Wonder)> = g.world.wonders.iter().map(|(k, w)| (*k, w)).collect();
+    wonders.sort_by_key(|(k, _)| crate::adventure::world::dist((k % ww, k / ww), home, ww));
+    for (k, wd) in wonders { if !kinds_done.contains(&wd.kind) { kinds_done.push(wd.kind); println!("  wonder {}: {} at {:?}", wd.kind, wd.name, (k % ww, k / ww)); picks.push((format!("wonder{}", wd.kind), (k % ww, k / ww))); } }
+    println!("  {} wonders, {} stones of {} stories", g.world.wonders.len(), g.world.stones.len(), g.world.stories.len());
     let mut files = Vec::new();
     for (name, t) in picks {
         g.land_at(t, None);
@@ -1159,13 +1200,15 @@ pub fn landscape(world: &crate::world::WorldData, history: Option<&crate::histor
 
 /// The keys, on a card (? toggles it).
 fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
-    let lines: [(&str, &str); 19] = [
+    let lines: [(&str, &str); 21] = [
         ("Arrows, WASD, numpad", "walk; Q E Z C the diagonals; bump into a thing to strike it, open it or talk"),
         ("Mouse", "click to walk there or to strike; click a thing in the pack to use or wear it, right click to drop it"),
         ("Space / Tab", "strike or shoot the target / choose the next target in sight; Shift + a direction strikes anyone"),
         ("F1 - F9", "cast the spells you know (the Spells tab lists them)"),
         ("G / X", "take what lies here / search the walls about for hidden doors"),
         ("R", "rest until whole (not with enemies near, not hungry)"),
+        ("V / N", "stance: balanced, defensive, offensive / sneak (wake fewer; strike the unaware hard)"),
+        ("Ctrl + a direction", "set fire there with a lit torch: woods, grass, timber, webs burn and spread"),
         ("H / J / F", "drink a health potion / a mana potion / eat"),
         ("< > Enter", "take the stairs, ladder, hole, cave mouth or grate underfoot"),
         ("T", "travel: the world map (arrows cross a land a step; Enter or T walks the land there)"),

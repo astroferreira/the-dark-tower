@@ -30,6 +30,7 @@ pub mod site;
 pub mod surface;
 pub mod tales;
 pub mod town;
+pub mod wonders;
 pub mod world;
 
 pub use game::{Action, Game};

@@ -57,6 +57,8 @@ pub struct Bot {
     /// Searches made on each floor (place, z).
     #[serde(skip)]
     searches: std::collections::HashMap<(u32, usize), u32>,
+    /// Steps walked toward a hidden door's wall (given up after 300).
+    search_walk: std::collections::HashMap<(u32, usize), u32>,
 }
 
 /// First step from the hero toward the nearest cell where `goal` holds (8-way BFS; doors that
@@ -72,9 +74,12 @@ fn path_avoiding(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize, avoid: O
     let p = g.place()?;
     let keys: Vec<u32> = g.hero.pack.iter().filter(|i| i.id == "key").map(|i| i.tag).collect();
     let lvl = g.hero.level;
+    let rope = g.hero.count("rope") > 0;
     let pass = |x: i32, y: i32| -> bool {
         let t = f.at(x, y);
         if let Feature::LevelDoor { level } = t.feature { return lvl >= level; }
+        // (Without a rope a rope spot is only floor: a pocket below a hole joined by it stranded the bot.)
+        if t.feature == Feature::RopeSpot && !rope { return true; }
         // Ways in, up and down carry one off: only stepped on when they are the goal.
         if matches!(t.feature, Feature::Entrance { .. } | Feature::StairsDown | Feature::StairsUp | Feature::LadderDown | Feature::LadderUp | Feature::Hole | Feature::Exit | Feature::Grate | Feature::RopeSpot) { return false; }
         if t.walkable() { return true; }
@@ -111,7 +116,7 @@ fn path_avoiding(g: &Game, goal: &dyn Fn(i32, i32) -> bool, max: usize, avoid: O
             let bumpable = matches!(f.at(nx, ny).feature, Feature::Chest { opened: false, .. } | Feature::Sarcophagus { opened: false, .. } | Feature::QuestChest { taken: false, .. } | Feature::Plinth { item: Some(_) } | Feature::Lever { .. } | Feature::Door { open: false, .. })
                 || p.npcs.iter().any(|n| n.z == g.z && n.x == nx && n.y == ny);
             if Some((nx, ny)) == avoid { continue; }
-            let transit = matches!(f.at(nx, ny).feature, Feature::Entrance { .. } | Feature::StairsDown | Feature::StairsUp | Feature::LadderDown | Feature::LadderUp | Feature::Hole | Feature::Exit | Feature::Grate | Feature::RopeSpot);
+            let transit = matches!(f.at(nx, ny).feature, Feature::Entrance { .. } | Feature::StairsDown | Feature::StairsUp | Feature::LadderDown | Feature::LadderUp | Feature::Hole | Feature::Exit | Feature::Grate) || (rope && f.at(nx, ny).feature == Feature::RopeSpot);
             let is_goal = goal(nx, ny) && ((pass(nx, ny) || (transit && into)) && !blocked_by(nx, ny) || bumpable);
             if !is_goal && (!pass(nx, ny) || blocked_by(nx, ny)) { continue; }
             prev[idx(nx, ny)] = idx(x, y) as u32;
@@ -211,7 +216,7 @@ impl Bot {
             pick.map(|p| p.1).or(Some(home))
         };
         let dest = dest.unwrap();
-        if std::env::var("PLANET_ADV_TRACE").is_ok() { eprintln!("   road: at {:?} dest {:?} target {:?} homeward {} need_town {} parcel {:?}", g.tile, dest, self.target.and_then(|t| g.site(t)).map(|s| (s.name.clone(), s.tier)), self.homeward, self.need_town(g), parcel); }
+        if std::env::var("PLANET_ADV_TRACE").is_ok() { eprintln!("   road: at {:?} dest {:?} target {:?} homeward {} need_town {} parcel {:?} potions {} gold {} fed {} food {} loot {}", g.tile, dest, self.target.and_then(|t| g.site(t)).map(|s| (s.name.clone(), s.tier)), self.homeward, self.need_town(g), parcel, g.hero.count("health_potion"), g.hero.gold(), g.hero.fed, g.hero.pack.iter().any(|i| i.def().kind == "food"), g.hero.pack.iter().filter(|i| i.def().kind == "loot").map(|i| format!("{}={}", i.id, i.value())).collect::<Vec<_>>().join(",")); }
         if g.tile == dest {
             let id = if self.homeward { g.hero.temple } else { self.target.unwrap_or(g.hero.temple) };
             self.homeward = false;
@@ -605,7 +610,9 @@ impl Bot {
             let tries = self.searches.entry((id, g.z)).or_insert(0);
             if let (Some((sx, sy)), true) = (secret, *tries < 12) {
                 if (sx - g.x).abs().max((sy - g.y).abs()) <= 2 { *tries += 1; self.why = "search"; return g.act(Action::Search); }
-                if let Some(step) = path_to(g, &|x, y| (x - sx).abs().max((y - sy).abs()) <= 1, 20_000) { *tries += 1; self.why = "to the wall"; return g.act(Action::Move(step.0, step.1)); }
+                let walk = self.search_walk.entry((id, g.z)).or_insert(0);
+                *walk += 1;
+                if *walk < 300 { if let Some(step) = path_to(g, &|x, y| (x - sx).abs().max((y - sy).abs()) <= 1, 20_000) { self.why = "to the wall"; return g.act(Action::Move(step.0, step.1)); } }
             }
             self.walked.insert((id, g.z));
         }
@@ -704,7 +711,7 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
         if let Some(l) = living.as_mut() { if l.sync(&mut g, world) && std::env::var("PLANET_ADV_WORLD").is_ok() { for line in g.log[before.2.min(g.log.len())..].iter().filter(|l| l.tone == super::game::Tone::Danger || l.text.starts_with("Word") || l.text.contains(" rules ")) { println!("  world at day {}: {}", g.turn / super::land::DAY + 1, line.text); } } }
         if std::env::var("PLANET_ADV_DEATHS").is_ok() { for l in g.log[before.2.min(g.log.len())..].iter().filter(|l| l.tone == super::game::Tone::Death) { println!("  death at act {} (level {}, {} on {:?}): {}", k, g.hero.level, g.place().map(|p| p.spec.name.clone()).unwrap_or_default(), g.tile, l.text); } }
         if let Some((a, z)) = trace { if k >= a && k < z {
-            let near: Vec<String> = g.place().map(|p| p.monsters.iter().filter(|m| m.z == g.z && (m.x - g.x).abs().max((m.y - g.y).abs()) <= 3).map(|m| format!("{}@{},{} hp{} awake{} vis{}", m.def, m.x, m.y, m.hp, m.awake, g.visible(m.x, m.y))).collect()).unwrap_or_default();
+            let near: Vec<String> = g.place().map(|p| p.monsters.iter().filter(|m| m.z == g.z && ((m.x - g.x).abs().max((m.y - g.y).abs()) <= 3 || (m.awake && (m.x - g.x).abs().max((m.y - g.y).abs()) <= 14))).map(|m| format!("{}@{},{} hp{} awake{} vis{} fear{}", m.def, m.x, m.y, m.hp, m.awake, g.visible(m.x, m.y), m.fear)).collect()).unwrap_or_default();
             let items: Vec<String> = g.floor().map(|f| f.items.iter().filter(|((x, y), v)| !v.is_empty() && (x - g.x).abs().max((y - g.y).abs()) <= 4).map(|((x, y), v)| format!("{},{}:{}:{:?}", x, y, v[0].id, f.at(*x, *y).feature.word())).collect()).unwrap_or_default();
             println!("act {} [{}]: {:?} -> {},{} | {:?} | items {:?} | {}", k, b.why, (before.0, before.1), g.x, g.y, near, items, g.log[before.2.min(g.log.len())..].iter().map(|l| l.text.clone()).collect::<Vec<_>>().join(" / "));
         } }

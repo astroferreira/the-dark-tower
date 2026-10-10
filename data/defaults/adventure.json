@@ -53,6 +53,7 @@
     {"id": "werewolf", "name": "werewolf", "hp": 150, "attack": 28, "defense": 14, "armor": 6, "speed": 130, "xp": 180, "look": "werewolf", "ai": "melee", "tier": 3, "regen": 3, "habitats": ["full_moon", "forest_night"], "loot": [["wolf_pelt", 800, 1, 2], ["gold", 600, 10, 50]], "sounds": ["AROOOOOO!"]},
     {"id": "shade", "name": "shade", "hp": 90, "attack": 20, "defense": 12, "armor": 2, "speed": 110, "xp": 100, "look": "folk:shadow:hood:none", "ai": "melee", "tier": 3, "undead": true, "habitats": ["shadowland"], "loot": [["gold", 700, 8, 30], ["white_cloth", 300, 1, 1]], "sounds": ["Ssssss..."]},
     {"id": "hill_giant", "name": "hill giant", "hp": 260, "attack": 38, "defense": 14, "armor": 8, "speed": 90, "xp": 260, "look": "folk:giant:none:club", "ai": "melee", "tier": 4, "habitats": ["mountain"], "loot": [["gold", 900, 20, 80], ["meat", 700, 2, 4], ["club", 300, 1, 1]], "sounds": ["Smash little one!"]},
+    {"id": "salamander", "name": "fire salamander", "hp": 170, "attack": 26, "defense": 12, "armor": 10, "speed": 110, "xp": 240, "look": "crocodile", "ai": "ranged", "range": [3, 28, "fire"], "tier": 3, "habitats": ["volcano"], "loot": [["gold", 800, 10, 40], ["volcanic_glass", 400, 1, 1]], "sounds": ["Hsssssss!"]},
     {"id": "watchman", "name": "watchman", "hp": 70, "attack": 18, "defense": 14, "armor": 6, "speed": 105, "xp": 40, "look": "folk:human:nasal:spear", "ai": "melee", "tier": 3, "habitats": ["town"], "loot": [["gold", 700, 3, 12], ["spear", 120, 1, 1], ["chain_helmet", 60, 1, 1]], "sounds": ["In the lord's name!", "Stop, villain!"]},
     {"id": "townsman", "name": "townsman", "hp": 20, "attack": 4, "defense": 2, "armor": 0, "speed": 100, "xp": 2, "look": "folk:human:none:none", "ai": "coward", "tier": 1, "habitats": ["town"], "loot": [["gold", 600, 1, 8], ["bread", 300, 1, 1]], "sounds": ["Help! Murder!"]},
     {"id": "bounty_hunter", "name": "bounty hunter", "hp": 90, "attack": 22, "defense": 14, "armor": 6, "speed": 110, "xp": 90, "look": "folk:human:hood:sword", "ai": "melee", "tier": 3, "habitats": ["bounty"], "loot": [["gold", 900, 10, 40], ["sword", 100, 1, 1], ["health_potion", 200, 1, 1]], "sounds": ["There's a price on your head.", "Come quietly, or don't."]}
@@ -139,6 +140,9 @@
     {"id": "vampire_teeth", "name": "vampire teeth", "kind": "loot", "value": 275, "glyph": "Bone", "stack": true},
     {"id": "cyclops_eye", "name": "cyclops eye", "kind": "loot", "value": 120, "glyph": "Gem", "stack": true},
     {"id": "dragon_scale", "name": "dragon scale", "kind": "loot", "value": 180, "glyph": "Hide", "stack": true},
+    {"id": "star_iron", "name": "lump of star-iron", "plural": "lumps of star-iron", "kind": "loot", "value": 700, "glyph": "Ore", "stack": true},
+    {"id": "volcanic_glass", "name": "shard of fire-glass", "plural": "shards of fire-glass", "kind": "loot", "value": 260, "glyph": "Gem", "stack": true},
+    {"id": "giant_bone", "name": "giant's bone", "plural": "giant's bones", "kind": "loot", "value": 320, "glyph": "Bone", "stack": true},
     {"id": "demon_horn", "name": "demon horn", "kind": "loot", "value": 1000, "glyph": "Bone", "stack": true},
     {"id": "candle", "name": "black candle", "kind": "loot", "value": 6, "glyph": "Log", "stack": true},
     {"id": "iron_ore", "name": "iron ore", "kind": "loot", "value": 25, "glyph": "Ore", "stack": true},

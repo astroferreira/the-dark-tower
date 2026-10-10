@@ -40,10 +40,17 @@ pub struct WorldInfo {
     /// What the history remembers of a tile (its battles), told when one walks onto it.
     #[serde(default)]
     pub tales: std::collections::BTreeMap<usize, String>,
+    /// The world's wonders and its stories' standing stones, by tile; the stories' names.
+    #[serde(default)]
+    pub wonders: std::collections::BTreeMap<usize, super::wonders::Wonder>,
+    #[serde(default)]
+    pub stones: std::collections::BTreeMap<usize, super::wonders::Stone>,
+    #[serde(default)]
+    pub stories: Vec<String>,
 }
 
 impl Default for WorldInfo {
-    fn default() -> Self { WorldInfo { w: 0, h: 0, land: vec![], ground: vec![], danger: vec![], elevation: vec![], biome: vec![], temperature: vec![], moisture: vec![], river: vec![], downhill: vec![], road: vec![], forest: vec![], farmland: vec![], shadow: vec![], battles: vec![], tales: Default::default() } }
+    fn default() -> Self { WorldInfo { w: 0, h: 0, land: vec![], ground: vec![], danger: vec![], elevation: vec![], biome: vec![], temperature: vec![], moisture: vec![], river: vec![], downhill: vec![], road: vec![], forest: vec![], farmland: vec![], shadow: vec![], battles: vec![], tales: Default::default(), wonders: Default::default(), stones: Default::default(), stories: Vec::new() } }
 }
 
 impl WorldInfo {
@@ -487,7 +494,8 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
             s.tier = (s.tier + d / 8).clamp(1, 6);
         }
     }
-    let mut built = Built { info: WorldInfo { w, h, land, ground, danger, elevation, biome, temperature, moisture, river, downhill, road, forest, farmland, shadow: shadow_v, battles, tales }, sites, start };
+    let (wonders, stones, stories) = super::wonders::find(world, history, seed, &land);
+    let mut built = Built { info: WorldInfo { w, h, land, ground, danger, elevation, biome, temperature, moisture, river, downhill, road, forest, farmland, shadow: shadow_v, battles, tales, wonders, stones, stories }, sites, start };
     // A world with no towns at all: one is made where the land is best.
     if built.start == 0 {
         let k = (0..w * h).find(|&k| built.info.land[k] && built.info.ground[k] == Ground::Grass).unwrap_or(0);
