@@ -47,7 +47,7 @@ impl Item {
     }
     pub fn def(&self) -> &'static ItemDef { data().item(&self.id).unwrap_or_else(|| data().item("bone").unwrap()) }
     pub fn stacks(&self) -> bool { self.def().stack && self.name.is_none() && self.quality == 0 && self.enchant.is_none() }
-    pub fn same_stack(&self, o: &Item) -> bool { self.stacks() && o.stacks() && self.id == o.id && self.material == o.material }
+    pub fn same_stack(&self, o: &Item) -> bool { self.stacks() && o.stacks() && self.id == o.id && self.material == o.material && self.story == o.story }
     pub fn is_artifact(&self) -> bool { self.quality >= 6 }
     fn mat_att(&self) -> f32 { self.material.as_deref().and_then(|m| data().material(m)).map_or(1.0, |m| m.att) }
     fn mat_arm(&self) -> f32 { self.material.as_deref().and_then(|m| data().material(m)).map_or(1.0, |m| m.arm) }

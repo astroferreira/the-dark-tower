@@ -130,6 +130,23 @@ pub struct ItemDef {
     pub warm: bool,
 }
 
+/// Something the smith works (or the sage enchants) from what one carries.
+#[derive(Clone, Debug, Deserialize)]
+pub struct RecipeDef {
+    /// What it makes (for an enchantment, nothing: `enchant` goes on what one wields or wears).
+    #[serde(default)]
+    pub makes: String,
+    #[serde(default)]
+    pub count: u32,
+    pub needs: Vec<(String, u32)>,
+    #[serde(default)]
+    pub gold: u32,
+    /// "smith" or "sage".
+    pub at: String,
+    #[serde(default)]
+    pub enchant: Option<String>,
+}
+
 /// An armour set's bonus when its four pieces are worn.
 #[derive(Clone, Debug, Deserialize)]
 pub struct SetDef {
@@ -196,6 +213,8 @@ pub struct Data {
     pub spells: Vec<SpellDef>,
     #[serde(default)]
     pub sets: Vec<SetDef>,
+    #[serde(default)]
+    pub recipes: Vec<RecipeDef>,
 }
 
 impl Data {

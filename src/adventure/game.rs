@@ -272,10 +272,20 @@ pub struct Game {
     /// A charge's blow (a monster struck on its run).
     #[serde(skip)]
     pub charging: bool,
+    /// Followers beyond the companion (`craft`), houses owned (town ids) and what is stored in
+    /// them, titles granted.
+    #[serde(default)]
+    pub band: Vec<Companion>,
+    #[serde(default)]
+    pub houses: Vec<u32>,
+    #[serde(default)]
+    pub stash: HashMap<u32, Vec<Item>>,
+    #[serde(default)]
+    pub titles: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32, #[serde(default)] pub tales_done: u32, #[serde(default)] pub secrets: u32, #[serde(default)] pub wonders: u32, #[serde(default)] pub stories: u32 }
+pub struct Stats { pub kills: u32, pub bosses: u32, pub chests: u32, pub floors_seen: u32, pub deaths: u32, pub gold_found: u32, pub quests_done: u32, pub sites_entered: u32, #[serde(default)] pub tales_done: u32, #[serde(default)] pub secrets: u32, #[serde(default)] pub wonders: u32, #[serde(default)] pub stories: u32, #[serde(default)] pub voyages: u32 }
 
 impl Game {
     pub fn new(world: WorldInfo, sites: Vec<SiteSpec>, hero: Hero, start_town: u32, seed: u64) -> Game {
@@ -285,7 +295,7 @@ impl Game {
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
             seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None, choice: None, regard: HashMap::new(),
-            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(), weather_set: None, entered: Vec::new(), lands_told: Vec::new(), charging: false,
+            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(), weather_set: None, entered: Vec::new(), lands_told: Vec::new(), charging: false, band: Vec::new(), houses: Vec::new(), stash: HashMap::new(), titles: Vec::new(),
         };
         g.set_atlas();
         g.hero.temple = start_town;
@@ -386,11 +396,22 @@ impl Game {
         let (hx, hy) = (self.x, self.y);
         let Some(f) = self.floor() else { return };
         let occupied = |x: i32, y: i32| self.place().map_or(false, |p| p.monsters.iter().any(|m| m.z == self.z && m.x == x && m.y == y && m.hp > 0) || p.npcs.iter().any(|n| n.z == self.z && n.x == x && n.y == y));
-        let Some(c) = self.companion.as_ref() else { return };
-        let far = (c.x - hx).abs().max((c.y - hy).abs()) > 6 || !f.walkable(c.x, c.y);
-        if !force && !far { return; }
-        let spot = DIRS8.iter().map(|(dx, dy)| (hx + dx, hy + dy)).find(|&(x, y)| f.walkable(x, y) && !occupied(x, y) && f.at(x, y).feature == Feature::None);
-        if let (Some((x, y)), Some(c)) = (spot, self.companion.as_mut()) { c.x = x; c.y = y; }
+        // The band, wherever they have fallen behind (or through a door, a stair): about the hero.
+        let mut taken: Vec<(i32, i32)> = self.companion.iter().map(|c| (c.x, c.y)).collect();
+        let ring: Vec<(i32, i32)> = (1..=2).flat_map(|r: i32| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| (dx, dy))).filter(move |&(dx, dy)| dx.abs().max(dy.abs()) == r)).collect();
+        let mut moves: Vec<(usize, (i32, i32))> = Vec::new();
+        for (i, b) in self.band.iter().enumerate() {
+            let far = (b.x - hx).abs().max((b.y - hy).abs()) > 6 || !f.walkable(b.x, b.y);
+            if !force && !far { taken.push((b.x, b.y)); continue; }
+            if let Some(s) = ring.iter().map(|(dx, dy)| (hx + dx, hy + dy)).find(|&(x, y)| f.walkable(x, y) && !occupied(x, y) && f.at(x, y).feature == Feature::None && !taken.contains(&(x, y))) { taken.push(s); moves.push((i, s)); }
+        }
+        let cspot = self.companion.as_ref().and_then(|c| {
+            let far = (c.x - hx).abs().max((c.y - hy).abs()) > 6 || !f.walkable(c.x, c.y);
+            if !force && !far { return None; }
+            DIRS8.iter().map(|(dx, dy)| (hx + dx, hy + dy)).find(|&(x, y)| f.walkable(x, y) && !occupied(x, y) && f.at(x, y).feature == Feature::None && !taken[1.min(taken.len())..].contains(&(x, y)))
+        });
+        for (i, (x, y)) in moves { self.band[i].x = x; self.band[i].y = y; }
+        if let (Some((x, y)), Some(c)) = (cspot, self.companion.as_mut()) { c.x = x; c.y = y; }
     }
 
     /// What the adventurer sees now.
@@ -579,6 +600,7 @@ impl Game {
         self.y = ny;
         let mut cost = self.hero.step_time() * if dx != 0 && dy != 0 { 14 } else { 10 } / 10;
         if matches!(t.ground, Ground::Shallows | Ground::Mud) { cost = cost * 3 / 2; }
+        if self.on_land() && self.mounted() && self.place().map_or(true, |p| p.spec.kind != SiteKind::Town) { cost = cost * 7 / 10; }
         // Rain turns the earth to mud.
         else if self.on_land() && self.weather().wet() && matches!(t.ground, Ground::Earth | Ground::Grass | Ground::Field) { cost = cost * 6 / 5; }
         if matches!(t.feature, Feature::Web) { cost *= 2; self.say(Tone::Info, "You tear through a web."); if let Some(p) = self.place_mut() { p.floors[z].at_mut(nx, ny).feature = Feature::None; } }
@@ -1106,6 +1128,8 @@ impl Game {
             if matches!(d.kind.as_str(), "weapon" | "armour" | "shield") && !d.stack && r.gen_bool(0.3) { it.quality = r.gen_range(0..=tier.min(4)) as u8; }
         }
         for it in m.carries.iter().cloned() { stow(&mut loot, it); }
+        // What a boss carried keeps its story: things may be worked from it in its name.
+        if m.boss { for it in loot.iter_mut().filter(|i| i.def().kind == "loot" && i.story.is_none()) { it.story = Some(format!("taken from {}", m.name)); } }
         // A treasure map marks somewhere near.
         for k in 0..loot.len() { if loot[k].id == "treasure_map" && loot[k].tag == 0 { loot[k].tag = self.map_target(); } }
         let name = m.the();
@@ -1136,6 +1160,12 @@ impl Game {
             let who = self.hero.name.clone();
             let kind = match creature { Some(c) => super::living::DeedKind::BeastSlain(c), None => super::living::DeedKind::BossSlain };
             self.chronicle(kind, format!("{} slew {}", who, dead.name), format!("{} slew {} in {}.", who, dead.name, place));
+        }
+        // A war camp's chief slain: its captive goes free and joins the band.
+        if dead.boss && self.place().map_or(false, |p| p.spec.kind == SiteKind::Camp) && self.band.len() < super::craft::BAND {
+            let race = ["human", "elf", "dwarf", "halfling"][(dead.uid % 4) as usize].to_string();
+            let name = super::town::person_name(&race, self.seed ^ dead.uid as u64 ^ 0xCA97);
+            if self.join(name.clone(), race) { self.say(Tone::Quest, format!("In the chief's tent you find {} in chains. Freed, they take up a blade: \"I owe you a life. Let me pay it.\"", name)); }
         }
         if dead.boss && self.companion.is_some() {
             if let Some(c) = self.companion.as_mut() { c.morale = (c.morale + 25).min(100); }
@@ -1604,6 +1634,11 @@ impl Game {
     }
 
     fn companion_act(&mut self, id: u32, cost: i32, dist: &[i32]) {
+        self.companion_act_one(id, cost, dist);
+        self.band_act(id, cost, dist);
+    }
+
+    pub(crate) fn companion_act_one(&mut self, id: u32, cost: i32, dist: &[i32]) {
         let Some(mut c) = self.companion.clone() else { return };
         let z = self.z;
         c.energy += cost;
@@ -1711,6 +1746,8 @@ impl Game {
         // (the Mapmaker's map is worth having).
         let blank = self.mapped.get(k).copied().unwrap_or(0) == 0;
         let time = if self.world.road[k] { 1600 } else if blank { 3600 } else { 2400 };
+        // A horse halves the going.
+        let time = if self.mounted() { time * 6 / 10 } else { time };
         self.tile = (nx, ny);
         self.facing = (dx, dy);
         self.turn += time;

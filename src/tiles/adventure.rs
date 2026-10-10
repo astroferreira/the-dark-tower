@@ -337,9 +337,9 @@ fn draw_place(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
         if Some(m.uid) == v.target { let mut pen = super::ink::Pen::new(&mut put, x, y, cs * 1.1); pen.line_a((-0.9, -0.9), (-0.5, -0.9), [190.0, 40.0, 30.0], 2.0, 1.0); pen.line_a((-0.9, -0.9), (-0.9, -0.5), [190.0, 40.0, 30.0], 2.0, 1.0); pen.line_a((0.9, 0.9), (0.5, 0.9), [190.0, 40.0, 30.0], 2.0, 1.0); pen.line_a((0.9, 0.9), (0.9, 0.5), [190.0, 40.0, 30.0], 2.0, 1.0); }
         if m.boss || Some(m.uid) == v.target { labels.push((x, by - 15.0, m.name.clone(), if m.boss { 0x0090_1010 } else { 0x0038_2A20 })); }
     }
-    // The companion, a sellsword in their people's look.
-    if let Some(c) = &g.companion {
-        let e = v.pos.entry(u32::MAX - 1).or_insert((c.x as f32, c.y as f32));
+    // The companion and the band, sellswords in their people's look.
+    for (bi, c) in g.companion.iter().chain(g.band.iter()).enumerate() {
+        let e = v.pos.entry(u32::MAX - 1 - bi as u32).or_insert((c.x as f32, c.y as f32));
         *e = ease(*e, (c.x as f32, c.y as f32));
         let (x, y) = to_screen(e.0, e.1);
         let (skin, tusks, pointed, beard) = race_skin(&c.race, 5);
@@ -651,7 +651,7 @@ fn draw_panel(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     let x0 = map_w + 16;
     let hero = &g.hero;
     fonts::draw(buf, w, h, x0 as f32, 12.0, &hero.name, Face::SmallCaps, 22.0, 0.5, 0x0030_1E14, None);
-    let title = format!("Level {} {} of the {}", hero.level, hero.calling.as_deref().unwrap_or("commoner"), hero.race);
+    let title = format!("Level {} {} of the {}{}", hero.level, hero.calling.as_deref().unwrap_or("commoner"), hero.race, g.titles.last().map(|t| format!(", {}", t)).unwrap_or_default());
     fonts::draw(buf, w, h, x0 as f32, 38.0, &title, Face::Italic, 14.0, 0.0, 0x005A_4634, None);
     let bw = PANEL_W - 32;
     bar(buf, w, h, x0, 60, bw, hero.hp as f32 / hero.max_hp() as f32, 0x00B0_3A2A, &format!("life {} / {}", hero.hp, hero.max_hp()));
@@ -675,6 +675,8 @@ fn draw_panel(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
         if !word.is_empty() { status.push(word.into()); }
     }
     if let Some(c) = &g.companion { status.push(format!("{} with you ({}/{})", c.name, c.hp, c.max_hp)); }
+    if !g.band.is_empty() { status.push(format!("{} more in your band", g.band.len())); }
+    if g.mounted() { status.push("mounted".into()); }
     fonts::draw(buf, w, h, x0 as f32, 114.0, &status.join(" · "), Face::Italic, 13.0, 0.0, 0x005A_4634, None);
     // The paper doll: eight slots.
     let slot_s = 40usize;

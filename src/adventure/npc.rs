@@ -22,6 +22,9 @@ pub enum Topic {
     Ask(String),
     AskMenu,
     AskTyped,
+    /// The smith's work and the sage's enchantments (`craft`), passage by sea, a horse, a house
+    /// and what is in it, a title.
+    Craft, Make(usize), Passage, Sail(u32, u32), BuyHorse(u32), BuyHouse(u32), House, StoreLoot, TakeStash, Sleep, Trophies, Title,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -86,6 +89,7 @@ fn main_menu(g: &Game, role: Role) -> Vec<(String, Topic)> {
         v.push(("Quest".into(), Topic::Quest));
     }
     if matches!(role, Role::Townsfolk | Role::Innkeeper | Role::Guard | Role::Sage | Role::Lord) { v.push(("Rumours".into(), Topic::Rumours)); }
+    v.extend(super::craft::menu(g, role, town_id(g)));
     if g.history.is_some() { v.push(("Ask about...".into(), Topic::AskMenu)); }
     v.push(("Bye".into(), Topic::Bye));
     v
@@ -375,6 +379,16 @@ pub fn answer_topic(g: &mut Game, topic: Topic) {
                 if let Some(it) = g.hero.equipped[slot as usize].as_mut() { it.quality = (it.quality + 1).min(5); said = format!("Hammer and file and a night at the forge: it is {} now.", it.describe()); }
             } else { said = format!("That is {} gold.", price); }
         }
+        Topic::Hire(price) if g.companion.is_some() => {
+            if g.band.len() >= super::craft::BAND { said = "Your band is as big as one purse can keep.".into(); }
+            else if g.hero.take_gold(price) {
+                let race = g.place().map(|p| p.spec.people.clone()).filter(|r| !r.is_empty()).unwrap_or_else(|| "human".into());
+                let name = super::town::person_name(&race, g.seed ^ g.turn ^ 0xBA4D ^ g.band.len() as u64);
+                g.join(name.clone(), race);
+                said = format!("{} shoulders a shield and falls in behind you.", name);
+                g.say(Tone::Level, format!("{} joins your band ({} with you now).", name, g.followers()));
+            } else { said = format!("A good blade costs {} gold.", price); }
+        }
         Topic::Hire(price) => {
             if g.companion.is_some() { said = "You have a blade at your side already.".into(); }
             else if g.hero.take_gold(price) {
@@ -417,6 +431,12 @@ pub fn answer_topic(g: &mut Game, topic: Topic) {
         Topic::Ask(q) => {
             let town = g.site(n.home).and_then(|s| s.settlement).map(crate::history::SettlementId);
             said = super::lore::ask(g, &n, town, &q);
+        }
+        t @ (Topic::Craft | Topic::Make(_) | Topic::Passage | Topic::Sail(..) | Topic::BuyHorse(_) | Topic::BuyHouse(_) | Topic::House | Topic::StoreLoot | Topic::TakeStash | Topic::Sleep | Topic::Trophies | Topic::Title) => {
+            let sailing = matches!(t, Topic::Sail(..));
+            let (s, o) = super::craft::answer(g, &n, town_id(g), t);
+            if sailing && g.talk.is_none() { return; }
+            said = s; options = o;
         }
         Topic::Back => {}
         Topic::Bye => { g.say(Tone::Talk, format!("{}: \"Good bye, {}.\"", n.name, g.hero.name)); g.talk = None; return; }

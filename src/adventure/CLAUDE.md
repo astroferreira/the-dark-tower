@@ -441,6 +441,30 @@ everywhere).
 - Test: `data::tests::content_is_consistent` (the counts, families, loot, abilities, summons,
   sets of four, spell kinds known).
 
+## What a hero builds up (`craft.rs`; card adv-crafting-progression)
+- Crafting (`Data::recipes`, 36): the smith works what one carries (dragon scales into the
+  dragon shield and set, scales, hides and pelts into armour and furs, bones and feathers into
+  arrows, star-iron, fire-glass, horn, ivory, ingots); the sage enchants the blade in hand (or
+  the body's armour for warding) with shards, venom, wisp light or vampire dust. A boss's loot
+  keeps "taken from <name>" (`Item::story`, so it stacks apart): a thing worked from it is
+  named for it ("Ghaz the Red's dragon shield", quality 3, its story the smith's and the
+  slayer's, a deed).
+- A horse (`horse`, kind mount, 400 gold at the inn of a town of size 2+): travel x0.6, steps on
+  the land x0.7 outside towns. Passage by sea (`Game::passages`, `sail`): the inn of a port lists
+  up to six other ports (days = distance/4, fare 20 + 15 a tile); one comes ashore at the
+  destination's gate (`Stats::voyages`).
+- A house (`Game::houses`, the lord sells it: 1,000 + 600 x the town's size): the innkeeper
+  opens it: store loot and named things (`Game::stash`), take them back, sleep whole, the trophy
+  wall (bosses slain and named things).
+- The band (`Game::band`, two beside the companion, `craft::BAND`): more sellswords at the inn,
+  and a war camp's freed captive; each takes the companion's turn (`band_act` swaps them into
+  `companion_act_one`), follows through doors (`companion_follow`), and takes the companion's
+  place if it falls. (Monsters strike only the hero and the companion.)
+- Titles (`Game::titles`): a town at regard 50+ with three works rewarded grants "Warden of X"
+  (below level 15) or "Knight of X"; shown after the hero's calling, recorded in the chronicle.
+- Tests: `craft::tests::a_dragons_scales_become_its_shield`, `a_boat_crosses_the_sea`,
+  `three_companions_follow_at_once`.
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the
@@ -481,5 +505,5 @@ everywhere).
   from four levels under their place's level, and the priest's only for the risen dead.
 
 ## Not yet
-- Houses, a bank; boats over the sea; rivers through towns (a town
-  is laid over its river).
+- A bank; boats on rivers; rivers through towns (a town is laid over its river); monsters
+  striking the band.

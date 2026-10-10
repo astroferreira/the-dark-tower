@@ -13,6 +13,7 @@
 
 pub mod actor;
 pub mod bot;
+pub mod craft;
 pub mod data;
 pub mod game;
 pub mod hero;
