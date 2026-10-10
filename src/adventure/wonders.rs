@@ -289,7 +289,7 @@ impl Game {
         self.far_seen.clear();
         if !self.on_land() { return; }
         let night = self.night();
-        let reach = if night { 24 } else { 64 };
+        let reach = ((if night { 24.0 } else { 64.0 }) * match self.weather() { super::weather::Weather::Fog => 0.0, super::weather::Weather::Storm | super::weather::Weather::Snow => 0.4, super::weather::Weather::Rain => 0.7, _ => 1.0 }) as i32;
         let (hx, hy) = (self.x, self.y);
         let far = self.far.clone();
         let mut named: Vec<(i32, String)> = Vec::new();

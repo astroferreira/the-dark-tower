@@ -405,6 +405,40 @@ fn draw_place(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
         }
     }
     for (x, y, t, col) in labels { let tw = fonts::width(&t, Face::Italic, 13.0, 0.0); if x - tw / 2.0 > 0.0 && x + tw / 2.0 < map_w as f32 { fonts::draw(buf, w, h, x - tw / 2.0, y, &t, Face::Italic, 13.0, 0.0, col, Some(0x00EE_E4CC)); } }
+    // The weather over the land: fog thickening away from the hero, rain, snow.
+    if g.on_land() {
+        use crate::adventure::weather::Weather;
+        let wx = g.weather();
+        let (px, py) = ((hx * cs - ox as f32), (hy * cs - oy as f32));
+        let clear_r = g.sight_radius() as f32 * cs * 0.7;
+        if wx == Weather::Fog || wx == Weather::Storm || wx == Weather::Snow {
+            use rayon::prelude::*;
+            let (tint, amt): ([f32; 3], f32) = match wx { Weather::Fog => ([226.0, 222.0, 212.0], 0.55), Weather::Snow => ([236.0, 238.0, 242.0], 0.28), _ => ([60.0, 66.0, 80.0], 0.3) };
+            buf.par_chunks_mut(w).enumerate().for_each(|(sy, row)| {
+                for sx in 0..map_w {
+                    let d = ((sx as f32 - px).powi(2) + (sy as f32 - py).powi(2)).sqrt();
+                    let a = amt * ((d - clear_r) / (clear_r * 2.0)).clamp(0.0, 1.0);
+                    if a <= 0.0 { continue; }
+                    let p = row[sx];
+                    let c = [((p >> 16) & 255) as f32, ((p >> 8) & 255) as f32, (p & 255) as f32];
+                    row[sx] = pack(mix(c, tint, a));
+                }
+            });
+        }
+        if matches!(wx, Weather::Rain | Weather::Storm | Weather::Snow) {
+            let n = map_w * h / if wx == Weather::Storm { 350 } else if wx == Weather::Snow { 700 } else { 600 };
+            let frame = g.turn / 50;
+            for k in 0..n as u64 {
+                let hh = crate::adventure::surface::hash(0x5A1, k as i64, 0, frame);
+                let (x0, y0) = ((hh % map_w as u64) as i64, ((hh >> 20) % h as u64) as i64);
+                if wx == Weather::Snow {
+                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] { let (x, y) = (x0 + dx, y0 + dy); if x >= 0 && y >= 0 && (x as usize) < map_w && (y as usize) < h { buf[y as usize * w + x as usize] = 0x00F4_F6FA; } }
+                } else {
+                    for t in 0..10i64 { let (x, y) = (x0 - t / 3, y0 + t); if x >= 0 && y >= 0 && (x as usize) < map_w && (y as usize) < h { let p = buf[y as usize * w + x as usize]; let c = [((p >> 16) & 255) as f32, ((p >> 8) & 255) as f32, (p & 255) as f32]; buf[y as usize * w + x as usize] = pack(mix(c, [52.0, 70.0, 112.0], 0.62)); } }
+                }
+            }
+        }
+    }
     // The place's name and floor, top-left.
     let title = if g.on_land() {
         let when = clock(g);
@@ -444,7 +478,8 @@ fn element_colour(k: &str) -> Rgb {
 fn clock(g: &Game) -> String {
     let h = g.hour();
     let part = if g.night() { if g.full_moon() { "night, the moon full" } else { "night" } } else if h < 8.0 { "dawn" } else if h < 12.0 { "morning" } else if h < 14.0 { "noon" } else if h < 18.0 { "afternoon" } else { "dusk" };
-    format!("day {}, {}", g.turn / crate::adventure::land::DAY + 1, part)
+    let season = ["spring", "summer", "autumn", "winter"][g.season() as usize];
+    if g.on_land() { format!("day {}, {}, {} — {}", g.turn / crate::adventure::land::DAY + 1, part, season, g.weather().word()) } else { format!("day {}, {}", g.turn / crate::adventure::land::DAY + 1, part) }
 }
 
 /// What a cell holds, in words.
@@ -626,6 +661,7 @@ fn draw_panel(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
     if g.here.is_none() || g.on_land() { status.push(clock(g)); }
     if hero.poisoned > 0 { status.push("poisoned".into()); }
     if hero.fed == 0 { status.push("hungry".into()); }
+    if g.freezing() { status.push("freezing".into()); }
     if hero.torch > 0 { status.push("torch lit".into()); }
     if hero.hasted > 0 { status.push("hasted".into()); }
     if hero.blessed { status.push("blessed".into()); }
@@ -747,7 +783,7 @@ fn draw_panel(g: &Game, v: &mut View, buf: &mut [u32], w: usize, h: usize, map_w
 fn draw_log(g: &Game, buf: &mut [u32], w: usize, h: usize, map_w: usize) {
     let lw = (map_w as f32 * 0.62).min(720.0) as usize;
     let lines: Vec<&crate::adventure::game::Line> = g.log.iter().rev().take(7).collect();
-    let wrapped: Vec<(String, Tone, usize)> = lines.iter().rev().enumerate().flat_map(|(k, l)| fonts::wrap(&l.text, Face::Roman, 14.0, lw as f32 - 24.0).into_iter().map(move |s| (s, l.tone, k))).collect();
+    let wrapped: Vec<(String, Tone, usize)> = lines.iter().rev().enumerate().flat_map(|(k, l)| { let t = if l.n > 0 { format!("{} (x{})", l.text, l.n + 1) } else { l.text.clone() }; fonts::wrap(&t, Face::Roman, 14.0, lw as f32 - 24.0).into_iter().map(move |s| (s, l.tone, k)) }).collect();
     let wrapped: Vec<(String, Tone, usize)> = wrapped.into_iter().rev().take(9).collect::<Vec<_>>().into_iter().rev().collect();
     let hh = wrapped.len() * 17 + 14;
     let r = Rect { x: 10, y: h.saturating_sub(hh + 10), w: lw, h: hh };
@@ -971,6 +1007,7 @@ pub fn run(world: &crate::world::WorldData, history: Option<&crate::history::wor
             for (key, (dx, dy)) in dirs { if repeat(key) { v.walk_to = None; act(&mut g, &mut v, if ctrl { Action::Kindle(dx, dy) } else if shift { Action::Assault(dx, dy) } else { Action::Move(dx, dy) }); break; } }
             if pressed(Key::V) { act(&mut g, &mut v, Action::Stance); }
             if pressed(Key::N) { act(&mut g, &mut v, Action::Sneak); }
+            if pressed(Key::B) { act(&mut g, &mut v, Action::Camp); }
             if pressed(Key::G) { act(&mut g, &mut v, Action::PickUp); }
             if pressed(Key::X) { act(&mut g, &mut v, Action::Search); }
             // Travel: the world map (not with enemies at one's heels).
@@ -1173,8 +1210,12 @@ pub fn landscape(world: &crate::world::WorldData, history: Option<&crate::histor
     wonders.sort_by_key(|(k, _)| crate::adventure::world::dist((k % ww, k / ww), home, ww));
     for (k, wd) in wonders { if !kinds_done.contains(&wd.kind) { kinds_done.push(wd.kind); println!("  wonder {}: {} at {:?}", wd.kind, wd.name, (k % ww, k / ww)); picks.push((format!("wonder{}", wd.kind), (k % ww, k / ww))); } }
     println!("  {} wonders, {} stones of {} stories", g.world.wonders.len(), g.world.stones.len(), g.world.stories.len());
+    // The home land under each kind of weather.
+    for wname in ["fog", "rain", "snow"] { picks.push((format!("weather_{}", wname), home)); }
     let mut files = Vec::new();
     for (name, t) in picks {
+        use crate::adventure::weather::Weather;
+        g.weather_set = match name.as_str() { "weather_fog" => Some(Weather::Fog), "weather_rain" => Some(Weather::Rain), "weather_snow" => Some(Weather::Snow), _ => Some(Weather::Clear) };
         g.land_at(t, None);
         // Stand in the middle of the tile and see all of it.
         g.x = crate::adventure::surface::CH + crate::adventure::surface::CH / 2;
@@ -1200,7 +1241,7 @@ pub fn landscape(world: &crate::world::WorldData, history: Option<&crate::histor
 
 /// The keys, on a card (? toggles it).
 fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
-    let lines: [(&str, &str); 21] = [
+    let lines: [(&str, &str); 22] = [
         ("Arrows, WASD, numpad", "walk; Q E Z C the diagonals; bump into a thing to strike it, open it or talk"),
         ("Mouse", "click to walk there or to strike; click a thing in the pack to use or wear it, right click to drop it"),
         ("Space / Tab", "strike or shoot the target / choose the next target in sight; Shift + a direction strikes anyone"),
@@ -1209,6 +1250,7 @@ fn draw_help(buf: &mut [u32], w: usize, h: usize, map_w: usize) {
         ("R", "rest until whole (not with enemies near, not hungry)"),
         ("V / N", "stance: balanced, defensive, offensive / sneak (wake fewer; strike the unaware hard)"),
         ("Ctrl + a direction", "set fire there with a lit torch: woods, grass, timber, webs burn and spread"),
+        ("B", "make a campfire with a torch: warmth on cold nights (or carry furs), and rest mends twice as fast"),
         ("H / J / F", "drink a health potion / a mana potion / eat"),
         ("< > Enter", "take the stairs, ladder, hole, cave mouth or grate underfoot"),
         ("T", "travel: the world map (arrows cross a land a step; Enter or T walks the land there)"),

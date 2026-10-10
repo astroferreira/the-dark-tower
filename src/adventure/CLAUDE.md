@@ -376,6 +376,43 @@ everywhere).
 - Tests: `surface::tests::every_land_has_something`, `land::tests::a_tower_is_seen_from_far_off`,
   `land::tests::four_stones_tell_a_tale`.
 
+## A voice for the log (`prose.rs`; card adv-voice)
+- Arrival paragraphs (`Game::arrival`): the first time one stands in a land (walking in, or
+  coming down off the world map; `Game::lands_told`), the log says what it is like: the land's
+  kind, the season (barren lands get their own lines), the hour and the weather, what the eye
+  falls on (the nearest tall thing far off, a wonder, a river, a road) and what is wrong with it
+  (the Shadow, danger, a town's smoke near). Each sentence is picked by a hash of the tile and
+  the day: the same walk reads the same, two lands never alike.
+- A town's mood (`Game::town_mood`) as one walks in: at war (the history's open wars on its
+  people: "the walls are manned"), a sickness (an open plague tale), a feast or market day, its
+  notes; how they look at the hero (regard); and "Travellers from X say:" the nearest town's
+  latest note within 8 tiles, so what the hero did in one town is heard in the next.
+- A place's first entry (`Game::place_arrival`, `Game::entered`): a line by its kind and a
+  warning by its tier. Blows vary (`Game::blow_word`).
+- Repeats collapse: `Game::say` counts a line said again (`Line::n`, drawn "(x3)").
+- Tests: `prose::tests::five_lands_read_five_ways`, `the_log_does_not_stutter` (4,000 bot acts,
+  no line four times running).
+
+## Weather and the cold (`weather.rs`; card adv-land-weather)
+- `Game::weather_at(tile)`: clear, cloudy, rain, storm, snow or fog, a hash of the region (3 x 3
+  tiles) and the half-day weighted by the land's moisture and kind (fog in marsh and lake
+  country, little rain in deserts); snow where the air is below 1 degree. The air
+  (`temperature_at`) is the tile's, the season's (spring 0, summer +6, autumn -2, winter -10;
+  the season from the living history's calendar, else the clock) and the night's (-5).
+  `Game::weather_set` holds it fixed (tests, the landscape tool).
+- Effects: sight under the sky x0.5 in fog, x0.6 storm, x0.7 snow, x0.85 rain
+  (`Game::sight_radius`; never below the torch's reach); far sight cut the same way (none in
+  fog); rain turns earth and grass to mud (steps x1.2) and puts fires out; snow shows a nearby
+  unseen creature's fresh tracks and their heading.
+- The cold (`Game::freezing`): on cold land at night (or below -12 by day), with no `furs` in the
+  pack (the trader sells them) and no campfire or brazier within 3 cells, the hero does not heal
+  and loses a point every 6 turns, down to a quarter of their life (numb, not dead); rest is
+  refused. B makes a campfire with a torch (`Action::Camp`, appended); resting within 3 cells of
+  a fire mends twice as fast.
+- Window: the weather in the title and status, fog thickening beyond one's sight, rain streaks,
+  snow; `--adventure-landscape` adds fog, rain and snow frames of the home land.
+- Tests: `weather::tests::fog_halves_sight`, `a_night_in_the_snow_without_a_fire_costs_life`.
+
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when
   their `cell_sig` changes; a region keyed on world cells: a small floor whole, the land's the
@@ -417,4 +454,4 @@ everywhere).
 
 ## Not yet
 - Houses, a bank; boats over the sea; rivers through towns (a town
-  is laid over its river); the weather.
+  is laid over its river).

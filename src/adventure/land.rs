@@ -298,7 +298,13 @@ impl Game {
         super::tales::on_tile(self);
         if let Some(town) = self.sites.iter().find(|s| s.tile == t && s.kind == SiteKind::Town).map(|s| s.id) { self.at_the_gate(town); }
         let now = self.region_name(t);
-        if on_foot && now != before { self.say(Tone::Info, format!("You come into {}.", now)); }
+        if on_foot && now != before {
+            // A new land: told as a paragraph the first time, named after that.
+            let k = (t.1 * self.world.w + t.0) as u32;
+            if !self.lands_told.contains(&k) { self.lands_told.push(k); let a = self.arrival(t); self.say(Tone::Info, format!("You come into {}. {}", now, a)); }
+            else { self.say(Tone::Info, format!("You come into {}.", now)); }
+        }
+        if on_foot { if let Some(town) = self.sites.iter().find(|s| s.tile == t && s.kind == SiteKind::Town).cloned() { let m = self.town_mood(&town); self.say(Tone::Info, m); } }
         if on_foot && fresh > 0 { if let Some(tale) = self.world.tales.get(&(t.1 * self.world.w + t.0)).cloned() { self.say(Tone::Quest, format!("{} Old bones still come up in the grass.", tale)); } }
         let here: Vec<u32> = self.sites.iter().filter(|s| s.tile == t && s.kind != SiteKind::Wilds).map(|s| s.id).collect();
         for id in here {
@@ -387,9 +393,18 @@ impl Game {
         let (x, y) = if on_way { (x, y) } else { self.open_near(x, y) };
         self.x = x;
         self.y = y;
+        let k = (t.1 * self.world.w + t.0) as u32;
+        let first = at.is_none() && !self.lands_told.contains(&k);
+        if first { self.lands_told.push(k); }
         self.enter_tile(t, false);
         self.companion_follow(true);
         self.look();
+        // Come down off the road into a land: told as on foot.
+        if at.is_none() {
+            let now = self.region_name(t);
+            if first { let a = self.arrival(t); self.say(Tone::Info, format!("You come into {}. {}", now, a)); }
+            if let Some(town) = self.sites.iter().find(|s| s.tile == t && s.kind == SiteKind::Town).cloned() { let m = self.town_mood(&town); self.say(Tone::Info, m); }
+        }
     }
 
     /// Go in by a way in the land: into place `site` at floor z (from world cell `at`).
@@ -423,13 +438,16 @@ impl Game {
         let (x, y) = if self.places[&site].floors[z].walkable(x, y) { (x, y) } else { self.places[&site].entry };
         self.x = x;
         self.y = y;
+        let first = !self.entered.contains(&site);
         if !self.known.contains(&site) { self.known.push(site); }
+        if first { self.entered.push(site); }
         self.stats.sites_entered += 1;
         let p = &self.places[&site];
         let (name, kind, cause, floor) = (p.spec.name.clone(), p.spec.kind, p.spec.cause.clone(), p.floors[z].name.clone());
         let verb = if kind == SiteKind::Town { "You lift the grate and climb down into the sewers of".to_string() } else if z == 0 { "You go into".into() } else { "You go down into".into() };
         self.say(Tone::Info, format!("{} {} ({}).{}", verb, name, floor, if cause.is_empty() || kind == SiteKind::Town { String::new() } else { format!(" {}", cause) }));
         if z > 0 { self.stats.floors_seen = self.stats.floors_seen.max(z as u32 + 1); }
+        if first { let spec = self.places[&site].spec.clone(); let a = self.place_arrival(&spec); if !a.is_empty() { self.say(Tone::Info, a); } }
         super::tales::on_enter(self, site);
         self.companion_follow(true);
         self.look();
@@ -742,6 +760,7 @@ pub(crate) mod tests {
         sites.push(castle);
         let mut g = Game::new(info, sites, crate::adventure::hero::Hero::new("Tess", "human", true, 5), 1, 5);
         g.land_at((4, 2), None);
+        g.weather_set = Some(crate::adventure::weather::Weather::Clear);
         let (tx, ty) = g.far.iter().find(|f| f.1.contains("Highkeep")).expect("the castle stands tall in the land").0;
         g.x = tx - 60; g.y = ty;
         g.look();

@@ -21,7 +21,8 @@ use std::collections::HashMap;
 pub enum Tone { Info, Hit, Hurt, Loot, Level, Talk, Quest, Danger, Death }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Line { pub turn: u64, pub text: String, pub tone: Tone }
+pub struct Line { pub turn: u64, pub text: String, pub tone: Tone, /// The same line said again this many more times (shown "x3").
+    #[serde(default)] pub n: u32 }
 
 /// Something for the window to show for a moment.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -133,6 +134,8 @@ pub enum Action {
     Sneak,
     /// Set fire to what is in this direction (a lit torch).
     Kindle(i32, i32),
+    /// Make a campfire beside one (a torch).
+    Camp,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -257,6 +260,15 @@ pub struct Game {
     /// Tall things of each chunk made (with `pristine`).
     #[serde(skip)]
     pub tall: HashMap<(u32, u32), Vec<((i32, i32), String)>>,
+    /// The weather held fixed (tests; else `weather_at` reckons it).
+    #[serde(skip)]
+    pub weather_set: Option<super::weather::Weather>,
+    /// Places gone into at least once (their first-time paragraph told).
+    #[serde(default)]
+    pub entered: Vec<u32>,
+    /// Lands stood in at least once (their arrival paragraph told; tile indices).
+    #[serde(default)]
+    pub lands_told: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -270,7 +282,7 @@ impl Game {
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
             seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None, choice: None, regard: HashMap::new(),
-            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(),
+            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(), weather_set: None, entered: Vec::new(), lands_told: Vec::new(),
         };
         g.set_atlas();
         g.hero.temple = start_town;
@@ -297,7 +309,13 @@ impl Game {
     /// The site the adventurer stands in (a town on the land is its own; else the land).
     pub fn site_here(&self) -> u32 { self.place().map_or(0, |p| p.spec.id) }
     pub fn floor(&self) -> Option<&super::map::Floor> { self.place().and_then(|p| p.floors.get(self.z)) }
-    pub fn say(&mut self, tone: Tone, text: impl Into<String>) { let t = text.into(); self.log.push(Line { turn: self.turn, text: t, tone }); if self.log.len() > 400 { self.log.drain(0..100); } }
+    pub fn say(&mut self, tone: Tone, text: impl Into<String>) {
+        let t = text.into();
+        // The same line again: counted, not repeated.
+        if let Some(l) = self.log.last_mut() { if l.text == t { l.n += 1; l.turn = self.turn; return; } }
+        self.log.push(Line { turn: self.turn, text: t, tone, n: 0 });
+        if self.log.len() > 400 { self.log.drain(0..100); }
+    }
     pub fn take_effects(&mut self) -> Vec<Effect> { std::mem::take(&mut self.effects) }
 
     /// A roll seeded by the act (DF reseeds from the actors and the tick so a reload repeats it).
@@ -373,10 +391,18 @@ impl Game {
     }
 
     /// What the adventurer sees now.
-    pub fn look(&mut self) {
-        let Some(id) = self.here else { return };
+    /// How far one sees here now: the light underground; under the sky the day or the night,
+    /// and fog, snow and storms closing in (never below the torch's own reach).
+    pub fn sight_radius(&self) -> i32 {
+        let Some(id) = self.here else { return 0 };
         let night = self.night();
         let r = { let f = &self.pl(id).floors[self.z]; if f.outdoor { if night { (self.hero.light() + 2).max(if self.full_moon() { 8 } else { 5 }) } else { 12 } } else { self.hero.light() + 1 } };
+        if id == super::land::LAND { ((r as f32 * self.weather().sight_factor()).round() as i32).max(self.hero.light().min(r)).max(2) } else { r }
+    }
+
+    pub fn look(&mut self) {
+        let Some(id) = self.here else { return };
+        let r = self.sight_radius();
         let (x, y) = (self.x, self.y);
         let z = self.z;
         let p = self.pl_mut(id);
@@ -411,6 +437,7 @@ impl Game {
             Action::Stance => { self.hero.stance = (self.hero.stance + 1) % 3; let w = ["balanced", "defensive: shield up, blows softer", "offensive: all in, guard down"][self.hero.stance as usize]; self.say(Tone::Info, format!("You take a {} stance.", w)); None }
             Action::Sneak => { self.hero.sneaking = !self.hero.sneaking; self.say(Tone::Info, if self.hero.sneaking { "You move softly now, keeping to the shadows." } else { "You stop creeping." }); None }
             Action::Kindle(dx, dy) => self.kindle(dx, dy),
+            Action::Camp => self.camp(),
             Action::Assault(dx, dy) => { let (nx, ny) = (self.x + dx, self.y + dy); match self.npc_at(nx, ny) { Some(k) => self.assault(k), None => self.step(dx, dy) } }
             Action::Move(dx, dy) => self.step(dx, dy),
             Action::Wait => Some(100),
@@ -542,6 +569,8 @@ impl Game {
         self.y = ny;
         let mut cost = self.hero.step_time() * if dx != 0 && dy != 0 { 14 } else { 10 } / 10;
         if matches!(t.ground, Ground::Shallows | Ground::Mud) { cost = cost * 3 / 2; }
+        // Rain turns the earth to mud.
+        else if self.on_land() && self.weather().wet() && matches!(t.ground, Ground::Earth | Ground::Grass | Ground::Field) { cost = cost * 6 / 5; }
         if matches!(t.feature, Feature::Web) { cost *= 2; self.say(Tone::Info, "You tear through a web."); if let Some(p) = self.place_mut() { p.floors[z].at_mut(nx, ny).feature = Feature::None; } }
         if let Feature::Lore { text, look: 1 } = &t.feature { let tx = text.clone(); self.say(Tone::Quest, tx); }
         if let Feature::Plate { safe: false } = t.feature {
@@ -695,14 +724,18 @@ impl Game {
     fn rest(&mut self) -> bool {
         if self.here.is_none() { return false; }
         if self.hero.fed == 0 { self.say(Tone::Danger, "You are too hungry to recover. Eat something first."); return false; }
+        if self.freezing() { self.say(Tone::Danger, "Too cold to rest. Make a fire first (B, with a torch), or find furs."); return false; }
+        let by_fire = self.on_land() && self.fire_near(3);
         let mut n = 0;
         while n < 60 && (self.hero.hp < self.hero.max_hp() || self.hero.mana < self.hero.max_mana()) {
             if self.monsters_in_sight() > 0 { if n == 0 { self.say(Tone::Danger, "You cannot rest with enemies near."); } break; }
             self.pass(100);
+            // By a fire one mends twice as fast.
+            if by_fire && self.turn / 100 % 3 == 0 && self.hero.fed > 0 { let h = &mut self.hero; h.hp = (h.hp + 1 + h.level as i32 / 6).min(h.max_hp()); }
             n += 1;
             if self.hero.hp <= 0 || self.here.is_none() { break; }
         }
-        if n > 0 { self.say(Tone::Info, format!("You rest a while ({} turns).", n)); }
+        if n > 0 { self.say(Tone::Info, format!("You rest a while{} ({} turns).", if by_fire { " by the fire" } else { "" }, n)); }
         n > 0
     }
 
@@ -1121,6 +1154,7 @@ impl Game {
     /// `cost` ticks pass: the adventurer's body, then every creature on this floor acts as its
     /// speed allows.
     pub fn pass(&mut self, cost: i32) {
+        let freezing = self.freezing();
         let before = self.turn / 100;
         self.turn += cost.max(1) as u64;
         let ticks = self.turn / 100 - before;
@@ -1131,7 +1165,7 @@ impl Game {
             let h = &mut self.hero;
             if h.glow > 0 { h.glow -= 1; }
             if h.hasted > 0 { h.hasted -= 1; }
-            if h.fed > 0 && self.turn / 100 % 3 == 0 {
+            if h.fed > 0 && self.turn / 100 % 3 == 0 && !freezing {
                 h.hp = (h.hp + 1 + h.level as i32 / 6).min(h.max_hp());
                 h.mana = (h.mana + 1 + h.level as i32 / 4 + h.skill(Skill::Magic) as i32 / 3).min(h.max_mana());
             }
@@ -1141,7 +1175,7 @@ impl Game {
         // Wounds mend.
         for w in self.hero.wounds.iter_mut() { w.1 -= ticks as i32; }
         if self.hero.wounds.iter().any(|w| w.1 <= 0) { self.hero.wounds.retain(|w| w.1 > 0); self.say(Tone::Info, "A wound has mended."); }
-        if ticks > 0 { self.burn(ticks); }
+        if ticks > 0 { self.burn(ticks); self.weather_tick(ticks); }
         if self.here.is_some() { self.monsters_act(cost); }
         if before * 100 / super::land::DAY != self.turn / super::land::DAY { self.companion_day(); self.regard_day(); }
         self.land_tick(before * 100);
@@ -1545,7 +1579,7 @@ impl Game {
         let soak = if armor > 0 { r.gen_range(armor / 2..=armor) } else { 0 };
         let dmg = raw - soak;
         if dmg <= 0 { self.effects.push(Effect::Puff { x: self.x, y: self.y, z: self.z }); return; }
-        let how = match d.look.as_str() { l if l.starts_with("folk") => "hits you", "rat" | "giant rat" | "wolf" | "bear" | "wild boar" => "bites you", "spider" | "giant spider" => "bites you with its fangs", "bat" => "bites you", "adder" => "strikes at you", _ => "hits you" };
+        let how = Game::blow_word(d.look.as_str(), r.gen::<u64>());
         let t = if dmg * 3 > self.hero.max_hp() { Tone::Danger } else { Tone::Hurt };
         self.say(t, format!("{} {}. ({})", cap(&m.the()), how, dmg));
         // A heavy blow wounds a part (a leg slows, an arm weakens, the head dazes).

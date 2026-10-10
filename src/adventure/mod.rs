@@ -29,7 +29,9 @@ pub mod rooms;
 pub mod site;
 pub mod surface;
 pub mod tales;
+pub mod prose;
 pub mod town;
+pub mod weather;
 pub mod wonders;
 pub mod world;
 

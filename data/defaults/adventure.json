@@ -124,6 +124,7 @@
     {"id": "rotten_meat", "name": "rotten flesh", "kind": "loot", "value": 0, "glyph": "Meat", "stack": true},
     {"id": "torch", "name": "torch", "kind": "light", "light": 5, "burn": 1500, "value": 2, "glyph": "Log", "stack": true},
     {"id": "rope", "name": "rope", "kind": "tool", "value": 50, "glyph": "Cloth"},
+    {"id": "furs", "name": "bundle of furs", "plural": "bundles of furs", "kind": "tool", "value": 40, "glyph": "Hide"},
     {"id": "shovel", "name": "shovel", "kind": "tool", "value": 20, "glyph": "Tool"},
     {"id": "spellbook", "name": "spellbook", "kind": "loot", "value": 150, "glyph": "Book"},
 

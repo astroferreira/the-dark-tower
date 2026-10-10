@@ -145,7 +145,7 @@ fn stock(role: Role, g: &Game) -> Vec<(&'static str, u32)> {
             v
         }
         Role::Trader => {
-            let mut v = vec![("health_potion", 1), ("mana_potion", 1), ("bread", 1), ("cheese", 1), ("meat", 1), ("torch", 1), ("rope", 1), ("shovel", 1), ("arrow", 10), ("bolt", 10), ("bow", 1), ("crossbow", 1)];
+            let mut v = vec![("health_potion", 1), ("mana_potion", 1), ("bread", 1), ("cheese", 1), ("meat", 1), ("torch", 1), ("furs", 1), ("rope", 1), ("shovel", 1), ("arrow", 10), ("bolt", 10), ("bow", 1), ("crossbow", 1)];
             if lvl >= 15 { v.extend([("strong_health_potion", 1), ("strong_mana_potion", 1)]); }
             if g.hero.calling.as_deref() == Some("sorcerer") { v.push(("wand_of_embers", 1)); }
             if g.hero.calling.as_deref() == Some("druid") { v.push(("snakebite_rod", 1)); }
