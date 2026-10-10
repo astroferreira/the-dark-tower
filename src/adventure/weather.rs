@@ -76,7 +76,7 @@ impl Game {
         if !self.on_land() { return false; }
         let t = self.temperature_at(self.tile) - if self.weather() == Weather::Snow { 3.0 } else { 0.0 };
         if t >= 1.0 || (!self.night() && t > -12.0) { return false; }
-        if self.hero.count("furs") > 0 { return false; }
+        if self.hero.count("furs") > 0 || self.hero.warm > 0 { return false; }
         !self.fire_near(3)
     }
 

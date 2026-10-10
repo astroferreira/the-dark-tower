@@ -33,7 +33,7 @@ death that costs experience). Turn-based and deterministic (`Game::act`).
   `hero.rs`, `item.rs`, `data.rs`.
 
 ## The parts
-- `data.rs` + `data/defaults/adventure.json`: 34 monsters (rat .. demon: hp, attack, defense,
+- `data.rs` + `data/defaults/adventure.json`: 131 monsters in 9 families (rat .. demon: hp, attack, defense,
   armour, speed, xp, look, ai melee/ranged/caster/slow, tier, habitats, loot, sounds, poison,
   heals, regen, packs, undead, lifesteal), ~90 items (weapons by skill, ammunition, wands,
   shields, armour by slot, jewels, potions, food, light, tools, creature loot), materials
@@ -297,11 +297,11 @@ everywhere).
 - Test: `land::tests::the_town_remembers_blood_and_deeds`.
 
 ## Rooms and puzzles (`rooms.rs`, `data/defaults/adventure_rooms.json`; card adv-set-pieces)
-- 23 authored rooms (flooded crypt, ossuary, hidden reliquary, throne of bones, lever vault,
+- 25 authored rooms (flooded crypt, ossuary, hidden reliquary, throne of bones, lever vault,
   riddle chapel, plate corridor, spider nursery, beast's larder, collapsed gallery, dwarven
   forge, secret armoury, scriptorium, cult altar, drowned hall, fallen adventurers, statue
   garden, ritual circle, guard room, fountain court, prison cells, smugglers' cache, hermit's
-  hole), each for some kinds of place and floors (any, first, last, deep), cut into solid rock
+  hole, miner's stash, bandits' hideaway), each for some kinds of place and floors (any, first, last, deep), cut into solid rock
   where it fits after the ways down are placed (`site::realize`: none hides a stair), joined by
   a passage from its one way in (door, hidden door, riddle door or gap), else not cut. A room's
   text is told the first time one steps into it (`Place::rooms`); its M cells get the place's
@@ -412,6 +412,34 @@ everywhere).
 - Window: the weather in the title and status, fog thickening beyond one's sight, rain streaks,
   snow; `--adventure-landscape` adds fog, rain and snow frames of the home land.
 - Tests: `weather::tests::fog_halves_sight`, `a_night_in_the_snow_without_a_fire_costs_life`.
+
+## Content breadth (card adv-content-breadth)
+- 131 monsters in 9 families (`MonsterDef::family`: beasts 29, folk 28, undead 17, vermin 15,
+  shadow 11, elementals 10, giants 8, marsh 8, dragons 5), drawn from the bestiary's bodies and
+  folk variants; 306 things; 43 spells; 16 armour sets; 20 materials (obsidian, black-iron,
+  mithril, star-iron, bloodwood, whalebone added). Generated once by a script (kept in the
+  session's scratchpad, not the repo) and hand-tuned since: the JSON is the source.
+- Abilities (`MonsterDef::abilities`): summon (its `summons`, twice at most, `Monster::summoned`),
+  web (from 2-4 cells: three turns stuck, `Hero::webbed`), charge (from 2-4 cells: closes and
+  strikes x1.5, `Game::charging`), fear (a blow may shake the hero: blows x0.7 for 15 turns,
+  `Hero::shaken`), drain (a blow takes mana and heals it).
+- Sets (`Data::sets`, `ItemDef::set`): four pieces worn (head, body, legs, feet) give the set's
+  armour, life, magic or melee (`Hero::set_bonus`). Enchantments (`Item::enchant`, rolled on
+  gear of the third tier up): flame, frost, venom (+25%), dawn (x1.5 on the undead), draining
+  (a fifth back as life), warding (+2 armour); named "of flame", worth 2.5x.
+- Gear is drawn half from the old hand lists, half from the data's items of the tier
+  (`ItemDef::tier`); treasure adds gems; the smith sells arms and sets up to the third tier by the
+  hero's level, the trader potions (antidote, elixir of warmth), food, rings, slings and
+  throwing weapons, the sage the new runes.
+- New spell kinds: find (the nearest unwalked place, or treasure on the floor), cure, food,
+  arrows, levitate (water and lava underfoot), charm (a beast lies still; not bosses, the dead
+  or the Shadow's), shield (mana takes blows first), invisible (nothing wakes; the awake lose
+  you), recall (to one's temple), reveal (hidden doors within reach); elemental "around" spells
+  use the magic formula.
+- `--adventure-gallery` also draws `PREFIX_bestiary.png`: every monster by family, with tier and
+  abilities.
+- Test: `data::tests::content_is_consistent` (the counts, families, loot, abilities, summons,
+  sets of four, spell kinds known).
 
 ## The window (`tiles/adventure.rs`, `tiles/adventure_ink.rs`)
 - The place as an inked plan (`adventure_ink::Plan`, kept per floor and zoom, cells redrawn when

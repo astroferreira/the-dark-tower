@@ -1181,7 +1181,39 @@ pub fn gallery(world: &crate::world::WorldData, history: Option<&crate::history:
         image::RgbImage::from_fn(w as u32, h as u32, |x, y| { let p = buf[y as usize * w + x as usize]; image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8]) }).save(&path)?;
         files.push(path);
     }
+    files.push(bestiary(prefix)?);
     Ok(files)
+}
+
+/// Every monster of the adventure drawn by family, named under it: PREFIX_bestiary.png.
+fn bestiary(prefix: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let d = crate::adventure::data::data();
+    let mut fams: Vec<String> = d.monsters.iter().map(|m| m.family.clone()).collect();
+    fams.sort(); fams.dedup();
+    let (cols, cw, ch) = (12usize, 140usize, 128usize);
+    let rows: usize = fams.iter().map(|f| (d.monsters.iter().filter(|m| &m.family == f).count() + cols - 1) / cols).sum();
+    let (w, h) = (cols * cw + 40, rows * ch + fams.len() * 40 + 40);
+    let mut buf = vec![hexc(PARCH); w * h];
+    let mut y0 = 20usize;
+    for f in &fams {
+        let n = d.monsters.iter().filter(|m| &m.family == f).count();
+        fonts::draw(&mut buf, w, h, 24.0, y0 as f32 + 4.0, &format!("{} ({})", f, n), Face::SmallCaps, 22.0, 0.5, 0x0030_1E14, None);
+        y0 += 36;
+        for (k, md) in d.monsters.iter().filter(|m| &m.family == f).enumerate() {
+            let (cx, cy) = (20 + (k % cols) * cw + cw / 2, y0 + (k / cols) * ch + ch / 2 - 12);
+            let mut m = crate::adventure::actor::Monster::new(k as u32 + 1, &md.id, 0, 0, 0);
+            m.left = false;
+            { let mut put = put_into(&mut buf, w, h, None); draw_monster(&mut put, &m, cx as f32, cy as f32, 44.0, false, 1.0); }
+            let label = format!("{} ({})", md.name, md.tier);
+            let tw = fonts::width(&label, Face::Italic, 13.0, 0.0);
+            fonts::draw(&mut buf, w, h, cx as f32 - tw / 2.0, (cy + 40) as f32, &label, Face::Italic, 13.0, 0.0, 0x0038_2A20, None);
+            if !md.abilities.is_empty() { let ab = md.abilities.join(", "); let tw = fonts::width(&ab, Face::Italic, 11.0, 0.0); fonts::draw(&mut buf, w, h, cx as f32 - tw / 2.0, (cy + 54) as f32, &ab, Face::Italic, 11.0, 0.0, 0x009A_2A1E, None); }
+        }
+        y0 += ((n + cols - 1) / cols) * ch + 4;
+    }
+    let path = format!("{}_bestiary.png", prefix);
+    image::RgbImage::from_fn(w as u32, h as u32, |x, y| { let p = buf[y as usize * w + x as usize]; image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8]) }).save(&path)?;
+    Ok(path)
 }
 
 /// `--adventure-landscape PREFIX`: the land about tiles of every kind (woods, mountains, desert,

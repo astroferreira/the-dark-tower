@@ -77,7 +77,7 @@ impl Game {
             let (x, y) = self.open_near(self.x + 4 + k as i32, self.y - 3);
             let uid = self.fresh_uid();
             let mut m = Monster::new(uid, "watchman", x, y, 0);
-            m.name = format!("a watchman of {}", tname);
+            m.name = format!("watchman of {}", tname);
             m.awake = true;
             m.town = town;
             if let Some(p) = self.land.as_mut() { p.monsters.push(m); }

@@ -23,6 +23,8 @@
     {"id": "fountain_court", "kinds": ["Temple", "Halls", "Labyrinth", "Castle"], "floor": "any", "text": "A fountain still runs here, clear and cold, under a cracked dome.", "rows": ["#########", "#P.....P#", "#...f...#", "#.E...C.#", "#P.....P#", "####+####"]},
     {"id": "prison_cells", "kinds": ["Castle", "Camp", "Cellar", "DarkFortress"], "floor": "any", "text": "Cells, their doors rusted shut. In one, someone scratched the days on the wall until they stopped.", "rows": ["#########", "#R#E#R#C#", "#D#D#D#D#", "#.......#", "####+####"]},
     {"id": "smugglers_cache", "kinds": ["Cave", "Mine", "Labyrinth", "Ruin", "Camp"], "floor": "any", "text": "A smugglers' cache behind a false wall: crates, a lamp gone cold, a tally of debts.", "rows": ["#######", "#c.C.a#", "#..R..#", "#a...c#", "###d###"]},
+    {"id": "miners_stash", "kinds": ["Mine", "Cave", "Halls"], "floor": "first", "text": "A miner's stash behind loose stones: a lamp, a purse, and a note that says 'mine, not theirs'.", "rows": ["#######", "#c.C..#", "#..R..#", "###d###"]},
+    {"id": "bandit_hideaway", "kinds": ["Cave", "Ruin", "Camp", "Lair"], "floor": "first", "text": "A hideaway behind a false wall: bedrolls, a strongbox, and the smell of old smoke.", "rows": ["#######", "#t.C.a#", "#.....#", "#c...C#", "###d###"]},
     {"id": "hermits_hole", "kinds": ["Cave", "Lair", "Mine"], "floor": "deep", "text": "Someone lived down here a long time, hidden from whatever hunts these tunnels.", "rows": ["#######", "#t.R.k#", "#.....#", "#..C..#", "#d#####"]}
   ],
   "riddles": [

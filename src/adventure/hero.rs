@@ -92,6 +92,20 @@ pub struct Hero {
     /// Gifts of the world's wonders kept for good ("grove": +10 life).
     #[serde(default)]
     pub boons: Vec<String>,
+    /// Turns caught in a web, shaken by terror (blows weaker), floating (water and lava
+    /// underfoot), shielded by mana, unseen; and turns kept warm by an elixir.
+    #[serde(default)]
+    pub webbed: u8,
+    #[serde(default)]
+    pub shaken: u16,
+    #[serde(default)]
+    pub levitate: u16,
+    #[serde(default)]
+    pub shield: u16,
+    #[serde(default)]
+    pub hidden: u16,
+    #[serde(default)]
+    pub warm: u16,
 }
 
 impl Hero {
@@ -103,7 +117,7 @@ impl Hero {
             poisoned: 0, hasted: 0, temple: 0, deaths: 0, kills: 0, blessed: false,
             skin: crate::persona::colour(&p.skin).unwrap_or([214.0, 172.0, 140.0]), hair: crate::persona::colour(&p.hair).unwrap_or([90.0, 60.0, 40.0]),
             beard: p.beard && !female, strength: p.attr(crate::persona::Attr::Strength) as u32,
-            wounds: Vec::new(), stance: 0, sneaking: false, boons: Vec::new(),
+            wounds: Vec::new(), stance: 0, sneaking: false, boons: Vec::new(), webbed: 0, shaken: 0, levitate: 0, shield: 0, hidden: 0, warm: 0,
         };
         h.skills[Skill::Magic as usize] = (0, 0);
         h.hp = h.max_hp();
@@ -120,16 +134,23 @@ impl Hero {
         let per = self.calling_def().map_or(8, |c| c.hp / 2 + 2);
         let ring: i32 = self.equipped.iter().flatten().map(|i| i.def().hp).sum();
         let boon = if self.boons.iter().any(|b| b == "grove") { 10 } else { 0 };
-        80 + per * (self.level as i32 - 1) + ring + boon
+        80 + per * (self.level as i32 - 1) + ring + boon + self.set_bonus().map_or(0, |s| s.hp)
     }
     pub fn max_mana(&self) -> i32 { let per = self.calling_def().map_or(4, |c| c.mana / 2 + 1); 20 + per * (self.level as i32 - 1) }
     pub fn skill(&self, s: Skill) -> u32 {
-        let bonus: i32 = match s { Skill::Magic => self.equipped.iter().flatten().map(|i| i.def().magic).sum(), Skill::Sword | Skill::Axe | Skill::Club | Skill::Fist => self.equipped.iter().flatten().map(|i| i.def().melee).sum(), _ => 0 };
+        let set = self.set_bonus();
+        let bonus: i32 = match s { Skill::Magic => self.equipped.iter().flatten().map(|i| i.def().magic).sum::<i32>() + set.map_or(0, |s| s.magic), Skill::Sword | Skill::Axe | Skill::Club | Skill::Fist => self.equipped.iter().flatten().map(|i| i.def().melee).sum::<i32>() + set.map_or(0, |s| s.melee), _ => 0 };
         (self.skills[s as usize].0 as i32 + bonus).max(0) as u32
     }
     pub fn weapon(&self) -> Option<&Item> { self.equipped[Slot::Hand as usize].as_ref() }
     pub fn weapon_skill(&self) -> Skill { match self.weapon() { Some(w) if w.def().kind == "weapon" => Skill::of_weapon(w.def().skill.as_deref()), Some(w) if w.def().kind == "wand" => Skill::Magic, _ => Skill::Fist } }
-    pub fn armor(&self) -> i32 { self.equipped.iter().flatten().map(|i| i.armor()).sum() }
+    pub fn armor(&self) -> i32 { self.equipped.iter().flatten().map(|i| i.armor()).sum::<i32>() + self.set_bonus().map_or(0, |s| s.armor) }
+    /// The armour set whose four pieces (head, body, legs, feet) are all worn.
+    pub fn set_bonus(&self) -> Option<&'static super::data::SetDef> {
+        let set = self.equipped[Slot::Body as usize].as_ref()?.def().set.clone()?;
+        let all = [Slot::Head, Slot::Body, Slot::Legs, Slot::Feet].iter().all(|s| self.equipped[*s as usize].as_ref().map_or(false, |i| i.def().set.as_deref() == Some(set.as_str())));
+        if all { data().set(&set) } else { None }
+    }
     pub fn defense(&self) -> i32 {
         let shield = self.equipped[Slot::Shield as usize].as_ref().map_or(0, |s| s.defense());
         let weapon = self.weapon().map_or(0, |w| w.defense());
@@ -143,12 +164,13 @@ impl Hero {
     /// How hard their blows land by stance and wounds (a factor).
     pub fn blow_factor(&self) -> f32 {
         let s = match self.stance { 1 => 0.7, 2 => 1.3, _ => 1.0 };
-        s * if self.wounded("arm") { 0.7 } else { 1.0 }
+        s * if self.wounded("arm") { 0.7 } else { 1.0 } * if self.shaken > 0 { 0.7 } else { 1.0 }
     }
     pub fn light(&self) -> i32 {
         let t = if self.torch > 0 { data().item("torch").map_or(5, |d| d.light) } else { 0 };
         let g = if self.glow > 0 { 6 } else { 0 };
-        (t.max(g)).max(1)
+        let worn = self.equipped.iter().flatten().map(|i| i.def().light).max().unwrap_or(0);
+        (t.max(g).max(worn)).max(1)
     }
     /// Turns a step takes (lower is faster), and a strike.
     pub fn step_time(&self) -> i32 {

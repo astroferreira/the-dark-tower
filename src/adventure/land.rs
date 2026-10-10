@@ -940,7 +940,14 @@ pub(crate) mod tests {
         let i = g.place().unwrap().monsters.iter().position(|m| m.uid == uid).unwrap();
         g.place_mut().unwrap().monsters[i].hp = 1;
         g.place_mut().unwrap().monsters[i].x = g.x + 1; g.place_mut().unwrap().monsters[i].y = g.y;
-        for _ in 0..20 { if !g.place().unwrap().monsters.iter().any(|m| m.uid == uid) { break; } g.act(Action::Attack(uid)); }
+        // (Held in place: this is about what the town remembers, not the chase.)
+        g.weather_set = Some(crate::adventure::weather::Weather::Clear);
+        for _ in 0..40 {
+            let Some(i) = g.place().unwrap().monsters.iter().position(|m| m.uid == uid) else { break };
+            let (hx, hy) = (g.x, g.y);
+            { let m = &mut g.place_mut().unwrap().monsters[i]; m.x = hx + 1; m.y = hy; }
+            g.act(Action::Attack(uid));
+        }
         assert!(g.regard_of(1) <= -60, "regard {}", g.regard_of(1));
         assert!(price(&g) > before, "prices rose: {} -> {}", before, price(&g));
         // Talk is barred; the watch meets them at the gate when they come back.

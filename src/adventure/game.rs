@@ -269,6 +269,9 @@ pub struct Game {
     /// Lands stood in at least once (their arrival paragraph told; tile indices).
     #[serde(default)]
     pub lands_told: Vec<u32>,
+    /// A charge's blow (a monster struck on its run).
+    #[serde(skip)]
+    pub charging: bool,
 }
 
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -282,7 +285,7 @@ impl Game {
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
             seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None, choice: None, regard: HashMap::new(),
-            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(), weather_set: None, entered: Vec::new(), lands_told: Vec::new(),
+            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(), weather_set: None, entered: Vec::new(), lands_told: Vec::new(), charging: false,
         };
         g.set_atlas();
         g.hero.temple = start_town;
@@ -467,6 +470,11 @@ impl Game {
     fn step(&mut self, dx: i32, dy: i32) -> Option<i32> {
         self.facing = (dx, dy);
         let (nx, ny) = (self.x + dx, self.y + dy);
+        if self.hero.webbed > 0 && self.monster_at(nx, ny).is_none() {
+            self.hero.webbed -= 1;
+            self.say(Tone::Info, if self.hero.webbed == 0 { "You tear free of the web." } else { "You struggle in the web." });
+            return Some(100);
+        }
         if let Some(k) = self.monster_at(nx, ny) {
             let uid = self.place().unwrap().monsters[k].uid;
             return self.melee(uid);
@@ -561,7 +569,9 @@ impl Game {
             }
             _ => {}
         }
-        if !t.walkable() {
+        // Floating: over water and lava as over the floor.
+        let floats = self.hero.levitate > 0 && t.wall == Wall::None && matches!(t.ground, Ground::Water | Ground::Lava) && !t.feature.blocks();
+        if !t.walkable() && !floats {
             match t.wall { Wall::None => {} _ => {} }
             return None;
         }
@@ -690,6 +700,8 @@ impl Game {
             "potion" => {
                 self.hero.spend(&it.id, 1);
                 if d.heal > 0 && !self.hero.wounds.is_empty() { let w = self.hero.wounds.remove(0); self.say(Tone::Info, format!("Your {} mends.", w.0)); }
+                if d.cure { self.hero.poisoned = 0; self.hero.wounds.clear(); self.hero.webbed = 0; self.say(Tone::Info, "The bitterness clears your blood."); }
+                if d.warm { self.hero.warm = 600; self.say(Tone::Info, "Warmth spreads from your belly to your fingers."); }
                 if d.heal > 0 { let before = self.hero.hp; self.hero.hp = (self.hero.hp + d.heal).min(self.hero.max_hp()); let g = self.hero.hp - before; self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: g, tone: Tone::Level }); }
                 if d.mana > 0 { self.hero.mana = (self.hero.mana + d.mana).min(self.hero.max_mana()); self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: d.mana, tone: Tone::Info }); }
                 self.say(Tone::Info, format!("You drink {}. Aaaah...", super::item::article(&d.name)));
@@ -821,6 +833,10 @@ impl Game {
             return Some(100);
         }
         let dmg = dmg - soak;
+        // An enchanted weapon: elements bite deeper, the dawn burns the dead, a draining blade feeds.
+        let ench = self.hero.weapon().and_then(|w| w.enchant.clone());
+        let dmg = match ench.as_deref() { Some("flame") | Some("frost") | Some("venom") if dmg > 0 => dmg * 5 / 4 + 1, Some("dawn") if dmg > 0 && m.def().undead => dmg * 3 / 2, _ => dmg };
+        if ench.as_deref() == Some("draining") && dmg > 0 { let h = &mut self.hero; h.hp = (h.hp + dmg / 5).min(h.max_hp()); }
         if dmg <= 0 {
             self.say(Tone::Info, format!("Your blow glances off {}'s hide.", m.the()));
             self.effects.push(Effect::Puff { x: m.x, y: m.y, z: m.z });
@@ -925,7 +941,41 @@ impl Game {
                 self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: self.hero.hp - before, tone: Tone::Level });
                 self.effects.push(Effect::Area { cells: vec![(self.x, self.y)], z: self.z, kind: "heal".into() });
             }
-            "light" => { self.hero.glow = 2000; self.look(); }
+            "light" => { self.hero.glow = (sp.power as i32 * 300).max(2000); self.look(); }
+            "cure" => { self.hero.poisoned = 0; self.hero.wounds.clear(); self.hero.webbed = 0; self.hero.shaken = 0; self.say(Tone::Info, "Your blood runs clean."); }
+            "food" => { stow(&mut self.hero.pack, Item::new("bread", 2)); self.say(Tone::Info, "Two loaves of bread, warm from nowhere."); }
+            "arrows" => { stow(&mut self.hero.pack, Item::new("arrow", sp.power as u32)); self.say(Tone::Info, format!("{} arrows fall into your quiver.", sp.power as u32)); }
+            "levitate" => { self.hero.levitate = (sp.power as u16) * 10; self.say(Tone::Info, "Your feet leave the ground: water and fire will not have you for a while."); }
+            "shield" => { self.hero.shield = (sp.power as u16) * 4; self.say(Tone::Info, "A shimmering shield closes about you: blows will cost mana before blood."); }
+            "invisible" => { self.hero.hidden = (sp.power as u16) * 5; self.say(Tone::Info, "You fade from sight."); }
+            "charm" => {
+                let Some(i) = pick_target(self, sp.range.max(1)) else { self.say(Tone::Info, "There is nothing to charm."); return None };
+                let m = self.place()?.monsters[i].clone();
+                if m.boss || m.def().undead || m.def().family == "shadow" { self.say(Tone::Info, format!("{} will not be charmed.", cap(&m.the()))); }
+                else if let Some(p) = self.place_mut() { let mm = &mut p.monsters[i]; mm.charmed = sp.power as i32; mm.awake = false; self.say(Tone::Info, format!("{} grows calm and lies down.", cap(&m.the()))); }
+            }
+            "find" => {
+                // The nearest place not yet walked, or the nearest treasure on this floor.
+                let w = self.world.w;
+                let here = self.tile;
+                let lead = self.sites.iter().filter(|s| s.kind != SiteKind::Town && s.kind != SiteKind::Wilds && s.kind != SiteKind::Cellar && !self.entered.contains(&s.id)).min_by_key(|s| (super::world::dist(s.tile, here, w), s.id)).map(|s| (s.name.clone(), s.tile));
+                let chest = self.floor().map(|f| f.cells(|t| matches!(t.feature, Feature::Chest { opened: false, .. } | Feature::Sarcophagus { opened: false, .. } | Feature::Plinth { item: Some(_) }))).unwrap_or_default().into_iter().min_by_key(|&(x, y)| (x - self.x).abs() + (y - self.y).abs());
+                if let Some((cx, cy)) = chest.filter(|_| !self.on_land()) { self.say(Tone::Quest, format!("Something of worth lies {} cells {}.", (cx - self.x).abs().max((cy - self.y).abs()), super::wonders::way(cx - self.x, cy - self.y).trim_start_matches("to the "))); }
+                else if let Some((name, t)) = lead { self.rumour(t); self.say(Tone::Quest, format!("{} lies {} days {} of here.", name, (super::world::dist(t, here, w) + 1) / 2, super::quest::direction(here, t, w))); }
+            }
+            "reveal" => {
+                let (x, y) = (self.x, self.y);
+                let r2 = sp.power as i32;
+                let near: Vec<(i32, i32)> = self.floor().map(|f| (-r2..=r2).flat_map(|dy| (-r2..=r2).map(move |dx| (x + dx, y + dy))).filter(|&(a, b)| f.inside(a, b) && f.at(a, b).feature == Feature::SecretDoor).collect()).unwrap_or_default();
+                for (a, b) in near.iter() { self.reveal_door(*a, *b); }
+                self.say(Tone::Info, if near.is_empty() { "Nothing hidden answers your call." } else { "The stone shimmers: a hidden door stands revealed!" });
+                self.look();
+            }
+            "recall" => {
+                if self.monsters_in_sight() > 0 { self.say(Tone::Info, "Not with enemies in sight."); return None; }
+                self.say(Tone::Info, "The world folds, and you stand before your temple.");
+                self.wake_at_temple();
+            }
             "haste" => { self.hero.hasted = 800; }
             "strike" | "strike_distance" | "strike_melee" => {
                 let range = if sp.kind == "strike_melee" { 1 } else { sp.range.max(1) };
@@ -976,7 +1026,7 @@ impl Game {
                     let Some(i) = self.find_monster(uid) else { continue };
                     let m = self.place()?.monsters[i].clone();
                     if m.hp <= 0 { continue; }
-                    let dmg = if sp.kind == "around" {
+                    let dmg = if sp.kind == "around" && sp.element.is_some() { power(sp.power * 22.0, &mut r) } else if sp.kind == "around" {
                         let attack = self.hero.weapon().map_or(5, |w| w.attack().max(10));
                         let sk = self.hero.skill(self.hero.weapon_skill()) as f32;
                         ((0.085 * sk * attack as f32 + lvl / 5.0) * sp.power * r.gen_range(0.5..1.0)).round() as i32 - m.armor() / 2
@@ -1117,6 +1167,9 @@ impl Game {
     /// The adventurer takes `dmg` from `what`.
     pub fn hurt(&mut self, dmg: i32, what: &str) {
         if dmg <= 0 { return; }
+        // A magic shield takes the blow from one's mana first.
+        let dmg = if self.hero.shield > 0 && self.hero.mana > 0 { let m = dmg.min(self.hero.mana); self.hero.mana -= m; dmg - m } else { dmg };
+        if dmg <= 0 { return; }
         self.hero.hp -= dmg;
         self.effects.push(Effect::Number { x: self.x, y: self.y, z: self.z, value: dmg, tone: Tone::Hurt });
         if self.hero.hp <= 0 { self.die(what); }
@@ -1172,8 +1225,14 @@ impl Game {
             if h.poisoned > 0 { h.poisoned -= 1; let d = 1 + h.poisoned / 8; self.hurt(d, "poison"); if self.hero.poisoned == 0 { self.say(Tone::Info, "The poison has run its course."); } }
             if self.hero.fed == 0 && self.turn / 100 % 50 == 0 { self.say(Tone::Danger, "You are hungry, and you will not heal until you eat (F eats, or click food in the pack)."); }
         }
-        // Wounds mend.
+        // Wounds mend; spells and terror wear off.
         for w in self.hero.wounds.iter_mut() { w.1 -= ticks as i32; }
+        { let t = ticks.min(u16::MAX as u64) as u16; let h = &mut self.hero;
+          let was = (h.levitate > 0, h.shield > 0, h.hidden > 0);
+          h.shaken = h.shaken.saturating_sub(t); h.levitate = h.levitate.saturating_sub(t); h.shield = h.shield.saturating_sub(t); h.hidden = h.hidden.saturating_sub(t); h.warm = h.warm.saturating_sub(t);
+          if was.0 && h.levitate == 0 { self.say(Tone::Info, "Your feet settle back on the ground."); }
+          if was.1 && self.hero.shield == 0 { self.say(Tone::Info, "Your magic shield fades."); }
+          if was.2 && self.hero.hidden == 0 { self.say(Tone::Info, "You are seen again."); } }
         if self.hero.wounds.iter().any(|w| w.1 <= 0) { self.hero.wounds.retain(|w| w.1 > 0); self.say(Tone::Info, "A wound has mended."); }
         if ticks > 0 { self.burn(ticks); self.weather_tick(ticks); }
         if self.here.is_some() { self.monsters_act(cost); }
@@ -1382,6 +1441,11 @@ impl Game {
             (dx, dx <= 8 && f.clear_line((m.x, m.y), (hx, hy)), f.outdoor)
         };
         let d = m.def();
+        // Charmed: it lies still until the charm wears off.
+        if m.charmed > 0 { let mm = &mut self.pl_mut(id).monsters[k]; mm.charmed -= 1; mm.awake = false; return; }
+        // The unseen hero: nothing wakes, and the awake lose them beyond two cells.
+        let sees = sees && (self.hero.hidden == 0 || dx <= 1);
+        if self.hero.hidden > 0 && m.awake && dx > 2 && !m.boss && self.rng.gen_bool(0.2) { self.pl_mut(id).monsters[k].awake = false; return; }
         if !m.awake {
             let wake = if self.hero.sneaking { 2 } else { 5 };
             if sees && (dx <= wake || (outdoor && (!self.hero.sneaking || dx <= 4))) {
@@ -1400,6 +1464,44 @@ impl Game {
         if dx > 14 && !m.boss { self.pl_mut(id).monsters[k].awake = false; return; }
         if m.fear > 0 || m.maimed > 0 { let mm = &mut self.pl_mut(id).monsters[k]; mm.fear = (mm.fear - 1).max(0); mm.maimed = (mm.maimed - 1).max(0); }
         let coward = d.ai == "coward" || (!m.boss && m.hp < m.max_hp / 6 && d.ai != "slow" && !d.undead) || (m.fear > 0 && !d.undead);
+        // Abilities: calling up its kind, a web from afar, a charge.
+        if sees && !coward && !d.abilities.is_empty() {
+            let has = |a: &str| d.abilities.iter().any(|x| x == a);
+            if has("summon") && m.summoned < 2 && dx <= 6 && self.rng.gen_bool(0.1) {
+                if let Some(def) = d.summons.clone() {
+                    let spot = self.floor().and_then(|f| (1..4).flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| (m.x + dx, m.y + dy)))).find(|&(a, b)| f.walkable(a, b) && (a, b) != (hx, hy)));
+                    if let Some((a, b)) = spot.filter(|&(a, b)| self.monster_at(a, b).is_none()) {
+                        let uid = self.fresh_uid();
+                        let mut c = Monster::new(uid, &def, a, b, z);
+                        c.awake = true;
+                        let cname = c.name.clone();
+                        let pl = self.pl_mut(id);
+                        pl.monsters[k].summoned += 1;
+                        pl.monsters.push(c);
+                        self.say(Tone::Danger, format!("{} calls up {}!", cap(&m.the()), super::item::article(&cname)));
+                        return;
+                    }
+                }
+            }
+            if has("web") && (2..=4).contains(&dx) && self.hero.webbed == 0 && self.rng.gen_bool(0.2) {
+                self.hero.webbed = 3;
+                self.effects.push(Effect::Missile { from: (m.x, m.y), to: (hx, hy), z, kind: "blow".into() });
+                self.say(Tone::Danger, format!("{} throws a sticky web over you!", cap(&m.the())));
+                return;
+            }
+            if has("charge") && (2..=4).contains(&dx) && self.rng.gen_bool(0.3) {
+                let spot = DIRS8.iter().map(|(ox, oy)| (hx + ox, hy + oy)).filter(|&(a, b)| self.floor().map_or(false, |f| f.walkable(a, b) && f.clear_line((m.x, m.y), (a, b))) && self.monster_at(a, b).is_none())
+                    .min_by_key(|&(a, b)| (a - m.x).abs() + (b - m.y).abs());
+                if let Some((a, b)) = spot {
+                    { let mm = &mut self.pl_mut(id).monsters[k]; mm.x = a; mm.y = b; }
+                    self.say(Tone::Danger, format!("{} charges!", cap(&m.the())));
+                    self.charging = true;
+                    self.monster_strikes(id, k);
+                    self.charging = false;
+                    return;
+                }
+            }
+        }
         // Casters heal themselves when hurt.
         if d.heals > 0 && m.hp < m.max_hp / 2 && self.rng.gen_bool(0.3) {
             let mm = &mut self.pl_mut(id).monsters[k];
@@ -1567,7 +1669,7 @@ impl Game {
         // Surrounded: each other foe at one's side splits the guard and finds an opening.
         let (hx, hy, hz) = (self.x, self.y, self.z);
         let flank = self.places.get(&id).or(if id == LAND { self.land.as_ref() } else { None }).map_or(0, |p| p.monsters.iter().filter(|o| o.uid != m.uid && o.z == hz && o.hp > 0 && (o.x - hx).abs() <= 1 && (o.y - hy).abs() <= 1).count()) as i32;
-        let raw = (r.gen_range(0..=m.attack().max(1)) as f32 * (1.0 + 0.2 * flank as f32)).round() as i32;
+        let raw = (r.gen_range(0..=m.attack().max(1)) as f32 * (1.0 + 0.2 * flank as f32) * if self.charging { 1.5 } else { 1.0 }).round() as i32;
         let block = r.gen_range(0..=(self.hero.defense().max(0) / (1 + flank)));
         if let Some(l) = self.hero.train(Skill::Shielding, 1) { self.say(Tone::Level, format!("You advance to shielding {}.", l)); }
         if raw <= block / 2 {
@@ -1589,6 +1691,8 @@ impl Game {
         }
         if d.poison > 0 && r.gen_bool(0.4) && !self.hero.equipped.iter().flatten().any(|i| i.def().resist.as_deref() == Some("poison")) { self.hero.poisoned += d.poison; self.say(Tone::Hurt, "You are poisoned."); }
         if d.lifesteal { let p = self.pl_mut(id); let mm = &mut p.monsters[k]; mm.hp = (mm.hp + dmg / 2).min(mm.max_hp); }
+        if d.abilities.iter().any(|a| a == "fear") && self.hero.shaken == 0 && r.gen_bool(0.25) { self.hero.shaken = 15; self.say(Tone::Danger, format!("Terror grips you before {}: your blows falter.", m.the())); }
+        if d.abilities.iter().any(|a| a == "drain") { let dr = (dmg / 2).min(self.hero.mana); self.hero.mana -= dr; let p = self.pl_mut(id); let mm = &mut p.monsters[k]; mm.hp = (mm.hp + dmg / 2).min(mm.max_hp); if r.gen_bool(0.3) { self.say(Tone::Hurt, format!("{} drinks your strength.", cap(&m.the()))); } }
         self.hurt(dmg, &m.a());
     }
 

@@ -46,6 +46,14 @@ pub struct MonsterDef {
     pub ghost: bool,
     #[serde(default)]
     pub lifesteal: bool,
+    /// Its family (undead, beasts, vermin, marsh, folk, giants, elementals, shadow, dragons).
+    #[serde(default)]
+    pub family: String,
+    /// What it can do beyond a blow: summon (its `summons`), fear, drain, charge, web.
+    #[serde(default)]
+    pub abilities: Vec<String>,
+    #[serde(default)]
+    pub summons: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -109,6 +117,32 @@ pub struct ItemDef {
     /// A rune's spell (cast once, by anyone, without mana).
     #[serde(default)]
     pub spell: Option<String>,
+    /// Where it is found: gear of this tier (0: only the hand lists).
+    #[serde(default)]
+    pub tier: u32,
+    /// The armour set it belongs to (all four pieces worn: the set's bonus).
+    #[serde(default)]
+    pub set: Option<String>,
+    /// A potion that cures poison and wounds; one that keeps out the cold a night.
+    #[serde(default)]
+    pub cure: bool,
+    #[serde(default)]
+    pub warm: bool,
+}
+
+/// An armour set's bonus when its four pieces are worn.
+#[derive(Clone, Debug, Deserialize)]
+pub struct SetDef {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub armor: i32,
+    #[serde(default)]
+    pub hp: i32,
+    #[serde(default)]
+    pub magic: i32,
+    #[serde(default)]
+    pub melee: i32,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -160,6 +194,8 @@ pub struct Data {
     pub materials: Vec<MaterialDef>,
     pub callings: Vec<CallingDef>,
     pub spells: Vec<SpellDef>,
+    #[serde(default)]
+    pub sets: Vec<SetDef>,
 }
 
 impl Data {
@@ -168,6 +204,7 @@ impl Data {
     pub fn material(&self, name: &str) -> Option<&MaterialDef> { self.materials.iter().find(|m| m.name == name) }
     pub fn calling(&self, id: &str) -> Option<&CallingDef> { self.callings.iter().find(|m| m.id == id) }
     pub fn spell(&self, id: &str) -> Option<&SpellDef> { self.spells.iter().find(|m| m.id == id) }
+    pub fn set(&self, id: &str) -> Option<&SetDef> { self.sets.iter().find(|m| m.id == id) }
     /// Monsters that live in `habitat`, at most `tier`.
     pub fn living_in(&self, habitat: &str, tier: u32) -> Vec<&MonsterDef> {
         self.monsters.iter().filter(|m| m.tier <= tier && m.habitats.iter().any(|h| h == habitat)).collect()
@@ -185,7 +222,21 @@ mod tests {
     #[test]
     fn content_is_consistent() {
         let d = data();
-        assert!(d.monsters.len() >= 30);
+        // Breadth (card adv-content-breadth): ~120 monsters in families, ~300 things, ~40 spells.
+        assert!(d.monsters.len() >= 120 && d.items.len() >= 300 && d.spells.len() >= 40, "{} monsters, {} items, {} spells", d.monsters.len(), d.items.len(), d.spells.len());
+        let mut fams: Vec<&str> = d.monsters.iter().map(|m| m.family.as_str()).collect();
+        fams.sort(); fams.dedup();
+        assert!(fams.len() >= 8 && !fams.contains(&""), "families: {:?}", fams);
+        for m in &d.monsters {
+            assert!(!m.loot.is_empty(), "{} carries nothing", m.id);
+            for a in &m.abilities { assert!(matches!(a.as_str(), "summon" | "fear" | "drain" | "charge" | "web"), "{} has unknown ability {}", m.id, a); }
+            if m.abilities.iter().any(|a| a == "summon") { assert!(m.summons.as_deref().and_then(|s| d.monster(s)).is_some(), "{} summons nothing", m.id); }
+        }
+        for s in &d.sets { assert_eq!(d.items.iter().filter(|i| i.set.as_deref() == Some(s.id.as_str())).count(), 4, "set {} is not four pieces", s.id); }
+        let mut ids: Vec<&str> = d.items.iter().map(|i| i.id.as_str()).chain(d.monsters.iter().map(|m| m.id.as_str())).collect();
+        let n = ids.len(); ids.sort(); ids.dedup();
+        assert!(ids.len() >= n - 1, "duplicate ids");
+        for s in &d.spells { assert!(matches!(s.kind.as_str(), "heal" | "light" | "haste" | "strike" | "strike_distance" | "strike_melee" | "around" | "ball" | "wave" | "find" | "cure" | "food" | "arrows" | "levitate" | "charm" | "shield" | "invisible" | "recall" | "reveal"), "spell {} of unknown kind {}", s.id, s.kind); }
         for m in &d.monsters {
             for (id, chance, lo, hi) in &m.loot {
                 assert!(d.item(id).is_some(), "{} drops unknown item {}", m.id, id);

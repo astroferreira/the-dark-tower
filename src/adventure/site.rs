@@ -477,7 +477,9 @@ pub fn gear(b: &mut Builder, tier: u32) -> Item {
         4 => &["broadsword", "battle_axe", "battle_hammer", "chain_armor", "plate_legs", "round_shield", "steel_helmet", "silver_amulet", "power_ring"],
         _ => &["broadsword", "battle_axe", "battle_hammer", "plate_armor", "plate_legs", "dragon_shield", "steel_helmet", "power_ring", "wyvern_talisman"],
     };
-    let id = b.pick(ids).unwrap();
+    // The hand list and the data's own gear of this tier (sets, arms, shields, jewels, wands).
+    let more: Vec<&'static str> = data().items.iter().filter(|i| i.tier == tier.clamp(1, 6) && matches!(i.kind.as_str(), "weapon" | "armour" | "shield" | "jewel" | "wand")).map(|i| i.id.as_str()).collect();
+    let id = if !more.is_empty() && b.chance(0.5) { *b.pick(&more).as_ref().unwrap() } else { b.pick(ids).unwrap() };
     let def = data().item(id).unwrap();
     let metal = def.material.as_deref().map_or(false, |m| matches!(m, "iron" | "copper" | "steel" | "bronze"));
     let mut it = Item::new(id, 1);
@@ -488,6 +490,11 @@ pub fn gear(b: &mut Builder, tier: u32) -> Item {
     let roll = b.range(0, 99);
     it.quality = match roll { 0..=54 => 0, 55..=74 => 1, 75..=86 => 2, 87..=94 => 3, 95..=98 => 4, _ => 5 };
     if tier >= 4 && it.quality < 2 { it.quality += 1; }
+    // Now and then from the third tier: an enchantment.
+    if tier >= 3 && b.chance(0.08 + 0.02 * tier as f64) {
+        let e = match def.kind.as_str() { "weapon" => b.pick(&["flame", "frost", "venom", "dawn", "draining"]), "armour" | "shield" => Some("warding"), _ => None };
+        it.enchant = e.map(|s| s.to_string());
+    }
     it
 }
 
@@ -499,6 +506,7 @@ pub fn treasure(b: &mut Builder, tier: u32) -> Vec<Item> {
     if b.chance(0.35) { v.push(gear(b, tier)); }
     if b.chance(0.25) { v.push(Item::new(*b.pick(&["bread", "cheese", "meat", "torch", "torch", "rope"]).as_ref().unwrap(), b.range(1, 3) as u32)); }
     if tier >= 3 && b.chance(0.3) { v.push(Item::new(if tier >= 5 { "gem_large" } else { "gem_small" }, 1)); }
+    if tier >= 3 && b.chance(0.2) { v.push(Item::new(*b.pick(&["ruby", "sapphire", "emerald", "amethyst", "topaz", "opal", "pearl", "diamond"][..(tier as usize + 3).min(8)]).as_ref().unwrap(), 1)); }
     if tier >= 2 && b.chance(0.25) { v.push(Item::new(*b.pick(&["rune_flame", "rune_holy", "rune_heal", "rune_stones", "rune_fire"][..(tier as usize + 1).min(5)]).as_ref().unwrap(), b.range(1, 3) as u32)); }
     v
 }

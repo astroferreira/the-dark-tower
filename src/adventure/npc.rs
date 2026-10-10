@@ -142,17 +142,33 @@ fn stock(role: Role, g: &Game) -> Vec<(&'static str, u32)> {
                 ("leather_helmet", 1), ("leather_armor", 1), ("leather_legs", 1), ("leather_boots", 1), ("chain_helmet", 1), ("brass_armor", 1), ("chain_legs", 1)];
             if lvl >= 10 { v.extend([("viking_helmet", 1), ("scale_armor", 1), ("chain_armor", 1), ("round_shield", 1)]); }
             if lvl >= 20 { v.extend([("broadsword", 1), ("battle_axe", 1), ("battle_hammer", 1), ("plate_legs", 1)]); }
+            // The forge's own work of the hero's standing (sets and arms by tier, up to the third).
+            let top = (1 + lvl / 8).min(3);
+            v.extend(super::data::data().items.iter().filter(|i| i.tier >= 1 && i.tier <= top && matches!(i.kind.as_str(), "weapon" | "armour" | "shield") && i.material.as_deref() != Some("cloth")).map(|i| (i.id.as_str(), if i.stack { 5 } else { 1 })));
             v
         }
         Role::Trader => {
             let mut v = vec![("health_potion", 1), ("mana_potion", 1), ("bread", 1), ("cheese", 1), ("meat", 1), ("torch", 1), ("furs", 1), ("rope", 1), ("shovel", 1), ("arrow", 10), ("bolt", 10), ("bow", 1), ("crossbow", 1)];
             if lvl >= 15 { v.extend([("strong_health_potion", 1), ("strong_mana_potion", 1)]); }
+            v.extend([("antidote", 1), ("elixir_of_warmth", 1), ("apple", 1), ("pick", 1), ("lockpick", 1), ("copper_ring", 1), ("bone_charm", 1), ("ring_of_light", 1), ("sling", 1), ("small_stone", 10), ("throwing_knife", 5), ("javelin", 3)]);
+            if lvl >= 25 { v.extend([("great_health_potion", 1), ("spirit_potion", 1), ("travel_bread", 1)]); }
+            if lvl >= 12 { v.extend([("druid_armor", 1), ("sorcerer_armor", 1), ("ranger_armor", 1)]); }
             if g.hero.calling.as_deref() == Some("sorcerer") { v.push(("wand_of_embers", 1)); }
             if g.hero.calling.as_deref() == Some("druid") { v.push(("snakebite_rod", 1)); }
             v
         }
         Role::Innkeeper => vec![("bread", 1), ("cheese", 1), ("meat", 1), ("fish", 1)],
-        Role::Sage => { let mut v = vec![("rune_flame", 1), ("rune_holy", 1)]; if lvl >= 12 { v.extend([("rune_heal", 1), ("rune_stones", 1)]); } if lvl >= 20 { v.push(("rune_fire", 1)); } v }
+        Role::Sage => {
+            let mut v = vec![("rune_flame", 1), ("rune_holy", 1), ("rune_cure", 1)];
+            if lvl >= 10 { v.push(("rune_reveal", 1)); }
+            if lvl >= 12 { v.extend([("rune_heal", 1), ("rune_stones", 1), ("rune_energy_strike", 1), ("rune_levitate", 1)]); }
+            if lvl >= 14 { v.push(("rune_magic_shield", 1)); }
+            if lvl >= 18 { v.push(("rune_recall", 1)); }
+            if lvl >= 20 { v.push(("rune_fire", 1)); }
+            if lvl >= 28 { v.extend([("rune_thunderstorm", 1), ("rune_avalanche", 1), ("rune_death_strike", 1)]); }
+            if lvl >= 30 { v.push(("rune_ultimate_heal", 1)); }
+            v
+        }
         _ => Vec::new(),
     }
 }

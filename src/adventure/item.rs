@@ -23,12 +23,15 @@ pub struct Item {
     pub story: Option<String>,
     /// A key's lock, a quest item's quest.
     pub tag: u32,
+    /// An enchantment ("flame", "frost", "venom", "dawn", "draining", "warding").
+    #[serde(default)]
+    pub enchant: Option<String>,
 }
 
 impl Item {
     pub fn new(id: &str, count: u32) -> Item {
         let mat = data().item(id).and_then(|d| d.material.clone());
-        Item { id: id.to_string(), count: count.max(1), material: mat, quality: 0, name: None, story: None, tag: 0 }
+        Item { id: id.to_string(), count: count.max(1), material: mat, quality: 0, name: None, story: None, tag: 0, enchant: None }
     }
     pub fn of(id: &str, material: &str, quality: u8) -> Item {
         let mut i = Item::new(id, 1);
@@ -43,7 +46,7 @@ impl Item {
         i
     }
     pub fn def(&self) -> &'static ItemDef { data().item(&self.id).unwrap_or_else(|| data().item("bone").unwrap()) }
-    pub fn stacks(&self) -> bool { self.def().stack && self.name.is_none() && self.quality == 0 }
+    pub fn stacks(&self) -> bool { self.def().stack && self.name.is_none() && self.quality == 0 && self.enchant.is_none() }
     pub fn same_stack(&self, o: &Item) -> bool { self.stacks() && o.stacks() && self.id == o.id && self.material == o.material }
     pub fn is_artifact(&self) -> bool { self.quality >= 6 }
     fn mat_att(&self) -> f32 { self.material.as_deref().and_then(|m| data().material(m)).map_or(1.0, |m| m.att) }
@@ -55,10 +58,10 @@ impl Item {
     /// Attack value (weapons, ammunition, wands).
     pub fn attack(&self) -> i32 { (self.def().attack as f32 * self.mat_att() * self.q()).round() as i32 }
     pub fn defense(&self) -> i32 { (self.def().defense as f32 * self.mat_arm() * self.q()).round() as i32 }
-    pub fn armor(&self) -> i32 { let a = self.def().armor; if a == 0 { 0 } else { ((a as f32 * self.mat_arm() * self.q()).round() as i32).max(1) } }
+    pub fn armor(&self) -> i32 { let a = self.def().armor; let w = if self.enchant.as_deref() == Some("warding") { 2 } else { 0 }; if a == 0 { 0 } else { ((a as f32 * self.mat_arm() * self.q()).round() as i32).max(1) + w } }
     /// What a trader pays (a third of its worth; an artifact's worth is its fame).
     pub fn value(&self) -> u32 {
-        let v = self.def().value as f32 * self.q().powi(3) * self.mat_att().max(0.5).powi(2);
+        let v = self.def().value as f32 * self.q().powi(3) * self.mat_att().max(0.5).powi(2) * if self.enchant.is_some() { 2.5 } else { 1.0 };
         (v.round() as u32).max(if self.def().value > 0 { 1 } else { 0 }) * self.count
     }
 
@@ -74,6 +77,7 @@ impl Item {
         let base = format!("{}{}{}", if q.is_empty() || self.is_artifact() { String::new() } else { format!("{} ", q) }, mat, d.name);
         // Boots and legs come in pairs.
         let base = if d.name.ends_with("boots") || d.name.ends_with("legs") { format!("pair of {}", base) } else { base };
+        let base = match &self.enchant { Some(e) => format!("{} of {}", base, match e.as_str() { "dawn" => "the dawn", e => e }), None => base };
         match &self.name {
             Some(n) if d.kind == "key" => n.clone(),
             Some(n) => format!("{}, {}", n, article(&base)),
