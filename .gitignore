@@ -26,3 +26,8 @@ lore_*.md
 
 # Played colonies and their legends (local data)
 /colonies
+
+# Scratch output from runs in the repo root (logs, annals, timelapses)
+/log.txt
+/annals.html
+/timelapse_*.gif
