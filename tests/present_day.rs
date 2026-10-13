@@ -217,3 +217,54 @@ fn peoples_know_and_tell_their_own_news() {
     assert!(two_ways >= 8, "few differing accounts:\n{accounts}");
     assert!(out.lines().any(|l| l.contains(" (as the ") && l.contains("news: ")), "no news told with a slant:\n{out}");
 }
+
+/// A saved world names its features as the fresh one did (card 'Gazetteer names change after save
+/// and load': 'the Ana Sea' had become 'the Westburg Sea' on reload).
+#[test]
+fn the_gazetteer_survives_save_and_load() {
+    let dir = std::env::temp_dir().join(format!("gazetteer_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("dev.world");
+    let gaz = |args: &[&str]| -> String {
+        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(args).output().expect("run planet_generator");
+        assert!(out.status.success());
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        text.lines().skip_while(|l| !l.contains("Gazetteer")).collect::<Vec<_>>().join("\n")
+    };
+    let fresh = gaz(&["--dev", "--headless", "--gazetteer", "--save-world", path.to_str().unwrap()]);
+    let loaded = gaz(&["--load-world", path.to_str().unwrap(), "--headless", "--gazetteer"]);
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(fresh.lines().count() > 20, "no gazetteer:\n{fresh}");
+    assert_eq!(fresh, loaded, "the reloaded world names its features differently");
+}
+
+/// Hard times (`history/hard_times.rs`, card 'More ruins from plague, famine and depopulation'):
+/// over eight dev seeds the world has more ruins with them than without, and the new ruins carry
+/// their causes in the chronicle (villages drifting to a city, the hungry leaving, the last of a
+/// town leaving after a plague).
+#[test]
+fn hard_times_leave_more_ruins_with_causes() {
+    let ruins = |seed: &str, off: bool| -> usize {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_planet_generator"));
+        cmd.args(["--dev", "--seed", seed, "--headless", "--gazetteer"]);
+        if off { cmd.env("PLANET_NO_HARD_TIMES", "1"); }
+        let text = String::from_utf8_lossy(&cmd.output().expect("run planet_generator").stdout).to_string();
+        let line = text.lines().find(|l| l.starts_with("History on the map:")).unwrap_or_else(|| panic!("no map line:\n{text}")).to_string();
+        line.split(" ruins").next().and_then(|x| x.rsplit(' ').next()).and_then(|n| n.parse().ok()).unwrap_or(0)
+    };
+    let seeds = ["1", "2", "3", "4", "5", "9", "12", "20"];
+    let (with, without): (usize, usize) = seeds.iter().map(|s| (ruins(s, false), ruins(s, true))).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+    assert!(with > without, "no more ruins with hard times: {with} against {without} over {} seeds", seeds.len());
+    // Their causes, in the chronicle.
+    let dir = std::env::temp_dir().join(format!("hard_times_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let dump = dir.join("chronicle.txt");
+    let mut causes = 0;
+    for s in ["9", "12"] {
+        Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--seed", s, "--headless", "--chronicle-dump", dump.to_str().unwrap()]).output().expect("run planet_generator");
+        let text = std::fs::read_to_string(&dump).unwrap_or_default();
+        causes += text.lines().filter(|l| l.contains(" one by one, and the last families followed") || l.contains("The hungry left ") || l.contains("took what they could carry and left it to ruin")).count();
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(causes > 0, "no ruin of hard times in the chronicles of seeds 9 and 12");
+}

@@ -241,25 +241,31 @@ impl Colony {
             c.push((2.2, ProjectKind::Windbreak, format!("the nights are cold ({:.0} °C by day), and there is no wood to burn", self.temperature()), 10, (hut.0, hut.1.saturating_sub(2))));
         }
         if material == ItemKind::Log && !have(self, ProjectKind::Woodpile) {
-            c.push((2.2, ProjectKind::Woodpile, format!("the nights are cold ({:.0} °C by day), and no firewood is stacked", self.temperature()), 8, (hut.0 + HUT_W as u16 + 1, hut.1 + 1)));
+            c.push((2.2, ProjectKind::Woodpile, format!("the nights are cold ({:.0} °C by day), and no firewood is stacked", self.temperature()), 8, self.dry_or_lot((self.hall_east() + 1, hut.1 + 1), ProjectKind::Woodpile, 3, 1)));
         }
         if let Some(t) = threat.as_ref().filter(|_| !have(self, ProjectKind::Palisade)) {
             let n = raid_in.unwrap_or(20);
             let many = ["raiders", "deserters", "the Exiles", "outlaws"].iter().any(|w| t.starts_with(w));
             c.push((3.0 + 2.0 / (n as f32 + 1.0), ProjectKind::Palisade, format!("{} {} foretold{}, and there is no wall", t, if many { "are" } else { "is" }, raid_in.map(|n| format!(" in {} nights", n)).unwrap_or_default()), 24, self.camp));
         }
-        if alive > beds {
-            if let Some(at) = self.find_site_for(ProjectKind::SecondHut, HUT_W as u16, HUT_H as u16).filter(|_| !have(self, ProjectKind::SecondHut)) {
+        if alive > beds && !have(self, ProjectKind::SecondHut) {
+            // The first hut lengthened into a hall where the ground allows (card 'Buildings rise
+            // in stages and grow'), else a second hut beside it.
+            if let Some(at) = self.lengthen_site() {
+                c.push((2.0 + 0.3 * (alive - beds) as f32, ProjectKind::SecondHut, format!("there are {} of them and {} beds; they will lengthen the hut into a hall", alive, beds), 30, at));
+            } else if let Some(at) = self.find_site_for(ProjectKind::SecondHut, HUT_W as u16, HUT_H as u16) {
                 c.push((2.0 + 0.3 * (alive - beds) as f32, ProjectKind::SecondHut, format!("there are {} of them and {} beds", alive, beds), 30, at));
             }
         }
         if let Some(d) = winter.filter(|&d| d <= 70 && !have(self, ProjectKind::Smokehouse)) {
-            if let Some(at) = self.find_site_for(ProjectKind::Smokehouse, 3, 3) {
-                c.push((2.5 + (70 - d.min(70)) as f32 / 30.0, ProjectKind::Smokehouse, format!("winter is {} days off and the store holds {:.0} days of food, and nothing keeps", d, days_of_food), 16, at));
+            // Over the drying rack where it stands: the rack becomes a smokehouse.
+            let rack = self.rack_site();
+            if let Some(at) = rack.or_else(|| self.find_site_for(ProjectKind::Smokehouse, 3, 3)) {
+                c.push((2.5 + (70 - d.min(70)) as f32 / 30.0, ProjectKind::Smokehouse, format!("winter is {} days off and the store holds {:.0} days of food, and nothing keeps{}", d, days_of_food, if rack.is_some() { "; the drying rack will be walled and roofed into a smokehouse" } else { "" }), 16, at));
             }
         }
         if let Some(d) = winter.filter(|&d| d <= 50 && material == ItemKind::Log && have(self, ProjectKind::Woodpile) && !have(self, ProjectKind::Woodshed)) {
-            c.push((1.9, ProjectKind::Woodshed, format!("winter is {} days off; the woodpile holds 8 logs and a winter's nights burn a hundred", d), 10, (hut.0 + HUT_W as u16 + 1, hut.1 + 2)));
+            c.push((1.9, ProjectKind::Woodshed, format!("winter is {} days off; the woodpile holds 8 logs and a winter's nights burn a hundred", d), 10, self.projects.iter().find(|p| p.kind == ProjectKind::Woodpile).map_or((self.hall_east() + 1, hut.1 + 2), |p| (p.at.0, p.at.1 + 1))));
         }
         if food >= 3 * alive as u32 && !have(self, ProjectKind::DryingRack) {
             if let Some(at) = self.find_site_for(ProjectKind::DryingRack, 2, 2) {
@@ -286,7 +292,7 @@ impl Colony {
         // A pen for beasts of a herd nearby (`livestock.rs`).
         if !have(self, ProjectKind::Pen) && day >= 40 && self.alive() >= 10 {
             if let (Some(herd), Some(at)) = (self.herd_near(), self.find_site_for(ProjectKind::Pen, 6, 5).or_else(|| self.find_site_for_sloped(ProjectKind::Pen, 6, 5, 1))) {
-                c.push((1.2, ProjectKind::Pen, format!("{} graze within 30 paces; two penned would breed, and meat would keep on the hoof through {} winter days", herd, super::SEASON_DAYS), 10, at));
+                c.push((1.2, ProjectKind::Pen, format!("{} graze within 30 paces; two penned would breed, and meat would keep on the hoof through {} winter days", herd, self.map.sky.season_days[3]), 10, at));
             }
         }
         // A tavern, once travellers have come and the camp has twelve (`tavern.rs`).
@@ -364,8 +370,9 @@ impl Colony {
         }
         if matches!(self.season(), crate::seasons::Season::Spring | crate::seasons::Season::Summer) && !have(self, ProjectKind::Field) && self.temperature() > 4.0 {
             if let Some(at) = self.find_site_for(ProjectKind::Field, 8, 6).or_else(|| self.find_site_for_sloped(ProjectKind::Field, 8, 6, 1)) {
-                let to_autumn = (2 * super::SEASON_DAYS).saturating_sub((self.clock.day().max(1) - 1) % (4 * super::SEASON_DAYS));
-                c.push((1.6, ProjectKind::Field, format!("the ground is soft and the harvest is {} days off; a field would feed them through the winter", to_autumn), 8, at));
+                let to_autumn = self.map.sky.season_start(2).saturating_sub(self.map.sky.into_year(self.clock.day()));
+                let bottom = if self.bottom_share((at.0 as i32 + 1, at.1 as i32 + 1), 6, 4) >= 0.5 { " (on the river's bottomland, where the silt is)" } else { "" };
+                c.push((1.6, ProjectKind::Field, format!("the ground is soft and the harvest is {} days off; a field would feed them through the winter{}", to_autumn, bottom), 8, at));
             }
         }
         if !have(self, ProjectKind::Jetty) {
@@ -383,7 +390,10 @@ impl Colony {
             if let Some(cells) = self.plan_dig(ProjectKind::DugHall).map(|p| p.cuts) {
                 let chilled = format!("; {} nights have ended with someone chilled", self.chilled_nights);
                 let why = match to_winter { Some(d) if d > 0 => format!("the hill beside the camp could hold them all, warm through the winter {} days off, and its one door can be held{}", d, chilled), _ => format!("the hill beside the camp could hold them all, warm and safe behind one door{}", chilled) };
-                c.push((if to_winter.map_or(false, |d| d <= 80) { 2.4 } else { 1.2 }, ProjectKind::DugHall, why, cells.len() as u32, cells[0].p));
+                // A people whose way is to dig (its first word: the dwarves') puts it before all.
+                let diggers = self.way.as_ref().map_or(false, |w| w.first.first().map_or(false, |f| f == "DugHall"));
+                let why = if diggers { format!("{}; their hall goes into the hill, as their people's always have", why) } else { why };
+                c.push((if to_winter.map_or(false, |d| d <= 80) { 2.4 } else { 1.2 } * if diggers { 2.5 } else { 1.0 }, ProjectKind::DugHall, why, cells.len() as u32, cells[0].p));
             } else if let Some(cells) = self.plan_dig(ProjectKind::Cellar).map(|p| p.cuts) {
                 let why = format!("a cellar in the rock keeps food three times as long{}", to_winter.filter(|&d| d > 0).map(|d| format!(", and winter is {} days off", d)).unwrap_or_default());
                 c.push((if to_winter.map_or(false, |d| d <= 80) { 1.7 } else { 0.9 }, ProjectKind::Cellar, why, cells.len() as u32, cells[0].p));
@@ -509,7 +519,8 @@ impl Colony {
                     let zz = z - k;
                     zz >= 0 && matches!(self.map.cell(x as usize, y as usize, zz as usize).material, crate::local::Material::Soil | crate::local::Material::Clay)
                 }).count() as i32;
-                -5 * soil
+                // And the river's bottomland, where the silt is (`flood.rs`).
+                -5 * soil - (24.0 * self.bottom_share((x + 1, y + 1), 6, 4)) as i32
             }
             _ => 0,
         }
@@ -543,7 +554,8 @@ impl Colony {
         for y in ys..ys + bh {
             for x in xs..xs + bw {
                 let k = ((y - ys) * bw + x - xs) as usize;
-                if !blocked[k] && !super::nav::passable(&self.map, (x as u16, y as u16)) { blocked[k] = true; }
+                // (Nor on water: a lot's ground is dry, though one may wade a level of it.)
+                if !blocked[k] && (!super::nav::passable(&self.map, (x as u16, y as u16)) || self.water_at((x as u16, y as u16))) { blocked[k] = true; }
             }
         }
         let mut best: Option<(i32, Pos)> = None;
@@ -579,7 +591,14 @@ impl Colony {
                 let behind = if rx * lx + ry * ly < -2.0 { 6 } else { 0 };
                 let blessed = (0..h as i32).any(|dy| (0..w as i32).any(|dx| self.marked_at(((x + dx) as u16, (y + dy) as u16), false)));
                 let purpose = match (purpose, near.as_ref()) { (Some(k), Some(nr)) => self.purpose_cost(k, x, y, x + w as i32 / 2, y + h as i32 / 2, nr), _ => 0 };
-                let score = (d as f32 * spread) as i32 + off_lane + behind + purpose - if blessed { 30 } else { 0 };
+                // A people who keep the trees build against the trunks (elves): a lot with trees
+                // along its sides scores better.
+                let trunks = if self.way.as_ref().map_or(false, |wy| wy.keep_trees) {
+                    let t = |xx: i32, yy: i32| xx >= 0 && yy >= 0 && xx < n && yy < self.map.height as i32 && matches!(self.floor_plant((xx as u16, yy as u16)), crate::local::Plant::Tree(_));
+                    let ring = (-1..=w as i32).flat_map(|dx| [(dx, -1), (dx, h as i32)]).chain((0..h as i32).flat_map(|dy| [(-1, dy), (w as i32, dy)]));
+                    (ring.filter(|&(dx, dy)| t(x + dx, y + dy)).count() as i32 * 2).min(14)
+                } else { 0 };
+                let score = (d as f32 * spread) as i32 + off_lane + behind + purpose - if blessed { 30 } else { 0 } - trunks;
                 if best.map_or(true, |b| score < b.0) { best = Some((score, (x as u16, y as u16))); }
             }
         }
@@ -608,11 +627,14 @@ impl Colony {
                 }
             }
             match kind {
-                ProjectKind::SecondHut => self.raise_hut_at(at, material == ItemKind::Stone),
+                ProjectKind::SecondHut => { self.raise_hut_at(at, material == ItemKind::Stone); self.join_to_hut(at); }
                 ProjectKind::Woodpile => self.stamp_block(at, 3, 1, material),
                 ProjectKind::Windbreak => self.stamp_block(at, HUT_W as u16, 1, material),
                 ProjectKind::DryingRack => self.stamp_posts(at, 2, 2),
-                ProjectKind::Smokehouse => self.stamp_block(at, 3, 3, material),
+                ProjectKind::Smokehouse => {
+                    if self.rack_site() == Some(at) { self.note("The drying rack is walled and roofed: it is a smokehouse now.".into()); }
+                    self.stamp_block(at, 3, 3, material)
+                }
                 ProjectKind::Woodshed => {
                     // A roofed store: the woodpile now holds twenty logs.
                     if let Some(w) = self.projects.iter_mut().find(|p| p.kind == ProjectKind::Woodpile) { w.needed = 20; }
@@ -719,14 +741,58 @@ impl Colony {
         // (used == needed and the ring already up) refills every gap.
         let (from, to) = if self.projects.iter().any(|p| p.kind == ProjectKind::Palisade && p.done) { (0, ring.len()) }
             else { ((ring.len() as u32 * (used - 1) / needed) as usize, (ring.len() as u32 * used / needed) as usize) };
+        let mut sides = 0;
         for &(dx, dy) in &ring[from..to.min(ring.len())] {
             let (x, y) = (centre.0 as i32 + dx, centre.1 as i32 + dy);
             if x < 1 || y < 1 { continue; }
+            // The ground is the wall where a river or a cliff lies between the fire and the ring
+            // (no stakes on the far bank, nor below a drop).
+            if self.ground_walls(centre, (x, y)) { sides += 1; continue; }
             // Not over the huts or their doors.
             let on_hut = |at: Pos| x >= at.0 as i32 - 1 && x <= at.0 as i32 + HUT_W as i32 && y >= at.1 as i32 - 1 && y <= at.1 as i32 + HUT_H as i32 + 1;
             if self.hut.as_ref().map_or(false, |h| on_hut(h.at)) || self.projects.iter().any(|p| p.kind == ProjectKind::SecondHut && on_hut(p.at)) { continue; }
             if super::nav::passable(&self.map, (x as u16, y as u16)) { self.wall_at(x as usize, y as usize, mat); }
         }
+        if sides >= 3 && self.milestones.insert("the ground is the wall") {
+            self.note("Where the river or the drop of the land lies between them and the ring, they leave the wall to it.".into());
+        }
+    }
+
+    /// Whether the ground walls the camp between the fire and ring cell `p`: water (a river, a
+    /// lake's edge) or a drop of two levels or more along the way.
+    pub(crate) fn ground_walls(&self, centre: Pos, p: (i32, i32)) -> bool {
+        let n = self.map.width as i32;
+        let (x0, y0) = (centre.0 as i32, centre.1 as i32);
+        let steps = (p.0 - x0).abs().max((p.1 - y0).abs()).max(1);
+        let mut last = self.map.surface_z[(y0 * n + x0) as usize];
+        for k in 1..=steps {
+            let (x, y) = (x0 + (p.0 - x0) * k / steps, y0 + (p.1 - y0) * k / steps);
+            if x < 0 || y < 0 || x >= n || y >= self.map.height as i32 { return false; }
+            let z = self.map.surface_z[(y * n + x) as usize];
+            if self.water_at((x as u16, y as u16)) || (z - last).abs() >= 2 { return true; }
+            last = z;
+        }
+        false
+    }
+
+    /// What the settlement is by now: a camp; a hamlet once four buildings or more stand in a
+    /// fence or a wall; a village once fifteen have come, with a well, a lane worn and a wall with
+    /// gates (card 'A village of their own making').
+    pub fn stage_word(&self) -> &'static str { ["camp", "hamlet", "village"][self.stage.min(2) as usize] }
+
+    pub(crate) fn reckon_stage(&mut self) {
+        let standing = self.projects.iter().filter(|p| p.done && Self::footprint(p.kind).is_some()).count() + self.hut.as_ref().map_or(0, |h| h.done as usize);
+        let walled = self.projects.iter().any(|p| p.done && matches!(p.kind, ProjectKind::Palisade | ProjectKind::Fence));
+        let lane = self.steps.iter().filter(|&&n| n >= 120).count() >= 20;
+        let well = self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Well);
+        let palisade = self.projects.iter().any(|p| p.done && p.kind == ProjectKind::Palisade);
+        let now = if self.company() >= 15 && well && lane && palisade { 2 } else if standing >= 4 && walled { 1 } else { 0 };
+        if now <= self.stage { return; }
+        self.stage = now;
+        let line = if now == 1 { format!("The camp has become a hamlet: {} buildings stand within a {}.", standing, if palisade { "wall" } else { "fence" }) }
+            else { format!("The hamlet has become a village: {} have come to live here, and there is a well, a worn lane and a wall with gates.", self.company()) };
+        self.note(line.clone());
+        self.moment(if now == 1 { "A hamlet".into() } else { "A village".into() }, line, "because it has grown so".into(), self.camp);
     }
 
     /// Whether `p` is inside a finished second hut.
@@ -783,8 +849,8 @@ impl Colony {
     /// the carriers; in spring it is sown again.
     pub(crate) fn field_season(&mut self) {
         let Some(at) = self.projects.iter().find(|p| p.kind == ProjectKind::Field && p.done).map(|p| p.at) else { return };
-        let into_year = (self.clock.day().max(1) - 1) % (4 * super::SEASON_DAYS);
-        if into_year == 2 * super::SEASON_DAYS {
+        let into_year = self.map.sky.into_year(self.clock.day());
+        if into_year == self.map.sky.season_start(2) {
             let n = self.map.width;
             let mut reaped = 0;
             for dy in 1..5u16 { for dx in 1..7u16 {
@@ -793,13 +859,15 @@ impl Colony {
                 let k = self.map.idx(x, y, self.map.surface_z[y * n + x].max(0) as usize);
                 if matches!(self.map.cells[k].plant, Plant::Crop(_)) {
                     self.map.cells[k].plant = Plant::None;
-                    // Seed grain from the caravan gives half again (`liaison.rs`).
-                    let n = if self.seed_grain { 3 } else { 2 };
+                    // Seed grain from the caravan gives half again (`liaison.rs`); the
+                    // floodplain half again, a flood's silt one more (`flood.rs`).
+                    let n = self.meals_a_row();
                     for _ in 0..n { self.items.push(super::Item::food(super::Stuff::Grain, (x as u16, y as u16), false)); }
                     reaped += n;
                 }
             } }
-            if reaped > 0 { self.note(format!("They reap the field: {} meals of grain to carry in before winter.", reaped)); }
+            if reaped > 0 { self.note(format!("They reap the field: {} meals of grain to carry in before winter{}.", reaped, if self.silted { " (the flood's silt shows)" } else { "" })); }
+            self.silted = false;
         } else if into_year == 0 {
             self.sow_field(at);
             self.note("They sow the field again.".into());
@@ -995,3 +1063,110 @@ impl Colony {
     }
 }
 
+
+impl Colony {
+    /// Where the first hut can be lengthened: a hut's length on its east or west end, sharing its
+    /// end wall, on clear, level ground nobody forbade and nothing stands on.
+    pub(crate) fn lengthen_site(&self) -> Option<Pos> {
+        let h = self.hut.as_ref().filter(|h| h.done)?.at;
+        let n = self.map.width as i32;
+        let z0 = self.map.surface_z[h.1 as usize * self.map.width + h.0 as usize];
+        let (w, hh) = (HUT_W as i32, HUT_H as i32);
+        for x0 in [h.0 as i32 + w - 1, h.0 as i32 - w + 1] {
+            if x0 < 2 || x0 + w > n - 2 { continue; }
+            let ok = (0..hh).all(|dy| (0..w).all(|dx| {
+                let (x, y) = (x0 + dx, h.1 as i32 + dy);
+                // (The shared end wall is the hut's own.)
+                if x == h.0 as i32 || x == h.0 as i32 + w - 1 { return true; }
+                let p = (x as u16, y as u16);
+                // Off the fire and the store (three cells round), off a dig, as any lot (a hall
+                // raised over the fire had walled in the store).
+                let (cx, cy) = (self.camp.0 as i32, self.camp.1 as i32);
+                let near_fire = (x - cx).abs().max((y - cy).abs()) <= 3;
+                // (Astride the palisade's ring at most: the palisade skips the hut's footprints,
+                // so the hall's own walls close the ring there.)
+                let inside = ((((x - cx) * (x - cx) + (y - cy) * (y - cy)) as f32).sqrt()) <= self.wall_r() as f32 + 2.0;
+                let dug = self.dig_plan.iter().flatten().any(|c| c.p == p) || self.hall_cells.contains(&p) || self.delve_mouth == Some(p) || self.spine.map_or(false, |s| s.at == p);
+                // A palisade stake may be built over (the hall's walls close the ring there).
+                let sz = self.map.surface_z[y as usize * self.map.width + x as usize];
+                let stake = sz + 1 < self.map.depth as i32 && self.map.cell(x as usize, y as usize, (sz + 1) as usize).shape == crate::local::Shape::Wall
+                    && (((((x - cx) * (x - cx) + (y - cy) * (y - cy)) as f32).sqrt()) - self.wall_r() as f32).abs() <= 1.5;
+                !near_fire && inside && !dug && !self.water_at(p) && (super::nav::passable(&self.map, p) || stake) && (sz - z0).abs() <= 1
+                    && !self.marked_at(p, true) && self.map.roofs[y as usize * self.map.width + x as usize] == 0 && !self.built_near_other(p)
+            }));
+            if ok { return Some((x0 as u16, h.1)); }
+        }
+        None
+    }
+
+    /// One column past the first hut's east wall, or the hall's when it was lengthened east (the
+    /// woodpile stands a cell beyond it).
+    pub(crate) fn hall_east(&self) -> u16 {
+        let Some(h) = self.hut.as_ref().map(|h| h.at) else { return self.camp.0 };
+        let east = self.projects.iter().find(|p| p.kind == ProjectKind::SecondHut && p.at.1 == h.1 && p.at.0 + 1 == h.0 + HUT_W as u16).map(|p| p.at.0);
+        // (One past the east wall, as the woodpile always stood: a cell's lane between.)
+        east.unwrap_or(h.0) + HUT_W as u16
+    }
+
+    /// `at` for a work of `w` x `h` when its cells are dry ground one can stand on, else a lot
+    /// found as any other (the woodpile's place past the hut had been in the river on a bank).
+    pub(crate) fn dry_or_lot(&self, at: Pos, kind: ProjectKind, w: u16, h: u16) -> Pos {
+        let dry = (0..h).all(|dy| (0..w).all(|dx| { let p = (at.0 + dx, at.1 + dy); (p.0 as usize) < self.map.width && (p.1 as usize) < self.map.height && super::nav::passable(&self.map, p) && !self.water_at(p) }));
+        if dry { at } else { self.find_site_for(kind, w, h).unwrap_or(at) }
+    }
+
+    /// Whether `p` lies on a work other than the hut (a lot must not cover one).
+    fn built_near_other(&self, p: Pos) -> bool {
+        self.projects.iter().any(|q| Self::footprint(q.kind).map_or(false, |(w, h)| p.0 >= q.at.0 && p.0 < q.at.0 + w && p.1 >= q.at.1 && p.1 < q.at.1 + h))
+    }
+
+    /// A second hut raised on the first's end becomes one hall with it: the shared wall comes
+    /// down and one roof runs the length of both.
+    pub(crate) fn join_to_hut(&mut self, at: Pos) {
+        let Some(h) = self.hut.as_ref().map(|h| h.at) else { return };
+        if at.1 != h.1 || !(at.0 + HUT_W as u16 - 1 == h.0 || h.0 + HUT_W as u16 - 1 == at.0) { return; }
+        let shared = at.0.max(h.0) as usize;
+        let n = self.map.width;
+        // (Inside the new end nothing stands: a palisade stake built over is cleared.)
+        for dy in 1..HUT_H - 1 { for dx in 1..HUT_W - 1 {
+            let (x, y) = (at.0 as usize + dx, at.1 as usize + dy);
+            let z = self.map.surface_z[y * n + x] as usize + 1;
+            if z < self.map.depth { let k = self.map.idx(x, y, z); if self.map.cells[k].shape == crate::local::Shape::Wall { self.map.cells[k].shape = crate::local::Shape::Empty; } }
+        } }
+        for dy in 1..HUT_H - 1 {
+            let y = h.1 as usize + dy;
+            let z = self.map.surface_z[y * n + shared] as usize + 1;
+            if z < self.map.depth { let k = self.map.idx(shared, y, z); self.map.cells[k].shape = crate::local::Shape::Empty; }
+        }
+        // One roof over both: the hut's, lengthened.
+        let rid = self.map.roofs[h.1 as usize * n + h.0 as usize + 1];
+        if rid == 0 { return; }
+        let x0 = at.0.min(h.0) as f32;
+        let len = (2 * HUT_W - 1) as f32;
+        let plan = &mut self.map.houses[(rid - 1) as usize];
+        plan.cx = x0 + len / 2.0;
+        for dy in 0..HUT_H { for dx in 0..2 * HUT_W - 1 {
+            let (x, y) = (x0 as usize + dx, h.1 as usize + dy);
+            if x < n && y < self.map.height { self.map.roofs[y * n + x] = rid; }
+        } }
+        self.note(format!("The hut is lengthened into a hall: {} beds under one roof.", 2 * super::HUT_BEDS));
+        if self.milestones.insert("the hall") {
+            let mid = ((x0 + len / 2.0) as u16, h.1 + HUT_H as u16 / 2);
+            self.moment("The hut becomes a hall".into(), "The end wall comes down and the roof runs on: the first hut is a hall now, long enough for all of them.".into(), "because there were more of them than the hut had beds, and its end lay open".into(), mid);
+        }
+    }
+
+    /// The drying rack's spot, when a smokehouse (3 x 3) can stand over it.
+    pub(crate) fn rack_site(&self) -> Option<Pos> {
+        let r = self.projects.iter().find(|p| p.kind == ProjectKind::DryingRack && p.done)?.at;
+        let n = self.map.width;
+        let z0 = self.map.surface_z[r.1 as usize * n + r.0 as usize];
+        let ok = (0..3u16).all(|dy| (0..3u16).all(|dx| {
+            let (x, y) = (r.0 + dx, r.1 + dy);
+            let on_rack = dx < 2 && dy < 2;
+            (x as usize) < n && (y as usize) < self.map.height && self.map.surface_z[y as usize * n + x as usize] == z0
+                && (on_rack || (super::nav::passable(&self.map, (x, y)) && self.map.roofs[y as usize * n + x as usize] == 0 && !self.marked_at((x, y), true)))
+        }));
+        ok.then_some(r)
+    }
+}

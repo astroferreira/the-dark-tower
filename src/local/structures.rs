@@ -52,6 +52,9 @@ struct House {
     /// Bounding radius, for quick rejection.
     reach: f64,
     kind: BuildingKind,
+    /// The street warp's offset at the house's middle: the house moves with the warp but keeps
+    /// its shape (bent with it, a lot crossed by the warp's slope had become an L).
+    off: (f64, f64),
 }
 
 /// What a building of a town is.
@@ -90,8 +93,16 @@ struct Plan {
     houses: Vec<House>,
     wall_r: Option<(f64, f64)>,
     plaza_r: f64,
+    /// Small squares where a lane crosses a main street (frame centre, half side).
+    squares: Vec<(f64, f64, f64)>,
     seed: u64,
+    /// The houses near each 16 m square of the unwarped frame, in index order (`index_houses`):
+    /// every column had tested every house (card 'One window from Begin to the camp').
+    grid: std::collections::HashMap<(i32, i32), Vec<usize>>,
 }
+
+/// The grid's square (m).
+const GRID_M: f64 = 16.0;
 
 /// Smooth value noise in [-1, 1] for gently bending streets.
 fn wob(seed: u64, a: f64) -> f64 {
@@ -105,11 +116,19 @@ impl Plan {
     /// Region metres -> plan frame: rotate to the street axis, then undo a slow warp so that
     /// "straight" streets and rows of houses become gently curved in the world.
     fn to_frame(&self, x_m: f64, y_m: f64) -> (f64, f64) {
-        let (dx, dy) = (x_m - self.cx_m, y_m - self.cy_m);
-        let (s, c) = self.angle.sin_cos();
-        let (u, v) = (dx * c + dy * s, -dx * s + dy * c);
+        let (u, v) = self.unwarped(x_m, y_m);
         (u + WARP_M * wob(self.seed, v / 90.0), v + WARP_M * wob(self.seed ^ 0x55, u / 90.0))
     }
+
+    /// Region metres -> the plan's axes, without the warp.
+    fn unwarped(&self, x_m: f64, y_m: f64) -> (f64, f64) {
+        let (dx, dy) = (x_m - self.cx_m, y_m - self.cy_m);
+        let (s, c) = self.angle.sin_cos();
+        (dx * c + dy * s, -dx * s + dy * c)
+    }
+
+    /// A point (unwarped) in house `h`'s rigid frame: shifted by the warp at the house's middle.
+    fn rigid(&self, h: &House, ur: f64, vr: f64) -> (f64, f64) { (ur + h.off.0, vr + h.off.1) }
 }
 
 /// Amplitude (m) of the street warp.
@@ -143,7 +162,7 @@ fn plan_for(site: &Site, lore: &RegionLore, cell_m: f64) -> Plan {
     let angle = (raw / std::f64::consts::FRAC_PI_2).round() * std::f64::consts::FRAC_PI_2;
     let core = (site.core_m as f64).max(40.0);
     let big = matches!(site.kind, SettlementType::Capital | SettlementType::City);
-    let mut plan = Plan { site: site.clone(), cx_m, cy_m, angle, streets: Vec::new(), houses: Vec::new(), wall_r: None, plaza_r: 0.0, seed };
+    let mut plan = Plan { site: site.clone(), cx_m, cy_m, angle, streets: Vec::new(), houses: Vec::new(), wall_r: None, plaza_r: 0.0, squares: Vec::new(), seed, grid: Default::default() };
 
     let main_w = if core > 200.0 { 4.0 } else { 3.0 };
     plan.streets.push(((-core * 1.05, 0.0), (core * 1.05, 0.0), main_w));
@@ -177,9 +196,9 @@ fn plan_for(site: &Site, lore: &RegionLore, cell_m: f64) -> Plan {
     // into it).
     if matches!(site.kind, SettlementType::Capital | SettlementType::Fort) {
         let ang = 0.0;
-        plan.houses.push(House { u: 0.0, v: -plan.plaza_r - 14.0, ang, hu: 14.0, hv: 10.0, stone: true, reach: 17.2, kind: BuildingKind::Keep });
+        plan.houses.push(House { u: 0.0, v: -plan.plaza_r - 14.0, ang, hu: 14.0, hv: 10.0, stone: true, reach: 17.2, kind: BuildingKind::Keep, off: (0.0, 0.0) });
     } else if big || site.kind == SettlementType::Town {
-        plan.houses.push(House { u: 0.0, v: plan.plaza_r + 9.0, ang: 0.0, hu: 10.0, hv: 6.0, stone: stone_of(0.0), reach: 11.7, kind: BuildingKind::Hall });
+        plan.houses.push(House { u: 0.0, v: plan.plaza_r + 9.0, ang: 0.0, hu: 10.0, hv: 6.0, stone: stone_of(0.0), reach: 11.7, kind: BuildingKind::Hall, off: (0.0, 0.0) });
     }
     // Houses front the streets: walk along each, both sides, with variable lot width.
     let mut rng_k = 0u64;
@@ -206,8 +225,15 @@ fn plan_for(site: &Site, lore: &RegionLore, cell_m: f64) -> Plan {
                 let ok = r < edge && r > plan.plaza_r + hu.max(hv) + 2.0;
                 t += 2.0 * hu + 1.0 + unit(hsh >> 27) * 5.0; // lots are rarely contiguous
                 if !ok { continue; }
-                // Face the street: rotate so the house's -v side looks at the street.
-                let house = House { u: cu, v: cv, ang: if side > 0.0 { ang } else { ang + std::f64::consts::PI }, hu, hv, stone: stone_of(r), reach: hu.hypot(hv), kind: BuildingKind::House };
+                // Face the street: rotate so the house's -v side looks at the street; square to the
+                // grid (a rectangle at a slant is a jagged diamond on 2 m cells).
+                let facing = if side > 0.0 { ang } else { ang + std::f64::consts::PI };
+                let facing = (facing / std::f64::consts::FRAC_PI_2).round() * std::f64::consts::FRAC_PI_2;
+                let house = House { u: cu, v: cv, ang: facing, hu, hv, stone: stone_of(r), reach: hu.hypot(hv), kind: BuildingKind::House, off: (0.0, 0.0) };
+                // (Squared off a slanting street, its corners must still keep off every street.)
+                let (sn, cs) = facing.sin_cos();
+                let corners = [(-hu, -hv), (hu, -hv), (-hu, hv), (hu, hv)].map(|(a, b)| (cu + a * cs - b * sn, cv + a * sn + b * cs));
+                if corners.iter().any(|&p| plan.streets.iter().any(|&(q0, q1, sw)| seg_dist(p, q0, q1) < sw + 0.5)) { continue; }
                 if plan.wall_r.map(|(wr, _)| r + house.reach > wr - 4.0).unwrap_or(false) { continue; }
                 // No overlaps with streets or other houses (allow a 1 m alley between houses).
                 if plan.streets.iter().any(|&(p, q, sw)| seg_dist((cu, cv), p, q) - sw - house.hu.min(house.hv) < 0.0) { continue; }
@@ -228,7 +254,7 @@ fn plan_for(site: &Site, lore: &RegionLore, cell_m: f64) -> Plan {
                 let th = (k as f64 + 0.5) * std::f64::consts::TAU / count as f64;
                 let (tu, tv) = (wr * th.cos(), wr * th.sin());
                 let ang = ((th - std::f64::consts::FRAC_PI_2) / std::f64::consts::FRAC_PI_2).round() * std::f64::consts::FRAC_PI_2;
-                let tower = House { u: tu, v: tv, ang, hu: 5.0, hv: 5.0, stone: true, reach: 5.0f64.hypot(5.0), kind: BuildingKind::Tower };
+                let tower = House { u: tu, v: tv, ang, hu: 5.0, hv: 5.0, stone: true, reach: 5.0f64.hypot(5.0), kind: BuildingKind::Tower, off: (0.0, 0.0) };
                 if plan.streets.iter().any(|&(a, b, w)| seg_dist((tu, tv), a, b) < w + 1.5 + tower.reach) { continue; }
                 if plan.houses.iter().any(|o| {
                     let d = ((o.u - tu).powi(2) + (o.v - tv).powi(2)).sqrt();
@@ -238,6 +264,29 @@ fn plan_for(site: &Site, lore: &RegionLore, cell_m: f64) -> Plan {
             }
         }
     }
+    // Each house keeps its shape: the warp's offset is taken at its middle (an inverse step
+    // from its warped centre, then the warp there).
+    let seed = plan.seed;
+    for h in plan.houses.iter_mut() {
+        let (ur, vr) = (h.u - WARP_M * wob(seed, h.v / 90.0), h.v - WARP_M * wob(seed ^ 0x55, h.u / 90.0));
+        h.off = (WARP_M * wob(seed, vr / 90.0), WARP_M * wob(seed ^ 0x55, ur / 90.0));
+    }
+    // Small squares where a lane crosses a main street (a well, a crossroads to meet at): one in
+    // two, by the town's hash.
+    let mains: Vec<((f64, f64), (f64, f64), f64)> = plan.streets.iter().copied().filter(|s| s.2 >= 2.5).collect();
+    let lanes: Vec<((f64, f64), (f64, f64), f64)> = plan.streets.iter().copied().filter(|s| s.2 < 2.5).collect();
+    for (k, &(a, b, _)) in lanes.iter().enumerate() {
+        for &(p, q, _) in &mains {
+            // Axis-aligned lanes and mains cross where one's fixed coordinate meets the other's.
+            let cross = if (a.1 - b.1).abs() < 1e-6 && (p.0 - q.0).abs() < 1e-6 { Some((p.0, a.1)) } else if (a.0 - b.0).abs() < 1e-6 && (p.1 - q.1).abs() < 1e-6 { Some((a.0, p.1)) } else { None };
+            let Some((x, y)) = cross else { continue };
+            let within = |v: f64, e0: f64, e1: f64| v >= e0.min(e1) && v <= e0.max(e1);
+            if !(within(x, a.0, b.0) && within(y, a.1, b.1) && within(x, p.0, q.0) && within(y, p.1, q.1)) { continue; }
+            if (x * x + y * y).sqrt() < plan.plaza_r + 12.0 || unit(hash(id, k as i64, 0x5A)) < 0.5 { continue; }
+            plan.squares.push((x, y, 4.0));
+        }
+    }
+    plan.index_houses();
     plan
 }
 
@@ -245,14 +294,39 @@ fn plan_for(site: &Site, lore: &RegionLore, cell_m: f64) -> Plan {
 enum Feature { Street, Plaza, Wall(bool), HouseWall(bool, bool), HouseFloor(bool, bool), Door(bool), Field(u64, bool), Garden, None }
 
 /// The index of the house whose footprint (walls, floor, door) covers a point, if any.
-fn house_at(plan: &Plan, u: f64, v: f64) -> Option<usize> {
-    plan.houses.iter().position(|h| ((u - h.u).powi(2) + (v - h.v).powi(2)).sqrt() <= h.reach + 1.0 && rect_dist((u, v), h) <= 0.0)
+/// The house covering a point: `ur`, `vr` the point in the plan's axes without the warp (each
+/// house is a rigid rectangle shifted by the warp at its middle).
+fn house_at(plan: &Plan, ur: f64, vr: f64) -> Option<usize> {
+    plan.near(ur, vr).iter().copied().find(|&k| { let h = &plan.houses[k]; let (u, v) = plan.rigid(h, ur, vr); ((u - h.u).powi(2) + (v - h.v).powi(2)).sqrt() <= h.reach + 1.0 && rect_dist((u, v), h) <= 0.0 })
 }
 
-fn feature_at(plan: &Plan, u: f64, v: f64) -> Feature {
+impl Plan {
+    /// Index the houses by the grid squares their reach covers in the unwarped frame (a house is
+    /// tested at a point when the point lies within its reach + 1 of its middle less its offset).
+    fn index_houses(&mut self) {
+        self.grid.clear();
+        for (k, h) in self.houses.iter().enumerate() {
+            let (cu, cv, r) = (h.u - h.off.0, h.v - h.off.1, h.reach + 1.0);
+            for gy in ((cv - r) / GRID_M).floor() as i32..=((cv + r) / GRID_M).floor() as i32 {
+                for gx in ((cu - r) / GRID_M).floor() as i32..=((cu + r) / GRID_M).floor() as i32 {
+                    self.grid.entry((gx, gy)).or_default().push(k);
+                }
+            }
+        }
+    }
+
+    /// The houses that may cover the unwarped point, in index order.
+    fn near(&self, ur: f64, vr: f64) -> &[usize] {
+        self.grid.get(&((ur / GRID_M).floor() as i32, (vr / GRID_M).floor() as i32)).map_or(&[], |v| v.as_slice())
+    }
+}
+
+fn feature_at(plan: &Plan, u: f64, v: f64, ur: f64, vr: f64) -> Feature {
     let ruined = plan.site.destroyed_year.is_some();
     let t = TILE_M as f64;
-    for h in &plan.houses {
+    for &k in plan.near(ur, vr) {
+        let h = &plan.houses[k];
+        let (u, v) = plan.rigid(h, ur, vr);
         if ((u - h.u).powi(2) + (v - h.v).powi(2)).sqrt() > h.reach + 1.0 { continue; }
         let d = rect_dist((u, v), h);
         if d > 0.0 { continue; }
@@ -272,7 +346,9 @@ fn feature_at(plan: &Plan, u: f64, v: f64) -> Feature {
             if !gate { return Feature::Wall(plan.site.walls != WallLevel::Palisade); }
         }
     }
-    if r < plan.plaza_r { return Feature::Plaza; }
+    // The market square (a square, not a disc), and the small squares at crossings.
+    if plan.plaza_r > 0.0 && u.abs().max(v.abs() * 1.25) < plan.plaza_r * 1.1 { return Feature::Plaza; }
+    if plan.squares.iter().any(|&(x, y, hs)| (u - x).abs().max((v - y).abs()) < hs) { return Feature::Plaza; }
     let core = plan.site.core_m as f64;
     if r < core * 1.1 + 6.0 {
         for &(a, b, w) in &plan.streets {
@@ -318,6 +394,7 @@ pub fn apply(map: &mut LocalMap, region: &ZoomRegion, lore: &RegionLore, cx: f64
     if plans.is_empty() && roads.is_empty() { return; }
     // Columns under each standing house's roof: (plan, house) -> cells.
     let mut roofed: std::collections::BTreeMap<(usize, usize), (bool, bool, Vec<(usize, usize)>)> = Default::default();
+    let roof_style = |pi: usize, stone: bool| crate::local::RoofStyle::of(plans[pi].site.arch, stone);
     // Every house's cells (standing or fallen), to raise its walls, storeys and stair after.
     let mut footprints: std::collections::BTreeMap<(usize, usize), Vec<HouseCell>> = Default::default();
     for j in 0..n {
@@ -335,11 +412,12 @@ pub fn apply(map: &mut LocalMap, region: &ZoomRegion, lore: &RegionLore, cx: f64
             let mut done = false;
             for (pi, plan) in plans.iter().enumerate() {
                 let (u, v) = plan.to_frame(x_m, y_m);
+                let (ur, vr) = plan.unwarped(x_m, y_m);
                 if u.abs() > plan.site.fields_m.max(plan.site.core_m) as f64 * 1.1 + 5.0 || v.abs() > plan.site.fields_m.max(plan.site.core_m) as f64 * 1.1 + 5.0 { continue; }
-                let f = feature_at(plan, u, v);
+                let f = feature_at(plan, u, v, ur, vr);
                 if matches!(f, Feature::None) { continue; }
                 if plan.site.destroyed_year.is_none() && !underwater {
-                    if let Some(hi) = house_at(plan, u, v) {
+                    if let Some(hi) = house_at(plan, ur, vr) {
                         let flat = matches!(plan.houses[hi].kind, BuildingKind::Keep | BuildingKind::Tower);
                         roofed.entry((pi, hi)).or_insert_with(|| (plan.houses[hi].stone, flat, Vec::new())).2.push((i, j));
                     }
@@ -347,8 +425,9 @@ pub fn apply(map: &mut LocalMap, region: &ZoomRegion, lore: &RegionLore, cx: f64
                 // Streets, houses and fields stop at the water's edge.
                 if underwater { continue; }
                 let part = match f { Feature::HouseWall(..) => Some(Part::Wall), Feature::HouseFloor(..) => Some(Part::Floor), Feature::Door(_) => Some(Part::Door), _ => None };
-                if let (Some(part), Some(hi)) = (part, house_at(plan, u, v)) {
-                    let (lu, lv) = local_uv(&plan.houses[hi], u, v);
+                if let (Some(part), Some(hi)) = (part, house_at(plan, ur, vr)) {
+                    let (hu2, hv2) = plan.rigid(&plan.houses[hi], ur, vr);
+                    let (lu, lv) = local_uv(&plan.houses[hi], hu2, hv2);
                     footprints.entry((pi, hi)).or_default().push(HouseCell { i, j, part, lu, lv, gx, gy });
                 }
                 let wobble = hash(gx, gy, 31);
@@ -445,7 +524,7 @@ pub fn apply(map: &mut LocalMap, region: &ZoomRegion, lore: &RegionLore, cx: f64
     }
     // Roofs: each house's ridge runs along the long axis of its footprint (principal axis of
     // its cells), half its width to either side.
-    for (_, (stone, flat, cells)) in roofed {
+    for ((pi, _), (stone, flat, cells)) in roofed {
         if cells.len() < 4 { continue; }
         let k = cells.len() as f32;
         let (mx, my) = cells.iter().fold((0.0, 0.0), |a, &(i, j)| (a.0 + i as f32 + 0.5, a.1 + j as f32 + 0.5));
@@ -458,7 +537,7 @@ pub fn apply(map: &mut LocalMap, region: &ZoomRegion, lore: &RegionLore, cx: f64
         let ang = 0.5 * (2.0 * sxy).atan2(sxx - syy);
         let axis = (ang.cos(), ang.sin());
         let half_width = cells.iter().map(|&(i, j)| ((i as f32 + 0.5 - mx) * -axis.1 + (j as f32 + 0.5 - my) * axis.0).abs()).fold(0.0, f32::max) + 0.5;
-        map.houses.push(crate::local::RoofPlan { cx: mx, cy: my, axis, half_width, stone, flat });
+        map.houses.push(crate::local::RoofPlan { cx: mx, cy: my, axis, half_width, stone, flat, style: roof_style(pi, stone) });
         let id = map.houses.len() as u32;
         for (i, j) in cells { map.roofs[j * n + i] = id; }
     }
@@ -571,7 +650,9 @@ fn raise(map: &mut LocalMap, plan: &Plan, hi: usize, cells: &[HouseCell]) -> Opt
         }
         // Over a doorway, the lintel and the wall above it (fallen in a ruin).
         if c.part == Part::Door && ruined { continue; }
-        let from = if c.part == Part::Door { s + 2 } else { s + 1 };
+        // (A doorway on ground below the floor inside is open to the floor's height: one steps up
+        // through it. Under a lintel at the low ground's +2 there was no headroom to climb.)
+        let from = if c.part == Part::Door { (s + 2).max(base + 2) } else { s + 1 };
         for z in from..=top { set(map, c.i, c.j, z, Shape::Wall, wall_mat); }
         wall_top.insert((c.i, c.j), top);
     }

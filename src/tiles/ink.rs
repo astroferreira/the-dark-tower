@@ -324,4 +324,66 @@ impl Sheet {
     }
 }
 
+/// Leaves under the world's star (Kiang et al. 2007: pigments tuned to the light that reaches
+/// the ground), as a multiplier on the colour of anything that grows: none under a G star (the
+/// Sun), teal under an F star, olive and gold under a K dwarf, dark purple under an M dwarf.
+/// Set once per world (`set_leaves`), read by the world map, the region walker, the embark and
+/// the globe alike, so the views agree.
+static LEAVES: std::sync::RwLock<[f32; 3]> = std::sync::RwLock::new([1.0; 3]);
+
+pub fn set_leaves(class: Option<crate::astro::SpectralClass>) {
+    let t = leaves_of(class);
+    if let Ok(mut l) = LEAVES.write() { *l = t; }
+}
+
+/// The leaf multiplier under a class of star.
+pub fn leaves_of(class: Option<crate::astro::SpectralClass>) -> [f32; 3] {
+    use crate::astro::SpectralClass as C;
+    match class {
+        Some(C::F) => [0.82, 0.97, 1.22],
+        Some(C::K) => [1.18, 0.94, 0.70],
+        Some(C::M) => [0.66, 0.42, 0.86],
+        _ => [1.0; 3],
+    }
+}
+
+#[cfg(test)]
+mod leaf_tests {
+    use super::leaves_of;
+    use crate::astro::SpectralClass as C;
+
+    #[test]
+    fn leaves_follow_the_star() {
+        assert_eq!(leaves_of(Some(C::G)), [1.0; 3], "the Sun's leaves are the map's own");
+        assert_eq!(leaves_of(None), [1.0; 3]);
+        let green = [120.0f32, 150.0, 90.0];
+        let under = |c: Option<C>| { let t = leaves_of(c); [green[0] * t[0], green[1] * t[1], green[2] * t[2]] };
+        let m = under(Some(C::M));
+        assert!(m[1] < m[0] && m[1] < m[2] && m.iter().sum::<f32>() < green.iter().sum::<f32>() * 0.7, "dark purple under a red dwarf: {m:?}");
+        let k = under(Some(C::K));
+        assert!(k[0] > green[0] && k[2] < green[2], "russet under an orange dwarf: {k:?}");
+        let f = under(Some(C::F));
+        assert!(f[2] > green[2] && f[0] < green[0], "teal under an F star: {f:?}");
+    }
+}
+
+/// The leaf multiplier now set.
+pub fn leaves() -> [f32; 3] { LEAVES.read().map(|l| *l).unwrap_or([1.0; 3]) }
+
+/// A growing thing's colour under the world's star.
+pub fn leafy(c: Rgb) -> Rgb { leafy_by(c, 1.0) }
+
+/// Share of the leaves' colour grass takes (its blades are thinner, the ground shows through).
+pub const GRASS_LEAVES: f32 = 0.45;
+
+/// `leafy` at a strength (1 for crowns, `GRASS_LEAVES` for grass).
+pub fn leafy_by(c: Rgb, k: f32) -> Rgb {
+    let t = leaves();
+    if t == [1.0; 3] { return c; }
+    [c[0] * (1.0 + (t[0] - 1.0) * k), c[1] * (1.0 + (t[1] - 1.0) * k), c[2] * (1.0 + (t[2] - 1.0) * k)]
+}
+
+/// The leaves' multiplier at a strength.
+pub fn leaves_by(k: f32) -> [f32; 3] { let t = leaves(); [1.0 + (t[0] - 1.0) * k, 1.0 + (t[1] - 1.0) * k, 1.0 + (t[2] - 1.0) * k] }
+
 pub fn pack(c: Rgb) -> u32 { ((c[0].clamp(0.0, 255.0) as u32) << 16) | ((c[1].clamp(0.0, 255.0) as u32) << 8) | c[2].clamp(0.0, 255.0) as u32 }

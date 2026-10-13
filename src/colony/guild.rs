@@ -82,7 +82,7 @@ impl Colony {
             if members.is_empty() { continue; }
             if gd.granted != Some(true) && day >= gd.ask_day { self.petition(g, &members); }
             // A feast in the hall at each season's turn.
-            if gd.granted == Some(true) && day % SEASON_DAYS == 1 && self.guild_hall_of(gd.trade).is_some() && members.len() >= 2 {
+            if gd.granted == Some(true) && self.map.sky.season_of(day).1 == day && self.guild_hall_of(gd.trade).is_some() && members.len() >= 2 {
                 for &i in &members { for &j in &members { if i < j { self.warm(i, j); } } }
                 self.note(format!("{} feast in their hall at the turn of the season.", gd.name));
             }

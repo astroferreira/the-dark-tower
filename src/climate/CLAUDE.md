@@ -1,5 +1,32 @@
 # Climate and biomes (`src/climate/`)
 
+Seed numbers quoted below are under the Sun (`--star sol`, the original model): since star
+systems, a seed draws its own star by default (`src/astro/CLAUDE.md`).
+
+## Under other stars (`forcing.rs`, `thermostat.rs`)
+- `ClimateConfig::planet` (`PlanetForcing`; default = the Earth with `legacy: true`, the old
+  arithmetic, bit for bit). Non-legacy: insolation tabulated per quarter degree from the orbit
+  (96 steps of mean anomaly, Kepler, sin d = sin(tilt) sin(L), (a/r)^2), each season at its own
+  distance and the year's means weighted by the seasons' lengths; the seasonal blend's inertia
+  scaled by the year (`seasonal_response`: sea tau 0.6 yr, inland ground 0.21 yr); albedo
+  under the star (`spectral_albedo`: the absorbed share scales as 1/Kopparapu's inner-edge flux,
+  ice darker under red light); OLR offset lowered by the air's greenhouse; heat transport x
+  spin^-0.6 (0.35-5) x sqrt(pressure); lapse rate x gravity.
+- Circulation (`Circulation::for_planet`): Hadley edge and eddy-cell width 30 deg / sqrt(spin);
+  over 70 deg one cell to the pole; more, narrower bands for fast spinners (belts and zonal
+  winds alternate; storm track, Rossby wavenumbers and upwelling follow); Earth's spin gives
+  exactly Earth's belts. Coriolis from the spin.
+- Locked worlds: insolation S cos(angle from the substellar point), a substellar cloud deck
+  (+0.15 albedo x cos^2), diffusion along rows too, pressure from the day-night contrast (low
+  under the star), a superrotating equatorial jet, no Rossby waves, no ITCZ swing.
+- Thermostat (`solve_air`): a zonal version of the same EBM (72 bands of latitude, or of
+  angle from the substellar point; the 2-D model's four half-relaxed steps from 15 C, annual then
+  seasons with perennial ice) finds the global mean T where weathering (pCO2/pE)^beta
+  exp(k (T - T_twin)) land/0.29 balances outgassing (bisection). T_twin is the same land under
+  the Sun with Earth's air, so an Earth twin keeps 280 ppm. CO2 10 ppm to 8 bar. Iterating the
+  zonal model to convergence instead put Earth twins into snowballs (-45 C): the 2-D model is
+  tuned unconverged, so the thermostat mimics its scheme; they agree within 1-3 C.
+
 ## Climate (`climate/`)
 - Temperature: Budyko-Sellers energy balance per season (`ebm.rs`), heat transport D = 3.0
   W/(m2 C) (zonal land means within ~2-4 C of Earth's), continentality, lapse rate. The

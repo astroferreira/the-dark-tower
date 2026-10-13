@@ -1235,6 +1235,9 @@ pub fn landscape(world: &crate::world::WorldData, history: Option<&crate::histor
     if let Some(t) = site_of(&g, &|s| s.kind == SiteKind::Town && s.town.as_ref().map_or(false, |t| t.size >= 3)) { picks.push(("city".into(), t)); }
     if let Some(t) = site_of(&g, &|s| s.kind == SiteKind::Town && s.town.as_ref().map_or(false, |t| t.sea != 0)) { picks.push(("port".into(), t)); }
     if let Some(t) = site_of(&g, &|s| s.kind == SiteKind::Town && s.town.as_ref().map_or(false, |t| t.size == 0)) { picks.push(("hamlet".into(), t)); }
+    // A town on its river (the river runs on through it, under bridges).
+    let rivers = g.world.river.clone();
+    if let Some(t) = site_of(&g, &|s| s.kind == SiteKind::Town && rivers.get(s.tile.1 * ww + s.tile.0).copied().unwrap_or(false)) { picks.push(("rivertown".into(), t)); }
     if let Some(t) = site_of(&g, &|s| matches!(s.kind, SiteKind::Ruin | SiteKind::Castle | SiteKind::Temple)) { picks.push(("ruin".into(), t)); }
     if let Some(t) = site_of(&g, &|s| matches!(s.kind, SiteKind::Cave | SiteKind::Mine | SiteKind::Lair)) { picks.push(("cave".into(), t)); }
     if let Some(t) = (0..ww * wh).filter(|&i| g.world.river[i] && g.world.road[i]).min_by_key(|&i| crate::adventure::world::dist((i % ww, i / ww), home, ww)).map(|i| (i % ww, i / ww)) { picks.push(("ford".into(), t)); }

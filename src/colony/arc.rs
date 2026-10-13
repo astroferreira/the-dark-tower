@@ -142,7 +142,7 @@ pub fn plan(h: &WorldHistory, tile: (usize, usize), seed: u64) -> Arc {
         .filter_map(|c| c.lair_location.map(|l| (dist(l, tile, w), c)))
         .filter(|(d, _)| *d <= 4)
         .min_by_key(|(d, c)| (*d, c.id));
-    let shadow_near = h.shadow.as_ref().filter(|s| !s.is_broken())
+    let shadow_near = h.shadow.as_ref().filter(|s| !s.is_broken() && super::shadow_in_camp())
         .filter(|s| (0..=6i64).any(|r| { let (x, y) = (tile.0 as i64, tile.1 as i64); [(r, 0), (-r, 0), (0, r), (0, -r)].iter().any(|&(dx, dy)| {
             let yy = (y + dy).clamp(0, s.height as i64 - 1) as usize;
             let xx = (x + dx).rem_euclid(s.width as i64) as usize;
@@ -249,7 +249,7 @@ pub fn plan(h: &WorldHistory, tile: (usize, usize), seed: u64) -> Arc {
     }
     // The Shadow, if it reaches within ten tiles and was not the first.
     if threat.kind != ThreatKind::Shadow {
-        if let Some(sh) = h.shadow.as_ref().filter(|s| !s.is_broken()).filter(|s| (0..=10i64).any(|r| { let (x, y) = (tile.0 as i64, tile.1 as i64); [(r, 0), (-r, 0), (0, r), (0, -r)].iter().any(|&(dx, dy)| {
+        if let Some(sh) = h.shadow.as_ref().filter(|s| !s.is_broken() && super::shadow_in_camp()).filter(|s| (0..=10i64).any(|r| { let (x, y) = (tile.0 as i64, tile.1 as i64); [(r, 0), (-r, 0), (0, r), (0, -r)].iter().any(|&(dx, dy)| {
             let yy = (y + dy).clamp(0, s.height as i64 - 1) as usize; let xx = (x + dx).rem_euclid(s.width as i64) as usize; s.at(xx, yy) >= crate::history::shadow::REACH }) })) {
             later.push(Threat { kind: ThreatKind::Shadow, name: format!("raiders of {}", sh.name), why: format!("{} reaches this far", sh.name), cause: Some(sh.last_deed),
                 cause_text: h.chronicle.get(sh.last_deed).map(|e| format!("{} in {}", e.title.replacen("The ", "the ", 1), e.date.year)), faction: Some(sh.faction), from: Some(sh.seat), size: 1.0, monster: None });
@@ -482,10 +482,11 @@ impl Colony {
                 if day + 1 == raid_day && hour == 19 && self.clock.minute() == 0 && !self.attackers_out() && !self.siege_begins() { self.send_attackers(); }
                 if self.attackers_out() {
                     if let Some(at) = self.attackers_clash() {
-                        let spawned = self.creatures.iter().filter(|c| c.kind != super::creatures::CreatureKind::Wolf).map(|c| c.spawned).min().unwrap_or(self.clock.tick);
+                        let spawned = self.creatures.iter().filter(|c| matches!(c.kind, super::creatures::CreatureKind::Beast | super::creatures::CreatureKind::Raider)).map(|c| c.spawned).min().unwrap_or(self.clock.tick);
                         self.raid_watch.push((spawned, self.clock.tick));
                         self.raid_at(Some(at));
-                        self.attackers_retreat();
+                        // (Fought on the map first, when it came to blows: `melee.rs`.)
+                        if self.melee.is_none() { self.attackers_retreat(); }
                     }
                 }
                 if self.arc.as_ref().map_or(false, |a| a.stage == 2) && day >= raid_day && hour >= 5 && hour < 6 {
@@ -656,12 +657,15 @@ impl Colony {
         // The one nearest the clash is struck; with no clash, a seeded choice.
         let d = |i: usize, p: super::nav::Pos| (self.settlers[i].pos.0 as i32 - p.0 as i32).abs().max((self.settlers[i].pos.1 as i32 - p.1 as i32).abs());
         let victim = match clash { Some(p) => alive.iter().copied().min_by_key(|&i| (d(i, p), i)).unwrap(), None => alive[(hash(seed, 0x51C7) as usize) % alive.len()] };
+        // How it is then fought on the map (`melee.rs`): who was struck and lives, who saved them.
+        let (mut melee_struck, mut melee_saviour, mut melee_killed) = (None, None, false);
         let vname = self.settlers[victim].name.clone();
         // Armour may turn the killing blow (`armour.rs`): struck down, but alive.
         let mail = if danger > ready + 0.3 { self.armour_turns_killing(victim, &super::fight::foe_of(&capital(&threat.name), threat.monster.as_ref()), 0xA4A3 ^ seed) } else { None };
         if danger > ready + 0.3 && mail.is_none() {
             let how = attack.as_ref().map(|a| format!(" It {}; {}", a.did_to(&vname), vname)).unwrap_or_else(|| format!(" {}", vname));
             self.arc_event("The raid".into(), format!("{} {}.{} was killed before the others could reach them{}.", who, came, how, readiness), None);
+            melee_killed = true;
             // The clash, blow by blow (`fight.rs`).
             let foe = capital(&threat.name);
             for l in self.fight(&foe, threat.monster.as_ref(), victim, None, "death") { self.note(l); }
@@ -687,6 +691,7 @@ impl Colony {
             let saviour = alive.iter().copied().filter(|&i| i != victim).min_by_key(|&i| (d(i, vp), i)).unwrap_or(victim);
             self.like(victim, saviour, 6);
             let sname = self.settlers[saviour].name.clone();
+            (melee_struck, melee_saviour) = (Some(victim), Some(saviour));
             self.arc_event("The raid".into(), format!("{} {}. {} was struck down, but {} dragged them back {}, and they lived{}.", who, came, vname, sname, if sally { "to the gate" } else { "to the fire" }, readiness), None);
             if let Some(m) = &mail {
                 let line = format!("The blow that should have killed {} is turned by {}.", vname, m.replacen("a ", "the ", 1).replacen("an ", "the ", 1));
@@ -765,6 +770,8 @@ impl Colony {
         self.relic_after_raid(threat.faction, danger <= ready, &capital(&threat.name));
         // Everyone who lived through the night carries it.
         for j in 0..self.settlers.len() { if self.settlers[j].alive { self.feel(j, super::mind::Feel::RaidNight); } }
+        // It is fought where it met the camp, for as long as such a fight lasts (`melee.rs`).
+        if let (Some(p), false) = (clash, sally) { self.begin_melee(p, melee_struck, melee_saviour, melee_killed, danger <= ready); }
         self.fighting_people = None;
         self.siege = None;
     }
@@ -854,7 +861,9 @@ impl Colony {
             // A sally at dawn catches the besiegers in their camp (`siege.rs`).
             + if self.siege.as_ref().map_or(false, |s| s.sally) { 0.15 } else { 0.0 }
             // The patron's bell: the camp was warned (`ring_bell`).
-            + if self.bell_rung() { 0.1 } else { 0.0 };
+            + if self.bell_rung() { 0.1 } else { 0.0 }
+            // The hatch held by two spears as the deep broke through it (`cavelife.rs`).
+            + if self.hatch_held.is_some() { 0.2 } else { 0.0 };
         let wall_words = match palisade {
             None => "no palisade".to_string(),
             Some(p) if p.done => "the palisade closed".into(),
@@ -865,7 +874,7 @@ impl Colony {
         let armed = self.militia_ready().1;
         let tally = format!("{} night{} of watch kept, {}, {}, {} to fight{}{}", watches, if watches == 1 { "" } else { "s" },
             if self.bridges_up { format!("{}, ditched and its bridges raised", wall_words) } else if self.moat_dug() { format!("{} and ditched", wall_words) } else { wall_words }, if hut { "the hut standing" } else { "no roof to hold" }, alive.len(), if armed > 0 { format!(", {} of them drilled and under arms", armed) } else { String::new() },
-            if self.bell_rung() { ", warned by the bell" } else { "" });
+            format!("{}{}", if self.bell_rung() { ", warned by the bell" } else { "" }, self.hatch_held.as_ref().map(|(a, b)| format!(", the hatch held by {} and {}", a, b)).unwrap_or_default()));
         let patron = match captain {
             Some(i) => format!("; {}, the patron's favourite, captained the watch", self.settlers[i].name),
             None => String::new(),

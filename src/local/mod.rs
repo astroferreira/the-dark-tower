@@ -150,12 +150,19 @@ pub struct LocalMap {
     pub buildings: Vec<structures::Building>,
     /// The world tile's mean temperature (°C) in spring, summer, autumn and winter.
     pub season_temps: [f32; 4],
+    /// The sky over the site (its seasons' lengths, its day, its sun): the Earth's calendar
+    /// under the Sun.
+    pub sky: crate::astro::sky::LocalSky,
     /// What the site held within reach before it was furnished: water, trees, stone, bushes.
     pub found: [usize; 4],
     /// What furnishing added so the site is livable ("a spring", "a grove", ...).
     pub furnished: Vec<String>,
     /// Game that grazes here, from the tile's ecology: (species, head).
     pub game: Vec<(String, u32)>,
+    /// Predators that hunt here, from the tile's ecology: (species, density 0-1).
+    pub predators: Vec<(String, f32)>,
+    /// The world tile is a bone field (the history's scar): its bones are the unburied dead.
+    pub bone_field: bool,
     /// Places in the rock (lairs, tombs, old mines, caves, a deep cavern), each with its cause.
     pub places: Vec<places::UnderPlace>,
     /// Each column's cavern layers (`caverns.rs`): (floor z, top open z), (-1, -1) where none.
@@ -189,6 +196,30 @@ pub struct RoofPlan {
     pub stone: bool,
     /// A flat roof one can walk on behind battlements (a keep, a wall's tower), not pitched.
     pub flat: bool,
+    /// How the roof is made, by the builders' people (card 'Architecture styles by culture').
+    pub style: RoofStyle,
+}
+
+/// What a roof is made of, by the people who built it: tiles over stone and thatch over timber
+/// or earth (the default), a canopy of growing leaves (living), wicker (woven), hides on ribs of
+/// bone, faceted crystal, standing-seamed metal, turf over a house cut into a bank (carved).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RoofStyle { Tiles, Thatch, Living, Woven, Bone, Crystal, Metal, Turf }
+
+impl RoofStyle {
+    /// The roof of a people's architecture (`stone`: the house's walls are dressed stone).
+    pub fn of(arch: Option<crate::history::entities::culture::ArchitectureStyle>, stone: bool) -> RoofStyle {
+        use crate::history::entities::culture::ArchitectureStyle as A;
+        match arch {
+            Some(A::Living) => RoofStyle::Living,
+            Some(A::Woven) => RoofStyle::Woven,
+            Some(A::Bone) => RoofStyle::Bone,
+            Some(A::Crystal) => RoofStyle::Crystal,
+            Some(A::Metalwork) => RoofStyle::Metal,
+            Some(A::Carved) => RoofStyle::Turf,
+            _ => if stone { RoofStyle::Tiles } else { RoofStyle::Thatch },
+        }
+    }
 }
 
 impl LocalMap {
@@ -229,6 +260,26 @@ impl LocalMap {
 fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+
+/// Within this many metres of the date line a reading by absolute position crossfades with the
+/// one a world's width over (the noise does not wrap; x does).
+const DATE_BAND_M: f64 = 2000.0;
+
+/// `f` read at absolute x `mx` (m) so that it is the same from either side of the date line
+/// (`span_m`: the world's width in metres): within `DATE_BAND_M` of the line it is mixed with the
+/// reading a world's width over, half and half on the line itself. Elsewhere it is `f(mx)`.
+fn across_date_line(mx: f64, span_m: f64, f: impl Fn(f64) -> f32) -> f32 {
+    let m = mx.rem_euclid(span_m);
+    if m < DATE_BAND_M {
+        let w = (0.5 * (1.0 - m / DATE_BAND_M)) as f32;
+        (1.0 - w) * f(m) + w * f(m + span_m)
+    } else if span_m - m < DATE_BAND_M {
+        let w = (0.5 * (1.0 - (span_m - m) / DATE_BAND_M)) as f32;
+        (1.0 - w) * f(m) + w * f(m - span_m)
+    } else {
+        f(m)
+    }
 }
 
 fn fbm(noise: &Perlin, x: f64, y: f64, octaves: u32) -> f32 {
@@ -404,6 +455,14 @@ pub fn world_river_width(world: &WorldData, x: usize, y: usize) -> f32 {
 /// distance to each segment less half its width), and the one 20-60 m from the water's edge
 /// nearest (x, y) wins, so long as the land goes on behind it (of eight points 150 m out, five
 /// are dry: not a spit or an island in a great river). None where no channel runs near.
+/// The region's origin in absolute cells, shifted by whole world widths so that region cell `x`
+/// lies within the world's first width (x wraps at the date line; the noise does not).
+fn canonical_x0(region: &ZoomRegion, s: i64, x: f64) -> i64 {
+    let span = region.world_width.max(1) as i64 * s;
+    let at = region.world_x0 * s + x.floor() as i64;
+    region.world_x0 * s - at.div_euclid(span) * span
+}
+
 pub fn bank_near(region: &ZoomRegion, x: f64, y: f64) -> Option<(f64, f64)> {
     let segs = river_segments(region, x, y, 2);
     if segs.is_empty() { return None; }
@@ -411,13 +470,14 @@ pub fn bank_near(region: &ZoomRegion, x: f64, y: f64) -> Option<(f64, f64)> {
     let meander = Perlin::new(seed.wrapping_add(703));
     let s = (region.params.cells_per_tile.max(8) & !1) as i64;
     let cell_m = region.cell_m as f64;
-    let (ox_m, oy_m) = ((region.world_x0 * s) as f64 * cell_m, (region.world_y0 * s) as f64 * cell_m);
+    let (ox_m, oy_m) = (canonical_x0(region, s, x) as f64 * cell_m, (region.world_y0 * s) as f64 * cell_m);
+    let span_m = region.world_width.max(1) as f64 * s as f64 * cell_m;
     // Distance (m) from a point to the nearest channel's edge (negative inside), and whether it
     // lies in a lake or the sea.
     let edge = |zx: f64, zy: f64| -> (f64, bool) {
         let (mx, my) = (ox_m + zx * cell_m, oy_m + zy * cell_m);
-        let wx = zx + 0.30 * fbm(&meander, mx / 700.0, my / 700.0, 3) as f64;
-        let wy = zy + 0.30 * fbm(&meander, mx / 700.0 + 19.0, my / 700.0, 3) as f64;
+        let wx = zx + 0.30 * across_date_line(mx, span_m, |x| fbm(&meander, x / 700.0, my / 700.0, 3)) as f64;
+        let wy = zy + 0.30 * across_date_line(mx, span_m, |x| fbm(&meander, x / 700.0 + 19.0, my / 700.0, 3)) as f64;
         let mut edge = f64::MAX;
         for seg in &segs {
             let (d, t) = seg_dist(wx, wy, seg.a, seg.b);
@@ -522,11 +582,11 @@ fn vein_sources(world: &WorldData, tile: (usize, usize), params: &crate::region:
 
 /// Which ore, if any, fills this rock cell: thin, mostly horizontal seams (like real veins and
 /// beds) where the noise field rises above a threshold that falls with source strength.
-fn ore_vein(veins: &[VeinSource], rock: RockType, mx: f64, my: f64, z: i32) -> Option<crate::history::civilizations::economy::ResourceType> {
+fn ore_vein(veins: &[VeinSource], rock: RockType, mx: f64, my: f64, z: i32, span_m: f64) -> Option<crate::history::civilizations::economy::ResourceType> {
     for v in veins {
         let hosts = crate::lore::resources::host_rocks(v.kind);
         if !hosts.is_empty() && !hosts.contains(&rock) { continue; }
-        let n = v.noise.get([mx / 38.0, my / 38.0, z as f64 * 0.55]) as f32;
+        let n = across_date_line(mx, span_m, |x| v.noise.get([x / 38.0, my / 38.0, z as f64 * 0.55]) as f32);
         let thr = 0.74 - 0.14 * v.strength.min(2.0);
         if n > thr { return Some(v.kind); }
     }
@@ -543,8 +603,11 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     let cell_m = region.cell_m as f64;
     let s = (region.params.cells_per_tile.max(8) & !1) as i64;
     let tile_cells = TILE_M as f64 / cell_m;
-    // Absolute position of region cell (0,0) in metres, for position-based noise and hashing.
-    let (ox_m, oy_m) = ((region.world_x0 * s) as f64 * cell_m, (region.world_y0 * s) as f64 * cell_m);
+    // Absolute position of region cell (0,0) in metres, for position-based noise and hashing
+    // (shifted by whole world widths so the embark lies in the first: made from any region, even
+    // one across the date line, the same ground has the same noise).
+    let (ox_m, oy_m) = (canonical_x0(region, s, cx) as f64 * cell_m, (region.world_y0 * s) as f64 * cell_m);
+    let span_m = world.width as f64 * s as f64 * cell_m;
     let world_tile = (
         ((region.world_x0 * s + cx as i64).div_euclid(s)).rem_euclid(world.width as i64) as usize,
         ((region.world_y0 * s + cy as i64).div_euclid(s)).clamp(0, world.height as i64 - 1) as usize,
@@ -587,15 +650,20 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         tile_weights(mx, my, tile_m, blend, world.width, world.height).iter().filter(|t| t.1 > 0.0).map(|&(t, w)| w * amp_of(t)).sum()
     };
     let mountain_noise = Perlin::new(seed.wrapping_add(706));
+    // Scree chutes down the faces (card 'Mountains at human scale'): in about a fifth of each
+    // face's length the face eases over most of the step, so a walker can climb from one ledge
+    // to the next (faces of four levels had cut a mountain camp off its own ground).
+    let chute_noise = Perlin::new(seed.wrapping_add(707));
     let terrace = |m: f32, mx: f64, my: f64| -> f32 {
         if m <= 0.0 { return 0.0; }
         // A broad hillside (large-scale noise plus a tilt), cut into terraces: most of each step
         // a ledge, its last fifth a face.
-        let f = (0.5 + 0.5 * fbm(&mountain_noise, mx / 420.0, my / 420.0, 4) as f32 + 0.25 * ((mx / 384.0) as f32).sin()).clamp(0.0, 1.0);
+        let f = across_date_line(mx, span_m, |x| (0.5 + 0.5 * fbm(&mountain_noise, x / 420.0, my / 420.0, 4) as f32 + 0.25 * ((x / 384.0) as f32).sin()).clamp(0.0, 1.0));
         let k = 7.0;
         let step = (f * k).floor();
         let frac = f * k - step;
-        (step + smoothstep(0.78, 1.0, frac)) / k * m
+        let chute = smoothstep(0.12, 0.28, across_date_line(mx, span_m, |x| fbm(&chute_noise, x / 70.0, my / 70.0, 2)));
+        (step + smoothstep(0.78 - 0.62 * chute, 1.0, frac)) / k * m
     };
 
     // Ore deposits within a couple of world tiles feed veins in the rock below.
@@ -618,8 +686,8 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let moist = bilinear(&region.moisture, rw, rh, zx, zy);
 
             // Distance to the nearest river centreline, with a meander warp of the query point.
-            let wx = zx + 0.30 * fbm(&meander, mx / 700.0, my / 700.0, 3) as f64;
-            let wy = zy + 0.30 * fbm(&meander, mx / 700.0 + 19.0, my / 700.0, 3) as f64;
+            let wx = zx + 0.30 * across_date_line(mx, span_m, |x| fbm(&meander, x / 700.0, my / 700.0, 3)) as f64;
+            let wy = zy + 0.30 * across_date_line(mx, span_m, |x| fbm(&meander, x / 700.0 + 19.0, my / 700.0, 3)) as f64;
             // Nearest edge of any channel (width varies along each segment).
             let (mut river_d, mut river_w, mut edge) = (f32::MAX, 0.0f32, f32::MAX);
             for seg in &segments {
@@ -634,8 +702,8 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             // Metre-scale relief, stronger on slopes, calm around rivers.
             let mut amp = (0.8 + 35.0 * slope).min(40.0);
             if river_w > 0.0 { amp *= smoothstep(hw, hw + 30.0, river_d); }
-            let rough = fbm(&relief_noise, mx / 90.0, my / 90.0, 5) * 2.0;
-            let ridges = 1.0 - (fbm(&ridge_noise, mx / 140.0, my / 140.0, 4) * 2.0).abs();
+            let rough = across_date_line(mx, span_m, |x| fbm(&relief_noise, x / 90.0, my / 90.0, 5)) * 2.0;
+            let ridges = 1.0 - (across_date_line(mx, span_m, |x| fbm(&ridge_noise, x / 140.0, my / 140.0, 4)) * 2.0).abs();
             let steep = smoothstep(0.15, 0.6, slope);
             let mut e = base + amp * ((1.0 - steep) * rough + steep * (ridges - 0.5) * 2.0);
             // The mountain's own relief (calm by rivers).
@@ -749,9 +817,17 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let at = |s: Season, k: usize| world.seasonal_climate.as_ref().map(|c| c.get_temperature(tx, ty, s, north)).unwrap_or(base + [0.0, 8.0, 0.0, -8.0][k]);
             [at(Season::Spring, 0), at(Season::Summer, 1), at(Season::Autumn, 2), at(Season::Winter, 3)]
         },
+        sky: {
+            let (tx, ty) = (world_tile.0.min(world.width - 1), world_tile.1.min(world.height - 1));
+            let lat = 90.0 - (ty as f32 + 0.5) / world.height as f32 * 180.0;
+            let lon = (tx as f32 + 0.5) / world.width as f32 * 360.0;
+            match &world.star_system { Some(s) => s.local_sky(lat, lon), None => crate::astro::sky::LocalSky::earth(lat) }
+        },
         found: [0; 4],
         furnished: Vec::new(),
         game: Vec::new(),
+        predators: Vec::new(),
+        bone_field: false,
         places: Vec::new(),
         cavern_z: Vec::new(),
         caverns: Vec::new(),
@@ -767,7 +843,9 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let c = &cols[j * n + i];
             let (mx, my) = (ox_m + (cx + (i as f64 + 0.5 - n as f64 / 2.0) * tile_cells) * cell_m,
                             oy_m + (cy + (j as f64 + 0.5 - n as f64 / 2.0) * tile_cells) * cell_m);
-            let (gtx, gty) = ((mx / TILE_M as f64).floor() as i64, (my / TILE_M as f64).floor() as i64);
+            // (Hashed by the 2 m tile's place on the world, x wrapped: the same tile whichever
+            // embark makes it.)
+            let (gtx, gty) = ((mx.rem_euclid(span_m) / TILE_M as f64).floor() as i64, (my / TILE_M as f64).floor() as i64);
             let sz = (((c.e - z_min_m) / Z_STEP_M).floor() as i32).clamp(1, depth as i32 - 2);
             map.surface_z[j * n + i] = sz;
             let biome = Biome::classify(c.e, c.temp, c.moist);
@@ -797,7 +875,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
                 Material::Soil
             };
             // Strata boundaries undulate gently instead of being perfectly flat.
-            let wobble = (fbm(&strata_noise, mx / 160.0, my / 160.0, 3) * 4.0).round() as i32;
+            let wobble = (across_date_line(mx, span_m, |x| fbm(&strata_noise, x / 160.0, my / 160.0, 3)) * 4.0).round() as i32;
             let glacier = matches!(biome, Biome::Ice) || c.temp < -18.0;
 
             for z in 0..sz {
@@ -818,7 +896,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
                 };
                 // Ore veins in host rock, thicker the closer and richer the nearest deposit.
                 let material = match material {
-                    Material::Rock(rock) => ore_vein(&veins, rock, mx, my, z - deepened).map(Material::Ore).unwrap_or(material),
+                    Material::Rock(rock) => ore_vein(&veins, rock, mx, my, z - deepened, span_m).map(Material::Ore).unwrap_or(material),
                     other => other,
                 };
                 let k = map.idx(i, j, z as usize);
@@ -848,7 +926,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let wb = *world.biomes.get(rx.div_euclid(s).rem_euclid(world.width as i64) as usize, ry.div_euclid(s).clamp(0, world.height as i64 - 1) as usize);
             let (tree_density, shrub_density, species) = world_vegetation(wb).unwrap_or_else(|| vegetation(biome));
             // Forests have clearings and groves rather than uniform density.
-            let grove = 0.35 + 0.95 * smoothstep(-0.3, 0.3, fbm(&patch_noise, mx / 150.0, my / 150.0, 3));
+            let grove = 0.35 + 0.95 * smoothstep(-0.3, 0.3, across_date_line(mx, span_m, |x| fbm(&patch_noise, x / 150.0, my / 150.0, 3)));
             let r = hash(gtx, gty, 7);
             let plant = if underwater || near_river || matches!(floor_material, Material::Ice | Material::Rock(_)) {
                 Plant::None
@@ -956,7 +1034,10 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             ((ox_m + (cx - n as f64 / 2.0 * tile_cells) * cell_m) / TILE_M as f64).round() as i64,
             ((oy_m + (cy - n as f64 / 2.0 * tile_cells) * cell_m) / TILE_M as f64).round() as i64,
         );
-        wildlife::apply(&mut map, world, lore, origin);
+        wildlife::apply(&mut map, world, lore, origin, (span_m / TILE_M as f64).round() as i64);
+        // On a mountain, ibex on the ledges where the ecology keeps no other game (a living to
+        // be had: card 'Mountains at human scale').
+        if mountains >= 10.0 && map.game.is_empty() { map.game.push(("ibex".to_string(), 7)); map.game.push(("wild goat".to_string(), 6)); }
     }
     // What a first camp needs within reach: water, wood, stone, berries, something to look at.
     let battles = lore.and_then(|l| l.battles.get(&map.world_tile).cloned()).unwrap_or_default();
@@ -973,9 +1054,20 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
                 let k = map.idx(i, j, sz.max(0) as usize);
                 // Ice over a frozen lake stays ice.
                 if map.cells[k].shape != Shape::Floor || map.cells[k].material == Material::Ice { continue; }
-                if drop >= 1 {
+                // On a mountain (not a hill) a face is the whole band where the ground falls
+                // three levels or more within two cells, bare to its foot, where the scree lies
+                // (a face had been a bundle of thin lines on white: card 'Mountains at human scale').
+                let (lo, hi) = if mountains >= 10.0 && i >= 2 && j >= 2 && i + 2 < n && j + 2 < n {
+                    let ring = (j - 2..=j + 2).flat_map(|y| (i - 2..=i + 2).map(move |x| (x, y)));
+                    ring.fold((i32::MAX, i32::MIN), |(lo, hi), (x, y)| (lo.min(szs[y * n + x]), hi.max(szs[y * n + x])))
+                } else { (sz, sz) };
+                if drop >= 1 || (hi - lo >= 3 && sz > lo && sz < hi) {
                     map.cells[k].material = Material::Rock(rock);
                     map.cells[k].plant = Plant::None;
+                } else if hi - lo >= 3 && sz == lo {
+                    map.cells[k].material = Material::Gravel;
+                    map.cells[k].plant = Plant::None;
+                    map.cells[k].boulder = hash(i as i64, j as i64, 0x5C2EE) < 0.4;
                 } else if rise >= 1 && hash(i as i64, j as i64, 0x5C2EE) < 0.3 {
                     map.cells[k].boulder = true;
                     map.cells[k].plant = Plant::None;

@@ -207,6 +207,10 @@ fn find_settlement_sites(
         // Weighted random selection from pool could be better, but simple random from top tier is fine
         let idx = rng.gen_range(0..search_pool.len());
         let ((cx, cy), _) = search_pool[idx];
+        // (No towns on the two rows nearest a pole: each spans the map's width there and holds
+        // a sliver of the globe; under a steep tilt the poles are warm enough to live on. Refused
+        // after the draw, so a world that never drew one is unchanged.)
+        if crate::history::simulation::polar_row(cy, world.height) { continue; }
 
         let too_close = sites.iter().any(|&(sx, sy): &(usize, usize)| {
             let dx = cx as i64 - sx as i64;
@@ -225,6 +229,7 @@ fn find_settlement_sites(
             if sites.len() >= count { break; }
             let idx = rng.gen_range(0..candidates.len()); // Search entire map
              let ((cx, cy), _) = candidates[idx];
+             if crate::history::simulation::polar_row(cy, world.height) { continue; }
              
              // Relax distance constraint slightly
              let too_close = sites.iter().any(|&(sx, sy): &(usize, usize)| {

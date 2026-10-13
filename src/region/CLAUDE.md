@@ -8,7 +8,11 @@
 - Seamless: terrain is assembled from fixed world-tile chunks (each simulated with a one-tile
   border, cached in memory) blended with tent weights, so a cell's height depends only on its
   world position; separately generated regions match exactly (tested). Hydrology runs on the
-  blended terrain with a two-tile margin. Known exception: the date line (x wrap).
+  blended terrain with a two-tile margin. The date line too (2026-10-12): chunks are kept and
+  simulated by their wrapped tile (`wrap` in `generate_zoom`), and the climate's and biome
+  colours' warp noise is read at the wrapped position, so a region across the date line reads
+  the same chunks as one on the other side (`--embark-seams`: the same embark from the region
+  round 95,10 and round 1,10 of the dev world differs 0.00 m; it had been 17 m).
 - Pipeline (per chunk): bicubic world heights + relief-scaled fractal detail -> world Bezier rivers carve
   valleys and inject upstream area where they enter -> shallow hollows filled -> implicit
   stream-power erosion + hillslope diffusion on a priority-flood drainage tree -> lakes and

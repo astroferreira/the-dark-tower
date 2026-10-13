@@ -24,6 +24,9 @@ The default and only maintained front end (minifb window).
   roads glow, foundings ring, battles/razings/disasters flare; great events get a banner.
 - Panel: year/season, timeline, almanac, souls sparkline, the Shadow, great realms. Chronicle
   below: key events (`style()` decides glyph, colour, map mark and whether it is key), `L` = all.
+  A hovered entry shows its causes on a card beside its words ("Because: The Republic of
+  Badgerd destroyed (222), after Siege of Fatewave (222)"; `LogItem::because`, two links back).
+  `PLANET_WATCH_SCRIPT` takes `mouse X Y` too.
 - The opening of the game: treasures made, found and lost are not key events; once a decade one
   line sums them ("In ten years 14 treasures were made, found or lost"; recoveries had been 13 of
   the last 20 key events). Playback is paced by drama: a season with a great event (major kinds,
@@ -36,11 +39,44 @@ The default and only maintained front end (minifb window).
   PNG without a window (for checking the look). The window doesn't redraw while hidden, so
   screen capture is unreliable; use this.
 
+## Leaves under other stars (`ink::leaves`)
+- `ink::set_leaves(class)` (main, once the world is built) sets a multiplier on everything that
+  grows: none under G (the Sun: views unchanged), teal under F [0.82, 0.97, 1.22], olive and gold
+  under K [1.18, 0.94, 0.70], dark purple under M [0.66, 0.42, 0.86] (Kiang et al. 2007). Every
+  view takes it so they agree: the world map's flat colours and seasonal tints by
+  `classify::growth` (woods 1, bushes 0.6, grass and fields `GRASS_LEAVES` 0.45), the region
+  walker's tree fills and green ground, the embark's grassy wash, crowns, shrubs and crops, the
+  home globe's biomes. Full strength on grass had turned K-star steppe a loud orange.
+
+## The worlds as globes (`tiles/globes.rs`)
+- Tab on the heavens card (or `--worlds-snapshot FILE`; `PLANET_WORLDS_SEL=N` picks the world
+  shown large): every planet of the system as an orthographic globe lit from the left (the far
+  side hatched in ink, the axis tilted toward the star, a view 18 degrees above the orbit plane,
+  rings found per pixel where the line of sight meets the equatorial plane, in front of or
+  behind the disc, with the planet's shadow on them; the air as a limb haze). Left/Right choose.
+- Rocky neighbours are made by `terrain::generate_terrain` at 160x80 (~0.1 s each; on a worker
+  in the window, all of them in parallel) under their own starlight, tilt, spin and air, and
+  coloured by kind (`rocky`): lava seas with crust rafts and glowing seams (glow shows on the
+  night side), maria and craters (power-law sizes, great-circle distance), rust with dry
+  valleys from the flow accumulation and polar caps, an orange surface under cloud, an ice shell
+  with lineae where the plates' stress is high, lifeless seas and rock. Giants (`banded`) by
+  Sudarsky class with turbulence and a great storm. The home world is its biome map (seas
+  lightened); a locked world is turned so its substellar longitude faces the light.
+
+## The heavens card (`tiles/heavens.rs`)
+- H on the world map (H or Esc closes; Esc closes it before the inspector): the star system as
+  an ink orrery (log-scaled orbits, the habitable zone washed green, the snow line dashed, belts
+  stippled, planets lit from the star, rings, the world in rubric with its moons), a globe with
+  the tilt, the neighbours listed short, and `StarSystem::account()` in IM Fell on the right.
+  `--heavens-snapshot FILE` draws it at 1280x800 (with `--load-world` too).
+
 ## Start screen (`tiles/start.rs`)
 - Shown when the game runs with no arguments, or with `--start` (other flags pre-fill it).
-  Rows: world size (Dev 96x48 / Small / Standard / Large), seed (type digits, R rerolls),
-  shape of the lands (`WorldStyle`), tectonic plates, age of the crust (`--tectonic-myr`),
-  fantasy, written history (years, 0 = none), founding peoples, the Shadow, watch it unfold;
+  Rows: play, world size (Dev 96x48 / Small / Standard / Large), seed (type digits, R
+  rerolls); under "The heavens" the sun (from the seed, showing its type / the Sun / a class)
+  and its orbit (place in the habitable zone; `args.star` / `args.hz`); under "The land" shape
+  of the lands (`WorldStyle`), tectonic plates, age of the crust (`--tectonic-myr`), fantasy;
+  under "History" written history (years, 0 = none), founding peoples, the Shadow, watch it unfold;
   a help panel explains the selected row and a rough time estimate shows by Begin (fitted to
   M4 Pro timings, world and 250 years together: Small 3.4 s, Standard 11-14 s, Large 66 s).
   "Watch it unfold" is on by default: the history being written is the game's opening.
@@ -115,7 +151,10 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
 - `Z` walks into the high-resolution region under the mouse: arrows/WASD walk (Shift runs),
   wheel zooms, `F` resets zoom, `X` saves the region PNG, `Esc`/`Z` returns to the map (centred
   where you walked to). Near a region edge the next region is generated on a background thread
-  and swapped in; zoom terrain is seamless, so you can walk across the world.
+  and swapped in; zoom terrain is seamless, so you can walk across the world. `[` / `]` make the
+  region smaller or larger (4, 6, 8, 12 or 16 world tiles across; made again round the walker on
+  the worker; a chip says so) and `--region-tiles N` sets it at the start (default 8; cells per
+  tile stay 128 so walking stays seamless). The walker's chip names its keys.
 - `--tiles-center X,Y` start position; `--tiles-snapshot PREFIX` renders overview/3px/16px/32px
   frames to PNG without a window (for checking rendering; 3.5 px/tile is just below the
   detailed-tile threshold) and prints each frame's render time (best of three; seed 42: ~11 ms
@@ -277,6 +316,19 @@ at the bottom says "Z: walk into the land under the mouse. Enter there: settle."
   thread in `main`), bucketing river segments and houses, writing the timelapse on a worker.
   Not tried in a real window.
 
+- One window from Begin to the camp (card, 2026-10-12): a camp made at the start (a site chosen
+  on the watcher's card, `--dev-embark`, `--code`) is made on a worker (`founding` in the viewer:
+  the region, the embark, the founding, the legends and a `--day` replay) while the map stays
+  live under a chip, "Making camp at 45,12: surveying the land and lighting the fire... N s"
+  (cold dev region: 7.9 s, and the window kept ~60 fps: frame 120 at 2 s). Background loads (the
+  Z survey and the founding) run in a rayon pool of their own two threads short of the machine
+  (`in_background`): in the global pool they had taken the threads the window's renderer waits
+  on (5 frames in 6 s). The watcher's G pumps the window after each GIF frame, with its progress
+  in the title. River crossings are found per tile among the segments with a sample in it
+  (`region/rivers.rs`; Large seed 42: 3.7 s -> 0.00 s, identical: `PLANET_CHECK_CROSSINGS=1`), and
+  a town's houses are looked up in a 16 m grid (`structures.rs`, `Plan::index_houses`; Greenburg's
+  embark 1.15 s -> 0.24 s, Dreammere 0.42 -> 0.10, the same town). `PLANET_TIME_CROSSINGS=1`
+  times the crossings.
 - The colony's winter (`local_ink::draw_colony`, 2026-10-08): in a hard winter the embark pales
   toward snow (28%, 42% in a deep freeze), lighter ground more than ink, before the night wash;
   the map's own colours stay annual. Checked on seed 3's day-100 frame (`PLANET_FRAMES`).
@@ -555,5 +607,37 @@ the Claude Doc "Ink graphics: sprites and examples".
   All cores, 1280x800: colony 2.0 ms (3.2 with the panel), pan 2.6, level 3.0, section 4.4,
   world 1-2 ms, walking 2-4.5, watcher 2.8 / 1.5. One core at 2560x1440 with the panel: surface
   p99 11, pan 13, level 15.7.
-- Left: the world shader costs ~150 ns a pixel on one core, so fast diagonal pans at 2560x1440 and
-  16-32 px a tile on a single core reach 17-18 ms at p95 (1-2.5 ms with all cores).
+- The world shader costs ~150 ns a pixel on one core, so fast diagonal pans at 2560x1440 and
+  16-32 px a tile on a single core had reached 17-19 ms at p95. Since 2026-10-12 (card 'Cheaper
+  world map shader per pixel') a pan's uncovered strips are drawn as rectangles of their own
+  (`render::draw_rect`: the world position and the hatching's key move with the rectangle, so
+  the pixels are the same; `PLANET_WORLD_CHECK` finds 0 differing), not by asking every pixel of
+  the screen whether it is wanted; and strips that would cost over 8 ms (at `WORLD_RATE`) are
+  drawn coarse, their rows and columns refined ~6 ms a frame (`WorldCache::coarse_cols` beside
+  the rows). One core at 2560x1440: p50 4.2/5.5/7.5/13.0 ms at 4/8/16/32 px -> 1.2/1.7/3.0/6.8,
+  p95 at 16 and 32 px 19.2 -> 13.3 and 13.7, frames over 16.7 ms 35 and 98 -> 1 (the first).
+  All cores at 1280x800: p50 0.9-1.6 ms.
+
+### Hover and a key in the camp (card 'Hover info, labels and markers in embarks', 2026-10-12)
+- The camp's chip at the mouse (`colony_hud`) falls back, when no settler, heap, thing or
+  building is under it, to a creature (`creature_words`: "Wild boar, grazing", "A bear, watching
+  the camp", "a scout from ..., going off", "... coming for the camp") and then to the ground
+  itself (`ground_words`: "Clay ground, grass; game trail", "Granite, wet: the aquifer", "Tin
+  ore", "Water, waist deep", "A stair cut in the shale", with "(N below the ground here)" on a
+  level). Chips are as wide as their words (at most 320 px).
+- A level view has the chip too, and a key under the camp's card (`draw_level_key`): "Level 43,
+  12 down" and each kind in view with its colour (each rock in its own wash, ore in its metal's
+  colour, the aquifer's wet rock, magma, water, dug or open ground). Places not yet found read and
+  key as the rock round them (`hidden_place`, as `draw_delve` covers them; `PLANET_REVEAL=1`
+  shows them). Driven in a real window (`PLANET_UI_SCRIPT`, `--dev-embark`).
+
+### Following a settler (card 'Seeing below', 2026-10-12)
+- A settler selected (clicked in the ledger or on the map, their sheet closed) is followed: the
+  camera keeps them in view, and the view goes down to their level by itself when they go below
+  ("Level 46 - 9 below the camp's ground: the great hall, the workshops") and back to the surface
+  when they come up; panning or dragging stops it; the camp card says "Following X: the view goes
+  where they go, below too (pan to stop)". `PLANET_UI_SCRIPT` takes `selectbelow` (the first
+  settler below the ground) and `select N`; checked on the grown dev camp (`--code
+  76.96x48.earthlike.8.250@45,12 --day 200`). `--sim-snapshot` writes `_follow.png` (the first
+  settler found below on a second founding, as following shows them) and prints "Following: ...".
+  The level key sits under the camp card however tall it grows.

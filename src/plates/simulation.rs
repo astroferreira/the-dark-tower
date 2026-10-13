@@ -73,11 +73,14 @@ pub struct TectonicParams {
     /// Desired emerged land fraction. Continental shelves are widened at the start of the run
     /// until the crust could support it; lower targets are met by flooding instead.
     pub target_land_fraction: f32,
+    /// Scales the world style's land fraction (`generate_tectonic_terrain`): the planet's
+    /// water inventory (a dry world shows more land). 1 = the style's own.
+    pub land_scale: f32,
 }
 
 impl Default for TectonicParams {
     fn default() -> Self {
-        Self { total_myr: 200.0, steps: 60, hotspots: 8, target_land_fraction: 0.35 }
+        Self { total_myr: 200.0, steps: 60, hotspots: 8, target_land_fraction: 0.35, land_scale: 1.0 }
     }
 }
 

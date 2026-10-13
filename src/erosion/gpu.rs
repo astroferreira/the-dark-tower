@@ -368,12 +368,31 @@ pub fn simulate_gpu_or_cpu(
     params: &ErosionParams,
     seed: u64,
 ) -> ErosionStats {
-    if let Some(ctx) = GpuErosionContext::new() {
-        println!("Using GPU-accelerated erosion");
-        ctx.simulate(heightmap, hardness, params, seed)
-    } else {
-        println!("GPU not available, using CPU parallel erosion");
-        super::hydraulic::simulate_parallel(heightmap, hardness, params, seed)
+    // The GPU pass runs on a worker with a deadline: twice it stalled for 40+ minutes waiting on
+    // the device (about a minute of CPU), where reruns took ~70 s. Past the deadline
+    // (`PLANET_GPU_TIMEOUT` seconds, 240 by default) the CPU does the work instead; the stalled
+    // worker is left to itself.
+    let limit = std::env::var("PLANET_GPU_TIMEOUT").ok().and_then(|v| v.parse::<u64>().ok()).unwrap_or(240);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (mut h, hard, p) = (heightmap.clone(), hardness.clone(), params.clone());
+    std::thread::spawn(move || {
+        let out = GpuErosionContext::new().map(|ctx| {
+            println!("Using GPU-accelerated erosion");
+            let stats = ctx.simulate(&mut h, &hard, &p, seed);
+            (h, stats)
+        });
+        let _ = tx.send(out);
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(limit)) {
+        Ok(Some((h, stats))) => { *heightmap = h; stats }
+        Ok(None) => {
+            println!("GPU not available, using CPU parallel erosion");
+            super::hydraulic::simulate_parallel(heightmap, hardness, params, seed)
+        }
+        Err(_) => {
+            println!("GPU erosion stalled for {} s; finishing it on the CPU instead", limit);
+            super::hydraulic::simulate_parallel(heightmap, hardness, params, seed)
+        }
     }
 }
 

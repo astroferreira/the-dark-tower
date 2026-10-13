@@ -143,6 +143,22 @@ pub fn draw_ghosts(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, 
         let top = super::folk::draw(put, &f, sx, sy, scale, (ph.cos()) < 0.0, false, 0.6);
         labels.push((sx, top - 4.0, format!("the ghost of {}", s.name)));
     }
+    // The nameless dead walking their graves on a night they were seen (`colony::bestiary`).
+    if let Some((day, at)) = colony.haunt_night.filter(|h| !colony.nameless_rest && (h.0 == colony.clock.day() || (h.0 + 1 == colony.clock.day() && colony.clock.hour() < 6))) {
+        let ph = tick as f32 / 60.0 + day as f32;
+        let (x, y) = (at.0 as f32 + 0.5 + ph.sin() * 1.2, at.1 as f32 + 0.5 + (ph * 0.6).cos() * 0.8 - 0.6);
+        if c.visible(x, y, w, h, 2.0) {
+            let (sx, sy) = (c.x0 + x * c.t, c.y0 + y * c.t);
+            {
+                let mut pen = Pen::new(put, sx, sy + 8.0 * scale, 22.0 * scale).faint(0.5);
+                pen.glow(0.0, -0.3, 1.2, [200.0, 230.0, 220.0], 0.35);
+            }
+            let f = super::folk::Folk { skin: [214.0, 226.0, 220.0], hair: [190.0, 200.0, 196.0], dress: [196.0, 214.0, 208.0], helm: super::folk::Helm::None, arm: super::folk::Arm::Spear,
+                shield: None, tusks: false, pointed: false, beard: false, glow: Some([170.0, 240.0, 220.0]), pale: true };
+            let top = super::folk::draw(put, &f, sx, sy, scale, ph.cos() < 0.0, false, 0.55);
+            labels.push((sx, top - 4.0, "a soldier whose name is lost".into()));
+        }
+    }
 }
 
 /// The patron's bell, ringing over the fire.
@@ -305,3 +321,50 @@ pub fn draw_away_sign(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i6
     labels.push((c.x0 + (x + 0.6) * c.t, c.y0 + (y - 0.95) * c.t - 2.0, text));
 }
 const DARKWOOD: Rgb = [122.0, 86.0, 54.0];
+
+/// The camp's plan as survey lines (key Y; card 'A village of their own making'): the wall's ring
+/// with its gates open (left out where the ground is the wall), the lane from the fire toward the
+/// water, each work's lot (rubric while it is still to rise, sepia once it stands), dashed.
+pub fn draw_plan(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i64, Rgb, f32), w: usize, h: usize) {
+    let c = Cells::new(cam, w, h);
+    let to = |x: f32, y: f32| (c.x0 + x * c.t, c.y0 + y * c.t);
+    let dash = |a: (f32, f32), b: (f32, f32), col: Rgb, put: &mut dyn FnMut(i64, i64, Rgb, f32)| {
+        let len = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+        let n = (len.ceil() as i32).max(1);
+        for k in 0..=n {
+            let f = k as f32 / n as f32;
+            if ((k as f32) / 9.0).fract() > 0.62 { continue; }
+            let (x, y) = (a.0 + (b.0 - a.0) * f, a.1 + (b.1 - a.1) * f);
+            if x < 0.0 || y < 0.0 || x >= w as f32 - 1.0 || y >= h as f32 - 1.0 { continue; }
+            for (ox, oy, al) in [(0, 0, 0.95), (1, 0, 0.8), (0, 1, 0.8), (1, 1, 0.5)] { put(x as i64 + ox, y as i64 + oy, col, al); }
+        }
+    };
+    const RUBRIC: Rgb = [154.0, 51.0, 36.0];
+    const SEPIA: Rgb = [110.0, 84.0, 60.0];
+    let (cx, cy) = (colony.camp.0 as f32 + 0.5, colony.camp.1 as f32 + 0.5);
+    // The ring.
+    let r = colony.wall_r();
+    let gates: Vec<(i32, i32)> = colony.gate_dirs().into_iter().map(|d| crate::colony::traps::gate_point(d, r)).collect();
+    let steps = 8 * r * 4;
+    for k in 0..steps {
+        let (a0, a1) = (k as f32 / steps as f32 * std::f32::consts::TAU, (k + 1) as f32 / steps as f32 * std::f32::consts::TAU);
+        let p = ((a0.cos() * r as f32).round() as i32, (a0.sin() * r as f32).round() as i32);
+        if gates.iter().any(|g| (p.0 - g.0).pow(2) + (p.1 - g.1).pow(2) <= 2) { continue; }
+        if colony.ground_walls(colony.camp, (colony.camp.0 as i32 + p.0, colony.camp.1 as i32 + p.1)) { continue; }
+        let a = to(cx + a0.cos() * r as f32, cy + a0.sin() * r as f32);
+        let b = to(cx + a1.cos() * r as f32, cy + a1.sin() * r as f32);
+        dash(a, b, RUBRIC, put);
+    }
+    // The lane.
+    let (lx, ly) = colony.lane();
+    dash(to(cx, cy), to(cx + lx * (r as f32 + 8.0), cy + ly * (r as f32 + 8.0)), RUBRIC, put);
+    // The lots.
+    let mut lots: Vec<(crate::colony::nav::Pos, u16, u16, bool)> = colony.projects.iter()
+        .filter_map(|p| crate::colony::Colony::footprint(p.kind).map(|(fw, fh)| (p.at, fw, fh, p.done))).collect();
+    if let Some(hut) = colony.hut.as_ref() { lots.push((hut.at, crate::colony::HUT_W as u16, crate::colony::HUT_H as u16, hut.done)); }
+    for (at, fw, fh, done) in lots {
+        let col = if done { SEPIA } else { RUBRIC };
+        let (x0, y0, x1, y1) = (at.0 as f32, at.1 as f32, at.0 as f32 + fw as f32, at.1 as f32 + fh as f32);
+        for (a, b) in [((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0))] { dash(to(a.0, a.1), to(b.0, b.1), col, put); }
+    }
+}

@@ -174,9 +174,15 @@ impl Colony {
     /// when nothing is left to reach, claimed or not).
     fn dig_reach(&self, skip_claimed: bool) -> Option<(Pos, i32, nav::P3)> {
         if self.dig_paused { return None; }
+        // (Held a day after a sign in the rock: `foretold`.)
+        if skip_claimed && self.dig_hold_until > self.clock.tick { return None; }
         let plan = self.dig_plan.as_ref()?;
         for c in plan {
             if self.cut_done(c) || (skip_claimed && self.claimed.contains(&c.p)) { continue; }
+            // Forbidden ground stops the picks under it (card 'Dig too deep'); a trial's cap on
+            // the depth likewise.
+            if self.marked_at(c.p, true) { continue; }
+            if self.mine_cap.map_or(false, |cap| self.dig_depth(c.p, c.z) > cap) { continue; }
             if let Some(s) = self.cut_stand(c) { return Some((c.p, c.z, s)); }
         }
         None
@@ -224,6 +230,7 @@ impl Colony {
     /// A cell dug: its rock to carry as a stone load (an ore seam noted), the dig's count.
     pub(crate) fn finish_dig(&mut self, i: usize, p: Pos, z: i32) {
         self.claimed.remove(&p);
+        if !self.signs_before(i, p, z) { return; }
         // Into a cavern: the breach (`mine.rs`). The cell is dug all the same.
         let (x, y) = (p.0 as usize, p.1 as usize);
         let layer = self.map.cavern_at(x, y, z).or_else(|| self.map.cavern_at(x, y, z + 1))
@@ -269,11 +276,28 @@ impl Colony {
         // first N, for the industries' and armour's tests: no dev seed strikes ore.)
         let forced = std::env::var("PLANET_FORCE_ORE").ok().map(|v| v.parse::<u32>().ok().filter(|&n| n > 1).unwrap_or(8));
         let m = if matches!(m, Material::Rock(_)) && forced.map_or(false, |n| self.ore_found < n) { Material::Ore(crate::history::civilizations::economy::ResourceType::Iron) } else { m };
+        // Deeper is richer (card 'Dig too deep'): past six levels a cut of rock may strike a
+        // seam, likelier the deeper (3% a level past the sixth, 30% at most): of the land's own ore where
+        // the map holds any, else iron in sedimentary rock and copper in the rest.
+        let m = match m {
+            Material::Rock(r) if forced.is_none() => {
+                let down = self.dig_depth(p, z);
+                let roll = crate::history::settlers::hash_pub(self.seed ^ 0x0DE5, ((x as u64) << 32) | ((y as u64) << 16) | (z.max(0) as u64)) % 1000;
+                if down > 6 && roll < (30 * (down as u64 - 6)).min(300) {
+                    use crate::erosion::materials::RockType as R;
+                    use crate::history::civilizations::economy::ResourceType as T;
+                    let land = self.land_ore();
+                    Material::Ore(land.unwrap_or(if matches!(r, R::Sandstone | R::Limestone | R::Shale | R::Sediment) { T::Iron } else { T::Copper }))
+                } else { m }
+            }
+            _ => m,
+        };
         if let Material::Ore(r) = m {
             self.ore_found += 1;
             let kind = format!("{:?}", r).to_lowercase();
             // A load of ore for the smelter (`industry.rs`): only rock until it is smelted.
-            self.add_ore(&kind, 1);
+            // Richer the deeper (card 'Dig too deep'): a load more every twelve levels down.
+            self.add_ore(&kind, 1 + (self.dig_depth(p, z) / 12) as u32);
             self.once("ore", format!("{} strikes a seam of {:?} at {},{}, {} levels down.", name, r, p.0, p.1, self.dig_depth(p, z)));
         }
         // Clay and sand for the kiln.
@@ -303,6 +327,100 @@ impl Colony {
         }
         self.once("dig", format!("{} breaks the first ground for the dig at {},{}.", name, p.0, p.1));
         if let Some(l) = layer { self.breach_cavern(i, l, p, z); }
+    }
+
+    /// A sign in the rock (card 'Dig too deep'): logged once, a card, and true only from the next
+    /// day on; until then the dig is held (the patron may forbid it meanwhile).
+    pub(crate) fn foretold(&mut self, key: String, at: Pos, title: &str, line: String, because: String) -> bool {
+        let day = self.clock.day();
+        if let Some(o) = self.omens.iter().find(|o| o.0 == key) { return o.1 < day; }
+        self.omens.push((key, day));
+        self.note(line.clone());
+        self.moment(title.to_string(), line, because, at);
+        // Held until the next morning.
+        self.dig_hold_until = day * super::TICKS_PER_DAY + 6 * 60;
+        false
+    }
+
+    /// Before a cut is made: what lies beyond it is foretold a day ahead (damp walls before the
+    /// water, a hollow ring before a cavern, warm rock before the magma, old tool marks or claw
+    /// marks before a place someone else made). False: the cut is not made today.
+    fn signs_before(&mut self, i: usize, p: Pos, z: i32) -> bool {
+        let (x, y) = (p.0 as usize, p.1 as usize);
+        let name = self.settlers[i].name.clone();
+        let down = self.dig_depth(p, z);
+        let what = self.projects.iter().find(|q| !q.done && super::projects::is_dig(q.kind)).map(|q| q.kind.word()).unwrap_or("the dig");
+        // Water.
+        if !self.aquifer_lined && self.map.is_aquifer(x, y, (z + 1).max(0) as usize) {
+            let line = format!("The walls of {} sweat {} levels down: the stone is damp to the hand and a drip has begun. The miners say there is water close below.", what, down);
+            if !self.foretold("water".into(), p, "Damp walls", line, "because the rock below holds the water of the land".into()) { return false; }
+        }
+        // A cavern not yet broken into.
+        let layer = self.map.cavern_at(x, y, z).or_else(|| self.map.cavern_at(x, y, z + 1))
+            .or_else(|| [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)].iter().find_map(|(dx, dy)| {
+                let (qx, qy) = (x as i32 + dx, y as i32 + dy);
+                if qx < 0 || qy < 0 || qx as usize >= self.map.width || qy as usize >= self.map.height { return None; }
+                self.map.cavern_at(qx as usize, qy as usize, z + 1)
+            }));
+        if let Some(l) = layer.filter(|&l| !self.breached.contains(&(l as u8))) {
+            let line = format!("{}'s pick rings hollow {} levels down: there is open dark close below, and a cold draught breathes through the cracks.", name, down);
+            if !self.foretold(format!("cavern {}", l), p, "A hollow ring", line, "because a cavern lies under the rock they are cutting".into()) { return false; }
+        }
+        // The magma sea, for the deep shaft.
+        if let Some(top) = self.map.magma_top {
+            if z <= top as i32 + 6 && self.projects.iter().any(|q| !q.done && q.kind == super::projects::ProjectKind::DeepShaft) {
+                let line = format!("The rock at the foot of the deep shaft is warm to the hand, {} levels down, and the air that comes up it smells of hot iron.", down);
+                if !self.foretold("magma".into(), p, "Warm rock", line, "because the magma sea lies under the deepest rock".into()) { return false; }
+            }
+        }
+        // Someone else's works, or a den, near the cut: the way in is known from now on.
+        for k in 0..self.map.places.len() {
+            if self.places_found.contains(&k) || self.mouths_seen.contains(&k) || self.map.places[k].mouth.is_none() { continue; }
+            let near = self.map.places[k].cells.iter().any(|&(c, cz)| (c.0 as i32 - x as i32).abs().max((c.1 as i32 - y as i32).abs()) <= 3 && (cz - z).abs() <= 2);
+            if !near { continue; }
+            let den = self.map.places[k].kind == crate::local::places::PlaceKind::Lair;
+            let line = if den { format!("{}'s pick turns up old bones and the scratches of claws in the rock, {} levels down: something has denned close by.", name, down) }
+                else { format!("{}'s pick turns up old tool marks in the rock, {} levels down: someone has dug here before, close by.", name, down) };
+            self.mouths_seen.push(k);
+            let key = format!("place {}", k);
+            let _ = self.foretold(key, p, if den { "Claw marks" } else { "Old tool marks" }, line, "because the history left its works under these hills".into());
+            self.dig_hold_until = 0;
+        }
+        true
+    }
+
+    /// Dawn: a dig stopped by the patron's ban, the miners say what they think of it (once in
+    /// five days); the greedy mind it most.
+    pub(crate) fn reckon_dig_ban(&mut self) {
+        // (The night's hold at the hatch is over by dawn.)
+        self.hatch_held = None;
+        let Some(plan) = self.dig_plan.as_ref() else { return };
+        let undone: Vec<DigCell> = plan.iter().filter(|c| !self.cut_done(c)).copied().collect();
+        if undone.is_empty() || !undone.iter().all(|c| self.marked_at(c.p, true)) { return; }
+        let day = self.clock.day();
+        if self.grumbled_day != 0 && day < self.grumbled_day + 5 { return; }
+        self.grumbled_day = day;
+        let what = self.projects.iter().find(|q| !q.done && super::projects::is_dig(q.kind)).map(|q| q.kind.word()).unwrap_or("the dig");
+        let sign = self.omens.last().map(|o| o.0.clone());
+        let tail = match sign.as_deref() { Some("water") => "they would rather line the shaft than leave it", Some(s) if s.starts_with("cavern") => "the draught from below smells of riches as much as of danger", _ => "the next seam lies just below" };
+        let line = format!("The miners grumble at the patron's ban: {} stands still over forbidden ground, and {}.", what, tail);
+        self.note(line);
+        for j in 0..self.settlers.len() {
+            if self.settlers[j].alive && self.settlers[j].persona.facet(crate::persona::Facet::Greed) >= 60 {
+                self.feel(j, super::mind::Feel::Mandate { what: "the patron's ban on the mine".into() });
+            }
+        }
+    }
+
+    /// The commonest ore the embark's rock holds, if any (reckoned once).
+    pub(crate) fn land_ore(&self) -> Option<crate::history::civilizations::economy::ResourceType> {
+        *self.land_ore.get_or_init(|| {
+            let mut n: Vec<(crate::history::civilizations::economy::ResourceType, usize)> = Vec::new();
+            for c in self.map.cells.iter().step_by(7) {
+                if let Material::Ore(r) = c.material { match n.iter_mut().find(|x| x.0 == r) { Some(x) => x.1 += 1, None => n.push((r, 1)) } }
+            }
+            n.into_iter().max_by_key(|x| x.1).map(|x| x.0)
+        })
     }
 
     /// Levels below the ground at `p` of a cut at level `z` (for the log).

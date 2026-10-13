@@ -74,10 +74,11 @@ impl Colony {
             out.push(format!("{} is taken by a mood: wants stone, wood and {}", self.settlers[m.who].name, m.wants));
         }
         if self.full_moon() && (self.were.is_some() || !self.cursed.is_empty()) {
-            out.push("The full moon is up tonight".into());
-        } else if self.were.is_some() && (14 + 28 - day % 28) % 28 <= 3 {
-            let n = (14 + 28 - day % 28) % 28;
-            out.push(format!("The full moon in {} {}", n, if n == 1 { "day" } else { "days" }));
+            out.push(if self.map.sky.moonless { "The darkest night is tonight".into() } else { "The full moon is up tonight".into() });
+        } else if self.were.is_some() && self.days_to_full_moon() <= 3 {
+            let n = self.days_to_full_moon();
+            let words = self.moon_words();
+            out.push(format!("{}{} in {} {}", words[..1].to_uppercase(), &words[1..], n, if n == 1 { "day" } else { "days" }));
         }
         if let Some(s) = self.siege.as_ref().filter(|s| day >= s.since) {
             out.push(format!("Besieged by {}: day {} of the siege", s.who.split(", led by ").next().unwrap_or(""), day - s.since + 1));

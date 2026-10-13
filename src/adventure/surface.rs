@@ -316,6 +316,8 @@ pub fn generate(land: &Land, tx: i64, ty: i64, sites: &[&SiteSpec]) -> Gen {
     } }
     // 4. Rivers between the tiles' anchors (the full line between two tiles, clipped here).
     let span = 2i64;
+    // The channel's middle cells and the way the water runs there, to run on through a town.
+    let mut channel: Vec<((i32, i32), (f32, f32))> = Vec::new();
     let clip = |gx: f32, gy: f32| -> Option<(i32, i32)> { let (lx, ly) = ((gx.floor() as i64 - ox) as i32, (gy.floor() as i64 - oy) as i32); if inside(lx, ly) { Some((lx, ly)) } else { None } };
     for dy in -span..=span { for dx in -span..=span {
         let (sx, sy) = (tx + dx, ty + dy);
@@ -344,7 +346,7 @@ pub fn generate(land: &Land, tx: i64, ty: i64, sites: &[&SiteSpec]) -> Gen {
                     let d = ((px.floor() + 0.5 - cx).powi(2) + (py.floor() + 0.5 - cy).powi(2)).sqrt();
                     let t = &mut g.tiles[idx(lx, ly)];
                     if t.ground == Ground::Ice { continue; }
-                    if d < 0.9 && !ford { *t = Tile::floor(Ground::Water); }
+                    if d < 0.9 && !ford { *t = Tile::floor(Ground::Water); channel.push(((lx, ly), (q.0 - p.0, q.1 - p.1))); }
                     else if d < 1.9 && t.ground != Ground::Water { *t = Tile::floor(Ground::Shallows); }
                     else if d < 2.6 && t.wall == Wall::None && matches!(t.ground, Ground::Grass | Ground::Earth) && land.rnd((lx as i64) + ox, (ly as i64) + oy, 29) < 0.3 { t.ground = Ground::Mud; }
                 } }
@@ -356,7 +358,10 @@ pub fn generate(land: &Land, tx: i64, ty: i64, sites: &[&SiteSpec]) -> Gen {
     let mut taken: Vec<(i32, i32, i32, i32)> = Vec::new();
     let mut sites: Vec<&SiteSpec> = sites.to_vec();
     sites.sort_by_key(|s| (s.kind != SiteKind::Town, s.id));
-    for s in sites.iter().filter(|s| s.kind == SiteKind::Town || (s.kind == SiteKind::Ruin && s.town.is_some())) { stamp_town(land, &mut g, s, tx, ty, &mut taken); }
+    for s in sites.iter().filter(|s| s.kind == SiteKind::Town || (s.kind == SiteKind::Ruin && s.town.is_some())) {
+        stamp_town(land, &mut g, s, tx, ty, &mut taken);
+        river_through_town(&mut g, s, &channel);
+    }
     // 6. Roads between road tiles (bridges over water; trees and rocks cleared).
     for dy in -span..=span { for dx in -span..=span {
         let (sx, sy) = (tx + dx, ty + dy);
@@ -482,6 +487,39 @@ fn stamp_town(_land: &Land, g: &mut Gen, s: &SiteSpec, tx: i64, ty: i64, taken: 
     p.origin = Some(((tx * CH as i64) as i32, (ty * CH as i64) as i32));
     p.floors[0].items.clear();
     g.places.push(p);
+}
+
+/// The river runs on through the town laid over it (a town's anchor is its square, so the river
+/// came to it and leaves it): across open ground and the square as water, under a wooden bridge
+/// where a street crosses it, under the houses and the walls out of sight. Anyone or anything
+/// standing in the new channel steps to the bank.
+fn river_through_town(g: &mut Gen, s: &SiteSpec, channel: &[((i32, i32), (f32, f32))]) {
+    let mask = super::town::footprint(s);
+    let open = |t: &Tile| t.wall == Wall::None && t.feature == Feature::None && matches!(t.ground, Ground::Cobbles | Ground::Earth | Ground::Grass | Ground::Flags | Ground::Mud | Ground::Field | Ground::Sand);
+    // (Paved ways only: the yards inside the walls are beaten earth.)
+    let street = |t: &Tile| t.wall == Wall::None && matches!(t.ground, Ground::Cobbles | Ground::Flags);
+    let mut wet: Vec<(i32, i32)> = Vec::new();
+    for &((x, y), (dx, dy)) in channel {
+        if !inside(x, y) || !mask[idx(x, y)] || !open(&g.tiles[idx(x, y)]) { continue; }
+        // A street across the water: a bridge where the way goes on on both banks.
+        let n = (dx * dx + dy * dy).sqrt().max(1e-3);
+        let (px, py) = (-dy / n, dx / n);
+        let bank = |k: f32| { let (bx, by) = ((x as f32 + 0.5 + px * k).floor() as i32, (y as f32 + 0.5 + py * k).floor() as i32); inside(bx, by) && street(&g.tiles[idx(bx, by)]) };
+        // (A street along the river has no street on both banks across it.)
+        let crossing = street(&g.tiles[idx(x, y)]) && (bank(1.5) || bank(2.5)) && (bank(-1.5) || bank(-2.5));
+        g.tiles[idx(x, y)] = if crossing { Tile::floor(Ground::Wood) } else { wet.push((x, y)); Tile::floor(Ground::Water) };
+    }
+    // Who stood in the channel steps to the nearest dry cell; what lay there is moved too.
+    let dry = |g: &Gen, (x, y): (i32, i32)| -> (i32, i32) {
+        for r in 1..6 { for oy in -r..=r { for ox in -r..=r {
+            let (a, b) = (x + ox, y + oy);
+            if inside(a, b) && g.tiles[idx(a, b)].walkable() { return (a, b); }
+        } } }
+        (x, y)
+    };
+    for k in 0..g.npcs.len() { let at = (g.npcs[k].x, g.npcs[k].y); if wet.contains(&at) { let (a, b) = dry(g, at); g.npcs[k].x = a; g.npcs[k].y = b; } }
+    for k in 0..g.items.len() { let at = g.items[k].0; if wet.contains(&at) { g.items[k].0 = dry(g, at); } }
+    for k in 0..g.monsters.len() { let at = (g.monsters[k].x, g.monsters[k].y); if wet.contains(&at) { let (a, b) = dry(g, at); g.monsters[k].x = a; g.monsters[k].y = b; } }
 }
 
 /// Stand a surface place (its first floor's walls and fittings) in the land; false if it does

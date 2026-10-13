@@ -208,7 +208,9 @@ pub fn build(world: &WorldData, history: Option<&WorldHistory>, seed: u64, race:
         ground[y * w + x] = ground_of(*world.biomes.get(x, y));
         temperature[y * w + x] = *world.temperature.get(x, y);
         moisture[y * w + x] = *world.moisture.get(x, y);
-        river[y * w + x] = e > 0.0 && world.river_tile_cache.as_ref().map_or(false, |r| *r.get(x, y));
+        // The traced river network's tiles, and the water bodies' river tiles (the map draws those;
+        // small worlds trace no network, and the dev world's four rivers had been missing here).
+        river[y * w + x] = e > 0.0 && (world.river_tile_cache.as_ref().map_or(false, |r| *r.get(x, y)) || world.water_body_map.get(x, y).is_river());
     } }
     // Which way the water runs: the lowest neighbour.
     let mut downhill = vec![255u8; w * h];

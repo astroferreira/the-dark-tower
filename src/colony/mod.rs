@@ -44,6 +44,7 @@ pub mod books;
 pub mod livestock;
 pub mod deep;
 pub mod explore;
+pub mod bestiary;
 pub mod prisoners;
 pub mod regard;
 pub mod armour;
@@ -77,6 +78,9 @@ pub mod voices;
 pub mod haunts;
 pub mod talk;
 pub mod rhythm;
+pub mod prowl;
+pub mod melee;
+pub mod flood;
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -262,6 +266,18 @@ pub struct Settler {
 
 /// Whether a persona's liked creature is this game animal ("deer" and "red deer", "boar" and
 /// "wild boar").
+/// Whether the Shadow reaches into the camp: its raiders as a threat, the dead that rise on its
+/// land, its evil weather, the vampires and possessions its darkness brings. Off by default
+/// (2026-10-08: the camp's basic play first); `--camp-shadow` or `PLANET_CAMP_SHADOW=1` turns it
+/// on. The world's history keeps its Shadow either way.
+static SHADOW_IN_CAMP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_shadow_in_camp(on: bool) { SHADOW_IN_CAMP.store(on, std::sync::atomic::Ordering::Relaxed); }
+
+pub fn shadow_in_camp() -> bool {
+    SHADOW_IN_CAMP.load(std::sync::atomic::Ordering::Relaxed) || std::env::var("PLANET_CAMP_SHADOW").map_or(false, |v| v != "0")
+}
+
 pub fn fond_of(p: &crate::persona::Persona, game: &str) -> bool {
     let liked = p.likes.creature.0.trim_end_matches('s');
     !liked.is_empty() && game.contains(liked)
@@ -493,6 +509,21 @@ pub struct Colony {
     /// The beasts that came against the camp, as they were (for the map's pictures; never read by
     /// the simulation).
     pub foes_seen: Vec<(String, crate::monsters::Monster)>,
+    /// What prowls by day (`prowl.rs`): how many have come, the raid day already scouted, the
+    /// kinds (and beasts) already seen once.
+    pub(crate) prowl_count: u32,
+    /// The raid as it is fought on the map, while it lasts (`melee.rs`).
+    pub melee: Option<melee::Melee>,
+    /// The floodplain (reckoned once), the spring flood under way, the winter's frozen dawns, and
+    /// whether this year's flood silted the field (`flood.rs`).
+    pub(crate) bottom: std::cell::OnceCell<Vec<bool>>,
+    pub flood: Option<flood::Flood>,
+    pub(crate) frozen_dawns: u32,
+    pub(crate) silted: bool,
+    /// Camp, hamlet, village (`projects::reckon_stage`).
+    pub stage: u8,
+    pub(crate) scouted: u64,
+    pub prowled: Vec<String>,
     /// The side the last raid came from ("the north-east").
     pub raid_side: String,
     /// When the attackers were first on the map and when they clashed (ticks).
@@ -562,6 +593,19 @@ pub struct Colony {
     pub(crate) watcher: Option<usize>,
     /// Cavern layers the mine broke into (`mine.rs`), and what hunts up the mine at night.
     pub breached: Vec<u8>,
+    /// Signs in the rock, each the day it was seen (`dig.rs::foretold`: every breach is foretold a
+    /// day ahead), the dig held until then, a cap on how deep they dig (trials), and the last day
+    /// the miners grumbled at a ban.
+    pub omens: Vec<(String, u64)>,
+    pub(crate) dig_hold_until: u64,
+    pub mine_cap: Option<i32>,
+    /// Trials: Some(true) sets the hatch as soon as a cavern is open, Some(false) never
+    /// (`PLANET_FORCE_HATCH` / `PLANET_NO_HATCH` set it at founding).
+    pub hatch_rule: Option<bool>,
+    pub(crate) land_ore: std::cell::OnceCell<Option<crate::history::civilizations::economy::ResourceType>>,
+    pub(crate) grumbled_day: u64,
+    /// Two who held the hatch when the deep came up the stair (`cavelife.rs`).
+    pub hatch_held: Option<(String, String)>,
     /// Works made at the workshop (`craft.rs`).
     pub works: Vec<craft::Work>,
     /// The town that sends caravans (`trade.rs`), the day of the next, how many came, whether
@@ -652,6 +696,23 @@ pub struct Colony {
     pub(crate) fighting_people: Option<crate::history::FactionId>,
     /// The embark's places found (`explore.rs`), and a robbed tomb's dead to rise tonight.
     pub places_found: Vec<usize>,
+    /// Places whose way in is known (seen, or told of round the fire), not yet gone into; those
+    /// told of; the cells of places walked so far (the rest is blank); who is in there now; and
+    /// those who went in and did not come back (`explore.rs`).
+    pub mouths_seen: Vec<usize>,
+    /// The nameless dead of a battle on the tile (`bestiary.rs`): at rest once named and buried;
+    /// how many nights they walked; the night and grave of the last; who means to bury them.
+    pub nameless_rest: bool,
+    pub hauntings: u32,
+    pub haunt_night: Option<(u64, Pos)>,
+    pub burier: Option<usize>,
+    pub rumoured: Vec<usize>,
+    pub revealed: Vec<((u16, u16), i32)>,
+    pub explorer: Option<explore::Exploring>,
+    pub lost: Vec<explore::Lost>,
+    /// The day someone last turned away from a forbidden way in, and the line to say it
+    /// (written from `decide`, which only reads, and noted on the next tick).
+    pub(crate) turned_away: std::cell::RefCell<(u64, Option<String>)>,
     pub(crate) tomb_risen: Option<(String, u64)>,
     /// A raider held (`prisoners.rs`).
     pub prisoner: Option<prisoners::Prisoner>,
@@ -883,7 +944,7 @@ impl Colony {
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
             log: Vec::new(), decisions: Vec::new(), rng, seed, milestones: Default::default(), basket: Default::default(),
             patron: Patron { favour: FAVOUR_MAX, marks: Vec::new(), favourite: None, dreams: Vec::new(), last_refill_day: 1 },
-            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, clash_tick: 0, foes_seen: Vec::new(), raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), cave_hunter: None, cave_bites: 0, cavern_feet: Vec::new(), placed: Vec::new(), haunts: Vec::new(), talks_said: Vec::new(), gate_dirs: Vec::new(), mourning: Vec::new(), set_aside: Vec::new(), kept: Vec::new(), progress: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log, heard: Vec::new(), migrant_news: Vec::new(), industry: Default::default(), shrub_buckets: Vec::new(), tree_buckets: Vec::new(),
+            name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, clash_tick: 0, foes_seen: Vec::new(), prowl_count: 0, melee: None, bottom: std::cell::OnceCell::new(), flood: None, frozen_dawns: 0, silted: false, stage: 0, scouted: 0, prowled: Vec::new(), raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), omens: Vec::new(), dig_hold_until: 0, mine_cap: None, land_ore: std::cell::OnceCell::new(), hatch_rule: if std::env::var("PLANET_FORCE_HATCH").is_ok() { Some(true) } else if std::env::var("PLANET_NO_HATCH").is_ok() { Some(false) } else { None }, grumbled_day: 0, hatch_held: None, cave_hunter: None, cave_bites: 0, cavern_feet: Vec::new(), placed: Vec::new(), haunts: Vec::new(), talks_said: Vec::new(), gate_dirs: Vec::new(), mourning: Vec::new(), set_aside: Vec::new(), kept: Vec::new(), progress: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), mouths_seen: Vec::new(), nameless_rest: false, hauntings: 0, haunt_night: None, burier: None, rumoured: Vec::new(), revealed: Vec::new(), explorer: None, lost: Vec::new(), turned_away: std::cell::RefCell::new((0, None)), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log, heard: Vec::new(), migrant_news: Vec::new(), industry: Default::default(), shrub_buckets: Vec::new(), tree_buckets: Vec::new(),
         };
         c.shrubs = (1..c.map.height - 1).flat_map(|y| (1..c.map.width - 1).map(move |x| (x as u16, y as u16))).filter(|&p| c.floor_plant(p) == Plant::Shrub).collect();
         let bw = c.map.width.div_ceil(SHRUB_BUCKET);
@@ -1191,11 +1252,15 @@ impl Colony {
             .map(|q| (q.at.0 + HUT_W as u16 / 2, q.at.1 + HUT_H as u16 / 2))
     }
 
-    /// The season of the colony's year (30 days each, from spring).
+    /// The season of the colony's year (30 days each from spring under the Sun; the world's
+    /// own lengths under another, `LocalSky`).
     pub fn season(&self) -> crate::seasons::Season {
         use crate::seasons::Season::*;
-        match ((self.clock.day().max(1) - 1) / SEASON_DAYS) % 4 { 0 => Spring, 1 => Summer, 2 => Autumn, _ => Winter }
+        match self.map.sky.season_of(self.clock.day()).0 { 0 => Spring, 1 => Summer, 2 => Autumn, _ => Winter }
     }
+
+    /// The sky in a line for the camp's card: when the sun sets or rises ("" under the Sun).
+    pub fn sky_line(&self) -> String { self.map.sky.line(self.clock.tick as f32 / 60.0) }
 
     /// The day's mean temperature (°C): the world tile's for the season.
     pub fn temperature(&self) -> f32 { self.map.season_temps[self.season() as usize] }
@@ -1243,14 +1308,17 @@ impl Colony {
         if self.map.season_temps[3] >= 4.0 { return None; }
         if self.hard_winter() { return Some(0); }
         let day = self.clock.day().max(1) - 1;
-        let year = 4 * SEASON_DAYS;
-        let start = 3 * SEASON_DAYS;
+        let d = self.map.sky.season_days;
+        let year = d.iter().sum::<u64>().max(1);
+        let start = d[0] + d[1] + d[2];
         let into = day % year;
         Some(if into < start { start - into } else { year - into + start })
     }
 
-    /// How dark it is, 0 by day to 0.55 deep in the night (dusk 19-21, dawn 5-7).
+    /// How dark it is, 0 by day to 0.55 deep in the night (dusk 19-21, dawn 5-7); under
+    /// another sun, by its height (a 600-hour day, a sun that never moves, the polar night).
     pub fn darkness(&self) -> f32 {
+        if !self.map.sky.earth { return self.map.sky.darkness(self.clock.tick as f32 / 60.0); }
         let hm = self.clock.hour() as f32 + self.clock.minute() as f32 / 60.0;
         let f = if hm >= 21.0 || hm < 5.0 { 1.0 } else if hm >= 19.0 { (hm - 19.0) / 2.0 } else if hm < 7.0 { (7.0 - hm) / 2.0 } else { 0.0 };
         0.55 * f
@@ -1506,7 +1574,7 @@ impl Colony {
         let line = match self.season() {
             Spring => {
                 if self.map.season_temps[3] < 4.0 && !self.milestones_hit.iter().any(|m| m == "the first winter") { self.milestones_hit.push("the first winter".into()); }
-                if self.clock.day() >= 4 * SEASON_DAYS && !self.milestones_hit.iter().any(|m| m == "a year") { self.milestones_hit.push("a year".into()); }
+                if self.clock.day() >= self.map.sky.year_days() && !self.milestones_hit.iter().any(|m| m == "a year") { self.milestones_hit.push("a year".into()); }
                 format!("Spring comes ({:.0} °C): the bushes bud again.", t)
             }
             Summer => format!("Summer comes ({:.0} °C).", t),
@@ -1584,6 +1652,7 @@ impl Colony {
             self.patron.favour = (self.patron.favour + 1).min(FAVOUR_MAX);
         }
         self.step_creatures();
+        self.melee_tick();
         self.caravan_tick();
         if self.clock.tick % 10 == 0 { self.caravan_arrives(); }
         if self.clock.hour() == 10 && self.clock.minute() == 0 { self.migrants_arrive(); }
@@ -1591,9 +1660,11 @@ impl Colony {
         if self.relic.is_some() { self.relic_tick(); }
         if self.hoard_due.is_some() { self.hoard_home(); }
         if !self.map.places.is_empty() { self.explore_tick(); }
+        // The nameless dead (`bestiary.rs`).
+        if !self.nameless_rest && self.clock.minute() % 10 == 0 { self.reckon_nameless(); self.bury_the_nameless(); }
         // Needs fall an hour at a time (`needs.rs`).
         if self.clock.minute() == 0 { self.needs_hour(); }
-        if self.clock.hour() == 6 && self.clock.minute() == 0 && self.clock.day() > 1 && (self.clock.day() - 1) % SEASON_DAYS == 0 {
+        if self.clock.hour() == 6 && self.clock.minute() == 0 && self.map.sky.season_begins(self.clock.day()) {
             self.season_turns();
         }
         if self.clock.hour() == 6 && self.clock.minute() == 0 {
@@ -1602,7 +1673,7 @@ impl Colony {
             let camp = self.camp;
             self.chilled_nights += self.settlers.iter().filter(|s| s.alive && s.exposure >= 0.5
                 && (s.pos.0 as i32 - camp.0 as i32).abs().max((s.pos.1 as i32 - camp.1 as i32).abs()) <= 12).count() as u32;
-            self.spoil(); self.reckon_hunger_days(); self.field_season(); self.draw_water(); self.plan_projects(); self.reckon_company(); self.reckon_roles(); self.arm_militia(); self.reckon_wounds(); self.reckon_temper(); self.reckon_needs(); self.reckon_minds(); self.reckon_society(); self.reckon_hollow(); self.lord_arrives(); self.lord_displeased(); self.lord_demands(); self.sellsword_comes(); self.reckon_expedition(); self.vampire_dawn(); self.reckon_prisoner(); self.reckon_regard(); self.reckon_snatched(); self.reckon_siege(); self.reckon_guilds(); self.reckon_rising(); self.reckon_old_fields(); self.reckon_responses(); self.reckon_priest(); self.reckon_war_call(); self.reckon_cook(); self.reckon_clothes(); self.reckon_dreams(); self.reckon_childhood(); self.reckon_rations(); self.reckon_ice(); self.reckon_herds(); self.reckon_rooms(); self.lord_quarters(); self.place_artifacts(); self.regrow(); self.reckon_tithe(); self.reckon_justice(); self.reckon_mood(); self.reckon_pets(); self.reckon_years(); self.pen_slaughter(); self.reckon_family(); self.reckon_thirst(); self.moon_sets();
+            self.spoil(); self.reckon_hunger_days(); self.field_season(); self.draw_water(); self.plan_projects(); self.reckon_company(); self.reckon_roles(); self.arm_militia(); self.reckon_wounds(); self.reckon_temper(); self.reckon_needs(); self.reckon_minds(); self.reckon_society(); self.reckon_hollow(); self.lord_arrives(); self.lord_displeased(); self.lord_demands(); self.sellsword_comes(); self.reckon_expedition(); self.vampire_dawn(); self.reckon_prisoner(); self.reckon_regard(); self.reckon_lost(); self.reckon_dig_ban(); self.reckon_snatched(); self.reckon_siege(); self.reckon_guilds(); self.reckon_rising(); self.reckon_old_fields(); self.reckon_responses(); self.reckon_priest(); self.reckon_war_call(); self.reckon_cook(); self.reckon_clothes(); self.reckon_dreams(); self.reckon_childhood(); self.reckon_rations(); self.reckon_ice(); self.reckon_flood(); self.reckon_stage(); self.reckon_herds(); self.reckon_rooms(); self.lord_quarters(); self.place_artifacts(); self.regrow(); self.reckon_tithe(); self.reckon_justice(); self.reckon_mood(); self.reckon_pets(); self.reckon_years(); self.pen_slaughter(); self.reckon_family(); self.reckon_thirst(); self.moon_sets();
         }
         if self.clock.minute() == 0 { self.evil_weather(); }
         if self.clock.hour() == 16 && self.clock.minute() == 0 { self.cook_supper(); }
@@ -1622,7 +1693,7 @@ impl Colony {
         if self.clock.hour() == 20 && self.clock.minute() == 0 { self.tavern_evening(); }
         if self.clock.hour() == 20 && self.clock.minute() == 0 {
             // At the turn of a season, a festival; else, perhaps, a song.
-            if self.clock.day() > 1 && (self.clock.day() - 1) % SEASON_DAYS == 0 { self.festival(); } else { self.evening_arts(); }
+            if self.map.sky.season_begins(self.clock.day()) { self.festival(); } else { self.evening_arts(); }
         }
         if self.clock.hour() == 21 && self.clock.minute() == 0 {
             self.burn_wood();
@@ -1719,14 +1790,19 @@ impl Colony {
             if free || std::mem::discriminant(&job) != std::mem::discriminant(&self.settlers[i].job) { self.release(i); self.start(i, job, why); }
             return;
         }
-        // A child plays or tags along after a parent (`childhood.rs`).
+        // A child plays or tags along after a parent (`childhood.rs`), unless the raid is on.
+        if let Some((job, why)) = self.melee_choice(i) {
+            let moved = match (job, self.settlers[i].job) { (Job::Wander(a), Job::Wander(b)) => (a.0 as i32 - b.0 as i32).abs().max((a.1 as i32 - b.1 as i32).abs()) > 1, _ => true };
+            if free || moved { self.release(i); self.start(i, job, why); }
+            return;
+        }
         if let Some((job, why)) = self.child_choice(i) {
             if free || std::mem::discriminant(&job) != std::mem::discriminant(&self.settlers[i].job) { self.release(i); self.start(i, job, why); }
             return;
         }
         // Under the full moon the cursed are out in the dark (`curse.rs`).
-        let d = self.clock.day();
-        if self.cursed.contains(&i) && ((d % 28 == 14 && self.clock.hour() >= 21) || (d % 28 == 15 && self.clock.hour() < 6)) && !free { return; }
+        let (d, m) = (self.clock.day(), self.map.sky.month_days.max(2));
+        if self.cursed.contains(&i) && ((d % m == m / 2 && self.clock.hour() >= 21) || (d % m == (m / 2 + 1) % m && self.clock.hour() < 6)) && !free { return; }
         // At the patron's bell, everyone keeps under a roof until dawn (`ring_bell`): they eat,
         // sleep, or wait by their beds.
         if self.bell_rung() && self.settlers[i].guest_until == 0 {
@@ -1835,7 +1911,9 @@ impl Colony {
             } else if let Some((t, down, name)) = self.cave_fishing_spot() {
                 // No water to fish near the camp (or it is ice): the black water of the cavern
                 // the stair reaches (`delve.rs`).
-                options.push(((0.3 + short) * s.taste[1] * 0.8, Job::Fish(t), format!("The camp has {} of the {} meals it needs; fishing the still water of {}, {} levels down", food, food_goal, name, down)));
+                // (Forced, it is sought before the berries: the test's camps had berries by the fire.)
+                let force = if std::env::var("PLANET_FORCE_CAVERN").is_ok() { 2.0 } else { 1.0 };
+                options.push(((0.3 + short) * s.taste[1] * 0.8 * force, Job::Fish(t), format!("The camp has {} of the {} meals it needs; fishing the still water of {}, {} levels down", food, food_goal, name, down)));
             }
         }
         let fellers = self.settlers.iter().filter(|o| o.alive && matches!(o.job, Job::Fell(_))).count() as u32;
@@ -1991,6 +2069,7 @@ impl Colony {
         if let Some(o) = self.brew_option(i) { options.push(o); }
         if let Some(o) = self.write_option(i) { options.push(o); }
         if let Some(o) = self.explore_option(i) { options.push(o); }
+        if let Some(o) = self.bury_option(i) { options.push(o); }
         if let Some(o) = self.industry_option(i) { options.push(o); }
         if wish > 0.0 && !night {
             let p = &self.settlers[i].persona;
@@ -2800,7 +2879,7 @@ impl Colony {
             }
         }
         let (cx, cy) = (at.0 as f32 + hw as f32 / 2.0, at.1 as f32 + hh as f32 / 2.0);
-        self.map.houses.push(RoofPlan { cx, cy, axis: (1.0, 0.0), half_width: hh as f32 / 2.0, stone, flat: false });
+        self.map.houses.push(RoofPlan { cx, cy, axis: (1.0, 0.0), half_width: hh as f32 / 2.0, stone, flat: false, style: if stone { crate::local::RoofStyle::Tiles } else { crate::local::RoofStyle::Thatch } });
         let id = self.map.houses.len() as u32;
         for (x, y) in cells { self.map.roofs[y * n + x] = id; }
         // Anyone standing in a wall steps out of it.

@@ -68,14 +68,14 @@ ROADMAP Update 5; game-time seasons are Update 3.
 - [x] `grid_export.rs` still used the legacy plate path (now `terrain::generate_terrain`, shared with main and terrain_lab).
 
 ## Viewer and tooling
-- [ ] Zoom view (`Z`) shows a shaded-relief image, not tiles.
-- [ ] Zoom size is fixed at 8x8 tiles x 128 cells inside the viewer (only CLI flags change it).
-- [ ] Region generation freezes the window for ~5-7 s on a cold start (background load only happens while walking).
+- [x] Zoom view (`Z`) is drawn in ink (`region_ink.rs`).
+- [x] Zoom size: `[` / `]` in the walker, `--region-tiles N` (4-16 tiles across).
+- [x] Region generation runs on a worker on a cold start too ("Surveying the land...").
 - [ ] Hover info, labels and resource markers for embarks; z-level legend.
 - [ ] Interactive window controls (T, C, R, L, Enter, walking) have only been verified through headless renders, never in the real window: test them by hand.
 
 ## Housekeeping
-- [ ] Decide whether `worlds/*.world` (170 MB each) should stay gitignored (currently yes) and document a standard seed set.
+- [x] `worlds/*.world` (170 MB each) stays gitignored; the standard seed set is in CLAUDE.md (Dev world).
 - [x] `.DS_Store` files, `renders/` and `world_*_legend.txt` are ignored (the tracked `.DS_Store` files untracked).
 - [ ] Remove or silence long-standing compiler warnings in `history/simulation/step.rs`, `geomorphometry.rs`.
 - [ ] Add tests for settlement siting, road routing and town plans (only determinism / consistency tests exist today).

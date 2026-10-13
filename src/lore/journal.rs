@@ -203,6 +203,10 @@ struct Entry {
     html: String,
     /// Where it happened (for the player's notes in the margin).
     at: Option<(usize, usize)>,
+    /// The event (its entry's anchor, `#ev<id>`) and what caused it (card '"Why?" for any
+    /// event': the entry says "Because ...").
+    id: crate::history::EventId,
+    cause: Option<crate::history::EventId>,
 }
 
 /// Per-year tallies of routine events, written as one line each.
@@ -407,7 +411,8 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         let y = e.date.year;
         let kind = kind_of(&e.event_type);
         let at = e.location;
-        let mut push = |html: String| yearly.entry(y).or_default().push(Entry { kind, html, at });
+        let (id, cause) = (e.id, e.causes.first().copied());
+        let mut push = |html: String| yearly.entry(y).or_default().push(Entry { kind, html, at, id, cause });
         use EventType::*;
         match e.event_type {
             MonsterRaid => {
@@ -490,6 +495,8 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         }
     }
 
+    // Every event that has an entry of its own (a cause links to it when it does).
+    let entered: std::collections::HashSet<crate::history::EventId> = yearly.values().flatten().map(|en| en.id).collect();
     for (age_no, (name, start, end)) in ages.iter().enumerate() {
         let in_age = |y: u32| y >= *start && (y <= *end || age_no + 1 == ages.len());
         let id = format!("age{}", age_no + 1);
@@ -565,7 +572,12 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
             let mut items = String::new();
             if let Some(list) = yearly.get(&y) {
                 for en in list {
-                    let _ = write!(items, "<li class=\"entry k-{}\" data-k=\"{}\">{}</li>", en.kind, en.kind, sentence(en.html.clone()));
+                    let why = en.cause.and_then(|c| history.chronicle.get(c)).map(|c| {
+                        let what = format!("{} ({})", esc(&tidy(&c.title)), c.date.year);
+                        if entered.contains(&c.id) { format!(" <span class=\"why\">Because: <a href=\"#ev{}\">{}</a>.</span>", c.id.0, what) }
+                        else { format!(" <span class=\"why\">Because: {}.</span>", what) }
+                    }).unwrap_or_default();
+                    let _ = write!(items, "<li class=\"entry k-{}\" data-k=\"{}\" id=\"ev{}\">{}{}</li>", en.kind, en.kind, en.id.0, sentence(en.html.clone()), why);
                     // The player's notes, in the margin beside the first entry of their place.
                     if let Some((x, ex)) = en.at.map(|a| (a.0, a.1)) {
                         for (k, n) in notes.iter().enumerate() {
@@ -860,6 +872,17 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         body.push_str("</ul></section>");
     }
 
+    // --- The heavens: the star system the world circles (`astro`) ------------------------------
+    {
+        let sky = world.star_system.clone().unwrap_or_else(crate::astro::StarSystem::sol);
+        let _ = write!(toc, "<li><a href=\"#heavens\">The Heavens<span>{}</span></a></li>", esc(&sky.star.spectral.label()));
+        let _ = write!(body, "<section class=\"part\" id=\"heavens\"><p class=\"eyebrow\">Under {}</p><h2>The Heavens</h2><p class=\"part-intro\">{}.</p>", esc(&sky.star.name), esc(&sky.summary()));
+        for sec in sky.account() {
+            let _ = write!(body, "<h3 class=\"sub\">{}</h3><p>{}</p>", esc(sec.title), esc(&sec.lines.join(" ")));
+        }
+        body.push_str("</section>");
+    }
+
     // --- Treasures, and the index of everything the bard wrote --------------------------------
     let lore: Vec<(usize, &crate::lore::bard::Writing)> = library.writings.iter().enumerate().filter(|(_, w)| w.kind == WritingKind::ArtifactLore).collect();
     if !lore.is_empty() {
@@ -1028,6 +1051,9 @@ h3 { font-size: 1.35rem; margin: 0 0 0.25rem; }
 .anno { display: block; font-family: var(--label); font-size: 0.7rem; letter-spacing: 0.1em; color: var(--ink-soft); }
 .year ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
 .entry { position: relative; padding-left: 1rem; }
+.entry .why { color: var(--ink-soft); font-style: italic; font-size: 0.92em; }
+.entry .why a { color: inherit; }
+.entry:target { background: var(--page-deep); }
 .entry::before { content: ""; position: absolute; left: 0; top: 0.65em; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--rule); }
 .entry.k-war::before, .entry.k-fall::before { background: var(--rubric); }
 .entry.k-land::before, .entry.k-found::before { background: var(--sea); }

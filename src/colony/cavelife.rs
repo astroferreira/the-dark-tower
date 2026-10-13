@@ -236,7 +236,22 @@ impl Colony {
                 let (short, why) = self.arc.as_ref().map(|a| (a.threat.monster.as_ref().map(|m| m.short.clone()).unwrap_or_default(), a.threat.why.clone())).unwrap_or_default();
                 let line = format!("Something climbs out of the mine: {}.", name);
                 self.note(line.clone());
-                let burst = if self.hatch.is_some() { " The hatch in the stair lies splintered below it." } else { "" };
+                // A door at the stair head held by two who know how (card 'Dig too deep'): two
+                // spears drilled or seasoned stand at the hatch as it breaks, and the fight is
+                // theirs to begin.
+                let guards: Vec<usize> = if self.hatch.is_some() {
+                    let mut g: Vec<usize> = (0..self.settlers.len()).filter(|&j| self.settlers[j].alive && self.settlers[j].away_until == 0 && self.settlers[j].guest_until == 0
+                        && self.settlers[j].past.as_ref().map_or(true, |p| p.age >= 16) && (self.settlers[j].drill >= 0.2 || self.is_veteran(j))).collect();
+                    g.sort_by(|&a, &b| self.settlers[b].drill.total_cmp(&self.settlers[a].drill).then(a.cmp(&b)));
+                    g.truncate(2);
+                    g
+                } else { Vec::new() };
+                let burst = if guards.len() == 2 {
+                    let (a, b) = (self.settlers[guards[0]].name.clone(), self.settlers[guards[1]].name.clone());
+                    let s = format!(" {} and {} hold the hatch at the head of the stair with spears, and it comes through the splinters onto their points.", a, b);
+                    self.hatch_held = Some((a, b));
+                    s
+                } else if self.hatch.is_some() { " The hatch in the stair lies splintered below it.".to_string() } else { String::new() };
                 self.moment("Out of the deep".into(), format!("{} {} heaves itself out of the mine's mouth.{}", line, super::arc::capital_word(&short), burst), format!("because {}", why), at);
                 for j in 0..self.settlers.len() { if self.settlers[j].alive { let w = short.clone(); self.feel(j, mind::Feel::TheDeep { what: w }); } }
             }

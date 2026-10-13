@@ -79,6 +79,7 @@ pub fn calculate_ocean_currents(
 pub fn calculate_coastal_upwelling(
     heightmap: &Tilemap<f32>,
     surface_winds: &Tilemap<(f32, f32)>,
+    band_deg: (f32, f32),
 ) -> Tilemap<f32> {
     let width = heightmap.width;
     let height = heightmap.height;
@@ -89,7 +90,7 @@ pub fn calculate_coastal_upwelling(
         let lat_deg = lat.to_degrees().abs();
 
         // Upwelling predominantly occurs in the subtropical/trade-wind belt (15° to 40° latitude)
-        if lat_deg < 12.0 || lat_deg > 48.0 {
+        if lat_deg < band_deg.0 || lat_deg > band_deg.1 {
             continue;
         }
 
@@ -188,6 +189,7 @@ pub fn apply_maritime_influence(
     t_surface: &Tilemap<f32>,
     sst: &Tilemap<f32>,
     surface_winds: &Tilemap<(f32, f32)>,
+    lapse_rate: f32,
 ) -> Tilemap<f32> {
     let width = heightmap.width;
     let height = heightmap.height;
@@ -251,7 +253,7 @@ pub fn apply_maritime_influence(
 
                 // Ocean air adjusts local land temperature toward maritime temperature
                 // (adjusted for elevation lapse rate so mountains don't falsely warm up)
-                let lapse_adj = (elev / 1000.0) * 6.5;
+                let lapse_adj = (elev / 1000.0) * lapse_rate;
                 let marine_target = ocean_t - lapse_adj;
                 let adjusted_t = t_local * (1.0 - blend_weight) + marine_target * blend_weight;
                 moderated.set(x, y, adjusted_t);

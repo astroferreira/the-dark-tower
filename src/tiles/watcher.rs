@@ -63,6 +63,22 @@ struct LogItem {
     title: String,
     location: Option<(usize, usize)>,
     key: bool,
+    /// Its causes, nearest first ("Because: X (year), after Y (year)"), shown when the entry is
+    /// hovered (card '"Why?" for any event').
+    because: Option<String>,
+}
+
+/// The chain behind event `e`, two links back, in words.
+fn because_of(history: &crate::history::world_state::WorldHistory, e: &crate::history::events::types::Event) -> Option<String> {
+    let mut chain = Vec::new();
+    let mut cur = e;
+    while let Some(c) = cur.causes.first().and_then(|c| history.chronicle.get(*c)) {
+        chain.push(format!("{} ({})", c.title, c.date.year));
+        if chain.len() >= 2 { break; }
+        cur = c;
+    }
+    if chain.is_empty() { return None; }
+    Some(format!("Because: {}", chain.join(", after ")))
 }
 
 #[derive(Clone)]
@@ -234,6 +250,8 @@ fn style(kind: &EventType) -> (char, u32, Option<MarkKind>, bool) {
         ShadowBane => ('$', GOLD, None, true),
         Marriage => ('&', GOLD, None, false),
         AdventurerDeed => ('*', GOLD, None, true),
+        Celestial => ('*', VIOLET, Some(MarkKind::Disaster), true),
+        Famine => ('!', VIOLET, Some(MarkKind::Disaster), true),
     }
 }
 
@@ -315,6 +333,7 @@ fn simulate(
         ),
         location: None,
         key: true,
+        because: None,
     };
     let _ = tx.send(Msg::Start(Box::new(prev.clone())));
     let mut first = record(&history, world, &prev, 0, total, Vec::new(), Vec::new(), Delta::default());
@@ -335,13 +354,14 @@ fn simulate(
             location: e.location,
             // Treasures made, found and lost are told once a decade, not one by one.
             key: (style(&e.event_type).3 || e.is_major) && !treasure(&e.event_type),
+            because: because_of(&history, e),
         }).collect();
         treasures += events.iter().filter(|e| treasure(&e.kind)).count();
         if history.current_date.season == crate::seasons::Season::Winter && history.current_date.year % 10 == 0 && treasures > 0 {
             events.push(LogItem {
                 year: history.current_date.year, kind: EventType::ArtifactFound,
                 title: format!("In ten years {} treasure{} {} made, found or lost", treasures, if treasures == 1 { "" } else { "s" }, if treasures == 1 { "was" } else { "were" }),
-                location: None, key: true,
+                location: None, key: true, because: None,
             });
             treasures = 0;
         }
@@ -1098,6 +1118,8 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
     let script: Vec<(u64, String, Vec<String>)> = std::env::var("PLANET_WATCH_SCRIPT").ok().and_then(|f| std::fs::read_to_string(f).ok())
         .map(|t| t.lines().filter_map(|l| { let mut it = l.split_whitespace(); let f = it.next()?.parse().ok()?; let v = it.next()?.to_string(); Some((f, v, it.map(String::from).collect())) }).collect()).unwrap_or_default();
     let mut frame: u64 = 0;
+    // A scripted pointer ("<frame> mouse X Y"), kept until the next.
+    let mut script_mouse: Option<(f32, f32)> = None;
 
     while window.is_open() {
         frame += 1;
@@ -1107,6 +1129,7 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
             match verb.as_str() {
                 "key" => if let Some(k) = args.first().and_then(|n| super::viewer::script_key_pub(n)) { script_keys.push(k); },
                 "shot" => script_shot = args.first().cloned(),
+                "mouse" => if let (Some(x), Some(y)) = (args.first().and_then(|v| v.parse().ok()), args.get(1).and_then(|v| v.parse().ok())) { script_mouse = Some((x, y)); },
                 "status" => println!("Watcher script frame {}: year {} | {}", frame, view.current().map_or(0, |s| s.year), view.status),
                 "quit" => return Ok(()),
                 _ => {}
@@ -1117,7 +1140,7 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         view.resize(w, h);
         if view.size.0 == 0 { window.update(); continue; }
 
-        let mouse = window.get_mouse_pos(MouseMode::Clamp).unwrap_or((0.0, 0.0));
+        let mouse = script_mouse.unwrap_or_else(|| window.get_mouse_pos(MouseMode::Clamp).unwrap_or((0.0, 0.0)));
         let wheel = window.get_scroll_wheel().map(|s| s.1).unwrap_or(0.0);
         let down = window.get_mouse_down(MouseButton::Left);
         let clicked = down && !was_down;
@@ -1180,7 +1203,10 @@ fn run_window(mut window: Window, world: &WorldData, atlas: &Atlas, base: TileWo
         if pressed(Key::G) {
             let path = format!("timelapse_{}.gif", world.seed());
             window.set_title("Writing the timelapse...");
-            view.status = match export_timelapse(&mut view, ctl, &path, LAPSE_SIZE.0, LAPSE_SIZE.1) {
+            // (The window is pumped after every frame written, the progress in its title: it had
+            // stood still about 6 s, card 'One window from Begin to the camp'.)
+            let mut pump = |k: usize, n: usize| { window.set_title(&format!("Writing the timelapse... {}%", (k * 100 / n.max(1)).min(100))); window.update(); };
+            view.status = match export_timelapse(&mut view, ctl, &path, LAPSE_SIZE.0, LAPSE_SIZE.1, &mut pump) {
                 Ok((frames, bytes)) => format!("saved {} ({} frames, {:.1} MB)", path, frames, bytes as f64 / 1e6),
                 Err(e) => format!("timelapse failed: {e}"),
             };
@@ -1263,7 +1289,8 @@ impl<'a> View<'a> {
 /// Write the recording as an animated GIF: the whole history from the first season, the map
 /// fitted, at `w` x `h`, ~25 s long, the last frame held 4 s. Returns the frames and bytes
 /// written. The view is put back where it was.
-fn export_timelapse(view: &mut View, ctl: &Control, path: &str, w: usize, h: usize) -> Result<(usize, u64), String> {
+/// `tick(frame, frames)` is called after each frame written (the window pumps its events there).
+fn export_timelapse(view: &mut View, ctl: &Control, path: &str, w: usize, h: usize, tick: &mut dyn FnMut(usize, usize)) -> Result<(usize, u64), String> {
     let (shown, size, fitted, cam) = (view.shown, view.size, view.fitted, view.cam);
     // Drawn as if playing (the panel would say "paused").
     let paused = ctl.paused.swap(false, Ordering::Relaxed);
@@ -1314,6 +1341,7 @@ fn export_timelapse(view: &mut View, ctl: &Control, path: &str, w: usize, h: usi
         enc.write_frame(&frame).map_err(|e| e.to_string())?;
         if fresh { prev = cur.clone(); } else { for i in 0..cur.len() { if changed[i] { prev[i] = cur[i]; } } }
         frames += 1;
+        tick(frames, total / stride + 1);
         if last { break; }
         for _ in 0..stride { view.step_forward(); }
         // Marks and banners fade as they would in the window at this pace.
@@ -1346,7 +1374,7 @@ pub fn watch_timelapse(world: &WorldData, game_data: &GameData, config: HistoryC
         view.resize(LAPSE_SIZE.0, LAPSE_SIZE.1);
         for msg in rx.iter() { view.receive(msg); }
         let t0 = Instant::now();
-        match export_timelapse(&mut view, &ctl, path, LAPSE_SIZE.0, LAPSE_SIZE.1) {
+        match export_timelapse(&mut view, &ctl, path, LAPSE_SIZE.0, LAPSE_SIZE.1, &mut |_, _| {}) {
             Ok((frames, bytes)) => println!("Timelapse: {} frames, {:.1} MB, written to {} in {:.1}s", frames, bytes as f64 / 1e6, path, t0.elapsed().as_secs_f32()),
             Err(e) => eprintln!("Timelapse failed: {e}"),
         }
@@ -1870,6 +1898,7 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
     let entries: Vec<&LogItem> = log.iter().filter(|e| show_all || e.key).collect();
     *scroll = (*scroll).min(entries.len().saturating_sub(1));
     let mut last_year = None;
+    let mut hover_card: Option<(Rect, Vec<String>)> = None;
     for (n, e) in entries.iter().skip(*scroll).enumerate() {
         let face = if e.kind.is_major() { Face::SmallCaps } else { Face::Roman };
         let lines = fonts::wrap(&e.title, face, PX, text_w.max(80.0));
@@ -1878,6 +1907,20 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
         let rect = Rect { x: x - 4, y: (y - 2) as usize, w: iw + 8, h: eh as usize + 2 };
         let hover = e.location.is_some() && rect.contains(mouse.0, mouse.1);
         if hover { fill(buf, w, rect, PAPER_SHADE); }
+        // Hovered, its causes on a card beside the entry's words (in the panel, right of them).
+        if rect.contains(mouse.0, mouse.1) {
+            if let Some(b) = &e.because {
+                let words = lines.iter().map(|l| fonts::width(l, face, PX, 0.0)).fold(0.0f32, f32::max);
+                let cw = 380usize.min(iw / 2);
+                if cw > 120 {
+                    let lines = fonts::wrap(b, Face::Italic, 14.0, cw as f32 - 24.0);
+                    let ch = 14 + lines.len().min(4) * 18;
+                    let cx = ((text_x as f32 + words + 24.0) as usize).min(r.x + r.w - cw - 8);
+                    let card = Rect { x: cx, y: (y - 4).max(4) as usize, w: cw, h: ch };
+                    hover_card = Some((card, lines));
+                }
+            }
+        }
         // Older entries fade towards the paper (no further than a readable brown).
         let age = (n as f32 / 40.0).min(0.4);
         let (glyph, gcol, _, _) = style(&e.kind);
@@ -1892,6 +1935,13 @@ fn draw_log(buf: &mut [u32], w: usize, h: usize, r: Rect, log: &VecDeque<LogItem
         }
         if let Some(loc) = e.location { hits.push((rect, loc)); }
         y += eh + 2;
+    }
+    // (Over the rows below it, so drawn after them.)
+    if let Some((card, lines)) = hover_card {
+        super::ui::card(buf, w, card);
+        for (k, l) in lines.iter().take(4).enumerate() {
+            fonts::draw(buf, w, h, (card.x + 12) as f32, (card.y + 7 + k * 18) as f32, l, Face::Italic, 14.0, 0.0, 0x005A_4634, None);
+        }
     }
     if entries.is_empty() {
         fell(buf, w, h, text_x as i64, y, "The page is still blank.", INK_FADED, 1, false);

@@ -379,7 +379,7 @@ impl Colony {
         self.remains.push((name.clone(), short, bones, hides, skin));
         if self.were.as_deref() == Some(name.as_str()) {
             self.were = None;
-            self.note(format!("With {} dead, no beast will howl under the next full moon{}.", name, if self.cursed.is_empty() { "" } else { "; but the curse in the blood of the bitten does not die with it" }));
+            self.note(format!("With {} dead, no beast will howl {}{}.", name, if self.map.sky.moonless { "on the next darkest night" } else { "under the next full moon" }, if self.cursed.is_empty() { "" } else { "; but the curse in the blood of the bitten does not die with it" }));
         }
         // Those still to come that were this beast are no longer coming.
         if let Some(a) = self.arc.as_mut() { a.later.retain(|t| t.name != name); a.reserve.retain(|t| t.name != name); }

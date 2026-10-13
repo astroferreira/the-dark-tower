@@ -238,3 +238,65 @@ the zoomed region around a point.
   with `--local-snapshot`, and the unit test asserts it is empty. `PLANET_LOCAL_Z="1,2,3"` writes
   extra level slices (`_lvl<z>.png`). `LocalMap::ground_z` is the ground under ice or water
   (`surface_z` is the ice over a frozen lake): the magma pipe stops 3 levels under it, not under the ice.
+
+## Embarks join their neighbours (`--embark-seams`; card 'Neighbouring embarks join seamlessly', 2026-10-12)
+- `--embark-seams [--tiles-center X,Y]` makes the embark at the tile's centre and the ones an
+  embark (384 m) east and south of it, and a pair straddling the tile's east border, and prints
+  the absolute levels across each shared edge against the same step inside one embark, cells
+  with water on one side only and where the ground's kind differs; then the same embark on the
+  border made from this region and from the region three tiles east ("Two regions: ... differs
+  0.00 m"). Each embark counts levels from its own `z_min_m`, so compare `z_min_m / Z_STEP_M +
+  surface_z`. Dev 45,12, 48,18 (mountain), 50,20, 47,14: across 0.01-0.20 levels where inside
+  is 0.00-0.30; at most 1-2. One exception: a place's stair mouth cut into one embark at its
+  edge (47,14 south: one cell 10 levels down) meets plain ground in the other; places belong to
+  the embark they are carved in.
+- The date line: x wraps but the noise does not. An embark's origin is shifted by whole world
+  widths so its centre lies in the first (`canonical_x0`); 2 m tiles are hashed by their wrapped
+  place (trees, boulders, sand and gravel, the wildlife's signs); every metre-scale noise read
+  (relief, ridges, terraces, meanders, strata, groves, ore seams; `bank_near` too) goes through
+  `across_date_line`, which within 2 km of the line mixes the reading with the one a world's
+  width over, half and half on the line, so the two sides meet (95,10: 4.5 levels across the
+  line before, 0.10 now against 0.07 inside). Nothing changes further than 2 km from the line.
+  Tested (`tests/towns.rs` neighbouring_embarks_join: 48,18 and 95,10).
+
+## Towns in embarks: roofs by people, rigid houses, squares (`structures.rs`; 2026-10-12)
+- Roofs by the builders' architecture (card 'Architecture styles by culture'): `RoofPlan::style`
+  (`RoofStyle::of(Site::arch, stone)`): tiles over stone and thatch over timber or earth as
+  before, a canopy of growing leaves (living, in the star's leaf colour), wicker over and under
+  (woven), hides on pale bone ribs (bone), faceted crystal with glints (crystal), standing seams
+  (metalwork), turf (carved). `--local-snapshot` prints "Towns in the region, by their roofs: ..."
+  and `PLANET_EMBARK_TOWN=<name>` embarks on that town's tile (dev: Dreammere crystal,
+  Brolmdustoor bone, Slimestomp woven). In the coverage table (`coverage::roof`).
+- Streets (card 'Organic street layouts'): each house is a rigid rectangle moved by the street
+  warp at its middle (`House::off`, `Plan::rigid`; bent with the warp, a lot crossed by its slope
+  had become an L) and squared to the grid (a slanting rectangle is a jagged diamond on 2 m cells;
+  squared off a slanting street, its corners must keep off every street). The market square is a
+  square, and lanes crossing main streets get a small paved square one time in two
+  (`Plan::squares`). Streets still bend with the warp and follow the approach roads' angles.
+
+## Mountains at human scale (card 'Mountains at human scale', 2026-10-12)
+- Mountain and hill tiles were already cut into terraces (`terrace` in `generate_local`: a
+  broad hillside of 7 steps, each a ledge and a face, amplitude from the tile's height and
+  ruggedness, `mountain_at`). Faces of four levels had cut a camp off its own ground: now in
+  about a fifth of each face's length a scree chute eases it over most of the step
+  (`chute_noise`), so a walker can climb from ledge to ledge. This moved every hill embark (and
+  the seed-pinned colony tests with them).
+- On a mountain tile (amplitude 10+, not a hill) a face is the whole band where the ground falls
+  three levels or more within two cells: bare rock (no snow or soil holds on it), and its foot is
+  gravel scree with boulders. Hills keep only the step's top edge bare. The ink surface view
+  (`local_ink::pixel`) shades rock faces like the world map's ranges: pale toward the light
+  (north-west), hatched where they fall away from it (two levels or more across four cells, so a
+  plain's bare rock is untouched); the steps keep their hachures.
+- A living: ibex and wild goats on a mountain whose ecology keeps no other game; a berry
+  thicket drawn toward the middle (where the camp is made) on a mountain, and summer shrubs on
+  the lower slope (relief 12+). The site report says the trade: "a mountain (18 levels of
+  relief): rich in stone and ore, easy to hold, cold, poor in timber" (food and timber when
+  short).
+- `--local-snapshot` prints "Relief: N levels across the embark; the highest face M levels".
+  Dev 48,18: 27 levels, faces of 4; 9 of 9 alive at day 60 (all had starved by day 6; it was
+  the doomed site of the colony tests, now 46,38). Mount Mistvale, the roof of the world
+  (`--seed 42 --star sol --width 256 --height 128`, tile 104,104): 25 levels, faces of 6, a
+  gorge by its lake. Plains are unchanged (no terrace, no face band, no shading).
+- Doorways (`structures::raise`): a door on ground below the house's floor is open up to the
+  floor's height (the lintel at the low ground's +2 left no headroom to step up). The chutes had
+  put a step under one of Dreammere's wall towers and closed it off.

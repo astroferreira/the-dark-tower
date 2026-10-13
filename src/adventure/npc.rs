@@ -25,6 +25,9 @@ pub enum Topic {
     /// The smith's work and the sage's enchantments (`craft`), passage by sea, a horse, a house
     /// and what is in it, a title.
     Craft, Make(usize), Passage, Sail(u32, u32), BuyHorse(u32), BuyHouse(u32), House, StoreLoot, TakeStash, Sleep, Trophies, Title,
+    /// The counting-house (any town's trader; Tibia's bank): gold kept there is not lost in a
+    /// fall, and can be taken out in any town.
+    Bank, Deposit(u32), Withdraw(u32),
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -432,7 +435,8 @@ pub fn answer_topic(g: &mut Game, topic: Topic) {
             let town = g.site(n.home).and_then(|s| s.settlement).map(crate::history::SettlementId);
             said = super::lore::ask(g, &n, town, &q);
         }
-        t @ (Topic::Craft | Topic::Make(_) | Topic::Passage | Topic::Sail(..) | Topic::BuyHorse(_) | Topic::BuyHouse(_) | Topic::House | Topic::StoreLoot | Topic::TakeStash | Topic::Sleep | Topic::Trophies | Topic::Title) => {
+        t @ (Topic::Craft | Topic::Make(_) | Topic::Passage | Topic::Sail(..) | Topic::BuyHorse(_) | Topic::BuyHouse(_) | Topic::House | Topic::StoreLoot | Topic::TakeStash | Topic::Sleep | Topic::Trophies | Topic::Title
+            | Topic::Bank | Topic::Deposit(_) | Topic::Withdraw(_)) => {
             let sailing = matches!(t, Topic::Sail(..));
             let (s, o) = super::craft::answer(g, &n, town_id(g), t);
             if sailing && g.talk.is_none() { return; }

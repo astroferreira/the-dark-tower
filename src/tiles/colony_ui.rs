@@ -891,6 +891,8 @@ fn camp_leaf(p: &mut Pane, colony: &Colony) {
     let winter = if colony.hard_winter() { if colony.frozen() { "a hard winter; the water is frozen".to_string() } else { "a hard winter".into() } }
         else { colony.days_to_winter().map(|d| format!("winter in {} days", d)).unwrap_or_default() };
     p.para(&format!("{}: {} ({:.0} \u{b0}C){}{}", colony.clock.stamp(), season.name(), colony.temperature(), if winter.is_empty() { "" } else { "; " }, winter), Face::Roman, BODY, INK, 0.0, None);
+    let sky = colony.sky_line();
+    if !sky.is_empty() { p.para(&sky, Face::Italic, BODY, INK, 0.0, None); }
     p.para(&format!("{} of {} alive; {} meals in the store, about {:.0} days of food (the camp aims for {}).", colony.alive(), colony.company(), colony.food_stored(), colony.days_of_food(), colony.food_goal()), Face::Roman, BODY, INK, 0.0, None);
     // What the camp asked of its trading town (`liaison.rs`), with the thing's glyph.
     if let Some(w) = colony.request {
@@ -924,6 +926,16 @@ fn camp_leaf(p: &mut Pane, colony: &Colony) {
             let c = match r.acted { Some(false) => RUBRIC, Some(true) => MOSS, None if r.total() <= -10 => RUBRIC, None if r.total() >= 10 => MOSS, _ => INK };
             p.para(&format!("{} {} ({:+})", r.people, r.word(), r.total()), Face::Roman, BODY, c, 0.0, None);
             if !latest.is_empty() { p.para(&format!("lately: {}", latest), Face::Italic, SMALL, SOFT, 12.0, None); }
+        }
+    }
+    // What lives here (`colony::bestiary`): each kind with why it is here and how to read it.
+    let kinds = colony.bestiary();
+    if !kinds.is_empty() {
+        p.heading("What lives here");
+        for k in kinds {
+            p.para(&cap(&k.name), Face::SmallCaps, BODY, if k.from_start { RUBRIC } else { INK }, 0.0, None);
+            p.para(&format!("Here because {}.", k.cause), Face::Roman, SMALL + 1.0, INK, 12.0, None);
+            p.para(&format!("Wants {}; fears {}. Its sign: {}.", k.want, k.fear, k.sign), Face::Italic, SMALL + 1.0, SOFT, 12.0, None);
         }
     }
     p.heading("Who leads");
@@ -1084,7 +1096,7 @@ fn draw_bar(colony: &Colony, ui: &UiState, speed: u32, mouse: (f32, f32), buf: &
     }
     // The other keys, as far as they fit.
     x += 10.0;
-    for text in ["M stops", "U section", "</> levels", "[/] delve", "Esc leave"] {
+    for text in ["M stops", "Y plan", "U section", "</> levels", "[/] delve", "Esc leave"] {
         let tw = fonts::width(text, Face::Roman, SMALL, 0.0);
         if x + tw > right { break; }
         fonts::draw(buf, w, h, x, y + 3.0, text, Face::Roman, SMALL, 0.0, SOFT, None);

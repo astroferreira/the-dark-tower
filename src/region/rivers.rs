@@ -37,6 +37,16 @@ pub fn find_river_crossings(
     _world_width: usize,
     _world_height: usize,
 ) -> Vec<RiverEdgeCrossing> {
+    find_river_crossings_among(river_network, world_x, world_y, 0..river_network.segments.len())
+}
+
+/// As `find_river_crossings`, over the given segments only (in ascending order).
+fn find_river_crossings_among(
+    river_network: &RiverNetwork,
+    world_x: usize,
+    world_y: usize,
+    candidates: impl Iterator<Item = usize>,
+) -> Vec<RiverEdgeCrossing> {
     let mut crossings = Vec::new();
 
     // Tile boundaries in world coordinates
@@ -46,7 +56,8 @@ pub fn find_river_crossings(
     let tile_y_max = (world_y + 1) as f32;
 
     // Check each river segment for boundary crossings
-    for segment in &river_network.segments {
+    for k in candidates {
+        let segment = &river_network.segments[k];
         // Sample along the segment to find crossings
         let samples = 20;
         let mut prev_inside = None;
@@ -171,9 +182,30 @@ pub fn calculate_river_crossings(
     let width = handshakes.width;
     let height = handshakes.height;
 
+    // Each tile looks only at the segments with a sample in it (a crossing needs one sample
+    // inside the tile): every tile against every segment had cost a Large world seconds
+    // (card 'One window from Begin to the camp'). Same samples, same order: the same crossings.
+    let mut near: Vec<Vec<usize>> = vec![Vec::new(); width * height];
+    for (k, segment) in river_network.segments.iter().enumerate() {
+        for i in 0..=20 {
+            let pt = segment.evaluate(i as f32 / 20.0);
+            if pt.world_x < 0.0 || pt.world_y < 0.0 { continue; }
+            let (tx, ty) = (pt.world_x as usize, pt.world_y as usize);
+            if tx >= width || ty >= height { continue; }
+            let cell = &mut near[ty * width + tx];
+            if cell.last() != Some(&k) { cell.push(k); }
+        }
+    }
+    for cell in near.iter_mut() { cell.sort_unstable(); cell.dedup(); }
     for y in 0..height {
         for x in 0..width {
-            let crossings = find_river_crossings(river_network, x, y, width, height);
+            let crossings = find_river_crossings_among(river_network, x, y, near[y * width + x].iter().copied());
+            // (Debug: PLANET_CHECK_CROSSINGS=1 checks against every segment.)
+            if std::env::var("PLANET_CHECK_CROSSINGS").is_ok() {
+                let all = find_river_crossings(river_network, x, y, width, height);
+                let same = all.len() == crossings.len() && all.iter().zip(&crossings).all(|(a, b)| a.edge == b.edge && a.position == b.position && a.segment_id == b.segment_id && a.is_outflow == b.is_outflow);
+                if !same { eprintln!("CROSSINGS differ at {},{}: {} vs {}", x, y, all.len(), crossings.len()); }
+            }
             handshakes.get_mut(x, y).river_crossings = crossings;
         }
     }

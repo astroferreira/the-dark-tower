@@ -216,6 +216,29 @@ pub fn answer(g: &mut Game, n: &super::actor::Npc, town: u32, topic: Topic) -> (
             let named: Vec<String> = g.hero.pack.iter().chain(g.hero.equipped.iter().flatten()).filter_map(|i| i.name.clone()).collect();
             (if t.is_empty() { "The wall is bare yet.".into() } else { format!("On your wall: the heads, horns and banners of {}.{}", t.join(", "), if named.is_empty() { String::new() } else { format!(" And with you: {}.", named.join(", ")) }) }, None)
         }
+        Topic::Bank => {
+            let carried = g.hero.gold();
+            let mut v: Vec<(String, Topic)> = Vec::new();
+            if carried > 0 { v.push((format!("Put in all you carry ({} gold)", carried), Topic::Deposit(carried))); }
+            if carried >= 20 { v.push((format!("Put in half ({} gold)", carried / 2), Topic::Deposit(carried / 2))); }
+            for n in [100u32, 1000] { if g.bank >= n { v.push((format!("Take out {} gold", n), Topic::Withdraw(n))); } }
+            if g.bank > 0 { v.push((format!("Take out all of it ({} gold)", g.bank), Topic::Withdraw(g.bank))); }
+            v.push(("Back".into(), Topic::Back));
+            (if g.bank > 0 { format!("Your account stands at {} gold, as it does in every counting-house in the land.", g.bank) } else { "Gold kept here is not lost if you fall out there; take it out in any town.".into() }, Some(v))
+        }
+        Topic::Deposit(n) => {
+            let n = n.min(g.hero.gold());
+            if n == 0 || !g.hero.take_gold(n) { return ("You carry no gold.".into(), None); }
+            g.bank += n;
+            (format!("{} gold into the strongbox. Your account stands at {}.", n, g.bank), None)
+        }
+        Topic::Withdraw(n) => {
+            let n = n.min(g.bank);
+            if n == 0 { return ("Your account is empty.".into(), None); }
+            g.bank -= n;
+            stow(&mut g.hero.pack, Item::new("gold", n));
+            (format!("{} gold, counted out. {} left in your account.", n, g.bank), None)
+        }
         Topic::Title => {
             match g.title_due(town) {
                 Some(title) => {
@@ -247,6 +270,7 @@ pub fn menu(g: &Game, role: Role, town: u32) -> Vec<(String, Topic)> {
             if g.houses.contains(&town) { v.push(("Your house".to_string(), Topic::House)); }
             if g.companion.is_some() && g.band.len() < BAND { let p = 120 * g.hero.level.max(1); v.push((format!("Another sellsword for your band ({} gold)", p), Topic::Hire(p))); }
         }
+        Role::Trader if town != 0 => v.push((format!("Your account at the counting-house ({} gold)", g.bank), Topic::Bank)),
         Role::Lord => {
             if !g.houses.contains(&town) && town != 0 { let p = 1000 + 600 * size as u32; v.push((format!("Buy a house within the walls ({} gold)", p), Topic::BuyHouse(p))); }
             if g.title_due(town).is_some() { v.push(("Ask for a title".to_string(), Topic::Title)); }
@@ -303,6 +327,33 @@ mod tests {
         assert_eq!(g.tile, (7, 4));
         assert!(g.on_land() && g.turn >= t0 + days as u64 * crate::adventure::land::DAY / 2);
         assert_eq!(g.stats.voyages, 1);
+    }
+
+    /// Gold at the counting-house (Tibia's bank): put in at one trader, safe through a fall, taken
+    /// out again.
+    #[test]
+    fn the_counting_house_keeps_gold_through_a_fall() {
+        let mut g = crate::adventure::land::tests::game();
+        g.land_at((3, 2), None);
+        stow(&mut g.hero.pack, Item::new("gold", 1000));
+        let trader = g.place().unwrap().npcs.iter().position(|n| n.role == Role::Trader && n.home == 1).expect("a trader");
+        crate::adventure::npc::greet(&mut g, trader);
+        let i = g.talk.as_ref().unwrap().options.iter().position(|(_, t)| matches!(t, Topic::Bank)).expect("the counting-house");
+        crate::adventure::npc::answer(&mut g, i);
+        let all = g.hero.gold();
+        let i = g.talk.as_ref().unwrap().options.iter().position(|(_, t)| *t == Topic::Deposit(all)).expect("put in all");
+        crate::adventure::npc::answer(&mut g, i);
+        assert_eq!((g.bank, g.hero.gold()), (all, 0));
+        g.talk = None;
+        stow(&mut g.hero.pack, Item::new("gold", 200));
+        g.die("a test");
+        assert_eq!((g.bank, g.hero.gold()), (all, 100), "a fall costs half of what is carried, nothing of what is banked");
+        crate::adventure::npc::greet(&mut g, trader);
+        let i = g.talk.as_ref().unwrap().options.iter().position(|(_, t)| matches!(t, Topic::Bank)).unwrap();
+        crate::adventure::npc::answer(&mut g, i);
+        let i = g.talk.as_ref().unwrap().options.iter().position(|(_, t)| *t == Topic::Withdraw(all)).expect("take it all out");
+        crate::adventure::npc::answer(&mut g, i);
+        assert_eq!((g.bank, g.hero.gold()), (0, all + 100));
     }
 
     /// Three blades follow at once: a sellsword hired, two more for the band; they keep up.

@@ -65,6 +65,13 @@ impl Colony {
     /// Dawn: following the vein down, the miners break into the hollow.
     pub(crate) fn reckon_hollow(&mut self) {
         let Some(d) = self.hollow_day else { return };
+        // Foretold the day before (card 'Dig too deep'): warm air from below.
+        if self.clock.day() + 1 == d {
+            let at = self.mine_mouth().unwrap_or(self.camp);
+            let line = "Warm air breathes up the deep shaft from below the adamantine, and the miners' lamps gutter in it; someone says they heard laughing.".to_string();
+            let _ = self.foretold("hollow".into(), at, "Warm air from below", line, "because something hollow and hot lies under the vein".into());
+            self.dig_hold_until = 0;
+        }
         if self.clock.day() < d || self.alive() == 0 { return; }
         self.hollow_day = None;
         let req = crate::monsters::Request { kind: "forgotten".into(), spheres: vec!["fire".into(), "darkness".into()], size: 3.5, evil: true, ..Default::default() };

@@ -32,6 +32,10 @@ pub struct StartConfig {
     pub watch: bool,
     /// Play one adventurer across the world instead of founding a colony.
     pub adventure: bool,
+    /// The star: "auto" (from the seed), "sol", or a class ("F", "G", "K", "M").
+    pub star: String,
+    /// Place in the star's habitable zone (None: where the seed puts it).
+    pub hz: Option<f32>,
 }
 
 const SIZES: [(usize, usize, &str, &str); 4] = [
@@ -45,12 +49,18 @@ const FANTASY: [(f32, &str); 7] = [
     (0.0, "None"), (0.1, "Faint"), (0.2, "A touch"), (0.35, "Noticeable"), (0.5, "Strong"), (0.75, "Wild"), (1.0, "High fantasy"),
 ];
 const YEARS: [u32; 5] = [0, 100, 250, 500, 1000];
+const STARS: [(&str, &str); 6] = [
+    ("auto", "From the seed"), ("sol", "The Sun"), ("F", "A yellow-white F star"), ("G", "A yellow G star"), ("K", "An orange K dwarf"), ("M", "A red M dwarf"),
+];
+const ZONES: [(Option<f32>, &str); 6] = [
+    (None, "Where the seed puts it"), (Some(-0.04), "Scorching inner edge"), (Some(0.03), "Hot"), (Some(0.09), "Like the Earth's"), (Some(0.18), "Cool"), (Some(0.3), "Cold outer reaches"),
+];
 const PEOPLES: [u32; 9] = [4, 6, 8, 12, 20, 30, 45, 60, 100];
 
 #[derive(Clone, Copy, PartialEq)]
-enum Row { Play, Size, Seed, Style, Plates, Myr, Fantasy, Years, Peoples, Shadow, Watch, Begin }
+enum Row { Play, Size, Seed, Sun, Zone, Style, Plates, Myr, Fantasy, Years, Peoples, Shadow, Watch, Begin }
 
-const ROWS: [Row; 12] = [Row::Play, Row::Size, Row::Seed, Row::Style, Row::Plates, Row::Myr, Row::Fantasy, Row::Years, Row::Peoples, Row::Shadow, Row::Watch, Row::Begin];
+const ROWS: [Row; 14] = [Row::Play, Row::Size, Row::Seed, Row::Sun, Row::Zone, Row::Style, Row::Plates, Row::Myr, Row::Fantasy, Row::Years, Row::Peoples, Row::Shadow, Row::Watch, Row::Begin];
 
 fn nearest<T: Copy>(list: &[T], key: impl Fn(T) -> f32, target: f32) -> usize {
     (0..list.len()).min_by(|&a, &b| (key(list[a]) - target).abs().partial_cmp(&(key(list[b]) - target).abs()).unwrap()).unwrap_or(0)
@@ -83,6 +93,8 @@ struct Menu {
     fantasy: usize,
     years: usize,
     peoples: usize,
+    star: usize,
+    zone: usize,
     seed_text: String,
 }
 
@@ -97,6 +109,8 @@ impl Menu {
             fantasy: nearest(&FANTASY, |v| v.0, cfg.fantasy),
             years: nearest(&YEARS, |v| v as f32, cfg.history_years as f32),
             peoples: nearest(&PEOPLES, |v| v as f32, cfg.civilizations as f32),
+            star: STARS.iter().position(|s| s.0.eq_ignore_ascii_case(&cfg.star)).unwrap_or(0),
+            zone: cfg.hz.map(|h| 1 + nearest(&ZONES[1..], |z| z.0.unwrap_or(0.0), h)).unwrap_or(0),
             seed_text: cfg.seed.to_string(),
             cfg,
         }
@@ -123,12 +137,24 @@ impl Menu {
             Row::Fantasy => self.fantasy = step_index(self.fantasy, FANTASY.len(), d),
             Row::Years => self.years = step_index(self.years, YEARS.len(), d),
             Row::Peoples => self.peoples = step_index(self.peoples, PEOPLES.len(), d),
+            Row::Sun => self.star = step_index(self.star, STARS.len(), d),
+            Row::Zone => self.zone = step_index(self.zone, ZONES.len(), d),
             Row::Shadow => self.cfg.shadow = !self.cfg.shadow,
             Row::Watch => self.cfg.watch = !self.cfg.watch,
             Row::Play => self.cfg.adventure = !self.cfg.adventure,
             Row::Begin => {}
         }
         self.sync();
+    }
+
+    /// The star system these choices give (cheap: no terrain).
+    fn system(&self) -> crate::astro::StarSystem {
+        let mut spec = crate::astro::SystemSpec::parse_star(STARS[self.star].0).unwrap_or_default();
+        if let Some(h) = ZONES[self.zone].0 {
+            if spec.sol { spec = crate::astro::SystemSpec { class: Some(crate::astro::SpectralClass::G), subclass: Some(2), metallicity: Some(0.0), age_gyr: Some(4.57), ..Default::default() }; }
+            spec.hz = Some(h);
+        }
+        crate::astro::StarSystem::generate(self.cfg.seed, &spec)
     }
 
     fn reroll(&mut self) {
@@ -142,6 +168,8 @@ impl Menu {
         self.cfg.fantasy = FANTASY[self.fantasy].0;
         self.cfg.history_years = YEARS[self.years];
         self.cfg.civilizations = PEOPLES[self.peoples];
+        self.cfg.star = STARS[self.star].0.to_string();
+        self.cfg.hz = ZONES[self.zone].0;
         if let Ok(s) = self.seed_text.parse::<u64>() { self.cfg.seed = s; }
     }
 
@@ -150,6 +178,8 @@ impl Menu {
             Row::Size => "World size",
             Row::Seed => "Seed",
             Row::Style => "Shape of the lands",
+            Row::Sun => "The sun",
+            Row::Zone => "Its orbit",
             Row::Plates => "Tectonic plates",
             Row::Myr => "Age of the crust",
             Row::Fantasy => "Fantasy",
@@ -173,6 +203,8 @@ impl Menu {
                 chars.next().map(|f| f.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
             }
             Row::Plates => c.plates.map_or("Random (6-15)".into(), |p| p.to_string()),
+            Row::Sun => if self.star == 0 { format!("From the seed: {}", self.system().star.spectral.label()) } else { STARS[self.star].1.to_string() },
+            Row::Zone => ZONES[self.zone].1.to_string(),
             Row::Myr => format!("{:.0} million years", c.tectonic_myr),
             Row::Fantasy => FANTASY[self.fantasy].1.to_string(),
             Row::Years => if c.history_years == 0 { "None".into() } else { format!("{} years", c.history_years) },
@@ -190,6 +222,18 @@ impl Menu {
             Row::Size => SIZES[self.size].3.to_string(),
             Row::Seed => "The same seed and options always make the same world and the same history. Type digits to enter one, or press R for a new one.".into(),
             Row::Style => format!("{}.", c.style.description()),
+            Row::Sun => {
+                let sys = self.system();
+                let (st, wo) = (&sys.star, &sys.world);
+                let day = wo.spin.solar_day_hours(&wo.orbit).map(|d| format!("a day of {:.0} hours", d)).unwrap_or_else(|| "one face locked to it".into());
+                format!("{}, {} {} {}: {:.2} the Sun's light, {:.1} billion years old. The world circles it in {:.0} days, {}; plants there would grow {}.",
+                    st.name, crate::astro::sky::a_an(&st.spectral.label()), st.spectral.label(), st.spectral.class.dwarf_word(), st.luminosity_lsun, st.age_gyr, wo.orbit.period_days, day, sys.leaves())
+            }
+            Row::Zone => {
+                let sys = self.system();
+                format!("Where in its sun's habitable zone the world circles: near the inner edge the seas steam and the warmth weathers the CO2 away; far out volcanoes pile it up, and still the ice spreads. Here {:.2} AU, starlight {:.2}x the Earth's.",
+                    sys.world.orbit.semi_major_au, sys.world.flux_earth)
+            }
             Row::Plates => "How many tectonic plates the crust starts with. More plates make more, smaller continents and more mountain belts.".into(),
             Row::Myr => "How long the plates drift before the present. Older worlds have seen more collisions and rifting: more ranges, more scattered lands.".into(),
             Row::Fantasy => "How much of the world is strange: crystal woods, glowing marshes, ashlands. None is a natural world.".into(),
@@ -239,7 +283,7 @@ fn draw_start(menu: &Menu, sel: usize, mouse: (f32, f32), buf: &mut [u32], w: us
         *p = mix(DESK, 0x0040_3428, grain);
     }
     let cw = 900.min(w - 32);
-    let ch = 620.min(h - 32);
+    let ch = 700.min(h - 32);
     let c = Rect { x: (w - cw) / 2, y: (h - ch) / 2, w: cw, h: ch };
     card(buf, w, c);
     compass(buf, w, h, (c.x + c.w - 70) as f32, (c.y + 74) as f32, 34.0);
@@ -267,10 +311,11 @@ fn draw_start(menu: &Menu, sel: usize, mouse: (f32, f32), buf: &mut [u32], w: us
         }
     };
     for (i, &row) in ROWS.iter().enumerate() {
-        if row == Row::Years {
+        if row == Row::Years || row == Row::Sun || row == Row::Style {
+            let title = match row { Row::Years => "History", Row::Sun => "The heavens", _ => "The land" };
             y += 6.0;
-            fonts::draw(buf, w, h, x as f32, y - 2.0, "History", Face::SmallCaps, 17.0, 0.6, RUBRIC, None);
-            let tx = x + fonts::width("History", Face::SmallCaps, 17.0, 0.6) as usize + 8;
+            fonts::draw(buf, w, h, x as f32, y - 2.0, title, Face::SmallCaps, 17.0, 0.6, RUBRIC, None);
+            let tx = x + fonts::width(title, Face::SmallCaps, 17.0, 0.6) as usize + 8;
             hline(buf, w, tx, x + label_w + value_w, (y + 8.0) as usize, INK_FADED);
             y += 24.0;
         }
@@ -306,7 +351,7 @@ fn draw_start(menu: &Menu, sel: usize, mouse: (f32, f32), buf: &mut [u32], w: us
     // Help for the selected row.
     let hy = c.y + 160;
     if help_w > 120 {
-        let r = Rect { x: help_x - 14, y: hy - 12, w: help_w + 14, h: 250 };
+        let r = Rect { x: help_x - 14, y: hy - 12, w: help_w + 14, h: 300 };
         outline(buf, w, r, INK_FADED);
         let row = ROWS[sel];
         fonts::draw(buf, w, h, help_x as f32, hy as f32 - 4.0, Menu::label(row), Face::SmallCaps, 16.0, 0.5, RUBRIC, None);
@@ -317,7 +362,7 @@ fn draw_start(menu: &Menu, sel: usize, mouse: (f32, f32), buf: &mut [u32], w: us
         }
         // A picture of the choice, under its words.
         let (px, py) = (help_x as f32 + help_w as f32 / 2.0 - 7.0, (r.y + r.h) as f32 - 70.0);
-        if py > ty + 40.0 { row_picture(buf, w, h, row, px, py, 96.0); }
+        if py > ty + 40.0 { row_picture(buf, w, h, row, px, py, 96.0, menu); }
     }
     let keys = "Up/Down choose    Left/Right change    type digits for a seed    R a new seed    Enter begin    Esc quit";
     let kw = fonts::width(keys, Face::Italic, 14.0, 0.0);
@@ -332,7 +377,9 @@ pub fn save_start_snapshot(initial: StartConfig, path: &str) -> Result<(), Box<d
     let mut menu = Menu::new(initial);
     menu.sync();
     let mut buf = vec![0u32; w * h];
-    let _ = draw_start(&menu, 0, (-1.0, -1.0), &mut buf, w, h);
+    // PLANET_START_ROW=N: draw with row N selected (its help and picture).
+    let sel = std::env::var("PLANET_START_ROW").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(ROWS.len() - 1);
+    let _ = draw_start(&menu, sel, (-1.0, -1.0), &mut buf, w, h);
     image::RgbImage::from_fn(w as u32, h as u32, |x, y| { let p = buf[y as usize * w + x as usize]; image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8]) }).save(path)?;
     Ok(())
 }
@@ -414,7 +461,9 @@ pub fn run_start_screen(initial: StartConfig) -> Result<Option<StartConfig>, Box
 }
 
 /// A small inked picture for a start-screen row (in the help box).
-fn row_picture(buf: &mut [u32], w: usize, h: usize, row: Row, cx: f32, cy: f32, size: f32) {
+fn row_picture(buf: &mut [u32], w: usize, h: usize, row: Row, cx: f32, cy: f32, size: f32, menu: &Menu) {
+    let sun_col = if matches!(row, Row::Sun | Row::Zone) { menu.system().star.paint_rgb() } else { [0.0; 3] };
+    let zone_at = ZONES[menu.zone].0.unwrap_or(0.12);
     use super::ink::{Finish, Pen, INK as K};
     let mut put = |x: i64, y: i64, c: [f32; 3], a: f32| blend_px(buf, w, h, x, y, super::ink::pack(c), a);
     let mut pen = Pen::new(&mut put, cx, cy, size);
@@ -489,6 +538,31 @@ fn row_picture(buf: &mut [u32], w: usize, h: usize, row: Row, cx: f32, cy: f32, 
             pen.poly(&[(0.15, -0.3), (0.75, -0.3), (0.75, 0.2), (0.45, 0.55), (0.15, 0.2)], [150.0, 52.0, 44.0]);
             pen.bone(&[(0.45, 0.7), (0.45, -0.75)], [200.0, 202.0, 210.0], lw * 1.4);
             pen.line((0.3, 0.45), (0.6, 0.45), K, lw * 1.4);
+        }
+        Row::Sun => {
+            pen.glow(0.0, 0.0, 0.95, sun_col, 0.55);
+            for k in 0..12 {
+                let a = k as f32 / 12.0 * std::f32::consts::TAU;
+                pen.line((a.cos() * 0.5, a.sin() * 0.5), (a.cos() * 0.75, a.sin() * 0.75), K, lw);
+            }
+            pen.ellipse(0.0, 0.0, 0.42, 0.42, sun_col);
+            pen.ellipse(0.8, -0.55, 0.1, 0.1, [88.0, 138.0, 168.0]);
+        }
+        Row::Zone => {
+            // The star at the left edge, the zone's band, the world on its orbit.
+            pen.glow(-0.95, 0.0, 0.5, sun_col, 0.6);
+            pen.ellipse(-0.95, 0.0, 0.22, 0.22, sun_col);
+            let arc = |pen: &mut super::ink::Pen, r: f32, col: [f32; 3], wd: f32| {
+                for k in 0..24 {
+                    let (a0, a1) = (-0.9 + k as f32 * 0.075, -0.9 + (k + 1) as f32 * 0.075);
+                    pen.line((-0.95 + a0.cos() * r, a0.sin() * r), (-0.95 + a1.cos() * r, a1.sin() * r), col, wd);
+                }
+            };
+            for i in 0..8 { arc(&mut pen, 0.95 + i as f32 * 0.06, [150.0, 176.0, 120.0], lw * 2.0); }
+            arc(&mut pen, 0.95, K, lw);
+            arc(&mut pen, 1.43, K, lw);
+            let r = 0.95 + 0.48 * ((zone_at + 0.06) / 0.42).clamp(0.0, 1.0);
+            pen.ellipse(-0.95 + r * 0.95, -r * 0.3, 0.1, 0.1, [88.0, 138.0, 168.0]);
         }
         Row::Begin => {}
     }

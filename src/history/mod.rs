@@ -28,6 +28,8 @@ pub mod settlers;
 pub mod persistence;
 pub mod religion;
 pub mod shadow;
+pub mod sky;
+pub mod hard_times;
 pub mod simulation;
 pub mod time;
 pub mod world_state;

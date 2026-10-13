@@ -352,3 +352,55 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   (their calling ends with that town's name), that settler knew the leader before the fall: no
   fight and no scorch; they talk by the fire, the exiles take a meal a head and go back to the
   hills, a moment ("Gaunauth talks with the exiles"), the knower is liked more. Dev 76 day 76.
+
+## The sky in the chronicle (`history/sky.rs`; 2026-10-12)
+- Under another star (`world.star_system`, not the Sun) `step_sky` (after the natural events,
+  summers only) records `EventType::Celestial` (appended) events, each drawn from a hash of the
+  seed, the year and its kind, never the history's RNG; under the Sun it does nothing, so the
+  dev world's history, gazetteer and present day are unchanged (diffed against `main`).
+  Rates a year (`rates`): a great flare 2.5% from a very active host (activity 30+), 1% from a
+  restless one (6+): "The Burning Sky over X", 1-3 towns where the star stands high (a locked
+  world's day side, else within 35 deg of the equator) lose 1-3% of their people; a total eclipse
+  over a living seat 2% when a moon covers the sun (0.95x its width): the people's opinion of its
+  worst neighbour -6, "read it as a sign against"; a comet 1.2% with an icy belt (what it
+  foretold varies); a close pair's mutual eclipse 1.5%; a wide companion with a period under
+  5000 years at its nearest ("The Year Without Night", major). Seed 4 (a G9 and a flaring M4
+  pair, a great moon): 14 in 250 years. Watcher style: violet star, a disaster mark.
+- Names under the sky (`naming::generator::fit_sky`, `set_moonless` from main): on a world with
+  no moon at all, "Moon" in generated names (`sayable`, `epithet`: persons, places, realms,
+  artifacts) and in chronicle titles and texts (`Chronicle::record`) becomes "Star"
+  ("Moonglade" -> "Starglade"); prose in lowercase is left alone. A substitution after the
+  draw: no roll changes. Not yet: the colony's werebeast still keeps a "full moon".
+
+## No towns at the poles (`simulation::polar_row`; 2026-10-12)
+- The two rows nearest each pole span the map's width but hold a sliver of the globe, and under
+  a steep tilt the poles are warm enough to settle (`--seed 9 --width 192 --height 96
+  --obliquity 80`: 25 of 333 towns sat there, 7.5% of the towns on 0.2% of the area). Founding
+  sites (`setup::find_settlement_sites`) and colonies (`step_colonization`) refuse them, after
+  the random draw so a world that never drew one is unchanged (the dev world's present day is
+  identical to main's). The gazetteer summary prints "Polar rows: N of M settlements within two
+  rows of a pole" (now 0 on the dev skies and that seed).
+
+## Hard times (`history/hard_times.rs`; card 'More ruins from plague, famine and depopulation', 2026-10-12)
+- On by default (`PLANET_NO_HARD_TIMES=1` leaves them out, to compare). All rolls are hashed from
+  the seed, the year and the town (no draws from the history's RNG), and every ruin has its cause
+  in the chronicle:
+  - after a disaster (`step_natural_events`), a village, outpost or town left with under half its
+    people, or under sixty, is abandoned ("After the plague, the last of X took what they could
+    carry and left it to ruin", caused by the disaster);
+  - each spring (`step_year`, after the ecology), famine (`EventType::Famine`, appended) where a
+    town is at nine tenths of what its land can feed: one year in two hundred, one in twenty-five
+    where game has grown scarce or the woods were cleared (caused by that ecology record); a fifth
+    to two fifths die, and a town left under eighty is abandoned;
+  - drift: a village under 150 souls, forty years old, within five tiles of a city or capital of
+    its own people, empties one year in twelve ("The young of X went to Y one by one, and the last
+    families followed").
+  The watcher draws a famine as a disaster.
+- Measured (ruins without -> with): seed 202 at 512x256 120 -> 149, seed 42 121 -> 145, seed 7
+  101 -> 172, the living towns unchanged (536, 293-298, 371-372); 24 dev seeds 32.2 -> 37.1 on
+  average. (The card's "~33 on seed 202" was an older history's.) Tested
+  (`tests/present_day.rs::hard_times_leave_more_ruins_with_causes`).
+- It reshaped the dev world's history, so 21 seed-pinned tests were re-pinned (2026-10-13; the
+  colony notes list the new seeds). The dev world now holds no lost artifact (every one lost was
+  found again), so the relic tests force one (`PLANET_FORCE_RELIC`, colony notes); a relic whose
+  last owners' people fell is claimed by the people now holding the town where it was made.

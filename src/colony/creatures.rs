@@ -24,7 +24,12 @@ pub enum CreatureKind { Beast, Raider, Wolf, Game, Trader, Pet, Besieger,
     /// work alone in the dark, and climbs the stair on some nights.
     CaveHunter,
     /// Harmless cavern life (bats, crickets, crabs...) roaming its floor.
-    CaveLife }
+    CaveLife,
+    /// Seen by day (`prowl.rs`): a predator of the tile at the edge of sight, the raid's beast
+    /// far off, a beast of a trouble to come crossing the far hills. It strikes no one.
+    Prowler,
+    /// The raid's scout, the day before (`prowl.rs`): he watches the camp an hour and goes.
+    Scout }
 
 #[derive(Clone, Debug)]
 pub struct Creature {
@@ -234,6 +239,8 @@ impl Colony {
     pub(crate) fn step_creatures(&mut self) {
         let (hour, minute) = (self.clock.hour(), self.clock.minute());
         if hour == 21 && minute == 0 { self.moon_rises(); self.dead_rise(); self.tomb_dead_rise(); self.wolves_out(); }
+        // What prowls by day: predators at the edge of sight, the raid's scout (`prowl.rs`).
+        self.prowl_tick();
         // The cavern's hunters set out up the stair after dusk, and go back down at dawn.
         if hour == 20 && minute == 0 { self.cave_hunters_out(); }
         if hour == 6 && minute == 0 {
@@ -254,7 +261,9 @@ impl Colony {
         if self.clock.tick % 15 == 0 && !self.pets.is_empty() { self.pets_follow(); }
         if self.clock.hour() == 5 && minute == 0 && self.clock.day() % 4 == 0 && !self.hard_winter() { self.game_returns(); }
         for k in 0..self.creatures.len() {
-            let speed = if matches!(self.creatures[k].kind, CreatureKind::Wolf | CreatureKind::CaveHunter) { 2 } else { 1 };
+            // (Attackers run when they break off: `melee.rs`.)
+            let speed = if matches!(self.creatures[k].kind, CreatureKind::Wolf | CreatureKind::CaveHunter)
+                || matches!(self.creatures[k].kind, CreatureKind::Beast | CreatureKind::Raider) && self.creatures[k].leaving { 2 } else { 1 };
             // A walk in three dimensions (under the ground, up and down the stair).
             if !self.creatures[k].path3.is_empty() {
                 self.creatures[k].stride += speed;
@@ -276,6 +285,8 @@ impl Colony {
             }
             self.creatures[k].stride += speed;
             loop {
+                // (Wolves stop at the edge of the firelight: `bestiary.rs`.)
+                if self.wolves_fear_fire(k) { self.creatures[k].stride = 0; break; }
                 let Some(&next) = self.creatures[k].path.first() else { self.creatures[k].stride = 0; break };
                 let cost = nav::cost(&self.map, next.0 as usize, next.1 as usize).map_or(30, |c| c as i32) * if self.creatures[k].kind == CreatureKind::Wolf { 1 } else { CREEP } / 2;
                 if self.creatures[k].stride < cost { break; }
@@ -287,7 +298,7 @@ impl Colony {
         self.creatures.retain(|c| !(c.leaving && c.path.is_empty() && c.path3.is_empty()));
     }
 
-    fn dens(&self) -> Vec<Pos> {
+    pub(crate) fn dens(&self) -> Vec<Pos> {
         let n = self.map.width;
         (0..self.map.features.len()).filter(|&i| self.map.features[i] == Feature::Den).map(|i| ((i % n) as u16, (i / n) as u16))
             .filter(|d| !self.dens_cleared.contains(d)).collect()

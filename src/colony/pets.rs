@@ -118,8 +118,11 @@ impl Colony {
     /// the hunters take the pet instead. Returns whether the keeper was spared.
     pub(crate) fn pet_defends(&mut self, i: usize, hunter: &str) -> bool {
         let me = self.settlers[i].pos;
+        // (Debug: PLANET_FORCE_PET_PREY=1 brings the pet from wherever it is: the test is of the
+        // defence, and a keeper taken far from their pet showed nothing.)
+        let reach = if std::env::var("PLANET_FORCE_PET_PREY").is_ok() { 1000 } else { 12 };
         let Some(k) = self.pets.iter().position(|p| p.alive && p.keeper == i && self.creatures.iter().any(|c| c.id == p.id
-            && (c.pos.0 as i32 - me.0 as i32).abs().max((c.pos.1 as i32 - me.1 as i32).abs()) <= 12)) else { return false };
+            && (c.pos.0 as i32 - me.0 as i32).abs().max((c.pos.1 as i32 - me.1 as i32).abs()) <= reach)) else { return false };
         let (name, kind, id) = (self.pets[k].name.clone(), self.pets[k].kind.clone(), self.pets[k].id);
         let big = ["elk", "moose", "bison", "boar", "bear", "aurochs", "yak", "caribou", "ox", "horse", "camel", "mammoth"].iter().any(|b| kind.contains(b));
         let roll = crate::history::settlers::hash_pub(self.seed ^ self.clock.tick, 0x9E7 + i as u64) % 3;

@@ -62,7 +62,9 @@ fn unit(a: i64, b: i64, salt: u64) -> f32 {
 
 /// Add signs of life to `map`. `origin` is the absolute tile position of the map's (0, 0), used
 /// to key the hashes.
-pub fn apply(map: &mut LocalMap, world: &WorldData, lore: &RegionLore, origin: (i64, i64)) {
+pub fn apply(map: &mut LocalMap, world: &WorldData, lore: &RegionLore, origin: (i64, i64), span_tiles: i64) {
+    // (x wrapped round the world, so the same 2 m tile hashes alike from any embark.)
+    let wx = |x: usize| (origin.0 + x as i64).rem_euclid(span_tiles.max(1));
     let n = map.width;
     let Some(dens) = lore.wildlife.get(&map.world_tile) else { return };
     let grazers: f32 = SPECIES.iter().zip(dens).filter(|(s, _)| s.trophic == Trophic::Grazer).map(|(_, d)| *d).sum();
@@ -70,7 +72,9 @@ pub fn apply(map: &mut LocalMap, world: &WorldData, lore: &RegionLore, origin: (
     // The game a camp could hunt: each grazer at its density (up to eight head).
     map.game = SPECIES.iter().zip(dens).filter(|(s, d)| s.trophic == Trophic::Grazer && **d > 0.05)
         .map(|(s, d)| (s.name.to_string(), ((d * 10.0).round() as u32).clamp(1, 8))).collect();
+    map.predators = [WOLF, BEAR, LION].iter().filter(|&&k| dens[k] > 0.05).map(|&k| (SPECIES[k].name.to_string(), dens[k])).collect();
     let bone_field = matches!(*world.biomes.get(map.world_tile.0, map.world_tile.1), ExtendedBiome::BoneFields | ExtendedBiome::TitanBones);
+    map.bone_field = bone_field;
 
     let surface = |map: &LocalMap, x: usize, y: usize| map.idx(x, y, map.surface_z[y * n + x] as usize);
     let open = |map: &LocalMap, x: usize, y: usize| {
@@ -87,8 +91,8 @@ pub fn apply(map: &mut LocalMap, world: &WorldData, lore: &RegionLore, origin: (
     // position hash smoothed over ~8 tiles and with climbing, so paths wind, follow easy ground
     // and merge as they near the water, like real game trails.
     let rough = |x: usize, y: usize| -> f32 {
-        let (gx, gy) = ((origin.0 + x as i64).div_euclid(8), (origin.1 + y as i64).div_euclid(8));
-        let (fx, fy) = (((origin.0 + x as i64).rem_euclid(8)) as f32 / 8.0, ((origin.1 + y as i64).rem_euclid(8)) as f32 / 8.0);
+        let (gx, gy) = (wx(x).div_euclid(8), (origin.1 + y as i64).div_euclid(8));
+        let (fx, fy) = ((wx(x).rem_euclid(8)) as f32 / 8.0, ((origin.1 + y as i64).rem_euclid(8)) as f32 / 8.0);
         let v = |a: i64, b: i64| unit(a, b, 71);
         let top = v(gx, gy) + (v(gx + 1, gy) - v(gx, gy)) * fx;
         let bot = v(gx, gy + 1) + (v(gx + 1, gy + 1) - v(gx, gy + 1)) * fx;
@@ -153,7 +157,7 @@ pub fn apply(map: &mut LocalMap, world: &WorldData, lore: &RegionLore, origin: (
     for y in 0..n {
         for x in 0..n {
             if !open(map, x, y) { continue; }
-            let (ax, ay) = (origin.0 + x as i64, origin.1 + y as i64);
+            let (ax, ay) = (wx(x), origin.1 + y as i64);
             let k = surface(map, x, y);
             let c = map.cells[k];
             let r = unit(ax, ay, 53);

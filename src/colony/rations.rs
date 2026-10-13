@@ -14,8 +14,9 @@ use crate::persona::Facet;
 impl Colony {
     /// Days until the next spring (0 outside winter's reach).
     fn days_to_spring(&self) -> u64 {
-        let into = (self.clock.day().max(1) - 1) % (4 * SEASON_DAYS);
-        if into >= 3 * SEASON_DAYS { 4 * SEASON_DAYS - into } else { 0 }
+        let sky = &self.map.sky;
+        let into = sky.into_year(self.clock.day());
+        if into >= sky.season_start(3) { sky.year_days() - into } else { 0 }
     }
 
     /// Dawn: rations begin or end.

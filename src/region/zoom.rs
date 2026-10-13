@@ -83,6 +83,8 @@ pub struct ZoomRegion {
     pub world_y0: i64,
     /// The world's height in tiles (for each row's latitude).
     pub world_height: usize,
+    /// The world's width in tiles (where x wraps).
+    pub world_width: usize,
     pub params: ZoomParams,
     pub elevation_m: Vec<f32>,
     /// Contributing drainage area in cells (including inflow from outside the window).
@@ -601,7 +603,10 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
     let keys: Vec<(i64, i64)> = (gy0 - 1..=gy0 + gt as i64)
         .flat_map(|cy| (gx0 - 1..=gx0 + gt as i64).map(move |cx| (cx, cy)))
         .collect();
-    let key_of = |(cx, cy): (i64, i64)| -> ChunkKey { (ctx.fingerprint, s, ctx.iterations, cx, cy) };
+    // Chunks are kept by the world tile they are (x wrapped), so a region across the date line
+    // reads the same chunk as one on the other side of it.
+    let wrap = |cx: i64| cx.rem_euclid(ww as i64);
+    let key_of = |(cx, cy): (i64, i64)| -> ChunkKey { (ctx.fingerprint, s, ctx.iterations, wrap(cx), cy) };
     let mut chunks: std::collections::HashMap<(i64, i64), std::sync::Arc<Vec<f32>>> = {
         let cache = chunk_cache().lock().unwrap();
         keys.iter().filter_map(|&k| cache.get(&key_of(k)).map(|c| (k, c.clone()))).collect()
@@ -612,7 +617,7 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         .par_iter()
         .map(|&(cx, cy)| match disk::load(key_of((cx, cy)), chunk_len) {
             Some(c) => ((cx, cy), std::sync::Arc::new(c), false),
-            None => ((cx, cy), std::sync::Arc::new(ctx.simulate_chunk(cx, cy)), true),
+            None => ((cx, cy), std::sync::Arc::new(ctx.simulate_chunk(wrap(cx), cy)), true),
         })
         .collect();
     {
@@ -655,9 +660,11 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
     temp.par_iter_mut().zip(moist.par_iter_mut()).enumerate().for_each(|(k, (t, m))| {
         let (u, v) = ctx.to_world(gx0, gy0, k % gw, k / gw);
         let h0 = bicubic(&world.heightmap, u, v);
-        // Warp the climate lookup slightly so its gradients follow organic shapes.
-        let cu = u + 0.6 * fbm(&ctx.detail_noise, u as f64 * 0.9 + 41.0, v as f64 * 0.9, 3);
-        let cv = v + 0.6 * fbm(&ctx.detail_noise, u as f64 * 0.9, v as f64 * 0.9 + 53.0, 3);
+        // Warp the climate lookup slightly so its gradients follow organic shapes (the noise read
+        // at the wrapped position, as every region reads it).
+        let un = u.rem_euclid(ww as f32);
+        let cu = u + 0.6 * fbm(&ctx.detail_noise, un as f64 * 0.9 + 41.0, v as f64 * 0.9, 3);
+        let cv = v + 0.6 * fbm(&ctx.detail_noise, un as f64 * 0.9, v as f64 * 0.9 + 53.0, 3);
         *t = bicubic(&ctx.smooth_temp, cu, cv) - 6.5 * (h[k] - h0) / 1000.0;
         *m = bicubic(&ctx.smooth_moist, cu, cv).clamp(0.0, 1.0);
     });
@@ -680,6 +687,7 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         world_x0: core_x0,
         world_y0: core_y0,
         world_height: world.height,
+        world_width: world.width,
         params: params.clone(),
         elevation_m: Vec::with_capacity(w * ht),
         drainage_cells: Vec::with_capacity(w * ht),
@@ -726,8 +734,9 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
             out.moisture.push(moist[k]);
             // Biome colour from the world, with the lookup warped by noise so biome borders
             // follow organic shapes instead of the world-tile grid.
-            let wu = u + 0.45 * fbm(&ctx.detail_noise, u as f64 * 1.3 + 17.0, v as f64 * 1.3, 4);
-            let wv = v + 0.45 * fbm(&ctx.detail_noise, u as f64 * 1.3, v as f64 * 1.3 + 29.0, 4);
+            let un = u.rem_euclid(ww as f32);
+            let wu = u + 0.45 * fbm(&ctx.detail_noise, un as f64 * 1.3 + 17.0, v as f64 * 1.3, 4);
+            let wv = v + 0.45 * fbm(&ctx.detail_noise, un as f64 * 1.3, v as f64 * 1.3 + 29.0, 4);
             let world_land = bicubic(&world.heightmap, wu, wv) > 0.0;
             out.biome_color.push(bilinear_biome_color(&world.biomes, wu.rem_euclid(ww as f32), wv.clamp(0.0, wh as f32 - 1.0)));
             out.biome_weight.push(if world_land { BIOME_COLOR_WEIGHT } else { 0.0 });

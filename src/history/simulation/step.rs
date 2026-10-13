@@ -119,6 +119,8 @@ pub fn simulate_step(
 
     // 11. Natural events
     timed("natural_events", || step_natural_events(history, rng));
+    // The sky under another star (no RNG: the Sun's histories are unchanged).
+    timed("sky", || crate::history::sky::step_sky(history, world));
 
     // 12. Hero quests
     timed("quests", || step_quests(history, rng));
@@ -135,6 +137,8 @@ pub fn simulate_step(
     // 14. Ecology, once a year: land cover, wildlife and what people do to them.
     if date.season == crate::seasons::Season::Spring {
         timed("ecology", || crate::history::ecology::step_year(history, world));
+        // Famine where a town outgrew its land, villages drifting to the city (no RNG draws).
+        timed("hard_times", || crate::history::hard_times::step_year(history, world));
     }
 
     // 15. Keep the state consistent: no war or siege outlives a people, every living people has a
@@ -2332,6 +2336,7 @@ fn step_natural_events(history: &mut WorldHistory, rng: &mut impl Rng) {
         };
 
         let losses = scaled_loss(history, sid, rng.gen_range(50..500), rng);
+        let before = history.settlements.get(&sid).map_or(0, |s| s.population);
         if let Some(settlement) = history.settlements.get_mut(&sid) {
             settlement.population = settlement.population.saturating_sub(losses);
         }
@@ -2354,6 +2359,8 @@ fn step_natural_events(history: &mut WorldHistory, rng: &mut impl Rng) {
         .with_consequence(Consequence::PopulationChange(faction_id, -(losses as i32)));
         history.chronicle.record(event);
         history.tile_history.record_event(loc.0, loc.1, event_id);
+        // Emptied, it may be given up (`hard_times.rs`).
+        crate::history::hard_times::abandon_after(history, sid, before, event_id, &disaster_noun(&event_type).to_lowercase());
     }
 }
 
@@ -4785,6 +4792,8 @@ fn step_colonization(history: &mut WorldHistory, world: &WorldData, game_data: &
             if owner.is_some() && owner != Some(fid) { continue; }
             if too_close(nx, ny, &founded) { continue; }
             let sc = site_score(nx, ny) + rng.gen_range(0.0..0.3);
+            // (Never on the rows nearest a pole: `polar_row`; refused after the draw.)
+            if super::polar_row(ny, h) { continue; }
             if sc > best.map(|b| b.2).unwrap_or(0.2) { best = Some((nx, ny, sc)); }
         }
         let Some((sx, sy, _)) = best else { continue };

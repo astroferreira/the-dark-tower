@@ -659,6 +659,19 @@ impl Colony {
         furniture + carved + artifacts
     }
 
+    /// A hatch over the stair below, once the cavern's hunters have hurt them twice. (Trials:
+    /// `PLANET_FORCE_HATCH=1` sets it as soon as a cavern is open, `PLANET_NO_HATCH=1` never.)
+    fn hatch_candidate(&self) -> Option<(f32, ProjectKind, String, u32, Pos)> {
+        if self.hatch_rule == Some(false) || self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) { return None; }
+        let at = self.spine?.at;
+        if self.hatch_rule == Some(true) && !self.breached.is_empty() {
+            return Some((3.0, ProjectKind::Hatch, "a cavern lies open under the camp; a hatch in the stair at its roof, barred at night and watched, would keep what lives there below".into(), 6, at));
+        }
+        if self.cave_hunter.is_none() || self.cave_bites < 2 { return None; }
+        let why = format!("{} times {} have found someone alone in the dark or come up the mine; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
+        Some((2.0, ProjectKind::Hatch, why, 6, at))
+    }
+
     /// The stair is sealed below the first cavern (DF's walled-off caverns): a hatch of dressed
     /// stone (or timber) set in the stair at the cavern's roof, barred at night. Nothing comes up
     /// from below any more; the camp still goes down by day.
@@ -830,6 +843,8 @@ impl Colony {
             // Something admired in a room below (an artifact, an engraving: `needs.rs`).
             Job::Wander(t) if why.starts_with("Admiring") => self.engravings.iter().find(|e| e.from == t).map(|e| e.z)
                 .or_else(|| self.placed.iter().find(|p| p.2 == t).and_then(|p| self.rooms.get(p.1)).map(|r| r.z)),
+            // Into a place in the hills: its far end, on its own level (`explore.rs`).
+            Job::Wander(t) if why.starts_with("Going in by ") => self.place_far_level(t),
             Job::Wander(_) => self.settlers.iter().enumerate()
                 .find(|(j, s)| *j != i && s.alive && s.pos == target && !why.starts_with("Playing"))
                 .map(|(j, _)| self.here3(j).2),
@@ -890,10 +905,7 @@ impl Colony {
         // The farm under the rock first: it feeds them through the winter; rooms can wait.
         let farm_first = self.can_cave_farm() && !self.projects.iter().any(|p| p.kind == ProjectKind::CaveFarm);
         if farm_first {
-            if self.cave_hunter.is_some() && self.cave_bites >= 2 && !self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) {
-                let why = format!("{} times {} have found someone alone in the dark or come up the mine; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
-                c.push((2.0, ProjectKind::Hatch, why, 6, self.spine.unwrap().at));
-            }
+            if let Some(h) = self.hatch_candidate() { c.push(h); }
             return;
         }
         let without = self.grown_without_rooms();
@@ -925,10 +937,7 @@ impl Colony {
             }
         }
         // A hatch over the stair below, once the cavern's hunters have hurt them twice.
-        if self.cave_hunter.is_some() && self.cave_bites >= 2 && !self.projects.iter().any(|p| p.kind == ProjectKind::Hatch) {
-            let why = format!("{} times {} have found someone alone in the dark or come up the mine; a hatch in the stair at the cavern's roof, barred at night, would keep them below", self.cave_bites, self.cave_hunter.clone().unwrap_or_default());
-            c.push((2.0, ProjectKind::Hatch, why, 6, self.spine.unwrap().at));
-        }
+        if let Some(h) = self.hatch_candidate() { c.push(h); }
         // Drawbridges, once the ditch is dug and a siege has come (or two chapters of trouble).
         let sieged = self.moments.iter().any(|m| m.title == "The siege");
         if self.moat_dug() && (sieged || self.arc.as_ref().map_or(0, |a| a.chapter) >= 3) && !self.projects.iter().any(|p| p.kind == ProjectKind::Drawbridges) {

@@ -750,6 +750,30 @@ pub(crate) mod tests {
         (i, vec![town, cave])
     }
 
+    /// A river runs on through the town laid over it (card 'Adventure: rivers through towns'):
+    /// water inside the walls, a bridge where a paved way crosses it, nobody left standing in it.
+    #[test]
+    fn a_river_runs_through_its_town() {
+        let (mut info, sites) = world();
+        let w = info.w;
+        for y in 1..info.h - 1 { info.river[y * w + 3] = true; info.downhill[y * w + 3] = 4; }
+        let hero = crate::adventure::hero::Hero::new("Tess", "human", true, 5);
+        let mut g = Game::new(info, sites, hero, 1, 5);
+        g.land_at((3, 2), None);
+        let f = g.floor().unwrap().clone();
+        // The town's walls: the middle chunk's centre, the town's half extents.
+        let (hw, hh) = crate::adventure::surface::town_extent(1);
+        let c = CH + CH / 2;
+        let inside = |x: i32, y: i32| (x - c).abs() < hw && (y - c).abs() < hh;
+        let cells: Vec<(i32, i32)> = (0..f.h as i32).flat_map(|y| (0..f.w as i32).map(move |x| (x, y))).filter(|&(x, y)| inside(x, y)).collect();
+        let water = cells.iter().filter(|&&(x, y)| f.at(x, y).ground == Ground::Water).count();
+        let bridge = cells.iter().filter(|&&(x, y)| f.at(x, y).ground == Ground::Wood && f.at(x, y).wall == crate::adventure::map::Wall::None && f.at(x, y).feature == crate::adventure::map::Feature::None).count();
+        assert!(water >= 5, "no river inside the walls ({water} water cells)");
+        assert!(bridge >= 1, "no bridge where a way crosses the river");
+        let place = g.place().unwrap();
+        assert!(place.npcs.iter().all(|n| f.walkable(n.x, n.y)), "someone stands in the river");
+    }
+
     /// A castle's towers stand over the land: seen and named from 60 cells off by day (not past
     /// 64), its cells inked on the floor.
     #[test]

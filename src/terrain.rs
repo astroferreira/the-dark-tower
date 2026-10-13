@@ -39,6 +39,10 @@ pub struct TerrainConfig {
     pub landscape: LandscapeParams,
     /// Break up small islands' coasts (`heightmap::apply_island_coasts`).
     pub island_coasts: bool,
+    /// From the star system: the water's scale on the style's land fraction and the mantle's
+    /// hotspots (1.0 and 8: the Earth's).
+    pub land_scale: f32,
+    pub hotspots: usize,
 }
 
 impl TerrainConfig {
@@ -56,6 +60,8 @@ impl TerrainConfig {
             legacy_erosion: false,
             landscape: LandscapeParams::default(),
             island_coasts: true,
+            land_scale: 1.0,
+            hotspots: 8,
         }
     }
 }
@@ -114,7 +120,7 @@ pub fn generate_terrain(
         // Tectonic simulation: plates drift on a sphere, collide, subduct and rift; terrain
         // follows from crustal thickness (isostasy) and seafloor age.
         println!("Simulating plate tectonics ({} Myr)...", cfg.tectonic_myr);
-        let params = plates::TectonicParams { total_myr: cfg.tectonic_myr, ..Default::default() };
+        let params = plates::TectonicParams { total_myr: cfg.tectonic_myr, hotspots: cfg.hotspots, land_scale: cfg.land_scale, ..Default::default() };
         let t = plates::generate_tectonic_terrain(width, height, cfg.plates, cfg.style, seeds, &params);
         let continental = t.plates.iter().filter(|p| p.plate_type == plates::PlateType::Continental).count();
         println!("Tectonic history complete: {} plates survive ({} continental, {} oceanic)", t.plates.len(), continental, t.plates.len() - continental);

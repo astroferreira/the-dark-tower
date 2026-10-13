@@ -7,12 +7,16 @@
 pub mod biomes;
 pub mod circulation;
 pub mod ebm;
+pub mod forcing;
+pub mod thermostat;
 pub mod moisture;
 pub mod ocean;
 pub mod simulation;
 
 pub use biomes::{Biome, FuzzyBiomeResult, generate_biomes, smooth_step, ELEVATION_LAPSE_RATE};
-pub use circulation::{calculate_pressure_field, calculate_surface_winds, coriolis_parameter, OMEGA};
+pub use circulation::{calculate_pressure_field, calculate_surface_winds, coriolis_parameter, Circulation, OMEGA};
+pub use forcing::{AirForcing, PlanetForcing};
+pub use thermostat::AirState;
 pub use ebm::{
     calculate_annual_insolation, calculate_daily_insolation, rossby_wave_perturbation, row_latitude,
     solve_energy_balance, surface_albedo, SOLAR_CONSTANT,
@@ -137,8 +141,10 @@ pub struct ClimateConfig {
     pub rainfall: RainfallLevel,
     /// Axial tilt in degrees (default 23.44° for Earth-like seasonal amplitude)
     pub axial_tilt_deg: f32,
-    /// Solar constant in W/m^2 (default 1361.0)
+    /// Solar constant in W/m^2 (default 1361.0): the star's flux at the orbit's mean distance
     pub solar_constant: f32,
+    /// The star, orbit, spin and air (default: the Earth under the Sun, the original model)
+    pub planet: PlanetForcing,
 }
 
 impl Default for ClimateConfig {
@@ -148,6 +154,7 @@ impl Default for ClimateConfig {
             rainfall: RainfallLevel::Normal,
             axial_tilt_deg: 23.44,
             solar_constant: SOLAR_CONSTANT,
+            planet: PlanetForcing::default(),
         }
     }
 }

@@ -16,6 +16,7 @@
 #![allow(unused_variables)]
 
 pub mod adventure;
+pub mod astro;
 #[cfg(feature = "legacy")]
 pub mod ascii;
 pub mod biome_feathering;

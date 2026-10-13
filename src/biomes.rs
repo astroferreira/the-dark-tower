@@ -3860,3 +3860,90 @@ pub fn apply_seasonal_biomes(
     }
     (med, mon)
 }
+
+/// Tidal flats under strong tides (the world's moons and star; `astro::StarSystem::tides`,
+/// relative to the Earth's): a band of low, gentle coast inland from the sea becomes salt marsh,
+/// or mangrove where it is warm. The band widens and climbs with the range: at twice the Earth's
+/// tides a tile deep and up to 30 m, at six times three tiles and 90 m. Nothing below 1.5x (the
+/// Earth's own coasts are as they were), nothing on frozen coasts. Returns the tiles turned.
+pub fn apply_tidal_flats(
+    biomes: &mut Tilemap<ExtendedBiome>,
+    heightmap: &Tilemap<f32>,
+    water: &Tilemap<crate::water_bodies::WaterBodyId>,
+    temperature: &Tilemap<f32>,
+    tides: f32,
+) -> usize {
+    if tides <= 1.5 { return 0; }
+    let (w, h) = (heightmap.width, heightmap.height);
+    let reach = ((tides - 1.0) / 1.7).round().clamp(1.0, 3.0) as usize;
+    let top = (15.0 * tides).min(120.0);
+    // Distance from the open sea, in tiles, out to the reach.
+    let mut dist = vec![usize::MAX; w * h];
+    let mut queue = std::collections::VecDeque::new();
+    for y in 0..h {
+        for x in 0..w {
+            if *heightmap.get(x, y) <= 0.0 && water.get(x, y).is_ocean() { dist[y * w + x] = 0; queue.push_back((x, y)); }
+        }
+    }
+    while let Some((x, y)) = queue.pop_front() {
+        let d = dist[y * w + x];
+        if d >= reach { continue; }
+        for (dx, dy) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
+            let ny = y as i64 + dy;
+            if ny < 0 || ny >= h as i64 { continue; }
+            let nx = (x as i64 + dx).rem_euclid(w as i64) as usize;
+            let k = ny as usize * w + nx;
+            if dist[k] != usize::MAX || *heightmap.get(nx, ny as usize) <= 0.0 { continue; }
+            dist[k] = d + 1;
+            queue.push_back((nx, ny as usize));
+        }
+    }
+    let mut turned = 0;
+    for y in 0..h {
+        for x in 0..w {
+            let d = dist[y * w + x];
+            if d == 0 || d == usize::MAX { continue; }
+            let e = *heightmap.get(x, y);
+            if e > top { continue; }
+            // Gentle ground only: a cliffed coast has no flats.
+            let steep = [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)].iter().any(|&(dx, dy)| {
+                let ny = (y as i64 + dy).clamp(0, h as i64 - 1) as usize;
+                let nx = (x as i64 + dx).rem_euclid(w as i64) as usize;
+                let n = *heightmap.get(nx, ny);
+                n > 0.0 && (n - e).abs() > 2.0 * top
+            });
+            if steep { continue; }
+            let t = *temperature.get(x, y);
+            let b = *biomes.get(x, y);
+            use ExtendedBiome as B;
+            let open = matches!(b, B::TemperateGrassland | B::TemperateForest | B::Savanna | B::Desert | B::Tundra | B::TropicalForest
+                | B::TropicalRainforest | B::MonsoonForest | B::MediterraneanShrubland | B::BorealForest | B::TemperateRainforest | B::Foothills);
+            if !open || t < -2.0 { continue; }
+            biomes.set(x, y, if t > 18.0 { B::MangroveSaltmarsh } else { B::Marsh });
+            turned += 1;
+        }
+    }
+    turned
+}
+
+#[cfg(test)]
+mod tidal_tests {
+    use super::*;
+
+    #[test]
+    fn strong_tides_make_flats_and_the_earths_do_not() {
+        let (w, h) = (40usize, 20usize);
+        let mut hm = Tilemap::new_with(w, h, -500.0f32);
+        let mut water = Tilemap::new_with(w, h, crate::water_bodies::WaterBodyId(1));
+        let mut biomes = Tilemap::new_with(w, h, ExtendedBiome::Ocean);
+        for y in 0..h { for x in 20..w { hm.set(x, y, 5.0 + (x - 20) as f32 * 4.0); water.set(x, y, crate::water_bodies::WaterBodyId(0)); biomes.set(x, y, ExtendedBiome::TemperateGrassland); } }
+        let warm = Tilemap::new_with(w, h, 22.0f32);
+        let mut earth = biomes.clone();
+        assert_eq!(apply_tidal_flats(&mut earth, &hm, &water, &warm, 1.0), 0, "the Earth's tides leave the coast as it is");
+        let mut strong = biomes.clone();
+        let n = apply_tidal_flats(&mut strong, &hm, &water, &warm, 6.0);
+        assert!(n >= 2 * h, "six times the tides: a band of flats ({n} tiles)");
+        assert_eq!(*strong.get(20, 5), ExtendedBiome::MangroveSaltmarsh);
+        assert_eq!(*strong.get(35, 5), ExtendedBiome::TemperateGrassland, "inland stays");
+    }
+}

@@ -280,6 +280,9 @@ pub struct Game {
     pub houses: Vec<u32>,
     #[serde(default)]
     pub stash: HashMap<u32, Vec<Item>>,
+    /// Gold kept at the counting-house (`craft::answer`, Topic::Bank): one account, any town.
+    #[serde(default)]
+    pub bank: u32,
     #[serde(default)]
     pub titles: Vec<String>,
 }
@@ -295,7 +298,7 @@ impl Game {
             rng: ChaCha8Rng::seed_from_u64(seed ^ 0xADE0), sight: Vec::new(), banner: None, stats: Stats::default(), slain: Vec::new(), companion: None, victory: false, deeds: Vec::new(),
             land: None, centre: (0, 0), chunks: HashMap::new(), atlas: Default::default(), pristine: HashMap::new(), mapped: Vec::new(), route: Vec::new(), charted: 0, marks: Vec::new(), dug: Vec::new(), seamless: true, next_uid: 1_000_000, shifted: (0, 0),
             seasons: 0, hero_events: Vec::new(), deed_queue: Vec::new(), hero_figure: None, songs: HashMap::new(), history: None, typing: None, choice: None, regard: HashMap::new(),
-            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(), weather_set: None, entered: Vec::new(), lands_told: Vec::new(), charging: false, band: Vec::new(), houses: Vec::new(), stash: HashMap::new(), titles: Vec::new(),
+            stones_read: Vec::new(), far: Vec::new(), far_seen: Vec::new(), tall: HashMap::new(), weather_set: None, entered: Vec::new(), lands_told: Vec::new(), charging: false, band: Vec::new(), houses: Vec::new(), stash: HashMap::new(), bank: 0, titles: Vec::new(),
         };
         g.set_atlas();
         g.hero.temple = start_town;
@@ -1205,7 +1208,7 @@ impl Game {
         if self.hero.hp <= 0 { self.die(what); }
     }
 
-    fn die(&mut self, what: &str) {
+    pub(crate) fn die(&mut self, what: &str) {
         self.stats.deaths += 1;
         self.hero.deaths += 1;
         let blessed = std::mem::replace(&mut self.hero.blessed, false);
@@ -1222,7 +1225,8 @@ impl Game {
         self.deeds.push((t, format!("was slain by {} in {}", what, place)));
         let who = self.hero.name.clone();
         self.chronicle(super::living::DeedKind::Fell, format!("{} was struck down by {}", who, what), format!("{} fell to {} in {}, and woke in the temple.", who, what, place));
-        self.say(Tone::Death, format!("You are dead, slain by {} in {}. You lose {} experience{}.", what, place, lost_xp, if gold > 0 { format!(" and drop {} gold where you fell", gold) } else { String::new() }));
+        self.say(Tone::Death, format!("You are dead, slain by {} in {}. You lose {} experience{}{}.", what, place, lost_xp, if gold > 0 { format!(" and drop {} gold where you fell", gold) } else { String::new() },
+            if self.bank > 0 { format!(" (the {} gold at the counting-house is safe)", self.bank) } else { String::new() }));
         self.banner = Some(("You are dead.".into(), format!("Slain by {}. You wake in the temple, poorer and wiser.", what)));
         self.hero.hp = self.hero.max_hp();
         self.hero.mana = self.hero.max_mana();

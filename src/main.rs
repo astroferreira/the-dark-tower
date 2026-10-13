@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 
-use planet_generator::{biome_feathering, biomes, cartography, climate, coastline, colony, erosion, exr_export, grid_export, heightmap, history, islands, local, lore, map_export, microclimate, monsters, plates, region, scale, seasons, seeds, soils, terrain, tilemap, tiles, underground_water, water_bodies, weather_zones, world, world_export};
+use planet_generator::{astro, biome_feathering, biomes, cartography, climate, coastline, colony, erosion, exr_export, grid_export, heightmap, history, islands, local, lore, map_export, microclimate, monsters, plates, region, scale, seasons, seeds, soils, terrain, tilemap, tiles, underground_water, water_bodies, weather_zones, world, world_export};
 #[cfg(feature = "legacy")]
 use planet_generator::{explorer, menu};
 #[cfg(feature = "legacy")]
@@ -95,6 +95,11 @@ struct Args {
     #[arg(long)]
     river_survey: bool,
 
+    /// Make the embark at the dev embark (or --tiles-center) and its neighbours east and south,
+    /// and print how their ground meets along the shared edges
+    #[arg(long)]
+    embark_seams: bool,
+
     /// Live the dev colony 40 days, kill its builder, and see who takes up the hammer
     #[arg(long)]
     sim_roles: bool,
@@ -106,6 +111,20 @@ struct Args {
     /// Bless a meadow / forbid the east on the dev colony and see where it builds
     #[arg(long)]
     sim_plan: bool,
+
+    /// Live the dev colony 20 days unattended, with the ways into the hills forbidden, and
+    /// blessed: who goes in, when, and frames of the unknown and the known (PREFIX_*.png)
+    #[arg(long, value_name = "PREFIX")]
+    sim_explore: Option<String>,
+
+    /// Live the dev colony 100 days digging to 5 levels and to 15: what the rock gives, the signs
+    /// and the breaches
+    #[arg(long)]
+    sim_depth: bool,
+
+    /// Live the dev colony 150 days with no hatch and with a hatch set at once over the caverns
+    #[arg(long)]
+    sim_hatch: bool,
 
     /// Settle the dev site as dwarves, elves, orcs and humans and compare the villages
     #[arg(long)]
@@ -148,6 +167,10 @@ struct Args {
     /// Start the tile viewer at this many pixels per tile (default 16)
     #[arg(long, value_name = "PX")]
     tiles_zoom: Option<f32>,
+
+    /// World tiles across the region the walker (Z) makes (default 8; [ and ] change it there)
+    #[arg(long, value_name = "N")]
+    region_tiles: Option<usize>,
 
     /// Draw every living realm's arms (96 and 24 px) to FILE
     #[arg(long, value_name = "FILE")]
@@ -305,6 +328,11 @@ struct Args {
     #[arg(long)]
     no_shadow: bool,
 
+    /// Let the Shadow reach into the camp (its raiders, the dead rising on its land, evil weather,
+    /// vampires); off by default while the camp's basic play is worked on
+    #[arg(long)]
+    camp_shadow: bool,
+
     /// Simulate the history headlessly and save watcher frames to <PREFIX>_y<year>.png
     #[arg(long)]
     watch_snapshot: Option<String>,
@@ -421,6 +449,65 @@ struct Args {
     /// Simulated tectonic history in millions of years (longer = more collisions and rifting)
     #[arg(long, default_value = "200")]
     tectonic_myr: f32,
+
+    // === The star system (`astro`) ===
+
+    /// The star: "auto" (drawn from the seed, the default), "sol" (the Sun and the Earth: the
+    /// original climate; the default for --dev), a class (F, G, K, M) or a type ("K3"); also a
+    /// world code's star part ("K3+h250+o450")
+    #[arg(long)]
+    star: Option<String>,
+
+    /// Place in the star's habitable zone: 0 at the hot inner edge, 1 at the cold outer edge
+    /// (a little beyond either is allowed)
+    #[arg(long, allow_hyphen_values = true)]
+    hz: Option<f32>,
+
+    /// Axial tilt (degrees, 0-90)
+    #[arg(long)]
+    obliquity: Option<f32>,
+
+    /// Length of the day, sunrise to sunrise (hours)
+    #[arg(long)]
+    day_hours: Option<f32>,
+
+    /// Orbital eccentricity (0 round .. 0.6)
+    #[arg(long)]
+    eccentricity: Option<f32>,
+
+    /// The star's metallicity [Fe/H] (dex; the Sun 0, typical -0.5..0.4)
+    #[arg(long, allow_hyphen_values = true)]
+    metallicity: Option<f32>,
+
+    /// The star's age (billions of years)
+    #[arg(long)]
+    star_age: Option<f32>,
+
+    /// Lock one face to the star (true) or forbid it (false); by default the tides decide
+    #[arg(long)]
+    locked: Option<bool>,
+
+    /// Give the star a companion (true) or none (false); by default one star in four has one
+    #[arg(long)]
+    binary: Option<bool>,
+
+    /// Print the star system and what its climate made of the world, then stop
+    #[arg(long)]
+    system: bool,
+
+    /// A dev world under another sky (implies --dev): eyeball (a red dwarf's locked world),
+    /// slow (a 600-hour day), tilted (70 degrees), twosuns (a close pair). See DEV_SKIES.
+    #[arg(long)]
+    dev_sky: Option<String>,
+
+    /// Draw the heavens card (the viewer's H) to a PNG
+    #[arg(long)]
+    heavens_snapshot: Option<String>,
+
+    /// Draw every world of the system as a globe (H then Tab in the viewer) to a PNG; the
+    /// neighbours are made by the terrain pipeline
+    #[arg(long)]
+    worlds_snapshot: Option<String>,
 
     // === Individual seed overrides ===
 
@@ -675,6 +762,17 @@ struct Args {
 /// worlds get no rivers. Re-run the search if worldgen changes move the landmarks.
 const DEV_WORLD: (usize, usize, u64, u32) = (96, 48, 76, 8);
 
+/// Dev worlds under other skies (`--dev-sky NAME`, 96x48 like the dev world): (name, seed, the
+/// star's code). Each seed meets `--require rivers=2,forests=1` (the eyeball and two suns also a
+/// lake) and its dev embark founds a living camp (`--sim-projects 10`); re-run that search if
+/// worldgen moves them (`--require` prints nothing when the first seed passes).
+const DEV_SKIES: [(&str, u64, &str); 4] = [
+    ("eyeball", 106, "M3"),
+    ("slow", 309, "K4+d60000"),
+    ("tilted", 302, "G+o700"),
+    ("twosuns", 9, "auto"),
+];
+
 /// Parse the command line; `--dev` fills in the development world's settings for any of
 /// width, height, seed and civilizations not given explicitly.
 fn parse_args() -> Args {
@@ -699,14 +797,29 @@ fn parse_args() -> Args {
         std::process::exit(0);
     }
     if args.history_profile { history::simulation::step::profile::ON.store(true, std::sync::atomic::Ordering::Relaxed); }
-    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_ways || args.adventure_bot.is_some() || args.adventure_snapshot.is_some() || args.adventure_gallery.is_some() || args.adventure_landscape.is_some() { args.dev_embark = true; args.headless = true; }
+    if args.sim_snapshot.is_some() || args.ui_drive.is_some() || args.inventory.is_some() || args.sim_bench.is_some() || args.frame_bench.is_some() || args.frame_bench_world || args.sim_patron || args.sim_founding.is_some() || args.sim_marks.is_some() || args.sim_projects.is_some() || args.sim_raid || args.sim_move.is_some() || args.sim_refugees || args.sites || args.embark_survey || args.river_survey || args.embark_seams || args.sim_roles || args.sim_legend || args.sim_plan || args.sim_explore.is_some() || args.sim_depth || args.sim_hatch || args.sim_ways || args.adventure_bot.is_some() || args.adventure_snapshot.is_some() || args.adventure_gallery.is_some() || args.adventure_landscape.is_some() { args.dev_embark = true; args.headless = true; }
     if args.province_snapshot.is_some() { args.headless = true; if args.tiles_center.is_none() { args.dev_embark = true; } }
     if args.dev_embark { args.dev = true; }
+    // A dev world under another sky: its seed and star unless given.
+    if let Some(name) = args.dev_sky.clone() {
+        match DEV_SKIES.iter().find(|d| d.0.eq_ignore_ascii_case(&name)) {
+            Some(&(_, seed, star)) => {
+                args.dev = true;
+                if args.seed.is_none() { args.seed = Some(seed); }
+                if args.star.is_none() { args.star = Some(star.to_string()); }
+            }
+            None => {
+                eprintln!("--dev-sky: one of {}", DEV_SKIES.iter().map(|d| d.0).collect::<Vec<_>>().join(", "));
+                std::process::exit(1);
+            }
+        }
+    }
     // A world code fills in the world and the site.
     if let Some(code) = args.code.clone() {
         match parse_world_code(&code) {
-            Some((seed, w, h, style, peoples, years, site, cell)) => {
+            Some((seed, w, h, style, peoples, years, site, cell, star)) => {
                 if let Some(c) = cell { tiles::viewer::set_start_cell(c); }
+                if star.is_some() { args.star = star; }
                 args.seed = Some(seed); args.width = w; args.height = h; args.world_style = style;
                 args.civilizations = peoples; args.history_years = years; args.no_history = years == 0;
                 args.tiles_center = Some(format!("{},{}", site.0, site.1));
@@ -735,20 +848,67 @@ fn parse_args() -> Args {
 /// "76.96x48.earthlike.8.250@45,12" -> (seed, width, height, style, peoples, years, site).
 /// "SEED.WxH.STYLE.PEOPLES.YEARS@X,Y" or, for a camp made where the walker stood,
 /// "...@X,Y:CX,CY" (the cell, in global cells).
-fn parse_world_code(code: &str) -> Option<(u64, usize, usize, String, u32, u32, (usize, usize), Option<(u64, u64)>)> {
+fn parse_world_code(code: &str) -> Option<(u64, usize, usize, String, u32, u32, (usize, usize), Option<(u64, u64)>, Option<String>)> {
     let (world, site) = code.split_once('@')?;
     let p: Vec<&str> = world.split('.').collect();
-    if p.len() != 5 { return None; }
+    if p.len() != 5 && p.len() != 6 { return None; }
+    // A sixth part is the star system (`astro::SystemSpec::code`); codes without one are the Sun's.
+    let star = match p.get(5) { Some(s) => { astro::SystemSpec::from_code(s)?; Some(s.to_string()) } None => None };
     let (w, h) = p[1].split_once('x')?;
     let (tile, cell) = match site.split_once(':') { Some((t, c)) => (t, Some(c)), None => (site, None) };
     let (x, y) = tile.split_once(',')?;
     let cell = match cell { Some(c) => { let (cx, cy) = c.split_once(',')?; Some((cx.parse().ok()?, cy.parse().ok()?)) } None => None };
-    Some((p[0].parse().ok()?, w.parse().ok()?, h.parse().ok()?, p[2].to_string(), p[3].parse().ok()?, p[4].parse().ok()?, (x.parse().ok()?, y.parse().ok()?), cell))
+    Some((p[0].parse().ok()?, w.parse().ok()?, h.parse().ok()?, p[2].to_string(), p[3].parse().ok()?, p[4].parse().ok()?, (x.parse().ok()?, y.parse().ok()?), cell, star))
 }
 
 /// The code for this world and an embark site.
 fn world_code(args: &Args, seed: u64, site: (usize, usize)) -> String {
-    format!("{}.{}x{}.{}.{}.{}@{},{}", seed, args.width, args.height, args.world_style, args.civilizations, if args.no_history { 0 } else { args.history_years }, site.0, site.1)
+    format!("{}{}@{},{}", world_code_base(args, seed), star_code_part(args), site.0, site.1)
+}
+
+fn world_code_base(args: &Args, seed: u64) -> String {
+    format!("{}.{}x{}.{}.{}.{}", seed, args.width, args.height, args.world_style, args.civilizations, if args.no_history { 0 } else { args.history_years })
+}
+
+/// ".<star>" for a world code, or nothing for the Sun (codes made before star systems).
+fn star_code_part(args: &Args) -> String {
+    let spec = system_spec(args);
+    if spec.sol { String::new() } else { format!(".{}", spec.code()) }
+}
+
+/// What the command line asks of the star system: `--star` (a class, a type, "sol", "auto" or a
+/// world code's star part) and the orbit's overrides. `--dev` and old world codes keep the Sun
+/// unless a star or an override is given. Overrides on the Sun make a Sun-like system that
+/// follows them (the Earth's orbit, day and tilt otherwise).
+fn system_spec(args: &Args) -> astro::SystemSpec {
+    let overrides = args.hz.is_some() || args.obliquity.is_some() || args.day_hours.is_some() || args.eccentricity.is_some()
+        || args.metallicity.is_some() || args.star_age.is_some() || args.locked.is_some() || args.binary.is_some();
+    let mut spec = match &args.star {
+        Some(s) => astro::SystemSpec::from_code(s).unwrap_or_else(|| {
+            eprintln!("--star: expected sol, auto, a class (F, G, K, M) or a type (K3), got {s}");
+            std::process::exit(1);
+        }),
+        // The dev world, and world codes made before star systems (no star part), are the Sun's.
+        None if (args.dev || args.code.is_some()) && !overrides => astro::SystemSpec::sol(),
+        None => astro::SystemSpec::default(),
+    };
+    if spec.sol && overrides {
+        let sun = astro::Star::sun();
+        spec = astro::SystemSpec {
+            sol: false, class: Some(astro::SpectralClass::G), subclass: Some(2), metallicity: Some(0.0), age_gyr: Some(4.57),
+            hz: Some(astro::hz_position_of(&sun, 1.0)), eccentricity: Some(0.0167), obliquity_deg: Some(23.44), day_hours: Some(24.0),
+            locked: Some(false), binary: Some(false),
+        };
+    }
+    if args.hz.is_some() { spec.hz = args.hz; }
+    if args.obliquity.is_some() { spec.obliquity_deg = args.obliquity; }
+    if args.day_hours.is_some() { spec.day_hours = args.day_hours; }
+    if args.eccentricity.is_some() { spec.eccentricity = args.eccentricity; }
+    if args.metallicity.is_some() { spec.metallicity = args.metallicity; }
+    if args.star_age.is_some() { spec.age_gyr = args.star_age; }
+    if args.locked.is_some() { spec.locked = args.locked; }
+    if args.binary.is_some() { spec.binary = args.binary; }
+    spec
 }
 
 fn pick_dev_embark(world: &world::WorldData, history: Option<&history::world_state::WorldHistory>) -> (usize, usize) {
@@ -809,14 +969,24 @@ fn legendary_creatures_for(width: usize, height: usize) -> u32 {
     ((base as f64 * k).round() as u32).max(3)
 }
 
+/// The whole account of the star system (`--system`).
+fn print_system(sys: &astro::StarSystem) {
+    for section in sys.account() {
+        println!("== {}", section.title);
+        for l in &section.lines { println!("  {}", l); }
+    }
+}
+
 /// Years of history the tile viewer simulates when --history-years isn't given.
 const DEFAULT_VIEWER_HISTORY_YEARS: u32 = 250;
 
 fn main() {
     let mut args = parse_args();
+    colony::set_shadow_in_camp(args.camp_shadow);
     // Begun from the start screen: the world's making is shown in a window (`tiles::making`).
     let mut from_start = false;
     if let Some(px) = args.tiles_zoom { tiles::viewer::set_start_zoom(px); }
+    if let Some(n) = args.region_tiles { tiles::viewer::set_region_tiles(n); }
     if args.coverage {
         let t = tiles::coverage::table();
         let mut types: Vec<&str> = t.iter().map(|r| r.0).collect();
@@ -831,6 +1001,7 @@ fn main() {
             style: plates::WorldStyle::from_str(&args.world_style).unwrap_or_default(), plates: args.plates, tectonic_myr: args.tectonic_myr,
             fantasy: args.fantasy, history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
             civilizations: args.civilizations, shadow: !args.no_shadow, watch: true, adventure: args.adventure,
+            star: args.star.clone().unwrap_or_else(|| "auto".into()), hz: args.hz,
         };
         match tiles::start::save_start_snapshot(initial, path) { Ok(()) => { println!("Start screen drawn to {}", path); std::process::exit(0); } Err(e) => { eprintln!("--start-snapshot: {e}"); std::process::exit(1); } }
     }
@@ -880,6 +1051,8 @@ fn main() {
             // Watching the history being written is the game's opening: on unless turned off.
             watch: true,
             adventure: args.adventure,
+            star: args.star.clone().unwrap_or_else(|| "auto".into()),
+            hz: args.hz,
         };
         match tiles::start::run_start_screen(initial) {
             Ok(Some(cfg)) => {
@@ -897,6 +1070,8 @@ fn main() {
                 args.no_shadow = !cfg.shadow;
                 args.watch = cfg.watch;
                 args.adventure = cfg.adventure;
+                args.star = Some(cfg.star.clone());
+                args.hz = cfg.hz;
                 println!("Making a {}x{} {} world, seed {}", cfg.width, cfg.height, cfg.style, cfg.seed);
             }
             Ok(None) => return,
@@ -1016,8 +1191,8 @@ fn main() {
     };
     // The world code (the site is added per embark).
     if args.load_world.is_none() {
-        tiles::plates::set_world_code(format!("{}.{}x{}.{}.{}.{}", master_seed, width, height, args.world_style, args.civilizations,
-            if args.no_history { 0 } else { args.history_years }));
+        tiles::plates::set_world_code(format!("{}.{}x{}.{}.{}.{}{}", master_seed, width, height, args.world_style, args.civilizations,
+            if args.no_history { 0 } else { args.history_years }, star_code_part(&args)));
     }
     // Where this world's notes are kept, and any pinned from the command line.
     if let Some(p) = args.load_world.as_ref().or(args.save_world.as_ref()) { lore::notes::set_path(format!("{}.notes.json", p)); }
@@ -1040,9 +1215,20 @@ fn main() {
             if let Some(p) = args.plates { a.push_str(&format!(" --plates {}", p)); }
             if args.no_history { a.push_str(" --no-history"); } else if args.history_years > 0 { a.push_str(&format!(" --history-years {}", args.history_years)); }
             if args.no_shadow { a.push_str(" --no-shadow"); }
+            a.push_str(&format!(" --star {}", system_spec(&args).code()));
             a
         }
     });
+    // The star system: from a loaded world, or drawn from the seed (and what was asked).
+    let mut star_system = match &loaded_world {
+        Some(w) => w.star_system.clone().unwrap_or_else(astro::StarSystem::sol),
+        None => astro::StarSystem::generate(master_seed, &system_spec(&args)),
+    };
+    let climate_config = star_system.climate_config(climate_config);
+    // A world with no moon to light its nights names nothing after one.
+    history::naming::generator::set_moonless(!star_system.is_sol() && star_system.night_moon().is_none());
+    if loaded_world.is_none() { println!("Star system: {}", star_system.summary()); }
+    else if args.system { print_system(&star_system); return; }
     #[cfg(feature = "legacy")]
     fn legacy_menu(args: &Args) -> (usize, usize, u64, Option<usize>, plates::WorldStyle, erosion::ErosionPreset, climate::ClimateConfig) {
         // LEGACY interactive terminal menu (--legacy-explorer without --seed)
@@ -1128,6 +1314,8 @@ fn main() {
     let terrain_config = terrain::TerrainConfig {
         plates: plates_count,
         tectonic_myr: args.tectonic_myr,
+        land_scale: star_system.land_scale(),
+        hotspots: star_system.hotspots(),
         legacy_tectonics: args.legacy_tectonics,
         erosion_preset,
         climate: climate_config.clone(),
@@ -1141,6 +1329,17 @@ fn main() {
         flow_accumulation, volcanoes, ..
     } = terrain::generate_terrain(&terrain_config, &seeds, &mut |st| { tiles::making::stage(st.name, st.heightmap); true }).expect("terrain generation runs to the end");
     let moisture = climate_sim.mean_moisture.clone();
+    star_system.note_climate(&climate_sim, &heightmap);
+    if let Some(c) = &star_system.climate {
+        // The thermostat's own balance beside the climate's, when the carbonate-silicate cycle ran.
+        let thermostat = if climate_sim.air.balance_c.is_finite() { format!(" (thermostat {:.1}, Earth twin {:.1})", climate_sim.air.balance_c, climate_sim.air.reference_c) } else { String::new() };
+        println!("Under {}: mean {:.1} C{}, {:.0}% under ice all year, CO2 {:.2e} bar of {:.2} bar ({:+.0} W/m2), {} wind bands, the tropics' cell to {:.0} deg",
+            star_system.star.name, c.mean_c, thermostat, c.ice_share * 100.0, c.co2_bar, c.pressure_bar, c.greenhouse_wm2, c.cells, c.hadley_deg);
+    }
+    if args.system {
+        print_system(&star_system);
+        return;
+    }
 
     // Generate lava for active volcanoes
     println!("Generating lava flows...");
@@ -1178,6 +1377,12 @@ fn main() {
     // Seasonal climates: Mediterranean shrubland (winter rain) and monsoon forest (summer rain).
     let (med, mon) = biomes::apply_seasonal_biomes(&mut extended_biomes, &heightmap, &climate_sim);
     println!("Seasonal climates: {} Mediterranean, {} monsoon tiles", med, mon);
+    // Strong tides (great moons, a near star) lay tidal flats along gentle coasts.
+    if !star_system.is_sol() {
+        let flats = biomes::apply_tidal_flats(&mut extended_biomes, &heightmap, &water_body_map, &temperature, star_system.tides());
+        if let Some(c) = star_system.climate.as_mut() { c.tidal_flat_tiles = flats as u32; }
+        if flats > 0 { println!("Tidal flats: {} coastal tiles of salt marsh and mangrove under tides {:.1}x the Earth's", flats, star_system.tides()); }
+    }
     tiles::making::note("biomes");
 
     // Apply biome replacement rules (rare biomes replace common ones)
@@ -1267,7 +1472,9 @@ fn main() {
         hardness_map: Some(&hardness_map),
     };
     let mut world_handshakes = region::calculate_world_handshakes_full(&handshake_input);
+    let t_cross = std::time::Instant::now();
     region::rivers::calculate_river_crossings(&mut world_handshakes.handshakes, &river_network);
+    if std::env::var("PLANET_TIME_CROSSINGS").is_ok() { eprintln!("River crossings: {:.2} s ({} segments)", t_cross.elapsed().as_secs_f32(), river_network.segments.len()); }
 
     // Generate underground water features (aquifers, springs, waterfalls)
     println!("Generating underground water features...");
@@ -1315,6 +1522,7 @@ fn main() {
         Some(biome_feather_map),
     );
     world_data.handshakes = Some(world_handshakes);
+    world_data.star_system = Some(star_system);
     world_data.underground_water = Some(underground_water_features);
     world_data.set_flow_accumulation(flow_acc);
     world_data.set_volcanic_features(lava_map, volcanoes);
@@ -1331,6 +1539,8 @@ fn main() {
 
     world_data
     };
+    // Leaves under this world's star, for every view that draws what grows.
+    tiles::ink::set_leaves(world_data.star_system.as_ref().map(|s| s.star.spectral.class));
 
     // Export freshwater network if requested
     if args.export_rivers {
@@ -1698,6 +1908,19 @@ fn main() {
     // Load or simulate history
     // The tile viewer is the default viewer, so it wants a history unless running headless or
     // in the legacy terminal explorer.
+    if let Some(path) = &args.heavens_snapshot {
+        match tiles::heavens::save_snapshot(&world_data, path) {
+            Ok(()) => println!("Heavens drawn to {}", path),
+            Err(e) => eprintln!("--heavens-snapshot: {e}"),
+        }
+    }
+    if let Some(path) = &args.worlds_snapshot {
+        let t0 = std::time::Instant::now();
+        match tiles::globes::save_snapshot(&world_data, path) {
+            Ok(()) => println!("Worlds drawn to {} in {:.1}s", path, t0.elapsed().as_secs_f32()),
+            Err(e) => eprintln!("--worlds-snapshot: {e}"),
+        }
+    }
     let wants_tiles = (!args.legacy_explorer && !args.headless) || args.tiles_snapshot.is_some() || args.local_snapshot.is_some();
     // A saved world's history is reused unless --history-years (or --watch) asks for a fresh simulation.
     if args.history_years > 0 || args.watch || args.frame_bench_watch || args.watch_snapshot.is_some() || args.watch_timelapse.is_some() || args.watch_atlas.is_some() || args.watch_album.is_some() { loaded_history = None; }
@@ -2053,6 +2276,9 @@ fn main() {
         if let Some(h) = history.as_ref() {
             let living = h.settlements.values().filter(|s| !s.is_destroyed()).count();
             let ruins = h.settlements.len() - living;
+            // Towns on the rows nearest a pole (each row spans the whole map's width there).
+            let polar = h.settlements.values().filter(|s| s.location.1 < 2 || s.location.1 + 2 >= height).count();
+            println!("Polar rows: {} of {} settlements within two rows of a pole", polar, h.settlements.len());
             let roads = (0..width * height).filter(|&i| h.tile_history.has_road(i % width, i / width)).count();
             let owned = (0..width * height).filter(|&i| h.tile_history.get(i % width, i / width).current_owner.is_some()).count();
             let named = gaz.features.iter().filter(|f| f.named_by.is_some()).count();
@@ -2194,6 +2420,18 @@ fn main() {
             tiles::viewer::plan_trial(&world_data, history.as_ref(), tile);
             return;
         }
+        if let (true, Some(tile)) = (args.sim_depth, center) {
+            tiles::viewer::depth_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
+        if let (true, Some(tile)) = (args.sim_hatch, center) {
+            tiles::viewer::hatch_trial(&world_data, history.as_ref(), tile);
+            return;
+        }
+        if let (Some(prefix), Some(tile)) = (args.sim_explore.as_ref(), center) {
+            tiles::viewer::explore_trial(&world_data, history.as_ref(), tile, prefix);
+            return;
+        }
         if let (true, Some(tile)) = (args.sim_roles, center) {
             tiles::viewer::roles_trial(&world_data, history.as_ref(), tile);
             return;
@@ -2208,6 +2446,10 @@ fn main() {
         }
         if let (true, Some(tile)) = (args.river_survey, center) {
             tiles::viewer::river_survey(&world_data, history.as_ref(), tile);
+            return;
+        }
+        if let (true, Some(tile)) = (args.embark_seams, center) {
+            tiles::viewer::embark_seams(&world_data, history.as_ref(), tile);
             return;
         }
         if let (true, Some(h)) = (args.sites, history.as_ref()) {

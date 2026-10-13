@@ -127,8 +127,13 @@ pub fn save_inventory(world: &WorldData, history: Option<&crate::history::world_
     c.siege = Some(crate::colony::siege::Siege { since: now, until: now + 99_999, who: "a war band of The Git Clans".into(), at: sg, sally: false });
     shots.push(("a siege camp".into(), (sg.0 as f32 + 0.5, sg.1 as f32 + 0.5), 4.0));
     let relic_at = spot(&c, 6, -8);
+    // (A camp with no lost thing of the world near gets a stand-in: this is a frame of drawings.)
+    if c.relic.is_none() {
+        c.relic = Some(crate::colony::relic::Relic { artifact: crate::history::ArtifactId(0), holder: None, name: "a lost staff".into(), what: "a staff".into(),
+            tale: "lost long ago".into(), cause: None, owners: None, owners_name: String::new(), owners_iron: false, at: relic_at, below: false, known: true,
+            search_days: 0, found: None, envoy_day: None, contested: false, fate: None, asked: false });
+    }
     if let Some(r) = c.relic.as_mut() { r.found = None; r.below = false; r.at = relic_at; let at = r.at; shots.push(("the lost relic".into(), (at.0 as f32 + 0.5, at.1 as f32 + 0.5), 2.0)); }
-    else { missing.push("the lost relic: this camp has none".into()); }
     c.prisoner = Some(crate::colony::prisoners::Prisoner { name: "Gnaagh".into(), people: "The Git Clans".into(), faction: None, day, from: None, ransom_day: None });
     shots.push(("a prisoner at the post".into(), (c.camp.0 as f32 - 2.0, c.camp.1 as f32 + 2.0), 2.5));
     shots.push(("the mandate post, the bell, the fire, the store".into(), (c.camp.0 as f32 + 0.5, c.camp.1 as f32 - 0.5), 4.0));

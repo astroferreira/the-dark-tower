@@ -686,7 +686,12 @@ pub fn report(world: &crate::world::WorldData, history: Option<&crate::history::
     // PLANET_ADV_ASK=1: the home town's sage and its drunk asked about the same beast.
     if let (Ok(_), Some(h)) = (std::env::var("PLANET_ADV_ASK"), g.history.clone()) {
         let home = g.site(g.hero.temple).map(|s| s.tile).unwrap_or(g.tile);
-        let beast = h.legendary_creatures.values().filter(|c| c.death_date.is_none() && c.lair_location.is_some()).min_by_key(|c| (super::world::dist(c.lair_location.unwrap(), home, g.world.w), c.id.0)).map(|c| (c.name.clone(), c.lair_location.unwrap()));
+        // (The nearest living beast the home town has heard of: the drunk tells only what the
+        // town heard.)
+        let town = g.site(g.hero.temple).and_then(|s| s.settlement).map(crate::history::SettlementId);
+        let beast = h.legendary_creatures.values().filter(|c| c.death_date.is_none() && c.lair_location.is_some())
+            .filter(|c| town.map_or(true, |t| super::lore::town_has_heard(&h, t, &c.name)))
+            .min_by_key(|c| (super::world::dist(c.lair_location.unwrap(), home, g.world.w), c.id.0)).map(|c| (c.name.clone(), c.lair_location.unwrap()));
         if let Some((name, lair)) = beast {
             for who in ["sage", "drunk"] {
                 let k = g.place().and_then(|p| p.npcs.iter().position(|n| if who == "sage" { n.role == super::actor::Role::Sage && n.home == g.hero.temple } else { n.of == "drunk" && n.home == g.hero.temple }));

@@ -393,7 +393,7 @@ pub fn render_world_cached(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mu
             let rate = px / (t0.elapsed().as_secs_f64() * 1000.0).max(0.1);
             WORLD_RATE.with(|r| r.set(rate));
             let win = tile_window(tw, t, ox, oy, w, h);
-            *cache = Some(WorldCache { key, revision: tw.revision, ox, oy, win, sigs: tile_sigs(tw, win), buf: buf.to_vec(), coarse: vec![coarse; h] });
+            *cache = Some(WorldCache { key, revision: tw.revision, ox, oy, win, sigs: tile_sigs(tw, win), buf: buf.to_vec(), coarse: vec![coarse; h], coarse_cols: vec![false; w] });
         } else {
             let c = cache.as_mut().unwrap();
             let (dx, dy) = (ox - c.ox, oy - c.oy);
@@ -407,11 +407,26 @@ pub fn render_world_cached(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mu
                     let (a, b) = ((-dx).max(0) as usize, (w as i64 - dx.max(0)) as usize);
                     if b > a { row[a..b].copy_from_slice(&src[(a as i64 + dx) as usize..(b as i64 + dx) as usize]); }
                 });
-                let exposed = move |sx: usize, sy: usize| { let (px, py) = (sx as i64 + dx, sy as i64 + dy); px < 0 || py < 0 || px >= w as i64 || py >= h as i64 };
-                render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut moved, w, h, 1, Some(&exposed));
+                // The strips the pan uncovered, each drawn as its own rectangle. A fast pan on a
+                // large window would cost more than a frame at full detail (2560x1440 at 16-32 px
+                // a tile, 17-19 ms on one core): those strips are drawn coarse and their rows and
+                // columns refined over the next frames, as a whole coarse frame is.
+                let (ax, ay) = ((dx.unsigned_abs() as usize).min(w), (dy.unsigned_abs() as usize).min(h));
+                let (cx0, ry0) = (if dx < 0 { 0 } else { w - ax }, if dy < 0 { 0 } else { h - ay });
+                let checking = std::env::var("PLANET_WORLD_CHECK").is_ok();
+                let rough = !checking && (ax * h + ay * w) as f64 / WORLD_RATE.with(|r| r.get()).max(1.0) > 8.0;
+                let lod = if rough { 2 } else { 1 };
+                draw_rect(tw, atlas, t, ox, oy, cx0, 0, ax, h, lod, &mut moved, w);
+                draw_rect(tw, atlas, t, ox, oy, 0, ry0, w, ay, lod, &mut moved, w);
                 c.ox = ox; c.oy = oy; c.buf = moved;
                 let old_coarse = std::mem::take(&mut c.coarse);
                 c.coarse = (0..h).map(|sy| { let o = sy as i64 + dy; o >= 0 && o < h as i64 && old_coarse[o as usize] }).collect();
+                let old_cols = std::mem::take(&mut c.coarse_cols);
+                c.coarse_cols = (0..w).map(|sx| { let o = sx as i64 + dx; o >= 0 && o < w as i64 && old_cols[o as usize] }).collect();
+                if rough {
+                    for x in cx0..cx0 + ax { c.coarse_cols[x] = true; }
+                    for y in ry0..ry0 + ay { c.coarse[y] = true; }
+                }
             }
             // The map changed (a season of history, a season's snow): each tile under the screen
             // is compared by what it is drawn from, and only those that changed are drawn again,
@@ -456,17 +471,22 @@ pub fn render_world_cached(tw: &TileWorld, atlas: &Atlas, cam: &Camera, buf: &mu
             }
             // Refine rows still coarse: about six milliseconds' worth a frame (at the rate the
             // coarse frame was drawn), top first.
+            let budget = WORLD_RATE.with(|r| r.get()) * 6.0;
             if let Some(r0) = c.coarse.iter().position(|&b| b) {
-                let budget = WORLD_RATE.with(|r| r.get()) * 6.0;
                 let n = ((budget as usize) / w).max(1);
                 let r1 = (r0..h).take(n).take_while(|&r| c.coarse[r]).last().map_or(r0 + 1, |r| r + 1);
-                let need = move |_: usize, sy: usize| sy >= r0 && sy < r1;
-                render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut c.buf, w, h, 1, Some(&need));
+                draw_rect(tw, atlas, t, ox, oy, 0, r0, w, r1 - r0, 1, &mut c.buf, w);
                 for r in r0..r1 { c.coarse[r] = false; }
+            } else if let Some(x0) = c.coarse_cols.iter().position(|&b| b) {
+                // (Columns a sideways pan left coarse, once the rows are done.)
+                let n = ((budget as usize) / h).max(1);
+                let x1 = (x0..w).take(n).take_while(|&x| c.coarse_cols[x]).last().map_or(x0 + 1, |x| x + 1);
+                draw_rect(tw, atlas, t, ox, oy, x0, 0, x1 - x0, h, 1, &mut c.buf, w);
+                for x in x0..x1 { c.coarse_cols[x] = false; }
             }
             buf.copy_from_slice(&c.buf);
             // (Debug: PLANET_WORLD_CHECK=1 draws the map afresh and counts pixels that differ.)
-            if std::env::var("PLANET_WORLD_CHECK").is_ok() && !c.coarse.iter().any(|&b| b) {
+            if std::env::var("PLANET_WORLD_CHECK").is_ok() && !c.coarse.iter().any(|&b| b) && !c.coarse_cols.iter().any(|&b| b) {
                 let mut fresh = vec![0u32; w * h];
                 render_world_core(tw, atlas, t, ox as f32, oy as f32, (ox, oy), &mut fresh, w, h, 1, None);
                 let bad = fresh.iter().zip(buf.iter()).filter(|(a, b)| a != b).count();
@@ -559,7 +579,20 @@ struct WorldKey { t: u32, w: usize, h: usize, tw: usize, tw_w: usize, tw_h: usiz
 /// The last world map drawn: its zoom, window and map, the map's revision, where the screen
 /// stood (world pixels), the tiles under it and what each was drawn from, its pixels, and its
 /// rows still drawn coarse.
-struct WorldCache { key: WorldKey, revision: u64, ox: i64, oy: i64, win: (i64, i64, i64, i64), sigs: Vec<u64>, buf: Vec<u32>, coarse: Vec<bool> }
+struct WorldCache { key: WorldKey, revision: u64, ox: i64, oy: i64, win: (i64, i64, i64, i64), sigs: Vec<u64>, buf: Vec<u32>, coarse: Vec<bool>, coarse_cols: Vec<bool> }
+
+/// The screen rectangle (x0, y0, rw, rh) of the map whose top-left is the world pixel (ox, oy),
+/// drawn at `lod` into `dst` (`w` wide): the same pixels a whole frame would have there (the
+/// world position and the hatching's key move with the rectangle), without asking every pixel of
+/// the screen whether it is wanted.
+#[allow(clippy::too_many_arguments)]
+fn draw_rect(tw: &TileWorld, atlas: &Atlas, t: f32, ox: i64, oy: i64, x0: usize, y0: usize, rw: usize, rh: usize, lod: usize, dst: &mut [u32], w: usize) {
+    if rw == 0 || rh == 0 { return; }
+    let mut tmp = vec![0u32; rw * rh];
+    let (ax, ay) = (ox + x0 as i64, oy + y0 as i64);
+    render_world_core(tw, atlas, t, ax as f32, ay as f32, (ax, ay), &mut tmp, rw, rh, lod, None);
+    for r in 0..rh { dst[(y0 + r) * w + x0..(y0 + r) * w + x0 + rw].copy_from_slice(&tmp[r * rw..(r + 1) * rw]); }
+}
 
 thread_local! {
     /// Pixels a millisecond this machine draws the world map at (`render_world_cached`).

@@ -66,11 +66,12 @@ pub fn generate_tectonic_terrain(
 ) -> TectonicTerrain {
     let mut rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
     let (plate_map, plates) = generate_plates(width, height, plates_count, style, &mut rng);
-    let params = TectonicParams { target_land_fraction: style.target_land_fraction() as f32, ..params.clone() };
+    let land_fraction = if params.land_scale == 1.0 { style.target_land_fraction() } else { (style.target_land_fraction() * params.land_scale as f64).clamp(0.04, 0.75) };
+    let params = TectonicParams { target_land_fraction: land_fraction as f32, ..params.clone() };
     let mut sim = TectonicSim::new(&plate_map, &plates, &mut rng, &params);
     sim.run();
     let result = sim.finish(plates);
-    let heightmap = build_heightmap(&result.crust, seeds.heightmap, style.target_land_fraction());
+    let heightmap = build_heightmap(&result.crust, seeds.heightmap, land_fraction);
     let ocean_gel_m = ocean_volume_gel(&heightmap, 0.0);
     TectonicTerrain {
         ocean_gel_m,

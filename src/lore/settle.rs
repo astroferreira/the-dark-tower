@@ -46,6 +46,8 @@ pub struct Site {
     pub faction_name: String,
     /// A people who carve their dwellings into the rock (DF's mountain halls): halls under it.
     pub carved: bool,
+    /// The people's architecture (its roofs: `RoofStyle::of`).
+    pub arch: Option<crate::history::entities::culture::ArchitectureStyle>,
 }
 
 pub struct RegionLore {
@@ -190,6 +192,7 @@ pub fn region_lore(world: &WorldData, history: &WorldHistory, region: &ZoomRegio
             founded_year: st.founded.year,
             walls: st.walls,
             style: build_style(history, st.faction, st.settlement_type),
+            arch: history.factions.get(&st.faction).and_then(|f| history.races.get(&f.race_id)).and_then(|r| history.cultures.get(&r.culture_id)).map(|c| c.architecture),
             x: bx as f64 + 0.5,
             y: by as f64 + 0.5,
             core_m,

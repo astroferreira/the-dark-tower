@@ -11,12 +11,23 @@
 use super::*;
 use super::creatures::{Creature, CreatureKind};
 
-/// The marks in a hunter's name that carry the curse.
+/// The marks in a hunter's name that carry the curse (on a moonless world, `DARK`).
 pub const MOON: &str = " under the full moon";
+pub const DARK: &str = " on the darkest night";
 pub const CHANGED: &str = ", changed";
 
 impl Colony {
-    pub fn full_moon(&self) -> bool { self.clock.day() % 28 == 14 }
+    /// The werebeast's night: the full moon, on the middle day of the great moon's month (the
+    /// 14th of 28 under the Sun); on a moonless world the month's darkest night.
+    pub fn full_moon(&self) -> bool { let m = self.map.sky.month_days.max(2); self.clock.day() % m == m / 2 }
+
+    /// Days until the werebeast's next night.
+    pub fn days_to_full_moon(&self) -> u64 { let m = self.map.sky.month_days.max(2); (m / 2 + m - self.clock.day() % m) % m }
+
+    /// "the full moon" or, with no moon, "the darkest night".
+    pub fn moon_words(&self) -> &'static str { if self.map.sky.moonless { "the darkest night" } else { "the full moon" } }
+
+    fn moon_mark(&self) -> &'static str { if self.map.sky.moonless { DARK } else { MOON } }
 
     /// 21:00 on a full moon: the werebeast comes, and the cursed change.
     pub(crate) fn moon_rises(&mut self) {
@@ -27,8 +38,13 @@ impl Colony {
             let p = ((self.camp.0 as f32 + a.cos() * 30.0) as i32, (self.camp.1 as f32 + a.sin() * 30.0) as i32);
             if let Some(at) = self.passable_near_pub(p) {
                 let id = self.new_creature_id();
-                self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}{}", beast, MOON), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.4, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
-                self.note(format!("The full moon rises, and something howls in the hills: {} is abroad.", beast));
+                let mark = self.moon_mark();
+                self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}{}", beast, mark), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.4, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
+                if self.map.sky.moonless {
+                    self.note(format!("The darkest night of the month falls, and something howls in the hills: {} is abroad.", beast));
+                } else {
+                    self.note(format!("The full moon rises, and something howls in the hills: {} is abroad.", beast));
+                }
                 said = true;
             }
         }
@@ -42,16 +58,17 @@ impl Colony {
             // Their body goes out into the dark; something with their eyes hunts.
             let a = (i as f32 * 1.7 + self.clock.day() as f32) % 6.28;
             let away = ((self.camp.0 as f32 + a.cos() * 45.0) as i32, (self.camp.1 as f32 + a.sin() * 45.0) as i32);
-            if let Some(far) = self.passable_near_pub(away) { self.start(i, Job::Wander(far), "Gone out into the night under the full moon".into()); }
+            let why = if self.map.sky.moonless { "Gone out into the darkest night" } else { "Gone out into the night under the full moon" };
+            if let Some(far) = self.passable_near_pub(away) { self.start(i, Job::Wander(far), why.into()); }
             let id = self.new_creature_id();
             self.creatures.push(Creature { kind: CreatureKind::Wolf, name: format!("{}{}", name, CHANGED), pos: at, path: Vec::new(), stride: 0, leaving: false, size: 1.0, home: at, spawned: self.clock.tick, id, z: None, path3: Vec::new(), home_z: 0, out: false, rest_until: 0 });
-            if !said { self.note("The full moon rises.".into()); said = true; }
+            if !said { self.note(if self.map.sky.moonless { "The darkest night of the month falls.".into() } else { "The full moon rises.".into() }); said = true; }
         }
     }
 
     /// A bite by a cursed hunter curses the bitten; the changed one's bites are counted.
     pub(crate) fn cursed_bite(&mut self, hunter: &str, victim: usize) {
-        let from_moon = hunter.ends_with(MOON);
+        let from_moon = hunter.ends_with(MOON) || hunter.ends_with(DARK);
         let changed = hunter.strip_suffix(CHANGED).map(String::from);
         if !from_moon && changed.is_none() { return; }
         if !self.cursed.contains(&victim) {
@@ -72,7 +89,8 @@ impl Colony {
 
     /// 06:00 after a full moon: the changed come back; one who has bitten twice is cast out.
     pub(crate) fn moon_sets(&mut self) {
-        if self.clock.day() % 28 != 15 { return; }
+        let m = self.map.sky.month_days.max(2);
+        if self.clock.day() % m != (m / 2 + 1) % m { return; }
         // Only those who changed last night (not the newly bitten).
         for i in std::mem::take(&mut self.changed) {
             if !self.settlers[i].alive { continue; }
@@ -86,7 +104,8 @@ impl Colony {
                 };
                 self.note(line.clone());
                 let at = self.settlers[i].pos;
-                self.moment(format!("{} is cast out", name), line, format!("because {} was bitten under the full moon and carries the curse", name), at);
+                let under = if self.map.sky.moonless { "on the darkest night" } else { "under the full moon" };
+                self.moment(format!("{} is cast out", name), line, format!("because {} was bitten {} and carries the curse", name, under), at);
                 self.release(i);
                 let s = &mut self.settlers[i];
                 s.mind.left = true;

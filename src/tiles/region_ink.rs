@@ -118,6 +118,11 @@ impl Ink {
                 if !lore[k] && m > 0.42 && t > -4.0 && e < 3200.0 {
                     wood[k] = if t < 7.0 { 2 } else { 1 };
                 }
+                // Green ground (grass, woods' floor) takes the star's leaves, by how green it is.
+                if e > 0.0 && t > -4.0 && m > 0.25 {
+                    let g = super::ink::leafy(wash[k]);
+                    wash[k] = mix(wash[k], g, ((m - 0.25) * 2.0).min(super::ink::GRASS_LEAVES));
+                }
             }
         }
         // River coverage: a disc per river cell, its radius from the channel's width.
@@ -392,6 +397,7 @@ fn draw_rows(ink: &Ink, ox: f32, oy: f32, ppc: f32, season: crate::seasons::Seas
                             // Autumn turns the broadleaves; winter bares them grey-brown, firs keep green.
                             if kind == 1 && autumn { fill = [184.0, 142.0, 92.0]; }
                             if kind == 1 && snow > 0.3 { fill = [150.0, 132.0, 112.0]; }
+                            let fill = super::ink::leafy(fill);
                             c = if rim { mix(fill, INK, 0.75) } else if lit { mix(fill, if snow > 0.2 { [244.0, 246.0, 248.0] } else { PAPER }, if snow > 0.2 { 0.6 } else { 0.25 }) } else { fill };
                             drawn = true;
                             break;

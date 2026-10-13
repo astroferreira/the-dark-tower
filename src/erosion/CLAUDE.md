@@ -49,3 +49,11 @@
   tributaries; it flat-filled every depression, so 17 lakes vs 23). A 512x256 world now
   generates in ~4 s. `--legacy-erosion` (or `LAB_LEGACY_EROSION=1` in terrain_lab) runs it; the
   legacy tectonics path and the erosion-preset comparison grids still use it.
+
+## The GPU pass has a deadline (`gpu::simulate_gpu_or_cpu`, `--features gpu`; 2026-10-12)
+- Twice the GPU hydraulic pass stalled 40+ minutes (about a minute of CPU) waiting on the device
+  where reruns took ~70 s. It now runs on a worker; past `PLANET_GPU_TIMEOUT` seconds (240 by
+  default) it prints "GPU erosion stalled for N s; finishing it on the CPU instead" and the
+  rayon pass does the work (the stalled worker is left alone). `PLANET_GPU_TIMEOUT=0` forces the
+  fallback (checked on seed 5, 96x48, `--legacy-erosion`). Only the legacy erosion, legacy
+  tectonics and erosion grids run this pass, and only in a `--features gpu` build.

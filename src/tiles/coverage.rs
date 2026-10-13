@@ -33,6 +33,8 @@ pub fn creature(k: CreatureKind) -> &'static str {
         CreatureKind::Pet => "beasts::of_name + collar at beasts::neck_point",
         CreatureKind::CaveHunter => "beasts::of_name (cave hunter)",
         CreatureKind::CaveLife => "beasts::of_name (cave life)",
+        CreatureKind::Prowler => "beasts::of_name / of_monster (a predator, the raid's beast far off)",
+        CreatureKind::Scout => "folk::raider (the raid's band, one rider)",
     }
 }
 
@@ -255,11 +257,20 @@ pub fn tree(t: TreeKind) -> &'static str {
     match t { TreeKind::Broadleaf | TreeKind::Jungle => "scalloped crown", TreeKind::Conifer => "pointed fir", TreeKind::Palm | TreeKind::Acacia => "crown (local_ink::crown)", TreeKind::Dead => "bare dead tree", TreeKind::Fungus => "fungus stalk and cap" }
 }
 
+pub fn roof(r: crate::local::RoofStyle) -> &'static str {
+    use crate::local::RoofStyle as R;
+    match r {
+        R::Tiles => "local_ink roof: tile courses", R::Thatch => "local_ink roof: thatch bundles", R::Living => "local_ink roof: leaf clumps (ink::leafy)",
+        R::Woven => "local_ink roof: wicker over and under", R::Bone => "local_ink roof: hide on bone ribs", R::Crystal => "local_ink roof: facets with glints",
+        R::Metal => "local_ink roof: standing seams", R::Turf => "local_ink roof: turf clumps",
+    }
+}
+
 /// The table: (simulated type, kinds, drawn by). Lists every value of each type.
 pub fn table() -> Vec<(&'static str, String, String)> {
     let mut t: Vec<(&'static str, String, String)> = Vec::new();
     let mut add = |ty: &'static str, k: String, d: String| t.push((ty, k, d));
-    for k in [CreatureKind::Beast, CreatureKind::Raider, CreatureKind::Wolf, CreatureKind::Game, CreatureKind::Trader, CreatureKind::Pet, CreatureKind::Besieger, CreatureKind::CaveHunter, CreatureKind::CaveLife] { add("CreatureKind", format!("{:?}", k), creature(k).into()); }
+    for k in [CreatureKind::Beast, CreatureKind::Raider, CreatureKind::Wolf, CreatureKind::Game, CreatureKind::Trader, CreatureKind::Pet, CreatureKind::Besieger, CreatureKind::CaveHunter, CreatureKind::CaveLife, CreatureKind::Prowler, CreatureKind::Scout] { add("CreatureKind", format!("{:?}", k), creature(k).into()); }
     use ProjectKind as P;
     for k in [P::Woodpile, P::DryingRack, P::SecondHut, P::Palisade, P::Windbreak, P::Smokehouse, P::Woodshed, P::Lookout, P::Fence, P::Mending, P::Storehouse, P::Workshop, P::Field, P::Jetty, P::Well, P::DugHall, P::Cellar, P::Mine, P::Temple, P::Lining, P::Still, P::Traps, P::LordsHall, P::CaveFarm, P::Tavern, P::Pen, P::DeepShaft, P::GuildHall, P::Kitchen, P::Library, P::Bedrooms, P::GreatHall, P::Tombs, P::Moat, P::Workshops, P::Hatch, P::Drawbridges, P::MasonShop, P::CarpenterShop, P::Smelter, P::Forge, P::Kiln, P::StoneCut] { add("ProjectKind", format!("{:?}", k), project(k).into()); }
     for k in [RoomKind::Hall, RoomKind::Cellar, RoomKind::Bedroom, RoomKind::GreatHall, RoomKind::Corridor, RoomKind::Tomb, RoomKind::Workshop, RoomKind::Farm, RoomKind::Mason, RoomKind::Carpenter, RoomKind::Smelter, RoomKind::Forge, RoomKind::Kiln] { add("RoomKind", format!("{:?}", k), room(k).into()); }
@@ -285,6 +296,7 @@ pub fn table() -> Vec<(&'static str, String, String)> {
     for k in [Shape::Empty, Shape::Floor, Shape::Ramp, Shape::Wall, Shape::Stair] { add("Shape", format!("{:?}", k), shape(k).into()); }
     for k in [TreeKind::Broadleaf, TreeKind::Conifer, TreeKind::Jungle, TreeKind::Palm, TreeKind::Acacia, TreeKind::Dead, TreeKind::Fungus] { add("TreeKind", format!("{:?}", k), tree(k).into()); }
     for k in [Plant::None, Plant::Grass, Plant::Shrub, Plant::Crop(0)] { add("Plant", format!("{:?}", k), plant(k).into()); }
+    { use crate::local::RoofStyle as R; for k in [R::Tiles, R::Thatch, R::Living, R::Woven, R::Bone, R::Crystal, R::Metal, R::Turf] { add("RoofStyle", format!("{:?}", k), roof(k).into()); } }
     for f in feels() { add("Feel", format!("{:?}", f).split([' ', '{']).next().unwrap_or("").to_string(), format!("status_ink::{:?} icon in the ledger", feel(&f))); }
     for g in super::glyphs::Glyph::ALL { add("Glyph", format!("{:?}", g), "glyphs::draw".into()); }
     t

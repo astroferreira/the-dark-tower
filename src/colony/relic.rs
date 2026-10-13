@@ -82,7 +82,10 @@ pub fn describe(a: &crate::history::objects::artifacts::Artifact) -> String {
 pub fn lost_near(h: &WorldHistory, tile: (usize, usize)) -> Option<Relic> {
     let w = h.tile_history.width.max(1);
     let mut best: Option<(usize, Relic)> = None;
-    let mut arts: Vec<_> = h.artifacts.values().filter(|a| a.lost && !a.destroyed).collect();
+    // (Debug: PLANET_FORCE_RELIC=1 also takes things not lost, nearest first at any distance,
+    // whose owners stand: since hard times the dev world's lost things have all been found again.)
+    let force = std::env::var("PLANET_FORCE_RELIC").is_ok();
+    let mut arts: Vec<_> = h.artifacts.values().filter(|a| (a.lost || force) && !a.destroyed).collect();
     arts.sort_by_key(|a| a.id);
     for a in arts {
         // The loss, and the last place its last holder was seen.
@@ -96,14 +99,19 @@ pub fn lost_near(h: &WorldHistory, tile: (usize, usize)) -> Option<Relic> {
         }).or(a.creation_location);
         let Some(place) = place else { continue };
         let d = dist(place, tile, w);
-        if d > 6 || best.as_ref().map_or(false, |(bd, _)| *bd <= d) { continue; }
+        let forced = force;
+        if (d > 6 && !forced) || best.as_ref().map_or(false, |(bd, _)| *bd <= d) { continue; }
         // Its last owners: a people, or a person's people.
         let owner = a.owner_history.last().map(|o| o.0.clone());
         let owners = match owner {
             Some(EntityId::Faction(f)) => Some(f),
             Some(EntityId::Figure(f)) => h.figures.get(&f).and_then(|f| f.faction),
             _ => None,
-        }.filter(|f| h.factions.get(f).map_or(false, |x| x.is_active()));
+        }.filter(|f| h.factions.get(f).map_or(false, |x| x.is_active()))
+            // Its owners' people fallen, the people now holding the town where it was made claim it.
+            .or_else(|| a.creation_location.and_then(|loc| h.settlements.values().find(|t| !t.is_destroyed() && t.location == loc).map(|t| t.faction))
+                .filter(|f| h.factions.get(f).map_or(false, |x| x.is_active())));
+        if forced && owners.is_none() { continue; }
         let owners_name = owners.and_then(|f| h.factions.get(&f)).map(|f| f.name.clone()).unwrap_or_default();
         let owners_iron = owners.and_then(|f| h.factions.get(&f)).map_or(false, |fac| {
             use crate::history::civilizations::economy::ResourceType as R;

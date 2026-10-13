@@ -66,7 +66,7 @@ fn pack(c: Rgb) -> u32 {
 fn wash(c: &crate::local::Cell) -> Rgb {
     let grassy = matches!(c.plant, Plant::Grass | Plant::Shrub | Plant::Tree(_));
     match c.material {
-        Material::Soil | Material::Clay if grassy => [170.0, 174.0, 120.0],
+        Material::Soil | Material::Clay if grassy => super::ink::leafy_by([170.0, 174.0, 120.0], super::ink::GRASS_LEAVES),
         Material::Soil => [182.0, 160.0, 120.0],
         Material::Clay => [186.0, 150.0, 118.0],
         Material::Sand => [226.0, 206.0, 156.0],
@@ -85,7 +85,7 @@ fn wash(c: &crate::local::Cell) -> Rgb {
 
 /// A stone's wash: granite a pinkish grey, basalt dark slate, sandstone ochre, limestone cream,
 /// shale a blue-grey, loose sediment buff.
-fn rock_wash(r: crate::erosion::materials::RockType) -> Rgb {
+pub(crate) fn rock_wash(r: crate::erosion::materials::RockType) -> Rgb {
     use crate::erosion::materials::RockType as R;
     match r {
         R::Granite => [184.0, 164.0, 156.0],
@@ -101,6 +101,11 @@ fn rock_wash(r: crate::erosion::materials::RockType) -> Rgb {
 /// Crown radius (cells, 2 m each) and wash. A broadleaf crown is ~4 m across, a fir ~3 m:
 /// drawn flat like the world map's tree symbols, so neighbours touch rather than pile up.
 fn crown(kind: TreeKind) -> (f32, Rgb) {
+    let (r, c) = crown_plain(kind);
+    (r, if matches!(kind, TreeKind::Dead | TreeKind::Fungus) { c } else { super::ink::leafy(c) })
+}
+
+fn crown_plain(kind: TreeKind) -> (f32, Rgb) {
     match kind {
         TreeKind::Broadleaf => (0.95, [132.0, 150.0, 92.0]),
         TreeKind::Conifer => (0.75, [112.0, 134.0, 96.0]),
@@ -214,7 +219,7 @@ impl<'a> View<'a> {
             let (tx, ty) = ((k % w) as i64, (k / w) as i64);
             let (r, col, conifer) = match floor_of(k).plant {
                 Plant::Tree(kind) => { let (r, col) = crown(kind); (r, col, kind == TreeKind::Conifer) }
-                Plant::Shrub => (0.55, [140.0, 154.0, 100.0], false),
+                Plant::Shrub => (0.55, super::ink::leafy([140.0, 154.0, 100.0]), false),
                 _ => return None,
             };
             // Size and centre jitter per tree, keyed on its cell.
@@ -752,11 +757,48 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
         }
         let (px, py) = (fx - r.cx, fy - r.cy);
         let across = px * -r.axis.1 + py * r.axis.0;
-        let tiles: Rgb = if r.stone { [172.0, 98.0, 72.0] } else { [190.0, 164.0, 104.0] };
-        let mut k = mix(tiles, PAPER, 0.05 * (mottle(fx, fy, 1.5, 95) - 0.5));
-        // Courses parallel to the ridge (tiles or thatch bundles).
-        let course = if r.stone { 0.5 } else { 0.33 };
-        if (across.abs() / course).fract() < line / course * 0.9 { k = mix(k, INK, 0.3); }
+        let along = px * r.axis.0 + py * r.axis.1;
+        use crate::local::RoofStyle as R;
+        let base: Rgb = match r.style {
+            R::Tiles => [172.0, 98.0, 72.0], R::Thatch => [190.0, 164.0, 104.0],
+            // A canopy of growing leaves (the star's leaf colour: `ink::leaves`).
+            R::Living => super::ink::leafy([96.0, 134.0, 72.0]),
+            R::Woven => [182.0, 150.0, 98.0], R::Bone => [226.0, 214.0, 190.0], R::Crystal => [176.0, 212.0, 214.0],
+            R::Metal => [140.0, 148.0, 160.0], R::Turf => super::ink::leafy([128.0, 140.0, 94.0]),
+        };
+        let mut k = mix(base, PAPER, 0.05 * (mottle(fx, fy, 1.5, 95) - 0.5));
+        match r.style {
+            // Courses parallel to the ridge (tiles or thatch bundles).
+            R::Tiles | R::Thatch => {
+                let course = if r.style == R::Tiles { 0.5 } else { 0.33 };
+                if (across.abs() / course).fract() < line / course * 0.9 { k = mix(k, INK, 0.3); }
+            }
+            // Leaves in clumps, darker between them, a few pale ones catching the light.
+            R::Living | R::Turf => {
+                let m = mottle(fx * 2.3, fy * 2.3, 1.0, 97);
+                k = mix(k, INK, 0.25 * (0.5 - m).max(0.0) * 2.0);
+                if r.style == R::Living && m > 0.78 { k = mix(k, PAPER, 0.35); }
+            }
+            // Wicker: strands crossing at a slant, over and under.
+            R::Woven => {
+                let (a, b) = ((along + across) * 3.0, (along - across) * 3.0);
+                let over = (a.floor() as i64 + b.floor() as i64) % 2 == 0;
+                if (if over { a } else { b }).fract() < 0.18 { k = mix(k, INK, 0.35); }
+            }
+            // Hides stretched on ribs of bone: pale ribs across the ridge, hide sagging between.
+            R::Bone => {
+                let rib = (along / 0.7).fract();
+                if rib < 0.12 { k = mix([240.0, 232.0, 214.0], INK, 0.15); } else { k = mix(k, [176.0, 150.0, 118.0], 0.35 * (rib - 0.5).abs()); }
+            }
+            // Facets of crystal, each a pane with a pale glint on its lit edge.
+            R::Crystal => {
+                let (a, b) = ((along * 1.6).fract(), (across.abs() * 1.6).fract());
+                if a < 0.08 || b < 0.08 || (a - b).abs() < 0.05 { k = mix(k, INK, 0.3); }
+                if a > 0.1 && a < 0.22 && b > 0.1 { k = mix(k, [250.0, 252.0, 250.0], 0.6); }
+            }
+            // Standing seams of beaten metal across the ridge.
+            R::Metal => { if (along / 0.45).fract() < 0.1 { k = mix(k, INK, 0.35); } }
+        }
         // The slope facing away from the light (bottom right) is hatched.
         let normal = (-r.axis.1, r.axis.0);
         let away = (normal.0 * SHADOW.0 + normal.1 * SHADOW.1) * across > 0.0;
@@ -827,7 +869,7 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
         // Furrows across the field.
         let rows = if k % 2 == 0 { fy } else { fx };
         if (rows * 2.0).fract() < line * 2.0 { c = mix(c, INK, 0.3); }
-        c = mix(c, [204.0, 190.0, 128.0], 0.4);
+        c = mix(c, super::ink::leafy_by([204.0, 190.0, 128.0], super::ink::GRASS_LEAVES), 0.4);
     }
     match v.map.features[(cy as usize) * v.map.width + cx as usize] {
         Feature::Trail => c = mix(c, [190.0, 166.0, 126.0], 0.55),
@@ -881,6 +923,20 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
             c = [182.0, 174.0, 160.0];
             if dx + dy > 0.3 && hatch(3) { c = mix(c, INK, 0.5); }
             if r > 1.0 - line * 3.0 { c = mix(c, INK, 0.85); }
+        }
+    }
+
+    // A rock face (card 'Mountains at human scale'): pale where it faces the light (north-west),
+    // hatched where it falls away from it, as the world map inks its ranges.
+    if matches!(top, Top::Ground) && roof == 0 && matches!(floor.material, Material::Rock(_)) {
+        let gx = (v.sz(cx + 2, cy) - v.sz(cx - 2, cy)) as f32;
+        let gy = (v.sz(cx, cy + 2) - v.sz(cx, cy - 2)) as f32;
+        // (Two levels or more across four cells: a face, not a plain's bare rock.)
+        if gx.abs() + gy.abs() >= 2.0 {
+            // +1 faces the light, -1 away from it.
+            let lit = (gx + gy) / (gx.abs() + gy.abs());
+            if lit < 0.0 { c = mix(c, INK, if hatch(3) { 0.12 + 0.3 * -lit } else { 0.05 }); }
+            else { c = mix(c, PAPER, 0.25 * lit); }
         }
     }
 
@@ -1298,7 +1354,7 @@ fn draw_figure(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony::
     let glyph = |put: &mut dyn FnMut(i64, i64, Rgb, f32), gl: super::glyphs::Glyph| super::glyphs::draw(put, gl, gx + g * 0.6, gy + g * 0.6, (g * 1.7).max(7.0), None);
     use super::glyphs::Glyph as Gl;
     match (s.job, s.carrying) {
-        _ if watch || matches!((s.job, s.carrying), (Job::Hunt(_), None)) => glyph(put, Gl::Spear),
+        _ if watch || colony.melee_fighting(i) || matches!((s.job, s.carrying), (Job::Hunt(_), None)) => glyph(put, Gl::Spear),
         (job, Some(kind)) => {
             // What they carry, as its glyph (the load's own kind: berries, a fish, a log...).
             let stuff = match job { Job::Haul(k) => colony.items.get(k).map(|it| it.what), _ => None }.unwrap_or(crate::colony::Stuff::of(kind));
@@ -1672,6 +1728,34 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
             put(xx, yy, if edge { INK } else if step { mix([60.0, 52.0, 48.0], INK, v) } else { mix([120.0, 108.0, 94.0], [40.0, 34.0, 32.0], v) }, 0.95);
         } }
     }
+    // The ways into the places in the hills (card 'The unknown is blank'): a dark opening framed
+    // by its kind (an old working's timbers, a tomb's or a hall's stone lintel, a lair's bones),
+    // two cells across; the dark behind is blank until someone goes in.
+    for pl in colony.map.places.iter() {
+        let Some(m) = pl.mouth else { continue };
+        use crate::local::places::PlaceKind;
+        let (px, py) = to_screen(m.0 as f32 - 0.5, m.1 as f32 - 0.5);
+        let s2 = 2.0 * t;
+        for yy in py as i64..(py + s2).ceil() as i64 { for xx in px as i64..(px + s2).ceil() as i64 {
+            let (u, v) = ((xx as f32 - px) / s2, (yy as f32 - py) / s2);
+            // An arch: a half-ellipse standing on the ground line.
+            let (ex, ey) = ((u - 0.5) / 0.34, (v - 0.82) / 0.62);
+            let r = (ex * ex + ey * ey).sqrt();
+            let inside = r < 1.0 && v < 0.82;
+            let rim = (r - 1.0).abs() < 0.12 && v < 0.84;
+            let line = 1.2 / s2;
+            match pl.kind {
+                PlaceKind::OldMine if ((u - 0.14).abs() < 0.05 || (u - 0.86).abs() < 0.05) && v > 0.18 && v < 0.86 => put(xx, yy, [150.0, 110.0, 70.0], 0.95),
+                PlaceKind::OldMine if (v - 0.2).abs() < 0.05 && u > 0.1 && u < 0.9 => put(xx, yy, [150.0, 110.0, 70.0], 0.95),
+                PlaceKind::Tomb | PlaceKind::Halls if (v - 0.16).abs() < 0.07 && u > 0.08 && u < 0.92 =>
+                    put(xx, yy, if (v - 0.16).abs() > 0.07 - line { INK } else { [204.0, 196.0, 178.0] }, 0.95),
+                PlaceKind::Lair if (v - 0.9).abs() < 0.04 && ((u * 7.0).fract() < 0.5) && (u - 0.5).abs() < 0.45 => put(xx, yy, [232.0, 224.0, 204.0], 0.95),
+                _ if rim => put(xx, yy, INK, 0.9),
+                _ if inside => put(xx, yy, mix([46.0, 40.0, 38.0], [20.0, 18.0, 18.0], v), 0.95),
+                _ => {}
+            }
+        } }
+    }
     if let Some(m) = colony.delve_mouth.filter(|_| colony.spine.is_some() && colony.projects.iter().any(|p| matches!(p.kind, crate::colony::projects::ProjectKind::Mine | crate::colony::projects::ProjectKind::DeepShaft))) {
         let sp = colony.spine.unwrap();
         let at = if colony.map.cell(sp.at.0 as usize, sp.at.1 as usize, colony.map.surface_z[sp.at.1 as usize * colony.map.width + sp.at.0 as usize].max(0) as usize).shape == crate::local::Shape::Stair { sp.at } else { m };
@@ -1732,6 +1816,16 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
     let scale = (t / 16.0).clamp(0.55, 1.4);
     let mut under_roof: Vec<((u16, u16), usize)> = Vec::new();
     let mut labels = Vec::new();
+    // A way in: its name once found, "unexplored" while the dark behind it is unknown.
+    if t >= 9.0 {
+        for (k, pl) in colony.map.places.iter().enumerate() {
+            let Some(m) = pl.mouth else { continue };
+            let known = colony.mouths_seen.contains(&k) || colony.places_found.contains(&k);
+            if !known { continue; }
+            let (x, y) = to_screen(m.0 as f32 + 0.5, m.1 as f32 - 0.6);
+            labels.push((x, y, if colony.places_found.contains(&k) { pl.name.clone() } else { "unexplored".to_string() }));
+        }
+    }
     let looks = settler_looks(colony, history);
     let mut below = 0;
     for (i, s) in colony.settlers.iter().enumerate() {
@@ -2273,7 +2367,8 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
     for (k, pl) in colony.map.places.iter().enumerate() {
         if reveal || colony.places_found.contains(&k) || pl.mouth.is_none() { continue; }
         let sz_of = |c: (u16, u16)| colony.map.surface_z[c.1 as usize * colony.map.width + c.0 as usize];
-        let hidden: Vec<((u16, u16), i32)> = pl.cells.iter().filter(|(c, z)| (*z == cam.z || *z + 1 == cam.z) && *z < sz_of(*c) - 1).copied().collect();
+        // (Cells someone has walked past are known: `Colony::revealed`.)
+        let hidden: Vec<((u16, u16), i32)> = pl.cells.iter().filter(|(c, z)| (*z == cam.z || *z + 1 == cam.z) && *z < sz_of(*c) - 1 && !colony.revealed.contains(&(*c, *z))).copied().collect();
         // (And the rock beside them, whose inked edges would trace the place's shape.)
         let mut cover: Vec<((u16, u16), i32)> = hidden.clone();
         for &(c, z) in &hidden { for dy in -1i32..=1 { for dx in -1i32..=1 {
@@ -2546,8 +2641,9 @@ fn disc_a(put: &mut dyn FnMut(i64, i64, Rgb, f32), a: f32, cx: f32, cy: f32, r: 
 /// is described, game, herds, pets and cave life by their names, the dead and the cursed.
 pub(crate) fn creature_look(colony: &crate::colony::Colony, c: &crate::colony::creatures::Creature) -> super::beasts::Look {
     use crate::colony::creatures::CreatureKind;
-    if c.kind == CreatureKind::Beast {
+    if c.kind == CreatureKind::Beast || c.kind == CreatureKind::Prowler && colony.foes_seen.iter().any(|f| f.0 == c.name) {
         let monster = colony.arc.as_ref().filter(|a| a.threat.name == c.name).and_then(|a| a.threat.monster.as_ref())
+            .or_else(|| colony.foes_seen.iter().find(|f| f.0 == c.name).map(|f| &f.1))
             .or_else(|| colony.map.caverns.iter().filter_map(|cv| cv.beast.as_ref()).find(|(n, _)| *n == c.name).map(|(_, m)| m))
             .or_else(|| colony.expedition.as_ref().and_then(|e| e.monster.as_ref()));
         if let Some(m) = monster { return super::beasts::of_monster(m); }
@@ -2580,9 +2676,9 @@ fn draw_creature(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony
     let (left, pose) = creature_motion(c);
     let left = if c.leaving { !left || c.path.is_empty() } else { left };
     match c.kind {
-        CreatureKind::Raider | CreatureKind::Besieger => {
-            let threat = colony.arc.as_ref().map(|a| &a.threat).filter(|t| t.name == c.name);
-            let f = super::folk::raider(threat, &c.name, c.id, history);
+        CreatureKind::Raider | CreatureKind::Besieger | CreatureKind::Scout => {
+            let threat = colony.arc.as_ref().map(|a| &a.threat).filter(|t| t.name == c.name || c.kind == CreatureKind::Scout);
+            let f = super::folk::raider(threat, threat.map_or(&c.name, |t| &t.name), c.id, history);
             // Striking when a settler is within reach.
             let near = colony.settlers.iter().any(|s| s.alive && (s.pos.0 as i32 - c.pos.0 as i32).abs() <= 1 && (s.pos.1 as i32 - c.pos.1 as i32).abs() <= 1);
             let strike = near && (colony.clock.tick / 3 + c.id as u64) % 2 == 0;

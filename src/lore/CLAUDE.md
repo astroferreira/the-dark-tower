@@ -62,6 +62,11 @@ Derived world lore: resources, landmarks, focal points, the journal and the bard
   people's founding is told once. Names with entries are linked via event participants.
   Search box and category chips filter the annals. Styled like the ink map (parchment, sepia,
   red year rubrics; dark theme).
+- Why (2026-10-12, card '"Why?" for any event'): every entry is anchored by its event
+  (`id="ev<id>"`) and one with a recorded cause ends "Because: <the cause> (<year>)", linked to
+  the cause's own entry when it has one (dev: 1264 of 1470 entries). The viewer's inspector has
+  the full chain (Because / It led to), the legends pages too, and the watcher's chronicle shows
+  two links of it on a card when an entry is hovered.
 
 ## The Shadow in the journal
 - A part of its own (before the tales): its name and lord now, a tally (towns taken or burned,

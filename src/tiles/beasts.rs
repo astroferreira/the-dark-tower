@@ -160,7 +160,7 @@ pub fn of_name(name: &str) -> Look {
     if has("rat") || has("mouse") { let mut l = Look::new(Base::Quad, [120.0, 108.0, 96.0], 0.35); l.quad = q(QUAD, |x| { x.body_rx = 0.5; x.body_ry = 0.24; x.leg = 0.14; x.neck = 0.06; x.neck_up = 5.0; x.head = 0.3; x.head_r = 0.11; x.snout = 0.35; x.ear = Ear::Round; x.tail = Tail::Long; x.hooves = false; }); return l; }
     // The night's dead and the cursed (they come as "wolves" in the simulation).
     if has("risen") || has("restless dead") { let mut l = Look::new(Base::Giant, [170.0, 176.0, 160.0], 1.0); l.parts |= part::SHAGGY; l.accent = [96.0, 92.0, 84.0]; l.eyes = Eyes::Two; l.glow = Some([150.0, 210.0, 190.0]); return l; }
-    if has("under the full moon") || has(", changed") || has("were") {
+    if has("under the full moon") || has("on the darkest night") || has(", changed") || has("were") {
         let mut l = Look::new(Base::Giant, [96.0, 84.0, 74.0], 1.25); l.parts |= part::SHAGGY | part::TAIL | part::MANE; l.glow = Some([230.0, 190.0, 80.0]); l.quad.ear = Ear::Point; l.quad.snout = 1.0; return l;
     }
     // Game, herds and pets.

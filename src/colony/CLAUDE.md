@@ -2,6 +2,13 @@
 
 The vertical slice of ROADMAP Update 3: settlers living on a playable area with no orders.
 
+- The Shadow is kept out of the camp by default (2026-10-12, card 'Switch off the Shadow's
+  impact for now'; `colony::shadow_in_camp`): no Shadow raiders in the arc, no darkness on the
+  tile, so no rising dead, evil weather, vampires drawn by it, possessions or tombs dug against
+  it. `--camp-shadow` or `PLANET_CAMP_SHADOW=1` lets it in (the tests of those systems do, via
+  `SHADOW` in `tests/colony.rs`). The world's history keeps its Shadow either way. Notes below
+  that quote dev timelines under the Shadow (seeds 11, 58, 5) are with it let in.
+
 - `Colony::found(map, names, seed)` takes ownership of a `LocalMap`, makes camp on the dry, flat,
   open ground nearest the centre (stockpile and fire), picks a flat 6x5 hut site nearby, and
   starts with two days of food. One tick = one game minute (`TICKS_PER_DAY` 1440); the clock
@@ -163,8 +170,10 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   seven). Under 0.4x: refused with the reason (Enter: "no camp here: too little to eat within
   reach ... ; walk on"; the walking site line starts "NO CAMP:"; the trials print it); under
   1.2x: founded, but the status and the site line say "hard: little to eat within reach". Dev
-  76: good sites give 100-220 meals a day; the mountain 48,18 and crater 28,38 give 0 (all nine
-  starved by day 6 before; tested). When settlers starve with nothing in reach the log says so;
+  76: good sites give 100-220 meals a day; the mountain 48,18 and crater 28,38 gave 0 (all nine
+  starved by day 6 before; tested). Since the mountains got their living (2026-10-12, see
+  `src/local/CLAUDE.md`) 48,18 feeds a camp and the test's doomed site is 46,38; 28,38's crater
+  shore is "hard". When settlers starve with nothing in reach the log says so;
   refugees don't come to an empty camp; the last death ends it ("X was the last. The camp fell
   on day 6, to hunger.", a moment). The site report itself (`local/site.rs`) still counts the
   whole map and the furnished extras.
@@ -197,7 +206,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   because, the old camp left as a mark; at most once in five days); if nowhere gives 0.4x, they
   give the land up and leave (`depart`, `Colony::departed`; the colony stops). `--sim-move N`
   strips the berries within 45 cells of the camp: dev 18,30, 30,38 and 6,6 all move on day 1
-  and live; `PLANET_FORCE_CAMP=1 --sim-projects` camps on refused sites: 48,18 and 28,38 leave on
+  and live; `PLANET_FORCE_CAMP=1 --sim-projects` camps on refused sites: 48,18 (now 46,38) and 28,38 leave on
   day 1 with 7 of 7 alive; tested. Illness from the cold now lasts a day and a settler is
   hardened for three days after (a bitter first night had made everyone ill again and again);
   the fire's shelter is 0.8.
@@ -340,8 +349,18 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   done. The raid breaks the palisade where it came in (`break_palisade`: the ring within ~4
   cells of the clash; `Colony::breach`), and mending the breach is the first work after
   ("the raid of day 9 broke the palisade at 104,87", urgency 4), closed in stone where stone is
-  in reach ("They close the breach ... in stone this time"). Not done: a hut grown into a hall
-  instead of a twin, a rack becoming a smokehouse.
+  in reach ("They close the breach ... in stone this time"). Since 2026-10-12 buildings grow:
+  with more settlers than beds the first hut is lengthened into a hall where its east or west end
+  allows (`lengthen_site`: a hut's length sharing its end wall, three cells clear of the fire,
+  off digs and works, astride the palisade's ring at most (a stake may be built over: the
+  palisade skips the hut's footprints and the hall's walls close the ring), the ground within a
+  level), else a second hut as before; when it stands the shared wall comes down and one roof
+  runs the length (`join_to_hut`; "The hut is lengthened into a hall: 12 beds under one roof", a
+  moment the first time). The woodpile and woodshed stand past the hall's east end
+  (`hall_east`). A smokehouse is raised over the drying rack where it stands (`rack_site`: "The
+  drying rack is walled and roofed: it is a smokehouse now"; the rack is no longer drawn).
+  Halls on 12 of 13 dev seeds by day 100; tested (`the_hut_grows_into_a_hall`). A hall raised
+  over the fire had walled in the store and starved the dev camp: hence the fire's margin.
 - A village of their own making (partly): lots follow a plan (`find_site`): within 14 cells of
   the fire, along the camp's lane (`Colony::lane`: toward the nearest water, else the map's
   centre), behind the fire costing more; blessed ground first (-30), forbidden never; a fixed
@@ -349,9 +368,18 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   the ground (`Colony::steps`): walkers prefer worn cells (`nav::path_worn`, up to 35% cheaper),
   and tracks (15+ steps) and lanes (120+) are inked; dev 30 days: 273 track cells, 44 lane
   cells, mostly the yard. `--sim-plan`: blessing a meadow on day 3 puts 6 of the next 10
-  buildings on it; forbidding the east leaves 0 there; tested. Not done: the wall following the
-  ground (rivers, cliffs), fields on the best soil, the tower on the highest cell, stages by
-  heads, the survey-line key; tracks show little at 6 px.
+  buildings on it; forbidding the east leaves 0 there; tested. Since 2026-10-12: the wall follows
+  the ground (`ground_walls`: no stake where water or a drop of two levels lies between the fire
+  and the ring; "Where the river or the drop of the land lies between them and the ring, they
+  leave the wall to it"; dev 48,8 and 45,13), fields seek the bottomland and deep soil
+  (`flood.rs`), the lookout the highest lot (`purpose_cost`), stages by heads (`reckon_stage`:
+  camp; a hamlet at four buildings within a fence or wall; a village at fifteen souls with a
+  well, a worn lane and a wall with gates; the camp card names it, "The hamlet at 45,12"), and Y
+  draws the plan as survey lines (`fx_ink::draw_plan`: the wall's ring in red with its gates and
+  ground-walled stretches open, the lane toward the water, each lot dashed: red to rise, sepia
+  standing). No lot or hall is laid on water any more (one may wade a level, but the hall's
+  extension and the woodpile had stood in the river at 48,8). Tested
+  (`the_village_follows_its_ground`).
 - Each people builds its own way (`data/defaults/building_ways.json`, `projects::BuildWay`,
   `build_way`, `adopt_way`; set by `viewer::found_colony` from the first settler's people's race):
   per race, works that come sooner (x1.6 urgency) and later (x0.5), stone before timber (only
@@ -361,8 +389,12 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   halflings: field and store early, wall last; humans: fields and roofs first, wall last. The
   line is logged at founding. `--sim-ways` settles the dev site as dwarves, elves, orcs and
   humans: four orders of works, elves leave 0 stumps inside the wall (others ~100), frames 10-28%
-  apart; tested. Adding a people is an edit to the JSON. Not done: the dwarves' hall dug into a
-  hillside (z-levels), halfling burrows, elves building against the trunks.
+  apart; tested. Adding a people is an edit to the JSON. Since 2026-10-12: a people whose way
+  starts with "DugHall" (dwarves) digs its hall into the hill before all else where there is a
+  hillside (x2.5: "their hall goes into the hill, as their people's always have"; dev seed 5:
+  the dwarves' first work, tested), halflings burrow (DugHall early), and a people who keep the
+  trees (elves) build against the trunks (lots with trees along their sides score up to 14
+  better). `--sim-ways` frames now differ 21-43% between peoples.
 - A watch post the patron blessed adds 0.1 to readiness (a keener watch), so care counts where
   the watch is kept every night anyway (after the Shadow's shapes changed the dev worlds: careful
   changes 4 of 6 raids).
@@ -554,8 +586,11 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   refusals to hear. Tested (`news_comes_as_its_teller_tells_it`).
 - Under the full moon (`curse.rs`, DF's werebeasts): `found_colony` takes the nearest living
   legendary beast with Shapeshifting (its own or its species') laired within 8 tiles as `were`
-  (`PLANET_FORCE_WERE=<name>` forces one; `--bestiary` marks shapeshifters). Every 28th day
-  (day % 28 == 14) at 21:00 it comes as a wolf-like hunter named "<beast> under the full moon";
+  (`PLANET_FORCE_WERE=<name>` forces one; `--bestiary` marks shapeshifters). Once a month, on
+  its middle day at 21:00 (`full_moon`: day % m == m / 2, m = `LocalSky::month_days`, 28 under
+  the Sun, else the night moon's synodic month in days, 6-60), it comes as a wolf-like hunter
+  named "<beast> under the full moon" (with no moon seen as a disc, `LocalSky::moonless`:
+  "<beast> on the darkest night", "The darkest night of the month falls...", every 28 days);
   it spawns 30 cells out, paths widely (30,000 nodes, round the palisade to a gate) and, bolder
   than wolves, bites whoever it reaches, roof or company notwithstanding, before it is driven off
   ("Ashiel the Ancient breaks into the camp and bites X"); its bite curses ("X's bite heals
@@ -1454,7 +1489,8 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   (or it is ice) and food short, fishers go below ("fishing the still water of the first cavern,
   15 levels down"; the catch carried up to the mouth; "the first blind white fish").
   `PLANET_FORCE_CAVERN=1` sends fellers and fishers below whenever a cavern is open (the dev
-  camps have both near; seed 23 fishes below from day 21). The long climb means meals and sleep often cut
+  camps have both near; seed 23 fishes below from day 21), and weighs the cavern's water double
+  (the berries by the fire had kept every fisher above on 16 seeds). The long climb means meals and sleep often cut
   a trip short. Tested (`fungus_trees_are_felled_in_the_cavern`).
 - Furniture (`furnish_option`, `finish_furniture`, `Room::furnished`; DF's beds and tables make
   a dug space a room): by day one maker at a time (a hand who likes making things, or the camp's
@@ -1865,3 +1901,217 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   `spare` (charcoal and bars first: the stricter rule had starved the smelter and armour came
   late). `PLANET_DEBUG_STONE=1` prints the store, the nearest quarry stone and the work under
   way each dawn. Sixteen camps x 200 days: the longest gap between works 13-26 days.
+
+## The sky over the camp (`astro::sky::LocalSky`, `LocalMap::sky`; 2026-10-12)
+- The embark's sky comes from the world's star system (`StarSystem::local_sky(lat, lon)`, set in
+  `local::generate_local`): season lengths in colony days (the colony's 120-day reckoning scaled
+  by the world's year, 40-480 days, split by the orbit's season shares: an eccentric orbit's
+  short and long seasons), the solar day, and on a locked world the sun's fixed height there.
+  Under the Sun it is `LocalSky::earth` (four 30-day seasons, `earth: true`), and the colony is
+  bit-identical (dev 120-day log diffed against `main`).
+- Settlers keep their 24-hour rhythm: `Clock::is_night`, sleep, the rest hours and every night
+  rule are unchanged. The light follows the sun (`Colony::darkness`): by its height (hour angle
+  over the solar day, the season's declination, the site's latitude; twilight from 4 above the
+  horizon to 8 below), so a 600-hour day keeps the camp lit for many of the settlers' days, the
+  polar night stays dark, and a locked world's day side is never dark, its night side never lit.
+- Seasons read the sky: `Colony::season`, `days_to_winter`, the turn of the season (dawn line,
+  festival, guild feast, woods regrowing), the first year, rations' days to spring, the field's
+  harvest at autumn's start and its "days off". `Colony::sky_line` ("A day of 627 hours: the sun
+  sets in 34.") is under the date on the Camp tab. Seed 16's K dwarf (a 167-day year): a 55-day
+  colony year, autumn on day 29, winter on 43. `YEAR_DAYS` (ageing) stays the 120-day reckoning.
+
+## Threats seen by day (`prowl.rs`; card 'Monsters and threats roaming the surface', 2026-10-12)
+- The user (2026-10-08): no monsters roaming the surface, nor any threats. Now danger shows
+  itself before it strikes, drawn on the map and named in red (`CreatureKind::Prowler`, `Scout`):
+  - the tile's predators (`LocalMap::predators`: wolf, bear, lion over 0.05 of what the land
+    keeps, from `wildlife::apply`): on a day in ten to a day in three (by their density), at a
+    hashed hour 8-14, one comes from a den (wolves always from one if there is one) or in from 75
+    cells out, walks to 22-28 cells from the fire on the line from home, watches an hour or two
+    ("A bear watches the camp from among the trees to the south-west, 23 cells from the fire")
+    and goes home before dusk, or slinks off at once when a settler comes within 7 cells
+    ("Ghuug comes upon a bear 24 cells from the fire; it slinks off"). The first of each kind is
+    a moment ("Watched from the edge", because they live in these hills).
+  - the raid's scout two days before the raid (the day before its eve), at 8-10: a rider of the
+    band rides in from 64 cells out on the raid's side to 34, sits an hour and goes ("A rider sits
+    watching the camp from the east, 34 cells out: a scout from a war band of ...", a moment
+    "Watched"); a beast comes itself, to 42 cells, and turns away ("Seen far off").
+  - every 13th day at 11:00 a beast of a trouble still to come (`Arc::later` / `reserve`) crosses
+    the far half of the map on its lair's side, never within 40 cells ("Far off to the north,
+    Baelfang crosses the hills by daylight. It does not turn toward the camp."; a moment the
+    first time).
+- They strike no one and their ids come from their own range (`PROWL_IDS`), so the rest of the
+  colony is unchanged: the dev colony's 120-day log, the new lines taken out, is identical.
+- `--sim-snapshot` prints "Prowling: N sightings by day; the raid foreseen: Day D" and writes
+  `<prefix>_prowl.png` (a second founding lived until something stands watching). Dev 3: 12
+  sightings in 30 days, a bear on the frame; dev 76 (no predators): the raid's beast far off.
+  Tested (`threats_show_themselves_by_day`).
+
+## The raid fought on the map (`melee.rs`; card 'Raids that visibly fight', 2026-10-12)
+- The user (2026-10-08): "The raid is just a black blob that comes and does nothing." The raid
+  is still reckoned in one stroke where the attackers meet the camp (`raid_at`: who dies, who is
+  saved, the rout; the blows told by `fight.rs`), and is then fought there (`Colony::melee`,
+  begun at the end of `raid_at` when there was a clash and it was no sally; not after the exiles'
+  talk or a cage trap): 20 minutes for a rout, 35 for a rescue, 45 when someone died.
+- The defenders (the saviour, then the nearest grown hands on the surface within 40 cells, not
+  ill, not standing aside against their own people, as many as the band and one more) run to a
+  cell beside the attacker nearest them ("Running to meet ..."; drawn with a spear out) and the
+  blows fly between each attacker and the one at it (`fx_ink::draw_fights`, the raiders' strike
+  pose). The struck who lives falls back to the fire ("Falling back to the fire, struck down by
+  ..."), the saviour with them ("Dragging X back to the fire"); the young and old awake near it
+  hide indoors. The attackers hold their ground and step at a defender within four cells. Only
+  those in it reconsider (re-deciding everyone woke sleepers and dropped diggers' work, and
+  moved whole camps).
+- Then they break off: "A war band of X, led by Y, draws off toward the east, into the dark"
+  (won the night) or "... breaks and runs off toward ..." (routed), a beast "turns from the camp
+  and lopes off"; retreating attackers run (speed 2). A beast slain in the fight falls there and
+  is gone from the map (it had walked away dead).
+- Moving the defenders shifts later hours, so seed-pinned tests were re-pinned (breaks seed 8,
+  guild 1/2, places 58/3/4, thieves 14/3). Tested (`the_raid_is_fought_on_the_map`, seed 4:
+  every fought raid draws off 15-60 minutes after it began, someone ran to meet each, the rescue
+  of day 27 walked to the fire). `--sim-snapshot`'s `_clash.png` now shows the fight itself.
+
+## The floodplain and the spring flood (`flood.rs`; cards 'Rivers freeze and flood in game time', 'Fields on the floodplain, and spring floods', 2026-10-12)
+- Rivers already froze in game time (`reckon_ice`: no fishing until the thaw; the herds go to
+  their winter grounds). Bottomland (`bottomland`, reckoned once): dry ground no higher than a
+  level above a river's or lake's water (a body of 50+ cells: never a spring's pool, which had
+  flooded as a diamond), within 7-16 cells of it (rounded distances, the edge wandering with a
+  smooth noise). Roofed cells are never flooded.
+- The field: lots on bottomland score better (`purpose_cost`, up to 24) and the reason says so
+  ("(on the river's bottomland, where the silt is)"); it yields half again (`meals_a_row`: 3 a
+  row cell, 4 with seed grain).
+- The flood (`reckon_flood`, at dawn): ten frozen dawns or more make a hard winter; at the first
+  dawn after it, the water rises a level over the bottomland for six days (water 2 in the cells
+  over the floor; walked through at a cost), drowning a crop sown there, and when it stands in
+  the camp a third of the stored food lying in it spoils. It goes down leaving silt: the field is
+  sown again and gives a meal more a row that year ("(the flood's silt shows)"). The first flood
+  is a moment ("The spring flood").
+- No dev camp lies on a river (their water is spring pools), as the card said: the camps on the
+  dev world's rivers are on tiles 48,8, 45,13, 46,18, 51,18. `--sim-projects` now camps where the
+  game does (`colony_site`: on the world river's bank), not at the tile's middle. Dev 48,8: the
+  field on the bottomland (72 meals), a flood on day 121 after 30 frozen dawns (3,545 cells, the
+  field and the camp: 23 meals spoilt), silt, 96 meals. `PLANET_FLOOD_FRAME=FILE` with
+  `--sim-projects` draws the first flood; `PLANET_DEBUG_FLOOD=1` prints the water bodies.
+  Tested (`the_river_floods_the_bottomland`).
+
+## The unknown is blank, and someone has to go in (`explore.rs`; card 'The unknown is blank', 2026-10-12)
+- A place in the hills is no longer found by passing its mouth. Passing within three cells shows
+  the way in ("Ghuug comes on a door of fitted stone in the hillside at 60,120: no one knows what
+  lies inside"; `Colony::mouths_seen`), and on the second evening at 20:00 the eldest tells what
+  the old folk said of one place and which way it lies (`tell_of_places`, `Colony::rumoured`). A
+  way in on blessed ground is noticed at once.
+- Someone has to go in (`go_in_option`, from `explore_option`): by day (06:00-14:00), one at a
+  time, the bold: nerve = bravery + 20 for a veteran + (curiosity - 50) / 2 - (anxiety - 50) / 2,
+  58+ (45+ on blessed ground); never a child, a guest, the ill or badly wounded, nor a child of a
+  burned town (a survivor of 20 or under). Weight 0.2-0.7 by nerve, x3 blessed, x1.5 told of. The
+  why sets nerve against fear: "Going in by the mouth of a cave at 56,50 to see what lies there:
+  he has stood in battle, and the dark is only dark; the old folk spoke of it". The job is a
+  `Job::Wander` to the place's far end on its own level (`spot_level`, `place_far_level`).
+- The cells they walk past (three cells round, two levels) appear in the level view
+  (`Colony::revealed`; `local_ink::draw_delve` and the hover's `hidden_place` cover only the
+  rest); the find (`find_place`, as before: ore, hoard, a robbed or sealed tomb, gems, the halls)
+  is made at the far end, a card. Forbidden ground at the way in keeps everyone out, and they say
+  so, once in five days ("Thano looks toward the mouth of a cave at 56,50 and stays away: the
+  patron has forbidden that ground"; written from `decide` through `turned_away`).
+- Some do not come back (`Exploring::doomed`, by a hash, the place's danger x nerve: a living
+  beast's den 0.7, a tomb or an old working 0.3, a cave 0.25, a dead beast's den or fallen halls
+  0.15): past the place's middle they are gone (`alive` false, `away_until`, why "Lost in ...";
+  fate in the annals "lost in ..."). At 20:00 the camp misses them (a moment, everyone dreads it);
+  at the next dawn (`reckon_lost`) up to two go in after them, those who love them first whatever
+  their nerve (else nerve 45+), unless no one will or the speaker will not send more into a
+  living beast's den: found at the bottom of a fall with a broken leg and carried up, found dead
+  and buried, or never found (friends grieve as for a death); the searchers' finding is the
+  place's find. A place that kept someone is left alone twenty days.
+- Drawn: each way in on the surface as a dark arch two cells across, framed by its kind (an old
+  working's timbers, a tomb's or halls' stone lintel, a den's bones), lettered "unexplored" once
+  seen and by its name once found; the hover says what is known ("A way in: no one has gone in,
+  and no one knows what lies inside", who did not come back).
+- `--sim-explore PREFIX` lives the dev colony 20 days unattended, with the ways in forbidden and
+  blessed (dev 76: in on day 3 / never, 4 turned away / day 1) and writes `_mouth.png`,
+  `_blank.png`, `_walk.png`, `_found.png`. Twelve seeds x 150 days: seed 11's Skax is lost in the
+  undercroft of Ggagufang on day 3 and never found; seed 12's Gubuth is carried up with a broken
+  leg. Tested (`the_unknown_is_blank_until_someone_goes_in`). `armour_turns_blows` and
+  `skill_makes_roles` now try several seeds (the places moved their timelines again).
+
+## Dig too deep (card 'Dig too deep: every level is richer and nearer to what sleeps', 2026-10-12)
+- Every breach is foretold a day ahead (`dig.rs::signs_before`, `foretold`; `Colony::omens`):
+  before the cut that would open it, a sign is logged and shown as a card, and the dig is held
+  until the next morning (`dig_hold_until`): "The walls of a mine sweat 5 levels down: the stone
+  is damp to the hand..." (the aquifer), "X's pick rings hollow 15 levels down: there is open
+  dark close below, and a cold draught..." (each cavern), "The rock at the foot of the deep shaft
+  is warm to the hand..." (the magma sea), "Warm air breathes up the deep shaft from below the
+  adamantine..." (the day before the hollow, `reckon_hollow`). A dig coming within three cells of
+  a place not yet found turns up old tool marks (claw marks and bones by a den), and its way in
+  becomes known (`explore.rs`). Dev 76: water day 25 -> 26, the first cavern 28 -> 29, the
+  second 66 -> 67, warm rock 73 -> the magma 84, warm air 98 -> the hollow 99.
+- Forbidden ground stops the picks under it (`dig_reach` skips forbidden columns), and at dawn
+  the miners grumble at the ban once in five days, by what the last sign was ("...stands still
+  over forbidden ground, and they would rather line the shaft than leave it"; the greedy take it
+  as a `Feel::Mandate`; `reckon_dig_ban`).
+- Deeper is richer: past six levels a cut of rock may strike a seam, 3% a level past the sixth
+  (30% at most), of the embark's own commonest ore (`land_ore`), else iron in sedimentary rock and
+  copper in the rest; each ore cell gives a load more every twelve levels down. So camps that dig
+  now strike ore and the industries run without forcing (the old note "no dev seed strikes ore"
+  is out of date for deep digs).
+- A door at the stair head: the hatch (`seal_caverns`) as before; when the deep climbs out
+  through it and two spears (drilled 0.2+ or veterans) are at home, they hold it ("X and Y hold
+  the hatch at the head of the stair with spears, and it comes through the splinters onto their
+  points"; `Colony::hatch_held`, readiness +0.2, named in the tally; cleared at dawn).
+  `Colony::hatch_rule` (`PLANET_FORCE_HATCH=1` sets the hatch as soon as a cavern is open,
+  `PLANET_NO_HATCH=1` never). `Colony::mine_cap` holds every dig to so many levels (trials).
+- `--sim-depth` (100 days to 5 levels, to 15, and to 15 with the stair forbidden at the first
+  sign) and `--sim-hatch` (150 days without a hatch and with one set at once). Six dev seeds:
+  more ore at 15 levels on all six (dev 76: 0 -> 4 cells; seed 58: 0 -> 15), a breach only in the
+  deeper runs (5 of 6); forbidden at the sign, no breach after; the hatch changes what came of
+  the dark on 4 of 6 (dev 76: 18 hurt by what came up -> 0, the beast held at the hatch). Tested
+  (`digging_deeper_is_richer_and_foretold`); the still and tombs tests moved to seeds 1/23 and
+  58/15.
+
+## A small bestiary with causes (`bestiary.rs`; card 'A small bestiary with causes', 2026-10-12)
+- `Colony::bestiary` lists the kinds a camp can meet, each from the tile's own data with a cause,
+  one want, one fear and one sign: the named beast near its lair (the arc's first threat when it
+  is a beast: wants its hoard and its ground, fears a closed wall and many spears); the pack (the
+  tile's commonest predator, `Colony::pack`: wants meat, fears fire, tracks and a den); the
+  nameless dead (adopted "An old grave" marks of a battle fought on the tile, and on a bone field
+  the bones on the ground: `LocalMap::bone_field`; want a name and a burial); the Shadow's things
+  (darkness 0.2+ with the Shadow let into the camp: want to spread, cannot cross blessed ground);
+  a breached cavern's life; what sleeps in the deep ("something that sleeps in the deep" until it
+  wakes). At most the named beast and the pack are on the land from the first day; only the pack
+  prowls by day now (`prowl.rs`: one pack, not three kinds). `--sim-projects` prints
+  "Bestiary: ..."; the ledger's Camp tab has "What lives here"; the hover chip gives a prowler's
+  and the beast's cause and a wolf's want and fear.
+- Wolves fear fire: a wolf whose next step would come within six cells of the fire stops at the
+  edge of the firelight ("The wolves circle at the edge of the firelight, their eyes green in it,
+  and will not come nearer the fire", once; `wolves_fear_fire` in the creatures' step).
+- The nameless dead (`reckon_nameless`, `bury_option`, `bury_the_nameless`): from the fifth night,
+  one night in three at 23:30, "A pale soldier of the Battle of X walks among the old graves at
+  x,y in the night and sinks into the ground; Y saw it, and cannot sleep after" (the first a
+  moment; drawn as a pale spearman with a label while that night lasts, `fx_ink::draw_ghosts`).
+  After two such nights the one who holds the old ways dearest (else the pious, the speaker, the
+  eldest) means to give them a name and a burial, goes to their graves by day (1.2), gathers the
+  bones in and carves "The stone of the fallen of X"; the graves are retitled and the hauntings
+  end ("The nameless dead rest", a moment; everyone `Feel::Remembered`). Brolmdustoor Pass
+  (47,14): walked on days 6 and 14, named and buried on day 16. Tested
+  (`a_small_bestiary_with_causes`: six dev seeds start with at most two kinds, each with its
+  want, fear and sign; the pass's dead walk, rest, and walk no more; wolves turn from the fire).
+- Not done: the history's creature populations (none on the dev world) and a named beast's brood
+  as kinds of their own.
+
+## Re-pinned after hard times (2026-10-13)
+- Hard times (`history/hard_times.rs`) reshaped the dev world's history, and with it every dev
+  camp's days. Tests now pinned: armour 1/10/9 (forced ore), industries 9 (forced ore; spare bars
+  2/1), the Shadow's den and pyre 1/58, mourning and courting 5, peace 5/7, the call to war 7/5,
+  tombs 14 (250 days), the magma 12/9, the hatch 10/11, a lost explorer 4, an artifact 12 (madness
+  still 3), news 4, the dwarves' hall 19, roles 58/2/5/11/76. Tests that named the old history now
+  read it: the living beast's lair at 46,13 (Zaresh the Desolator, was Baelfang), the slain beast
+  dropped from the second camp (Ithon Plague-Bearer, was Fyron), the refugees' mark (their own fire
+  where no founder knew them).
+- `PLANET_FORCE_RELIC=1` (`relic::lost_near`): the nearest artifact at any distance, lost or not
+  (the dev world's lost things have all been found again), whose owners stand. Dev 76: the
+  Moonvale Mail, told of by the fire on day 1, found day 5; its real heir Thrazloss asks, is
+  refused and slips away with it; Titankeep's envoy finds it gone. A relic whose last owners'
+  people fell is now claimed by the people holding the town where it was made.
+- `PLANET_FORCE_PET_PREY=1` also brings the pet from anywhere, lets the wolves past the
+  firelight and leaves their den (pets are tamed after the camp has cleared it): seed 8's Tith is
+  dragged down on day 48. The inventory frame lays a stand-in relic when its camp has none.
+- The adventure bot's ask test asks about the nearest beast the home town has heard of
+  (`lore::town_has_heard`): the drunk tells only what the town heard.

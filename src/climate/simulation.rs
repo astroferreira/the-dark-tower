@@ -5,8 +5,10 @@
 
 use std::f32::consts::PI;
 use crate::tilemap::Tilemap;
-use super::ebm::{solve_energy_balance, SOLAR_CONSTANT, ELEVATION_LAPSE_RATE};
-use super::circulation::{calculate_pressure_field, calculate_surface_winds};
+use super::ebm::{solve_energy_balance, SeasonPoint, ELEVATION_LAPSE_RATE};
+use super::circulation::{calculate_pressure_field, calculate_surface_winds, Circulation};
+use super::forcing::PlanetForcing;
+use super::thermostat::{solve_air, AirState};
 use super::ocean::{
     calculate_ocean_currents, calculate_coastal_upwelling, calculate_sea_surface_temperatures,
     apply_maritime_influence,
@@ -43,6 +45,13 @@ pub struct ClimateSimulation {
     pub moisture_amplitude: Tilemap<f32>,
     /// Moisture phase offset (0 = wet summer, PI = wet winter / Mediterranean)
     pub moisture_phase: Tilemap<f32>,
+    /// What drove it: the star, orbit and spin, the air the thermostat settled on, the
+    /// circulation cells.
+    pub forcing: PlanetForcing,
+    pub air: AirState,
+    pub circulation: Circulation,
+    /// Each season's share of the year (equal unless the orbit is eccentric).
+    pub season_shares: [f32; 4],
 }
 
 impl ClimateSimulation {
@@ -71,6 +80,7 @@ pub fn run_climate_simulation(
     let height = heightmap.height;
 
     let axial_tilt_rad = config.axial_tilt_deg.to_radians();
+    let forcing = config.planet;
     let solar_const = config.solar_constant;
     let rain_mult = config.rainfall.moisture_multiplier();
     let rain_floor = config.rainfall.moisture_floor();
@@ -89,15 +99,27 @@ pub fn run_climate_simulation(
                 -axial_tilt_rad,
             ];
 
-            let itcz_shifts = [
+            let itcz_shifts = if forcing.locked.is_some() { [0.0f32; 4] } else { [
                 0.0f32,
                 axial_tilt_rad * 0.45,
                 0.0f32,
                 -axial_tilt_rad * 0.45,
-            ];
+            ] };
+
+            // An eccentric orbit: each season at its own distance from the star, and the seasons
+            // of unequal length (Kepler's second law) in the year's means.
+            let equal = forcing.legacy || forcing.eccentricity == 0.0;
+            let orbit = crate::astro::orbit::Orbit { semi_major_au: 1.0, eccentricity: forcing.eccentricity, perihelion_lon_deg: forcing.perihelion_lon.to_degrees(), period_days: 1.0 };
+            let season_flux = if equal { [1.0f32; 4] } else { orbit.season_flux() };
+            let season_shares = if equal { [0.25f32; 4] } else { orbit.season_shares() };
+            let (weights, norm) = if equal { ([1.0f32; 4], 4.0f32) } else { (season_shares, season_shares.iter().sum::<f32>()) };
+
+            // The circulation cells for the spin, and the air the carbonate-silicate cycle settles on.
+            let circ = Circulation::for_planet(&forcing);
+            let air = solve_air(heightmap, &forcing, axial_tilt_rad, solar_const);
 
             // The annual mean first: it decides where ice persists through the summer.
-            let (annual_sl, _) = solve_energy_balance(heightmap, 0.0, axial_tilt_rad, solar_const, true, seed, None);
+            let (annual_sl, _) = solve_energy_balance(heightmap, None, axial_tilt_rad, solar_const, seed, None, &forcing, &air, &circ);
 
             let mut seasonal_temps: Vec<Tilemap<f32>> = Vec::with_capacity(4);
             let mut seasonal_moists: Vec<Tilemap<f32>> = Vec::with_capacity(4);
@@ -114,26 +136,28 @@ pub fn run_climate_simulation(
                 // 1. Energy Balance Model (with insolation warping, continentality, and Rossby waves)
                 let (t_sl, t_surf) = solve_energy_balance(
                     heightmap,
-                    dec,
+                    Some(SeasonPoint { declination: dec, flux_factor: season_flux[s] }),
                     axial_tilt_rad,
                     solar_const,
-                    false,
                     season_seed,
                     Some(&annual_sl),
+                    &forcing,
+                    &air,
+                    &circ,
                 );
 
                 // 2. Pressure & Winds (derives closed pressure cells from 2D thermal anomalies)
-                let pressure = calculate_pressure_field(heightmap, &t_sl, itcz_lat);
-                let winds = calculate_surface_winds(&pressure, heightmap);
+                let pressure = calculate_pressure_field(heightmap, &t_sl, itcz_lat, &circ);
+                let winds = calculate_surface_winds(&pressure, heightmap, &circ);
 
                 // 3. Ocean Currents & Upwelling
                 let currents = calculate_ocean_currents(heightmap, &winds);
-                let upwelling = calculate_coastal_upwelling(heightmap, &winds);
+                let upwelling = calculate_coastal_upwelling(heightmap, &winds, circ.upwelling);
                 let sst = calculate_sea_surface_temperatures(heightmap, &t_sl, &currents, &upwelling);
 
                 // 3b. Maritime Air Thermal Moderation
                 // Advects oceanic temperature buffer onto adjacent landmasses along wind vectors
-                let t_surf_moderated = apply_maritime_influence(heightmap, &t_surf, &sst, &winds);
+                let t_surf_moderated = apply_maritime_influence(heightmap, &t_surf, &sst, &winds, forcing.lapse_rate);
 
                 // 4. Moisture Advection & Orographic Precipitation
                 let (precip, moist) = simulate_moisture_and_precipitation(
@@ -184,31 +208,32 @@ pub fn run_climate_simulation(
                     let m_winter = *seasonal_moists[3].get(x, y);
 
                     for s in 0..4 {
+                        let wk = weights[s];
                         let t = *seasonal_temps[s].get(x, y);
-                        sum_t += t;
+                        sum_t += t * wk;
                         if t < min_t { min_t = t; }
                         if t > max_t { max_t = t; }
 
-                        sum_m += *seasonal_moists[s].get(x, y);
-                        sum_p += *seasonal_precips[s].get(x, y);
+                        sum_m += *seasonal_moists[s].get(x, y) * wk;
+                        sum_p += *seasonal_precips[s].get(x, y) * wk;
 
                         let (wu, wv) = *seasonal_winds[s].get(x, y);
-                        sum_wu += wu;
-                        sum_wv += wv;
+                        sum_wu += wu * wk;
+                        sum_wv += wv * wk;
 
                         let (cu, cv) = *seasonal_currents[s].get(x, y);
-                        sum_cu += cu;
-                        sum_cv += cv;
+                        sum_cu += cu * wk;
+                        sum_cv += cv * wk;
 
-                        sum_sst += *seasonal_ssts[s].get(x, y);
+                        sum_sst += *seasonal_ssts[s].get(x, y) * wk;
                     }
 
-                    mean_temp.set(x, y, sum_t / 4.0);
-                    mean_moist.set(x, y, sum_m / 4.0);
-                    annual_precip.set(x, y, sum_p / 4.0);
-                    prevailing_winds.set(x, y, (sum_wu / 4.0, sum_wv / 4.0));
-                    mean_currents.set(x, y, (sum_cu / 4.0, sum_cv / 4.0));
-                    mean_sst.set(x, y, sum_sst / 4.0);
+                    mean_temp.set(x, y, sum_t / norm);
+                    mean_moist.set(x, y, sum_m / norm);
+                    annual_precip.set(x, y, sum_p / norm);
+                    prevailing_winds.set(x, y, (sum_wu / norm, sum_wv / norm));
+                    mean_currents.set(x, y, (sum_cu / norm, sum_cv / norm));
+                    mean_sst.set(x, y, sum_sst / norm);
 
                     // Seasonal amplitudes
                     let t_amplitude = (max_t - min_t) * 0.5;
@@ -263,6 +288,10 @@ pub fn run_climate_simulation(
                 temp_amplitude: temp_amp,
                 moisture_amplitude: moist_amp,
                 moisture_phase: moist_phase,
+                forcing,
+                air,
+                circulation: circ,
+                season_shares,
             }
         }
         ClimateMode::Flat | ClimateMode::TemperateBand | ClimateMode::TropicalBand => {
@@ -314,6 +343,10 @@ pub fn run_climate_simulation(
                 temp_amplitude: Tilemap::new_with(width, height, 3.0),
                 moisture_amplitude: Tilemap::new_with(width, height, 0.05),
                 moisture_phase: Tilemap::new_with(width, height, 0.0),
+                forcing,
+                air: AirState::earth(),
+                circulation: Circulation::earth(),
+                season_shares: [0.25; 4],
             }
         }
     }
@@ -426,5 +459,77 @@ mod tests {
             leeward_p
         );
     }
-}
 
+    fn planet(f: PlanetForcing, tilt: f32) -> ClimateConfig {
+        ClimateConfig { axial_tilt_deg: tilt, planet: PlanetForcing { legacy: false, ..f }, ..ClimateConfig::default() }
+    }
+
+    fn row_mean(t: &Tilemap<f32>, y: usize) -> f32 { (0..t.width).map(|x| *t.get(x, y)).sum::<f32>() / t.width as f32 }
+
+    #[test]
+    fn a_steep_tilt_warms_the_poles_past_the_equator() {
+        let hm = Tilemap::new_with(64, 32, -3000.0f32);
+        let sim = run_climate_simulation(&hm, &planet(PlanetForcing::default(), 80.0), 42);
+        let (pole, equator) = (0.5 * (row_mean(&sim.mean_temperature, 0) + row_mean(&sim.mean_temperature, 31)), row_mean(&sim.mean_temperature, 16));
+        assert!(pole > equator, "tilted 80 deg: poles {pole:.1} C, equator {equator:.1} C");
+        let earth = run_climate_simulation(&hm, &planet(PlanetForcing::default(), 23.44), 42);
+        assert!(row_mean(&earth.mean_temperature, 0) < row_mean(&earth.mean_temperature, 16) - 20.0);
+    }
+
+    #[test]
+    fn a_locked_world_burns_under_its_star_and_freezes_behind() {
+        let hm = Tilemap::new_with(64, 32, -3000.0f32);
+        let f = PlanetForcing { locked: Some(0.25 * std::f32::consts::PI), rotation: 0.05, year: 0.08, ..PlanetForcing::default() };
+        let sim = run_climate_simulation(&hm, &planet(f, 0.0), 42);
+        // The substellar point at 45 deg E (x = 8 of 64); the antistellar at x = 40.
+        let (day, night) = (*sim.mean_temperature.get(8, 16), *sim.mean_temperature.get(40, 16));
+        assert!(day > night + 25.0, "day side {day:.1} C, night side {night:.1} C");
+        let (wet, dry) = (*sim.annual_precipitation.get(8, 16), *sim.annual_precipitation.get(40, 16));
+        assert!(wet > 2.0 * dry, "rain under the star {wet:.0} mm, behind it {dry:.0} mm");
+        assert!(sim.circulation.locked && sim.circulation.rossby_amp == 0.0);
+    }
+
+    #[test]
+    fn the_spin_sets_the_cells() {
+        let cells = |r: f32| Circulation::for_planet(&PlanetForcing { legacy: false, rotation: r, ..PlanetForcing::default() }).belts.len() - 1;
+        assert_eq!(cells(1.0), 3, "Earth's three cells");
+        assert_eq!(cells(0.05), 1, "a slow spinner's single Hadley cell");
+        assert!(cells(4.0) >= 5, "a fast spinner's bands: {}", cells(4.0));
+        let c = Circulation::for_planet(&PlanetForcing { legacy: false, ..PlanetForcing::default() });
+        assert_eq!(c.belts, Circulation::earth().belts);
+        assert_eq!(c.zonal, Circulation::earth().zonal);
+    }
+
+    #[test]
+    fn an_eccentric_orbit_makes_one_hemisphere_harsher() {
+        let hm = Tilemap::new_with(64, 32, 200.0f32);
+        // Perihelion at the northern summer solstice: northern summers near the star, southern
+        // summers far from it.
+        let f = PlanetForcing { eccentricity: 0.3, perihelion_lon: 0.5 * std::f32::consts::PI, ..PlanetForcing::default() };
+        let sim = run_climate_simulation(&hm, &planet(f, 23.44), 42);
+        let (n, s) = (8, 23);
+        let north_summer = row_mean(&sim.seasonal_temperatures[1], n);
+        let south_summer = row_mean(&sim.seasonal_temperatures[3], s);
+        assert!(north_summer > south_summer + 3.0, "northern summer {north_summer:.1} C, southern {south_summer:.1} C");
+        assert!(sim.season_shares[1] < sim.season_shares[3], "the summer at perihelion is the shorter: {:?}", sim.season_shares);
+    }
+
+    #[test]
+    fn a_short_year_damps_the_seasons() {
+        let hm = Tilemap::new_with(64, 32, 200.0f32);
+        let range = |year: f32| {
+            let sim = run_climate_simulation(&hm, &planet(PlanetForcing { year, ..PlanetForcing::default() }, 23.44), 42);
+            row_mean(&sim.seasonal_temperatures[1], 8) - row_mean(&sim.seasonal_temperatures[3], 8)
+        };
+        let (short, earth, long) = (range(0.1), range(1.0), range(3.0));
+        assert!(short < 0.5 * earth && long > earth, "summer-winter at 45 N: 0.1 yr {short:.1}, 1 yr {earth:.1}, 3 yr {long:.1}");
+    }
+
+    #[test]
+    fn red_light_darkens_ice() {
+        let (sun_abs, sun_ice, _) = super::super::forcing::spectral_albedo(5772.0);
+        let (m_abs, m_ice, m_sea_ice) = super::super::forcing::spectral_albedo(3000.0);
+        assert!((sun_abs - 1.0).abs() < 0.01 && (sun_ice - 0.75).abs() < 0.01);
+        assert!(m_abs > 1.1 && m_ice < 0.55 && m_sea_ice < 0.5, "M dwarf: absorb x{m_abs}, ice {m_ice}, sea ice {m_sea_ice}");
+    }
+}

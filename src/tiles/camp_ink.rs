@@ -274,6 +274,8 @@ pub fn draw_works(colony: &Colony, cam: &LocalCamera, put: &mut dyn FnMut(i64, i
                 smoke(&mut pen, fw / 2.0, (fh - 0.4) / 2.0 - 0.3, tick, 1.0);
                 if let Some(e) = emblem(p.kind) { signboard(&mut pen, fw + 0.3, fh, &e); }
             }
+            // (A rack walled into a smokehouse is drawn as the smokehouse.)
+            ProjectKind::DryingRack if colony.projects.iter().any(|q| q.kind == ProjectKind::Smokehouse && q.at == p.at && (q.done || q.used > 0)) => {}
             ProjectKind::DryingRack => {
                 earth(&mut pen, 0.0, 0.0, fw, fh);
                 // Two A-frames and a pole across, hung with a hide and fish.

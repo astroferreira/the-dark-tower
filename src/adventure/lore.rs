@@ -57,6 +57,13 @@ fn about<'a>(h: &'a WorldHistory, s: Subject) -> Vec<&'a Event> {
     h.chronicle.events.iter().rev().filter(|ev| ev.primary_participants.contains(&e) || (at.is_some() && ev.location == at) || matches!(s, Subject::People(f) if ev.factions_involved.contains(&f))).take(400).collect()
 }
 
+/// Whether town `t` has heard anything of `q` (a name): what its townsfolk could tell.
+pub fn town_has_heard(h: &WorldHistory, t: SettlementId, q: &str) -> bool {
+    let Some((subject, _)) = find(h, q) else { return false };
+    let k = Knowledge::new(h);
+    about(h, subject).into_iter().any(|e| k.town_knows(t, e))
+}
+
 /// Whether a teller tells things wrong now and then (the tavern's drunk).
 fn unreliable(n: &Npc) -> bool { n.of == "drunk" }
 

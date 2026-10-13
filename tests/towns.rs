@@ -48,3 +48,26 @@ fn towns_stand_on_several_levels() {
     let (a, b) = walked(&text, "tower roofs:");
     assert!(b >= 2 && a == b, "towers on the wall not reached: {a} of {b}\n{text}");
 }
+
+/// Neighbouring embarks join (card 'Neighbouring embarks join seamlessly'): the levels across the
+/// edge between two embarks step no more than inside one, within a tile, across a tile's border
+/// and across the date line; and the same embark made from two regions (one across the date line)
+/// is the same ground.
+#[test]
+fn neighbouring_embarks_join() {
+    for tile in ["48,18", "95,10"] {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+            .args(["--dev", "--embark-seams", "--tiles-center", tile]).output().expect("run planet_generator");
+        assert!(out.status.success());
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let seams: Vec<&str> = text.lines().filter(|l| l.starts_with("Seam ")).collect();
+        assert_eq!(seams.len(), 3, "{text}");
+        for l in &seams {
+            let num = |after: &str| -> f32 { l.split(after).nth(1).and_then(|r| r.trim_start().split(|c: char| !(c.is_ascii_digit() || c == '.')).next()).and_then(|v| v.parse().ok()).unwrap_or(f32::MAX) };
+            let (across, inside, most) = (num("differ "), num("inside one embark "), num("at most "));
+            assert!(across <= inside + 0.15 && most <= 2.0, "{tile}: {l}");
+        }
+        let two = text.lines().find(|l| l.starts_with("Two regions")).unwrap_or_else(|| panic!("{text}"));
+        assert!(two.contains("differs 0.00 m on average"), "{tile}: {two}");
+    }
+}

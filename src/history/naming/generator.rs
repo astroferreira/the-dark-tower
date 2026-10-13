@@ -40,6 +40,22 @@ pub fn pronounceable(name: &str, max_letters: usize) -> bool {
 
 fn is_vowel(c: char) -> bool { matches!(c, 'a' | 'e' | 'i' | 'o' | 'u' | 'y') }
 
+/// A world with no moon names nothing after one (`set_moonless`, from its star system).
+static MOONLESS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether this world's names may speak of a moon (main sets it from the star system).
+pub fn set_moonless(moonless: bool) { MOONLESS.store(moonless, std::sync::atomic::Ordering::Relaxed); }
+
+/// A name as the world's sky allows: on a moonless world the moon's words are the stars'
+/// ("Moonglade" -> "Starglade"). A substitution after the draw, so no roll changes.
+pub fn fit_sky(s: String) -> String { fit_sky_with(s, MOONLESS.load(std::sync::atomic::Ordering::Relaxed)) }
+
+/// `fit_sky` for a given sky.
+pub fn fit_sky_with(s: String, moonless: bool) -> String {
+    if !moonless || !s.contains("Moon") { return s; }
+    s.replace("Moon", "Star")
+}
+
 /// Draw names until one passes `pronounceable`; fall back to the shortest drawn.
 fn sayable(max_letters: usize, rng: &mut impl Rng, mut draw: impl FnMut(&mut dyn rand::RngCore) -> String) -> String
 where
@@ -48,11 +64,11 @@ where
     let mut best: Option<String> = None;
     for _ in 0..NAME_TRIES {
         let n = draw(rng as &mut dyn rand::RngCore);
-        if pronounceable(&n, max_letters) { return n; }
+        if pronounceable(&n, max_letters) { return fit_sky(n); }
         let letters = |s: &str| s.chars().filter(|c| c.is_alphabetic()).count();
         if best.as_ref().map_or(true, |b| letters(&n) < letters(b)) { best = Some(n); }
     }
-    best.unwrap_or_default()
+    fit_sky(best.unwrap_or_default())
 }
 
 impl NameGenerator {
@@ -163,7 +179,7 @@ impl NameGenerator {
             return "the Great".to_string();
         }
         let idx = rng.gen_range(0..style.epithet_patterns.len());
-        style.epithet_patterns[idx].clone()
+        fit_sky(style.epithet_patterns[idx].clone())
     }
 
     /// Generate a full name with optional epithet (e.g., "Krath the Unyielding").
@@ -246,6 +262,18 @@ impl NameGenerator {
         } else {
             creature_epithets[rng.gen_range(0..creature_epithets.len())].to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod sky_name_tests {
+    use super::fit_sky_with;
+
+    #[test]
+    fn a_moonless_world_names_no_moon() {
+        assert_eq!(fit_sky_with("the Moonglade Mountains".into(), true), "the Starglade Mountains");
+        assert_eq!(fit_sky_with("the Moonglade Mountains".into(), false), "the Moonglade Mountains");
+        assert_eq!(fit_sky_with("under the full moon".into(), true), "under the full moon", "prose is left alone");
     }
 }
 

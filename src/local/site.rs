@@ -42,14 +42,18 @@ fn reach(map: &LocalMap) -> impl Iterator<Item = (usize, usize)> + '_ {
 
 /// A spot in reach for a cluster of `r` cells: the free cell whose disc has the most free cells,
 /// sampled deterministically.
-fn spot(map: &LocalMap, salt: u64, r: i64) -> Option<(usize, usize)> {
+fn spot(map: &LocalMap, salt: u64, r: i64, near: bool) -> Option<(usize, usize)> {
     let mut best: Option<(usize, (usize, usize))> = None;
     let cand: Vec<(usize, usize)> = reach(map).filter(|&(i, j)| hash(i as i64, j as i64, salt) % 37 == 0 && free(map, i, j)).collect();
     for &(i, j) in &cand {
         let n = (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| (dx, dy))).filter(|&(dx, dy)| dx * dx + dy * dy <= r * r)
             .filter(|&(dx, dy)| { let (x, y) = (i as i64 + dx, j as i64 + dy); x >= 0 && y >= 0 && (x as usize) < map.width && (y as usize) < map.height && free(map, x as usize, y as usize) })
             .count();
-        if best.map_or(true, |b| n > b.0) { best = Some((n, (i, j))); }
+        // (The free room counts, and with `near` the nearness to the middle.)
+        let (mx, my) = (map.width as i64 / 2, map.height as i64 / 2);
+        let d = if near { (i as i64 - mx).abs().max((j as i64 - my).abs()) as usize } else { 0 };
+        let score = (n * 2).saturating_sub(d);
+        if best.map_or(true, |b| score > b.0) { best = Some((score, (i, j))); }
     }
     best.map(|b| b.1)
 }
@@ -101,7 +105,7 @@ pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
     map.found = [have.water, have.trees, have.stone, have.shrubs];
     // Water: a spring and its pool where the site is dry.
     if have.water == 0 {
-        if let Some(at) = spot(map, salt ^ 1, 2) {
+        if let Some(at) = spot(map, salt ^ 1, 2, false) {
             map.furnished.push("a spring".into());
             let k = at.1 * map.width + at.0;
             map.features[k] = Feature::Spring;
@@ -118,7 +122,7 @@ pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
     if have.trees < 20 {
         let kind = reach(map).find_map(|(i, j)| match map.cell(i, j, map.surface_z[j * map.width + i].max(0) as usize).plant { Plant::Tree(k) if k != TreeKind::Dead => Some(k), _ => None })
             .unwrap_or(TreeKind::Broadleaf);
-        if let Some(at) = spot(map, salt ^ 3, 6) {
+        if let Some(at) = spot(map, salt ^ 3, 6, false) {
             map.furnished.push("a grove".into());
             scatter(map, at, 6, 24, salt ^ 4, |m, x, y| { let i = m.idx(x, y, m.surface_z[y * m.width + x] as usize); m.cells[i].plant = Plant::Tree(kind); });
         }
@@ -126,7 +130,7 @@ pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
     // Stone: an outcrop of bare rock and boulders.
     if have.stone < 6 {
         let rock = (0..map.depth).rev().find_map(|z| match map.cell(map.width / 2, map.height / 2, z).material { Material::Rock(r) => Some(r), _ => None });
-        if let (Some(at), Some(rock)) = (spot(map, salt ^ 5, 3), rock) {
+        if let (Some(at), Some(rock)) = (spot(map, salt ^ 5, 3, false), rock) {
             map.furnished.push("an outcrop of stone".into());
             scatter(map, at, 3, 20, salt ^ 6, |m, x, y| {
                 let i = m.idx(x, y, m.surface_z[y * m.width + x] as usize);
@@ -138,9 +142,24 @@ pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
     }
     // Food: berry thickets.
     if have.shrubs < 15 {
-        if let Some(at) = spot(map, salt ^ 7, 4) {
+        let zs: Vec<i32> = reach(map).map(|(i, j)| map.surface_z[j * map.width + i]).collect();
+        let relief = zs.iter().max().copied().unwrap_or(0) - zs.iter().min().copied().unwrap_or(0);
+        // (On a mountain the thicket is drawn toward the middle, where the camp is made: one 40
+        // cells out up the slope had fed nobody on the dev mountain.)
+        if let Some(at) = spot(map, salt ^ 7, 4, relief >= 12) {
             map.furnished.push("a berry thicket".into());
             scatter(map, at, 4, 18, salt ^ 8, |m, x, y| { let i = m.idx(x, y, m.surface_z[y * m.width + x] as usize); m.cells[i].plant = Plant::Shrub; });
+        }
+        // On a mountain, summer shrubs on the lower slopes too (card 'Mountains at human scale'):
+        // a second thicket, on the lowest free ground near the middle.
+        if relief >= 12 {
+            let low = zs.iter().min().copied().unwrap_or(0);
+            let lower = reach(map).filter(|&(i, j)| map.surface_z[j * map.width + i] <= low + relief / 3 && free(map, i, j))
+                .min_by_key(|&(i, j)| ((i as i64 - map.width as i64 / 2).abs().max((j as i64 - map.height as i64 / 2).abs()), hash(i as i64, j as i64, salt ^ 9)));
+            if let Some(at) = lower {
+                map.furnished.push("summer shrubs on the lower slope".into());
+                scatter(map, at, 5, 22, salt ^ 10, |m, x, y| { let i = m.idx(x, y, m.surface_z[y * m.width + x] as usize); m.cells[i].plant = Plant::Shrub; });
+            }
         }
     }
     // Something to look at: the graves of a battle fought here, else a standing stone.
@@ -158,14 +177,14 @@ pub fn furnish(map: &mut LocalMap, battles: &[(String, u32, Vec<String>)]) {
     words.extend(nameless);
     words.truncate(16);
     if !words.is_empty() {
-        if let Some(at) = spot(map, salt ^ 9, 4) {
+        if let Some(at) = spot(map, salt ^ 9, 4, false) {
             let mut k = 0;
             let mut placed = Vec::new();
             scatter(map, at, 4, words.len(), salt ^ 10, |m, x, y| { m.features[y * m.width + x] = Feature::Grave; placed.push((x, y)); });
             for (x, y) in placed { if k < words.len() { map.graves.push((x, y, words[k].clone())); k += 1; } }
         }
     } else if have.landmark == 0 {
-        if let Some(at) = spot(map, salt ^ 11, 1) { map.features[at.1 * map.width + at.0] = Feature::Stone; }
+        if let Some(at) = spot(map, salt ^ 11, 1, false) { map.features[at.1 * map.width + at.0] = Feature::Stone; }
     }
 }
 
@@ -193,6 +212,15 @@ pub fn report(map: &LocalMap) -> Vec<String> {
     if !map.furnished.is_empty() { out.push(format!("(the land was short of these; added: {})", map.furnished.join(", "))); }
     let below = below(map);
     if !below.is_empty() { out.push(format!("below: {}", below.join("; "))); }
+    // A mountain says its trade plainly: what it gives and what it lacks.
+    let zs: Vec<i32> = reach(map).map(|(i, j)| map.surface_z[j * map.width + i]).collect();
+    let relief = zs.iter().max().copied().unwrap_or(0) - zs.iter().min().copied().unwrap_or(0);
+    if relief >= 12 {
+        let lacks: Vec<&str> = [(c.shrubs < 40, "food"), (c.trees < 60, "timber"), (c.water == 0, "water")].iter().filter(|x| x.0).map(|x| x.1).collect();
+        out.push(format!("a mountain ({} levels of relief): rich in stone{}, easy to hold, cold{}", relief,
+            if below.iter().any(|b| b.contains("seams")) { " and ore" } else { "" },
+            if lacks.is_empty() { String::new() } else { format!(", poor in {}", lacks.join(" and ")) }));
+    }
     out
 }
 

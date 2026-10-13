@@ -16,6 +16,7 @@ impl Colony {
     pub fn fate(&self, i: usize) -> String {
         let s = &self.settlers[i];
         if s.alive { return "lives".into(); }
+        if s.away_until > 0 && s.why.starts_with("Lost in ") { return s.why.replacen("Lost in ", "lost in ", 1); }
         if s.away_until > 0 { return if s.why.starts_with("Away at ") { s.why.replacen("Away at ", "away at ", 1) } else { "away hunting".into() }; }
         if s.mind.left && self.war_call.as_ref().map_or(false, |c| self.log.iter().any(|l| l.contains(&format!("{} fell in {}", s.name, c.war)))) {
             return format!("fell in {}", self.war_call.as_ref().unwrap().war);
@@ -118,7 +119,7 @@ h1,h2{{color:#9a2a1e;font-variant:small-caps;letter-spacing:.05em}}b{{color:#9a2
             if let Some(a) = self.armour_of(i) { bits.push(format!("wore {}", a.kind)); }
             if !s.made.is_empty() { bits.push(format!("made {} {}", s.made.len(), if s.made.len() == 1 { "thing" } else { "things" })); }
             if !s.wounds.is_empty() { bits.push(format!("bore {}", crate::persona::list(&s.wounds.iter().map(|w| w.word()).collect::<Vec<_>>()))); }
-            if self.cursed.contains(&i) { bits.push("carries the curse of the full moon".into()); }
+            if self.cursed.contains(&i) { bits.push(format!("carries the curse of {}", self.moon_words())); }
             let who = s.persona.describe(&s.name, s.past.as_ref().map_or(30, |p| p.age));
             let character = who.get(2).cloned().unwrap_or_default();
             o.push_str(&format!("<p><b>{}</b>, {}. {} <span class=\"why\">{}{}.</span></p>",

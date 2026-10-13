@@ -22,36 +22,165 @@ pub fn coriolis_parameter(lat_rad: f32) -> f32 {
     2.0 * OMEGA * lat_rad.sin()
 }
 
-/// Calculate base zonal sea-level pressure (hPa) for a given latitude and ITCZ latitude
-pub fn base_zonal_pressure(lat_rad: f32, itcz_lat_rad: f32) -> f32 {
-    let lat_deg = lat_rad.to_degrees();
-    let itcz_deg = itcz_lat_rad.to_degrees();
+/// The planet's circulation cells: the pressure belts they leave at the surface, the zonal
+/// winds between them, the storm track and its Rossby waves. Earth's three cells (Hadley to
+/// 30 deg, Ferrel to 60, polar) come from its spin: the Hadley cell's edge and the width of the
+/// eddy-driven cells (the Rhines scale) both shrink as 1 / sqrt(spin) (Held & Hou 1980; GCM
+/// studies give exponents between 1/3 and 1), so a fast spinner has more, narrower bands
+/// (Jupiter-like) and a slow one a single Hadley cell from equator to pole. A locked world has
+/// no belts: air rises under the star and sinks on the night side.
+#[derive(Clone, Debug)]
+pub struct Circulation {
+    /// Angular speed of the spin (rad/s).
+    pub omega: f32,
+    /// Sea-level pressure belts from the thermal equator poleward: (degrees from it, hPa),
+    /// from 0 to 90.
+    pub belts: Vec<(f32, f32)>,
+    /// Background zonal surface wind by latitude band: (from deg, to deg, peak m/s at the
+    /// band's middle; negative is easterly).
+    pub zonal: Vec<(f32, f32, f32)>,
+    /// The storm track (degrees, width) and its Rossby waves (C, wavenumbers).
+    pub storm_lat_deg: f32,
+    pub storm_width_deg: f32,
+    pub rossby_amp: f32,
+    pub waves: [f32; 3],
+    /// Latitudes (deg) of coastal upwelling under the trade winds.
+    pub upwelling: (f32, f32),
+    pub hadley_deg: f32,
+    /// One face to the star: pressure from the day-night contrast, a superrotating jet.
+    pub locked: bool,
+    /// Peak equatorward surface wind in the tropics' cell (m/s): on a slow spinner the
+    /// overturning's low branch blows toward the equator with little Coriolis to turn it into
+    /// trades (0 at Earth's spin, where the trades carry it).
+    pub meridional: f32,
+}
 
-    // Relative latitude from the thermal equator (ITCZ)
-    let rel_lat = (lat_deg - itcz_deg).clamp(-90.0, 90.0);
-    let abs_rel = rel_lat.abs();
-
-    // 3-Cell Circulation Pressure Belts:
-    // 1. ITCZ Low (~0-5° relative): 1006 hPa
-    // 2. Subtropical High (~25-35° relative): 1022 hPa (Horse latitudes, dry descending air)
-    // 3. Subpolar Low (~55-65° relative): 998 hPa (Polar front, cyclonic storm tracks)
-    // 4. Polar High (~80-90°): 1018 hPa (Cold polar anticyclone)
-    if abs_rel < 30.0 {
-        // Between ITCZ Low (1006 hPa) and Subtropical High (1022 hPa)
-        let t = abs_rel / 30.0;
-        let smooth_t = t * t * (3.0 - 2.0 * t);
-        1006.0 + 16.0 * smooth_t
-    } else if abs_rel < 60.0 {
-        // Between Subtropical High (1022 hPa) and Subpolar Low (998 hPa)
-        let t = (abs_rel - 30.0) / 30.0;
-        let smooth_t = t * t * (3.0 - 2.0 * t);
-        1022.0 - 24.0 * smooth_t
-    } else {
-        // Between Subpolar Low (998 hPa) and Polar High (1018 hPa)
-        let t = ((abs_rel - 60.0) / 30.0).clamp(0.0, 1.0);
-        let smooth_t = t * t * (3.0 - 2.0 * t);
-        998.0 + 20.0 * smooth_t
+impl Circulation {
+    /// Earth's three cells.
+    pub fn earth() -> Self {
+        Circulation {
+            omega: OMEGA,
+            belts: vec![(0.0, 1006.0), (30.0, 1022.0), (60.0, 998.0), (90.0, 1018.0)],
+            zonal: vec![(0.0, 30.0, -6.0), (30.0, 60.0, 10.0), (60.0, 90.0, -4.0)],
+            storm_lat_deg: 48.0,
+            storm_width_deg: 16.0,
+            rossby_amp: 8.0,
+            waves: [3.0, 4.0, 5.0],
+            upwelling: (12.0, 48.0),
+            hadley_deg: 30.0,
+            locked: false,
+            meridional: 0.0,
+        }
     }
+
+    pub fn for_planet(f: &super::forcing::PlanetForcing) -> Self {
+        if f.legacy { return Self::earth(); }
+        let r = f.rotation.max(1e-3);
+        let scale = 1.0 / r.sqrt();
+        let zs = r.sqrt().clamp(0.3, 1.5);
+        let omega = OMEGA * r;
+        if f.locked.is_some() {
+            return Circulation {
+                omega,
+                belts: vec![(0.0, 1008.0), (90.0, 1016.0)],
+                zonal: vec![(0.0, 90.0, 0.0)],
+                storm_lat_deg: 45.0,
+                storm_width_deg: 16.0,
+                rossby_amp: 0.0,
+                waves: [1.0, 2.0, 3.0],
+                upwelling: (90.0, 90.0),
+                hadley_deg: 90.0,
+                locked: true,
+                meridional: 0.0,
+            };
+        }
+        let hadley = (30.0 * scale).clamp(10.0, 90.0);
+        if hadley >= 70.0 {
+            // One cell from the equator to the pole: trades everywhere, no storm track.
+            return Circulation {
+                omega,
+                belts: vec![(0.0, 1006.0), (90.0, 1020.0)],
+                zonal: vec![(0.0, 90.0, -4.0 * zs)],
+                storm_lat_deg: 60.0,
+                storm_width_deg: 16.0,
+                rossby_amp: 0.0,
+                waves: [1.0, 2.0, 3.0],
+                upwelling: (0.4 * hadley, 1.6 * hadley),
+                hadley_deg: 90.0,
+                locked: false,
+                meridional: 6.0 * (1.0 - r.sqrt()).clamp(0.0, 1.0),
+            };
+        }
+        let width0 = (30.0 * scale).clamp(6.0, 90.0);
+        let k = ((90.0 - hadley) / (2.0 * width0)).round().max(1.0) as usize;
+        let w = (90.0 - hadley) / (2 * k) as f32;
+        let mut belts = vec![(0.0, 1006.0), (hadley, 1022.0)];
+        let mut zonal = vec![(0.0, hadley, -6.0 * zs)];
+        for j in 0..k {
+            let low = if j == 0 { 998.0 } else { 1002.0 };
+            let high = if j + 1 == k { 1018.0 } else { 1014.0 };
+            let b = hadley + 2.0 * j as f32 * w;
+            belts.push((b + w, low));
+            belts.push((if j + 1 == k { 90.0 } else { b + 2.0 * w }, high));
+            // High to low poleward: westerlies; low to high: easterlies.
+            zonal.push((b, b + w, if j == 0 { 10.0 } else { 6.0 } * zs));
+            zonal.push((b + w, if j + 1 == k { 90.0 } else { b + 2.0 * w }, -4.0 * zs));
+        }
+        let waves = [3.0f32, 4.0, 5.0].map(|n| (n * r.sqrt()).round().max(1.0));
+        Circulation {
+            omega,
+            belts,
+            zonal,
+            storm_lat_deg: hadley + 0.6 * w,
+            storm_width_deg: w * 16.0 / 30.0,
+            rossby_amp: 8.0 * r.sqrt().min(1.3),
+            waves,
+            upwelling: (0.4 * hadley, (1.6 * hadley).min(80.0)),
+            hadley_deg: hadley,
+            locked: false,
+            meridional: 6.0 * (1.0 - r.sqrt()).clamp(0.0, 1.0),
+        }
+    }
+
+    /// Surface pressure belt (hPa) at a latitude for the thermal equator's latitude.
+    pub fn zonal_pressure(&self, lat_rad: f32, itcz_lat_rad: f32) -> f32 {
+        let lat_deg = lat_rad.to_degrees();
+        let itcz_deg = itcz_lat_rad.to_degrees();
+        // Relative latitude from the thermal equator (ITCZ)
+        let rel_lat = (lat_deg - itcz_deg).clamp(-90.0, 90.0);
+        let abs_rel = rel_lat.abs();
+        let last = self.belts.len() - 2;
+        for i in 0..=last {
+            let (b0, p0) = self.belts[i];
+            let (b1, p1) = self.belts[i + 1];
+            if abs_rel < b1 || i == last {
+                let mut t = (abs_rel - b0) / (b1 - b0);
+                if i == last { t = t.clamp(0.0, 1.0); }
+                let smooth_t = t * t * (3.0 - 2.0 * t);
+                return p0 + (p1 - p0) * smooth_t;
+            }
+        }
+        1013.25
+    }
+
+    /// Background zonal wind (m/s, eastward positive) at a latitude (degrees, absolute).
+    fn zonal_wind(&self, lat_deg: f32) -> f32 {
+        let last = self.zonal.len() - 1;
+        for (i, &(lo, hi, amp)) in self.zonal.iter().enumerate() {
+            if lat_deg < hi || i == last {
+                let c = (lo + hi) / 2.0;
+                let hw = (hi - lo) / 2.0;
+                return amp * (1.0 - (lat_deg - c).abs() / hw).max(0.0);
+            }
+        }
+        0.0
+    }
+}
+
+/// Calculate base zonal sea-level pressure (hPa) for a given latitude and ITCZ latitude
+/// (Earth's three cells).
+pub fn base_zonal_pressure(lat_rad: f32, itcz_lat_rad: f32) -> f32 {
+    Circulation::earth().zonal_pressure(lat_rad, itcz_lat_rad)
 }
 
 /// Calculate atmospheric pressure field (hPa) combining zonal belts and land-sea thermal contrast
@@ -59,9 +188,26 @@ pub fn calculate_pressure_field(
     heightmap: &Tilemap<f32>,
     t_sealevel: &Tilemap<f32>,
     itcz_lat_rad: f32,
+    circ: &Circulation,
 ) -> Tilemap<f32> {
     let width = heightmap.width;
     let height = heightmap.height;
+
+    if circ.locked {
+        // Day-night contrast: warm air rises under the star (a broad low), cold air sinks over
+        // the night side (a high), land a little more than sea.
+        let n = (width * height) as f32;
+        let mean_t = t_sealevel.iter().map(|(_, _, &t)| t).sum::<f32>() / n;
+        let mut pressure = Tilemap::new_with(width, height, 1013.25f32);
+        for y in 0..height {
+            for x in 0..width {
+                let anomaly = *t_sealevel.get(x, y) - mean_t;
+                let k = if *heightmap.get(x, y) > 0.0 { 0.32 } else { 0.24 };
+                pressure.set(x, y, (1012.0 - k * anomaly).clamp(985.0, 1035.0));
+            }
+        }
+        return smooth_pressure_map(&smooth_pressure_map(&pressure));
+    }
 
     // Step 1: Compute zonal average sea-level temperature
     let mut zonal_t = vec![0.0f32; height];
@@ -77,7 +223,7 @@ pub fn calculate_pressure_field(
     let mut pressure = Tilemap::new_with(width, height, 1013.25f32);
     for y in 0..height {
         let lat = row_latitude(y, height);
-        let p_zonal = base_zonal_pressure(lat, itcz_lat_rad);
+        let p_zonal = circ.zonal_pressure(lat, itcz_lat_rad);
         let z_temp = zonal_t[y];
 
         for x in 0..width {
@@ -139,6 +285,7 @@ fn smooth_pressure_map(pressure: &Tilemap<f32>) -> Tilemap<f32> {
 pub fn calculate_surface_winds(
     pressure: &Tilemap<f32>,
     heightmap: &Tilemap<f32>,
+    circ: &Circulation,
 ) -> Tilemap<(f32, f32)> {
     let width = pressure.width;
     let height = pressure.height;
@@ -152,7 +299,7 @@ pub fn calculate_surface_winds(
         .map(|y| {
             let lat = row_latitude(y, height);
             let cos_lat = lat.cos().max(0.08); // avoid division by zero near poles
-            let f = coriolis_parameter(lat);
+            let f = 2.0 * circ.omega * lat.sin();
 
             let dy_dist = PLANET_RADIUS * delta_phi;
             let dx_dist = PLANET_RADIUS * cos_lat * delta_lambda;
@@ -194,20 +341,22 @@ pub fn calculate_surface_winds(
                     let mut u = (kappa * fx - f * fy) / det;
                     let mut v = (f * fx + kappa * fy) / det;
 
-                    // Add zonal background flow for robust 3-cell structure
+                    // Add zonal background flow for robust 3-cell structure: trades, westerlies,
+                    // polar easterlies (or the planet's own bands); a locked world's
+                    // superrotating equatorial jet.
                     let lat_deg = lat.to_degrees().abs();
-                    let zonal_bias = if lat_deg < 30.0 {
-                        // Trade winds: westward (easterlies)
-                        -6.0 * (1.0 - (lat_deg - 15.0).abs() / 15.0).max(0.0)
-                    } else if lat_deg < 60.0 {
-                        // Westerlies: eastward
-                        10.0 * (1.0 - (lat_deg - 45.0).abs() / 15.0).max(0.0)
+                    let zonal_bias = if circ.locked {
+                        5.0 * (-(lat_deg / 25.0).powi(2)).exp()
                     } else {
-                        // Polar easterlies: westward
-                        -4.0 * (1.0 - (lat_deg - 75.0).abs() / 15.0).max(0.0)
+                        circ.zonal_wind(lat_deg)
                     };
 
                     u += zonal_bias;
+                    // A slow spinner's Hadley flow, toward the equator within the cell.
+                    if circ.meridional > 0.0 && lat_deg < circ.hadley_deg {
+                        let shape = (std::f32::consts::PI * lat_deg / circ.hadley_deg).sin();
+                        v += -lat.signum() * circ.meridional * shape;
+                    }
 
                     // Clamp to realistic physical surface wind speeds (0.5 to 30 m/s)
                     let speed = (u * u + v * v).sqrt();

@@ -18,7 +18,9 @@ impl Colony {
         if self.alive() == 0 { return; }
         let day = self.clock.day();
         // The wolves.
-        if self.wolf_bites >= 4 {
+        // (Debug: PLANET_FORCE_PET_PREY=1 leaves the den: the wolves must still be about when a pet
+        // is tamed.)
+        if self.wolf_bites >= 4 && std::env::var("PLANET_FORCE_PET_PREY").is_err() {
             let camp = self.camp;
             let n = self.map.width;
             let den = (0..self.map.features.len()).filter(|&i| self.map.features[i] == crate::local::wildlife::Feature::Den)

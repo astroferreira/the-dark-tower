@@ -460,6 +460,11 @@ everywhere).
   and a war camp's freed captive; each takes the companion's turn (`band_act` swaps them into
   `companion_act_one`), follows through doors (`companion_follow`), and takes the companion's
   place if it falls. (Monsters strike only the hero and the companion.)
+- The counting-house (`Game::bank`, Tibia's bank; 2026-10-12): every town's trader keeps one
+  account ("Your account at the counting-house"): put in all or half of what one carries, take
+  out 100, 1,000 or all, in any town. A fall drops half the gold carried and none of the banked
+  ("the 1,000 gold at the counting-house is safe"). Tested
+  (`craft::tests::the_counting_house_keeps_gold_through_a_fall`).
 - Titles (`Game::titles`): a town at regard 50+ with three works rewarded grants "Warden of X"
   (below level 15) or "Knight of X"; shown after the hero's calling, recorded in the chronicle.
 - Tests: `craft::tests::a_dragons_scales_become_its_shield`, `a_boat_crosses_the_sea`,
@@ -505,5 +510,17 @@ everywhere).
   from four levels under their place's level, and the priest's only for the risen dead.
 
 ## Not yet
-- A bank; boats on rivers; rivers through towns (a town is laid over its river); monsters
-  striking the band.
+- Boats on rivers; monsters striking the band.
+
+## Rivers through towns (2026-10-12; card 'Adventure: rivers through towns, boats over the sea')
+- A town's anchor is its square, so a river on its tile ran to the town and stopped at the walls
+  (the town was stamped over it). Now `surface::river_through_town` retraces the channel's middle
+  cells after the town is laid: open ground and yards become water, a paved way (cobbles,
+  flags) with paving on both banks across the water becomes a plank bridge, houses and walls are
+  left standing (it runs under them); anyone or anything in the new channel steps to the nearest
+  dry cell. Tested (`land::tests::a_river_runs_through_its_town`); `--adventure-landscape`
+  writes `_rivertown.png` (dev: Kalolwen).
+- The dev world had no rivers in adventure mode at all: `WorldInfo::river` read only the traced
+  river network's tiles, and a 96x48 world traces none. It now takes the water bodies' river
+  tiles too (dev: 64 river tiles; 4 towns on a river, 13 beside one). Boats over the sea were
+  already in (passage by sea).

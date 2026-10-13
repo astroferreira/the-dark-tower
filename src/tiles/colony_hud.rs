@@ -115,7 +115,7 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     }
 
     // Top left: name, clock and speed, favour, and the answer to the last act.
-    let name = colony.name.clone().unwrap_or_else(|| format!("The camp at {},{}", colony.map.world_tile.0, colony.map.world_tile.1));
+    let name = colony.name.clone().unwrap_or_else(|| format!("The {} at {},{}", colony.stage_word(), colony.map.world_tile.0, colony.map.world_tile.1));
     let clock = format!("{}   {}", colony.clock.stamp(), if st.speed == 0 { "paused".to_string() } else { format!("{}x", st.speed) });
     let alive = colony.alive();
     let people = format!("{} of {} alive", alive, colony.company());
@@ -160,9 +160,9 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
     let bar = Rect { x: 10, y: h - bar_h - 8, w: w - 20, h: bar_h };
     if st.bar { ui::card(buf, w, bar); }
     let spent = colony.patron.favour == 0;
-    let keys: [(&str, bool); 16] = [
+    let keys: [(&str, bool); 17] = [
         ("F bless", true), ("X forbid", true), ("G favour", true), ("R dream", true), ("B bell", true),
-        ("H/J/K stones", false), ("N name", false), ("Space pause", false), ("1/2/3 speed", false), ("4 skip", false), ("M stops", false), ("U section", false), ("</> levels", false), ("[/] delve", false), ("click to read", false), ("Esc leave", false),
+        ("H/J/K stones", false), ("N name", false), ("Space pause", false), ("1/2/3 speed", false), ("4 skip", false), ("M stops", false), ("Y plan", false), ("U section", false), ("</> levels", false), ("[/] delve", false), ("click to read", false), ("Esc leave", false),
     ];
     let mut x = 22.0;
     for (text, costs) in keys.into_iter().filter(|_| st.bar) {
@@ -197,6 +197,16 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
         }
     }
 
+    // A level below: a key to what is cut in it, under the level's caption.
+    if !lcam.surface_view { draw_level_key(colony, lcam, buf, w, h, 10 + card_h + 8); }
+    // At the mouse on a level below: what the rock there is.
+    if !lcam.surface_view && !st.hide_chip {
+        let (hx, hy) = (lcam.cx + (st.mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (st.mouse.1 - h as f32 / 2.0) / lcam.tile_px);
+        let under = colony.settler_at(hx, hy, (0.8f32).max(8.0 / lcam.tile_px), Some(lcam.z));
+        if under.is_none() && hx >= 0.0 && hy >= 0.0 {
+            if let Some(words) = ground_words(colony, hx as usize, hy as usize, Some(lcam.z)) { word_chip(&words, st, buf, w, h); }
+        }
+    }
     // At the mouse: who this is, what they are doing and why.
     if lcam.surface_view && !st.hide_chip {
         let (hx, hy) = (lcam.cx + (st.mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (st.mouse.1 - h as f32 / 2.0) / lcam.tile_px);
@@ -212,8 +222,12 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
                     .map(|(_, s, n)| if n == 1 { format!("{}, lying here to be carried in", super::colony_ui::cap_pub(s.one())) } else { format!("{} {}, lying here to be carried in", n, s.plural()) }))
         } else { None };
         let building = thing.or(building);
+        // Else a creature (what it is doing), else the ground itself.
+        let building = building.or_else(|| if under.is_none() { creature_words(colony, hx, hy, reach) } else { None })
+            .or_else(|| if under.is_none() { mouth_words(colony, hx, hy) } else { None })
+            .or_else(|| if under.is_none() && hx >= 0.0 && hy >= 0.0 { ground_words(colony, hx as usize, hy as usize, None) } else { None });
         if let (Some(b), None) = (&building, under) {
-            let chip_w = 320.0f32.min(w as f32 - 20.0);
+            let chip_w = (fonts::width(b, Face::Italic, SMALL, 0.0) + 26.0).min(320.0).min(w as f32 - 20.0);
             let lines = wrap_px(b, Face::Italic, SMALL, chip_w - 24.0);
             let chip_h = 16 + lines.len().min(5) * 16;
             let x = chip_x(st, w, chip_w);
@@ -243,6 +257,166 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
         }
     }
     hits
+}
+
+/// A short chip at the mouse with `text` in it.
+fn word_chip(text: &str, st: &HudState, buf: &mut [u32], w: usize, h: usize) {
+    let chip_w = (fonts::width(text, Face::Italic, SMALL, 0.0) + 26.0).min(320.0).min(w as f32 - 20.0);
+    let lines = wrap_px(text, Face::Italic, SMALL, chip_w - 24.0);
+    let chip_h = 16 + lines.len().min(5) * 16;
+    let x = chip_x(st, w, chip_w);
+    let y = (st.mouse.1 + 18.0).min((h - chip_h - 10) as f32).max(10.0) as usize;
+    ui::card(buf, w, Rect { x, y, w: chip_w as usize, h: chip_h });
+    for (k, l) in lines.iter().take(5).enumerate() {
+        fonts::draw(buf, w, h, (x + 12) as f32, (y + 8 + k * 16) as f32, l, Face::Italic, SMALL, 0.0, INK, None);
+    }
+}
+
+/// A creature near (hx, hy), in words: what it is and what it is doing.
+/// A way into a place in the hills under the mouse: unknown until someone has gone in.
+pub(crate) fn mouth_words(colony: &Colony, hx: f32, hy: f32) -> Option<String> {
+    let (k, pl) = colony.map.places.iter().enumerate().find(|(_, p)| p.mouth.map_or(false, |m| (m.0 as f32 + 0.5 - hx).abs() < 1.2 && (m.1 as f32 + 0.5 - hy).abs() < 1.2))?;
+    if colony.places_found.contains(&k) { return Some(format!("{}: {}", pl.name, pl.cause)); }
+    if let Some(l) = colony.lost.iter().find(|l| l.place == k) { return Some(format!("A way in: {} went in on day {} and did not come back", colony.settlers[l.who].name, l.day)); }
+    Some(if colony.mouths_seen.contains(&k) { "A way in: no one has gone in, and no one knows what lies inside".to_string() } else { "A way into the hill: no one has noticed it yet".to_string() })
+}
+
+pub(crate) fn creature_words(colony: &Colony, hx: f32, hy: f32, reach: f32) -> Option<String> {
+    use crate::colony::creatures::CreatureKind as K;
+    let c = colony.creatures.iter().filter(|c| c.z.is_none() && !colony.creature_below(c))
+        .find(|c| (c.pos.0 as f32 + 0.5 - hx).abs() < reach && (c.pos.1 as f32 + 0.5 - hy).abs() < reach)?;
+    let name = super::colony_ui::cap_pub(&c.name);
+    Some(match c.kind {
+        K::Game => format!("{}, grazing", name),
+        K::Pet => match colony.pets.iter().find(|p| p.alive && p.id == c.id) {
+            Some(p) => format!("{}, {}, kept by {}", p.name, p.kind, colony.settlers[p.keeper].name),
+            None => format!("{}, tame", name),
+        },
+        K::Prowler | K::Scout => {
+            let doing = if c.leaving { "going off" } else if c.path.is_empty() { "watching the camp" } else { "coming nearer" };
+            // The pack's cause (`colony::bestiary`).
+            match colony.bestiary().into_iter().find(|k| c.kind == K::Prowler && (c.name.contains(k.name.trim_end_matches('s')) || c.name.contains(&k.name.replace("ves", "f")))) {
+                Some(k) => format!("{}, {}: here because {}", name, doing, k.cause),
+                None => format!("{}, {}", name, doing),
+            }
+        }
+        K::Wolf if c.name == "a wolf" => format!("{}, hunting in the dark: wants meat, fears fire", name),
+        K::Wolf => format!("{}, hunting in the dark", name),
+        K::Raider | K::Beast => {
+            let doing = if c.leaving { "drawing off" } else { "coming for the camp" };
+            match colony.bestiary().into_iter().find(|k| k.name == c.name) {
+                Some(k) => format!("{}, {}: wants {}; here because {}", name, doing, k.want, k.cause),
+                None => format!("{}, {}", name, doing),
+            }
+        }
+        K::Besieger => format!("{}, at the siege fires", name),
+        K::Trader => format!("{}, a trader with a laden mule", name),
+        K::CaveHunter | K::CaveLife => name,
+    })
+}
+
+/// The ground at column (x, y) in words: the surface (`z` None) or a level below (`z`). A place
+/// not yet found reads as the rock round it, as it is drawn.
+pub(crate) fn ground_words(colony: &Colony, x: usize, y: usize, z: Option<i32>) -> Option<String> {
+    use crate::local::{Material, Plant, Shape};
+    let map = &colony.map;
+    if x >= map.width || y >= map.height { return None; }
+    let sz = map.surface_z[y * map.width + x];
+    let z = z.unwrap_or(sz);
+    if z < 0 || z as usize >= map.depth { return None; }
+    let unfound = hidden_place(colony, x, y, z);
+    let c = *map.cell(x, y, z as usize);
+    let stuff = |m: Material| -> String {
+        match m {
+            Material::Rock(r) => format!("{:?}", r).to_lowercase(),
+            Material::Block(r) => format!("dressed {:?}", r).to_lowercase(),
+            Material::Ore(o) => format!("{:?} ore", o).to_lowercase(),
+            Material::Wood => "timber".into(),
+            Material::Magma => "magma".into(),
+            m => format!("{:?}", m).to_lowercase(),
+        }
+    };
+    if unfound {
+        let rock = (0..map.depth).rev().map(|k| map.cell(x, y, k).material).find(|m| matches!(m, Material::Rock(_))).unwrap_or(Material::Rock(crate::erosion::materials::RockType::Granite));
+        return Some(format!("Solid {}", stuff(rock)));
+    }
+    let wet = map.is_aquifer(x, y, z as usize) && c.shape == Shape::Wall;
+    let mut words = match c.shape {
+        Shape::Wall if c.material == Material::Magma => "The magma sea".to_string(),
+        Shape::Wall => format!("{}{}", super::colony_ui::cap_pub(&stuff(c.material)), if wet { ", wet: the aquifer" } else { "" }),
+        Shape::Floor | Shape::Ramp => {
+            let plant = match c.plant {
+                Plant::Tree(t) => format!(", a {} tree", format!("{:?}", t).to_lowercase()),
+                Plant::Shrub => ", a berry bush".to_string(),
+                Plant::Grass => ", grass".to_string(),
+                Plant::Crop(_) => ", a crop row".to_string(),
+                Plant::None => String::new(),
+            };
+            format!("{} {}{}{}", super::colony_ui::cap_pub(&stuff(c.material)), if c.shape == Shape::Ramp { "slope" } else { "ground" }, plant, if c.boulder { ", a boulder" } else { "" })
+        }
+        Shape::Stair => format!("A stair cut in the {}", stuff(c.material)),
+        Shape::Empty if c.water > 0 && c.material == Material::Magma => "Magma".to_string(),
+        Shape::Empty if c.water > 0 => format!("Water, {} deep", if c.water >= 6 { "over a head" } else if c.water >= 3 { "waist" } else { "ankle" }),
+        Shape::Empty if z > sz => return None,
+        Shape::Empty => "Open: dug out".to_string(),
+    };
+    let sign = map.features[y * map.width + x];
+    if z == sz && sign != crate::local::wildlife::Feature::None { words.push_str(&format!("; {}", sign.name())); }
+    if z < sz { words.push_str(&format!(" ({} below the ground here)", sz - z)); }
+    Some(words)
+}
+
+/// Whether (x, y, z) is in a place the camp has not found: drawn as the rock round it, so it is
+/// told as rock too (as `local_ink::draw_delve` covers it).
+fn hidden_place(colony: &Colony, x: usize, y: usize, z: i32) -> bool {
+    if std::env::var("PLANET_REVEAL").is_ok() { return false; }
+    colony.map.places.iter().enumerate().any(|(k, p)| p.mouth.is_some() && !colony.places_found.contains(&k)
+        && p.cells.iter().any(|&((cx, cy), f)| cx as usize == x && cy as usize == y && (f..=f + 2).contains(&z) && !colony.revealed.contains(&((cx, cy), f))))
+}
+
+/// A key to a level below: what is cut or lies in the rock in view, each with its colour.
+fn draw_level_key(colony: &Colony, lcam: &LocalCamera, buf: &mut [u32], w: usize, h: usize, top: usize) {
+    use crate::local::{Material, Shape};
+    let map = &colony.map;
+    let z = lcam.z;
+    if z < 0 || z as usize >= map.depth { return; }
+    let half = (w as f32 / 2.0 / lcam.tile_px, h as f32 / 2.0 / lcam.tile_px);
+    let (x0, x1) = ((lcam.cx - half.0).max(0.0) as usize, ((lcam.cx + half.0) as usize).min(map.width - 1));
+    let (y0, y1) = ((lcam.cy - half.1).max(0.0) as usize, ((lcam.cy + half.1) as usize).min(map.height - 1));
+    let mut kinds: Vec<(String, u32)> = Vec::new();
+    let mut add = |name: String, col: u32| { if !kinds.iter().any(|k| k.0 == name) { kinds.push((name, col)); } };
+    let px = |c: [u8; 3]| ((c[0] as u32) << 16) | ((c[1] as u32) << 8) | c[2] as u32;
+    for y in (y0..=y1).step_by(2) {
+        for x in (x0..=x1).step_by(2) {
+            let sz = map.surface_z[y * map.width + x];
+            if z > sz { continue; }
+            let c = map.cell(x, y, z as usize);
+            if hidden_place(colony, x, y, z) { continue; }
+            match (c.shape, c.material) {
+                (Shape::Wall, Material::Ore(o)) => add(format!("{:?} ore", o).to_lowercase(), px(crate::lore::resource_color(o))),
+                (Shape::Wall, Material::Magma) | (Shape::Empty, Material::Magma) => add("magma".into(), 0x00C8_4A1E),
+                (Shape::Wall, _) if map.is_aquifer(x, y, z as usize) => add("wet rock: the aquifer".into(), 0x0070_90A8),
+                (Shape::Wall, Material::Rock(r)) => add(format!("{:?}", r).to_lowercase(), px(super::local_ink::rock_wash(r).map(|v| v as u8))),
+                (Shape::Empty, _) if c.water > 0 => add("water".into(), 0x0060_80A0),
+                (Shape::Floor | Shape::Ramp | Shape::Empty, _) if z < sz => add("dug or open".into(), 0x00D8_C8A8),
+                _ => {}
+            }
+        }
+    }
+    if kinds.is_empty() { return; }
+    kinds.truncate(7);
+    let kw = 230usize.min(w.saturating_sub(20));
+    let kh = 34 + kinds.len() * 18;
+    // (Below the camp's card at the top left, however tall it is.)
+    let (x, y) = (10usize, top.min(h.saturating_sub(kh + 10)));
+    ui::card(buf, w, Rect { x, y, w: kw, h: kh });
+    let sz = map.surface_z[(lcam.cy as usize).min(map.height - 1) * map.width + (lcam.cx as usize).min(map.width - 1)];
+    fonts::draw(buf, w, h, (x + 12) as f32, (y + 8) as f32, &format!("Level {}, {} down", z, (sz - z).max(0)), Face::SmallCaps, SMALL, 0.3, RUBRIC, None);
+    for (k, (name, col)) in kinds.iter().enumerate() {
+        let (sx, sy) = (x + 14, y + 30 + k * 18);
+        for dy in 0..10 { for dx in 0..14 { ui::blend_px(buf, w, h, (sx + dx) as i64, (sy + dy) as i64, *col, 1.0); } }
+        fonts::draw(buf, w, h, (sx + 22) as f32, (sy - 3) as f32, &super::colony_ui::cap_pub(name), Face::Roman, SMALL, 0.0, INK, None);
+    }
 }
 
 /// Where a hover chip starts: right of the mouse, else left of it, never under the open panel

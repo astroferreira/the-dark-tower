@@ -35,6 +35,9 @@ impl Chronicle {
 
     /// Record a new event.
     pub fn record(&mut self, mut event: Event) {
+        // A moonless world's annals name no moon (`naming::generator::fit_sky`).
+        event.title = crate::history::naming::generator::fit_sky(std::mem::take(&mut event.title));
+        event.description = crate::history::naming::generator::fit_sky(std::mem::take(&mut event.description));
         if event.causes.is_empty() {
             if let Some(c) = self.infer_cause(&event) { event = event.caused_by(c); }
         }

@@ -350,7 +350,7 @@ impl TileWorld {
                 if let Some(&(g, _)) = counts.iter().max_by_key(|c| c.1) {
                     tw.ground[i] = g;
                 }
-                tw.color[i] = atlas.average(tw.ground[i], tw.variant[i] as usize);
+                tw.color[i] = leaf_tinted(atlas.average(tw.ground[i], tw.variant[i] as usize), growth(tw.ground[i]));
             }
         }
 
@@ -460,6 +460,9 @@ impl TileWorld {
                     Season::Autumn => if leafy { [1.35, 0.92, 0.62] } else if grassy { [1.12, 1.0, 0.78] } else { [1.0; 3] },
                     Season::Winter => if leafy || grassy { [0.93, 0.93, 0.96] } else { [0.97, 0.98, 1.0] },
                 };
+                // Under another star the leaves are another colour (`ink::leaves`).
+                let g = growth(ground).max(sprite.map_or(0.0, growth));
+                let tint = if g > 0.0 && super::ink::leaves() != [1.0; 3] { let l = super::ink::leaves_by(g); [tint[0] * l[0], tint[1] * l[1], tint[2] * l[2]] } else { tint };
                 self.season_tint[i] = tint;
             }
         }
@@ -822,10 +825,31 @@ impl HistoryOverlay {
 /// A tile's flat colour (minimap, far zoom): its ground, with its sprite composited over it.
 fn tile_color(atlas: &Atlas, ground: TileKind, sprite: Option<TileKind>, variant: usize) -> [u8; 3] {
     let col = atlas.average(ground, variant);
-    match sprite {
+    let col = match sprite {
         Some(sp) => atlas.average_over(col, sp, variant),
         None => col,
+    };
+    leaf_tinted(col, growth(ground).max(sprite.map_or(0.0, growth)))
+}
+
+/// How much a ground or sprite takes the star's leaves: trees fully, grass and fields less, 0
+/// for what does not grow.
+pub fn growth(k: TileKind) -> f32 {
+    match k {
+        TileKind::Deciduous | TileKind::Conifer | TileKind::Jungle
+        | TileKind::BigBroadleaf | TileKind::BigConifer | TileKind::BigJungle | TileKind::JungleFloor => 1.0,
+        // Scattered bushes and lone trees over open ground: the ground shows between them.
+        TileKind::Palm | TileKind::Acacia | TileKind::Shrub => 0.6,
+        TileKind::Grass | TileKind::Steppe | TileKind::Savanna | TileKind::Swamp | TileKind::Crops | TileKind::Fields => super::ink::GRASS_LEAVES,
+        _ => 0.0,
     }
+}
+
+/// A flat colour under the world's star's leaves (`ink::leaves`), by how much it grows.
+fn leaf_tinted(c: [u8; 3], growth: f32) -> [u8; 3] {
+    if growth == 0.0 || super::ink::leaves() == [1.0; 3] { return c; }
+    let t = super::ink::leaves_by(growth);
+    [0, 1, 2].map(|k| (c[k] as f32 * t[k]).clamp(0.0, 255.0) as u8)
 }
 
 fn tw_is_water(k: TileKind) -> bool {

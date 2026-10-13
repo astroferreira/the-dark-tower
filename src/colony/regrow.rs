@@ -13,7 +13,7 @@ impl Colony {
     /// Each season's turn: the woods felled a year ago grow back where they are let alone.
     pub(crate) fn regrow(&mut self) {
         let day = self.clock.day();
-        if day <= 1 || (day - 1) % SEASON_DAYS != 0 { return; }
+        if !self.map.sky.season_begins(day) { return; }
         let n = self.map.width;
         let mut grown = 0;
         let felled = std::mem::take(&mut self.felled);

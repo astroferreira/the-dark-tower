@@ -22,8 +22,15 @@ cargo run --release -- --start --seed 42 --world-style pangaea
 cargo run --release -- --no-history
 cargo run --release -- --legacy-explorer
 
+# The Shadow stays out of the colony unless asked for (its raiders, risen dead, evil weather)
+cargo run --release -- --dev-embark --camp-shadow
+
 # Adventure mode: one hero across the world (the start screen's Play row, or)
 cargo run --release -- --dev --adventure
+
+# Each seed circles its own star; --star sol for the Sun (the original climate), or pin it
+cargo run --release -- --seed 42 --star K3 --hz 0.15 --obliquity 60
+cargo run --release -- --seed 42 --headless --no-history --system   # print the star system
 ```
 
 ---
@@ -34,11 +41,21 @@ of history in about a second, vs ~12 s at 512x256 (`--history-profile` prints ti
 ranges, forests, a desert and two continents. Any of `--width`/`--height`/`--seed`/
 `--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
 `--journal`, `--gazetteer`, `--director`, `--present` (the state the game starts in) as usual.
-`cargo test --release --test present_day` pins the dev world's present day and consistency. Seed 76 came from a search over 96x48 seeds
+`cargo test --release --test present_day` pins the dev world's present day and consistency.
+The dev world circles the Sun; `--dev-sky eyeball|slow|tilted|twosuns` is a dev world under
+another sky (a red dwarf's locked world, a 600-hour day, a 70-degree tilt, a close pair of suns;
+`DEV_SKIES` in `main.rs`, each with rivers, woods and a camp that lives). Seed 76 came from a search over 96x48 seeds
 scored by gazetteer landmarks (`scripts/dev_seed_search.sh`, then the top seeds checked with
 `--dev --seed N --headless --gazetteer`, since the history renames and reshapes features;
 `DEV_WORLD` in `main.rs`); 64x32 worlds get no rivers at all. If worldgen changes move the
 landmarks, re-run that search (it was re-run 2026-10-04 after the polar/area changes).
+- Standard seeds (what the notes and tests measure against): the dev world (seed 76, 96x48, the
+  Sun); dev colonies on `--dev --seed N` for N in 1-16, 23 and 58 (tests pick the seeds that show
+  their event; re-pin when a change moves the camps' days); the dev skies (`--dev-sky`: 106 M3,
+  309 K4 + 600-hour day, 302 G + 70 degree tilt, 9 a close pair); seed 42 at 512x256 for the
+  default size (it circles a K6 dwarf; numbers quoted for it are `--star sol`'s) and 256x128 for
+  the Shadow's scale; seed 202 for ruins and ecology. `worlds/` stays gitignored (a world file is
+  ~170 MB at 512x256): save one locally with `--save-world` and reload it.
 - Small maps: the river threshold (`water_bodies::river_flow_threshold`) scales with
   (width/512)^2 below 512 wide (unchanged at 512+), and legendary creatures scale with map
   area (`legendary_creatures_for` in `main.rs`; 1500 at 512x256).
@@ -63,6 +80,18 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
 
 ## Features
 
+### Star systems (`astro/`)
+- Every world circles a star drawn from its seed (spectral type F-M, age, metallicity), on an
+  orbit in the star's habitable zone (Kopparapu), with a spin (day, tilt, tidal locking around
+  dim stars, thermal tides), moons, a bulk (gravity, interior heat, water, magnetic field), an
+  air and neighbour planets (giants by metallicity, Hill-stable). The climate takes the
+  starlight, eccentric seasons, spin (Hadley cells and jets), year length, a locked face, the
+  star's colour (albedo of ground and ice) and a CO2 greenhouse from the carbonate-silicate
+  cycle (`climate/thermostat.rs`); the tectonics take the water (land fraction) and the heat
+  (hotspots). `--star sol` (and `--dev`, and old world codes) is the Sun and the original climate,
+  bit for bit. H in the viewer shows the heavens; the journal has "The Heavens"; the start
+  screen has "The heavens" rows. Notes in `src/astro/CLAUDE.md`.
+
 ### Soils (`soils.rs`)
 - `world.soils()` (lazy, never serialized) gives each land tile a soil kind and depth from its
   place in the landscape and its climate: depth 0.4-3 m by weathering (warm and wet deepest),
@@ -80,7 +109,7 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   ~170 MB at 512x256); `--load-world worlds/x.world` loads it in ~0.1 s instead of regenerating
   (~4 s world + ~6 min history). The tile viewer simulates 250 years of history by default
   (`--no-history` to skip), so save once with history and reload from then on.
-- The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`, now 6 (v6 added `people`); at v2 the
+- The file has a magic header and version (`WORLD_FILE_VERSION` in `world.rs`, now 7 (v6 added `people`, v7 the star system); at v2 the
   ecology is appended after the history; version-1 files still load, without ecology); bump it
   when any serialized type changes. New `EventType` variants go at the end of the enum so old
   histories still decode. `worlds/` is gitignored-worthy local data.
@@ -121,7 +150,7 @@ forge, mason's, carpenter's and kiln cut below, ore -> bars -> tools and arms (`
 and blows resolved by a material model (`src/materials.rs`, `data/defaults/materials.json`:
 density, hardness, edge, capability flags; weapon shapes; tissue layers and armour by part).
 Each has its notes in `src/colony/CLAUDE.md` (knowledge in `src/history/CLAUDE.md`). Debug forcing: `PLANET_FORCE_WERE`, `PLANET_FORCE_SEEKER`,
-`PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`, `PLANET_FORCE_PET_PREY`, `PLANET_FORCE_ORE`, `PLANET_FORCE_HORROR`, `PLANET_FORCE_GHOST`. Board cards `df-*`; progress log in the Claude Doc
+`PLANET_FORCE_VAMPIRE`, `PLANET_FORCE_MOOD`, `PLANET_FORCE_HUNT`, `PLANET_FORCE_SNATCH`, `PLANET_FORCE_PET_PREY`, `PLANET_FORCE_ORE`, `PLANET_FORCE_HORROR`, `PLANET_FORCE_GHOST`, `PLANET_FORCE_RELIC`; `PLANET_NO_HARD_TIMES` leaves the history's famine and drift out (`history/hard_times.rs`). Board cards `df-*`; progress log in the Claude Doc
 "Dwarf Fortress systems: progress log".
 Minds that steer: DF's personality needs drive what settlers do between jobs (`colony/needs.rs`), their
 needs and character voice the camp's next work (`voices.rs`), and lots and the wall's size follow
@@ -146,6 +175,7 @@ Detailed notes, tuning numbers and gotchas live next to the code:
 - `src/plates/CLAUDE.md`: tectonic simulation, sea level, `tectonic_preview`
 - `src/erosion/CLAUDE.md`: landscape evolution, `terrain_lab` and its env vars, legacy erosion
 - `src/climate/CLAUDE.md`: climate (EBM, precipitation, runoff) and biome classification
+- `src/astro/CLAUDE.md`: the star system (star, orbit, spin, moons, air, neighbours, the sky)
 - `src/local/CLAUDE.md`: embarks; `src/region/CLAUDE.md`: zoomed regions
 - `src/colony/CLAUDE.md`: the first colony (settlers, needs, jobs, `--sim-snapshot`, `--dev-embark`)
 - `src/adventure/CLAUDE.md`: adventure mode (one hero across the walkable land, places, the bot)
@@ -161,6 +191,8 @@ finishing passes and drainage repair; `main`, `terrain_lab` and the comparison g
 (`grid_export.rs`) all call it, so they can't drift apart. `on_stage` sees the heightmap (and
 crust/climate) after each named stage and can stop early (the lab's metrics hook in there).
 
+0. **Star system** - `astro::StarSystem::generate` from the seed: the climate's forcing, the
+   tectonics' land fraction (water) and hotspots (interior heat)
 1. **Tectonic Plates** - BFS flood-fill creates 6-15 initial plates
 2. **Tectonic Simulation** - Plates rotate about Euler poles on a sphere for ~200 Myr; the
    simulation yields final plates, crust thickness/age, and a `stress_map` (see below)

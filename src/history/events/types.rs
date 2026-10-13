@@ -116,6 +116,11 @@ pub enum EventType {
     Marriage,
     /// A deed of an adventurer played in adventure mode (appended: older saves still decode).
     AdventurerDeed,
+    /// Something in the sky under another star: a great flare, an eclipse read as an omen, a
+    /// comet, a far companion's approach (`history::sky`; appended).
+    Celestial,
+    /// Hunger in a town that outgrew its land (`history::hard_times`; appended).
+    Famine,
 }
 
 impl EventType {
