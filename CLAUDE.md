@@ -1,8 +1,14 @@
 # CLAUDE.md
 
 Procedural world map generator with tectonic plates, erosion, climate, and biomes.
-Direction: an autonomous, story-first colony simulator; see `ROADMAP.md` (six updates) and
-`TODO.md` (short-term tasks).
+
+**Direction (2026-10-15): generation only.** The region view and the embark map are made into
+places worth exploring: landforms from rock, ice, wind and water; caves that are systems; springs
+and falls where the water puts them; the sites of the peoples who lived here before the
+chronicle. See `ROADMAP.md` (six stages) and `TODO.md` (short-term). The colony, the chartered
+cartographer, the Genesis Draft and adventure mode are **paused**: their code stays behind its
+flags and tests, their notes in each module's `CLAUDE.md` and in `docs/colony/`; don't extend
+them in this period. `docs/README.md` says what each document is and whether it is current.
 
 **Realistic by default (2026-10-13):** the game takes a medieval, realistic road. Myth and
 magic (`src/myth.rs`) are off unless `--myth` (or `PLANET_MYTH=1`, or the start screen's "Myth
@@ -22,6 +28,12 @@ races other than human or the uncanny describe the myth world.
 ```bash
 # Build
 cargo build --release
+
+# Generation work (the roadmap's loop): a world without history, the region and an embark
+cargo run --release -- --seed 42 --star sol --no-history          # the viewer; Z walks the region, Enter embarks
+cargo run --release -- --dev --headless --local-snapshot cave --tiles-center 42,32   # region (ink), surface, levels, section as PNG
+cargo run --release -- --seed 42 --star sol --headless --no-history --gazetteer       # named features and landmarks
+cargo run --release --bin terrain_lab -- 42 512 256 earthlike out  # per-stage metrics and images (src/erosion/CLAUDE.md)
 
 # Start screen: tailor the world (size, seed, style, plates, fantasy, history, peoples,
 # the Shadow, watching), then generate it and open the tile viewer
@@ -158,9 +170,12 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
 
 ---
 
-## Dwarf Fortress as the model
+## Paused modes: the colony and Dwarf Fortress as its model
+Paused since 2026-10-15 (see Direction above); kept here so the code's notes stay findable.
 The DF design guide (`../dfdecomp/guide/README.md`, read `00-ideas-catalogue.md` first) is the
-reference for game systems: reuse ideas and algorithms, never its decompiled code. Done:
+reference for game systems: reuse ideas and algorithms, never its decompiled code. Its
+worldgen chapters (ch. 11 "coarse data drives fine data", site layouts, cavern layers) still
+apply to the generation roadmap. Done in the colony:
 rolled individuals (`src/persona.rs`, `data/defaults/persona.json`), figure pages
 (`inspector::figure_page`, `--who`), thoughts/stress/breaks and festivals (`colony/mind.rs`),
 generated monsters (`src/monsters.rs`, `data/defaults/monsters.json`, `--bestiary`), cavern
@@ -216,11 +231,12 @@ Detailed notes, tuning numbers and gotchas live next to the code:
 - `src/erosion/CLAUDE.md`: landscape evolution, `terrain_lab` and its env vars, legacy erosion
 - `src/climate/CLAUDE.md`: climate (EBM, precipitation, runoff) and biome classification
 - `src/astro/CLAUDE.md`: the star system (star, orbit, spin, moons, air, neighbours, the sky)
-- `src/local/CLAUDE.md`: embarks; `src/region/CLAUDE.md`: zoomed regions
-- `src/colony/CLAUDE.md`: the first colony (settlers, needs, jobs, `--sim-snapshot`, `--dev-embark`)
-- `src/adventure/CLAUDE.md`: adventure mode (one hero across the walkable land, places, the bot)
+- `src/local/CLAUDE.md`: embarks (the surface, towns in 3-D, sites, places in the rock, caverns,
+  the river, seams between embarks); `src/region/CLAUDE.md`: zoomed regions
+- `src/colony/CLAUDE.md`: the first colony (settlers, needs, jobs, `--sim-snapshot`, `--dev-embark`) (paused)
 - `src/adventure/CLAUDE.md`: adventure mode (one hero across the world: places from the history,
-  Tibia's levels, callings and dungeons; `--adventure`, `--adventure-bot`, the ink window)
+  Tibia's levels, callings and dungeons; `--adventure`, `--adventure-bot`, the ink window) (paused)
+- `docs/README.md`: the reference notes (geomorphometry), the paused colony direction, the archive
 
 ---
 
@@ -271,7 +287,11 @@ apart. `on_stage` sees the heightmap (and crust/climate) after each named stage 
    ~1 s development world); check rendering headlessly with `--tiles-snapshot` /
    `--watch-snapshot`
 3. Navigate to relevant areas and visually verify the changes work correctly
-4. For local map changes, embark (Z/Enter) and test at multiple z-levels with `<` and `>`
+4. For region and embark changes, render the standard sites headlessly (`--local-snapshot`
+   writes the region in ink, the surface, levels and the section; `--embark-seams` checks the
+   joins) and *look at the images* before and after; in the window, embark (Z/Enter) and test
+   at multiple z-levels with `<` and `>`. The region and the embark must show the same land
+   and the same places (`views_agree`, ROADMAP Stage 1)
 5. Only report completion after confirming the feature works as expected
 
 Debug tools:

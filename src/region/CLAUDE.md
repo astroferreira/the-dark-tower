@@ -27,4 +27,29 @@
 - `--province-snapshot PREFIX` (dev embark, or `--tiles-center X,Y`) renders the colony's
   theatre: the zoomed region around the embark, a 250 km ring, lines to its three nearest
   living places with the days to walk each (25 km/day x 1.3 winding), and prints them. See the
-  play-scale decision in ROADMAP (Update 5).
+  play-scale decision in `docs/colony/ROADMAP.md` (Update 5).
+
+## The site layer (`region/plan.rs`, `landforms/`, `sites/`, `debug.rs`; ROADMAP, 2026-10-15)
+- `ZoomRegion` carries, beside heights and water, the site layer: `landform` (a `plan::Landform`
+  per cell: cliff, doline, moraine, lava field, dune, floodplain, beach, bog... `None` is plain
+  ground), `rock` (the `RockType` at the surface), `places` (`plan::Place`: kind, name, epithet,
+  cause, description, contents, position in absolute region cells, footprint, floor height, the
+  cave it opens into, a rank) and `caves` (`plan::CaveGraph`: nodes and passages in absolute
+  cells and metres). Absolute region cells: `x = world tile x * cells_per_tile + i`, the frame
+  the embark already uses; a region converts with `x - world_x0 * s`.
+- Landforms (`landforms/mod.rs` fixes the order; one file per process: `rock`, `karst`,
+  `glacial`, `volcanic`, `aeolian`, `fluvial`, `coast`, `wet`): `shape_before_erosion` and
+  `shape_after_erosion` run inside `simulate_chunk` on the bordered chunk grid (`ChunkGrid`) and
+  move heights as pure functions of world position, so chunk overlaps agree; `classify` runs on
+  the blended region with its margin (`RegionFields`: heights, filled heights, receivers,
+  accumulation, climate, `slope`, `tile_of`, `abs_cell`) and labels every cell. Bump
+  `landforms::SHAPE_VERSION` when a shape pass changes heights: it is in the chunk cache's file
+  names (`v1s<SHAPE>_...`).
+- Sites (`sites/mod.rs` fixes the order: `water` the world's springs and waterfalls, `natural`
+  wonders, `prehistory` the ages before, `caves` the graphs, then `names`): `sites::plan(fields,
+  land, rock, Core)` plans the places of the window's core tiles from the tile and its neighbours
+  (the margin of 3 tiles guarantees them), so any window plans a tile's places the same way.
+- `--zoom X,Y` also writes `zoom_<seed>_<x>_<y>_landforms.png` (classes by family over a faint
+  hillshade, places as red crosses) and `_rock.png`, and prints the landform mix and the counts
+  of places and caves (`region::debug`). With every pass a stub the output is bit-identical to
+  before the layer (checked on the dev cave site's four images).

@@ -1736,6 +1736,16 @@ fn main() {
                 Ok((lo, hi)) => println!("  Saved 16-bit heightmap ({:.0} m .. {:.0} m)", lo, hi),
                 Err(e) => eprintln!("  Failed to save zoom heightmap: {e}"),
             }
+            // The site layer, for checking a landform or site pass by eye (`region::debug`).
+            match region::debug::save(&zoom, &dir.join(&stem)) {
+                Ok(()) => {
+                    let mix: Vec<String> = region::debug::landform_mix(&zoom).iter().take(12)
+                        .map(|(n, c)| format!("{n} {:.1}%", *c as f32 * 100.0 / (zoom.width * zoom.height) as f32)).collect();
+                    println!("  Saved {stem}_landforms.png and {stem}_rock.png; landforms: {}; {} places, {} caves",
+                        mix.join(", "), zoom.places.len(), zoom.caves.len());
+                }
+                Err(e) => eprintln!("  Failed to save the site layer images: {e}"),
+            }
         }
     }
 

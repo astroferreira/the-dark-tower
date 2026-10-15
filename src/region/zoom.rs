@@ -26,7 +26,11 @@ use image::{ImageBuffer, Luma, Rgb, RgbImage};
 use noise::{NoiseFn, Perlin};
 use rayon::prelude::*;
 
+use crate::erosion::materials::RockType;
 use crate::map_export::{bilinear_biome_color, sample_lut};
+use crate::region::landforms::{self, ChunkGrid, RegionFields};
+use crate::region::plan::{CaveGraph, Landform, Place};
+use crate::region::sites::{self, Core};
 use crate::tilemap::Tilemap;
 use crate::world::WorldData;
 
@@ -100,6 +104,14 @@ pub struct ZoomRegion {
     pub biome_color: Vec<(u8, u8, u8)>,
     /// How much of `biome_color` to mix over the climate colour table (0 = climate only).
     pub biome_weight: Vec<f32>,
+    /// The ground's class per cell (`plan::Landform`; `None` is plain ground): the site layer.
+    pub landform: Vec<Landform>,
+    /// The rock at the surface per cell.
+    pub rock: Vec<RockType>,
+    /// The places of the window's tiles, in absolute region cells (`plan::Place`).
+    pub places: Vec<Place>,
+    /// The caves the places open into (`Place::cave` indexes here).
+    pub caves: Vec<CaveGraph>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -343,6 +355,8 @@ struct Ctx<'a> {
     cell_m: f32,
     /// Cheap fingerprint of the world heightmap (cache key).
     fingerprint: u64,
+    /// The zoom's seed, for the landform passes' noise.
+    seed: u64,
 }
 
 impl<'a> Ctx<'a> {
@@ -388,6 +402,20 @@ impl<'a> Ctx<'a> {
             world_cell_km,
             cell_m: world_cell_km * 1000.0 / s as f32,
             fingerprint: fingerprint ^ params.seed.rotate_left(29),
+            seed: params.seed,
+        }
+    }
+
+    /// The bordered grid of chunk (`cx`, `cy`) as the landform passes see it.
+    fn chunk_grid(&self, cx: i64, cy: i64) -> ChunkGrid<'a> {
+        ChunkGrid {
+            world: self.world,
+            gw: (1 + 2 * CHUNK_BORDER_TILES as usize) * self.s,
+            s: self.s,
+            gx0: cx - CHUNK_BORDER_TILES,
+            gy0: cy - CHUNK_BORDER_TILES,
+            cell_m: self.cell_m,
+            seed: self.seed,
         }
     }
 
@@ -488,6 +516,10 @@ impl<'a> Ctx<'a> {
             if h[k] > 0.0 { h[k] = (h[k] - carve[k]).max(0.5); }
         }
 
+        // The land before the rivers wear it: cones, lava, moraines, dunes (`region::landforms`).
+        let grid = self.chunk_grid(cx, cy);
+        landforms::shape_before_erosion(&mut h, &grid);
+
         // Drainage integration: fill shallow closed hollows (with a slight slope toward their
         // outlet and a tiny smooth perturbation so flow doesn't run in straight lines).
         let d = route(&h, gw, gw, PREFILL_GRADIENT_M);
@@ -526,6 +558,9 @@ impl<'a> Ctx<'a> {
             }
         }
 
+        // What the final land shows: dolines, benches, terraces, cliffs cut square.
+        landforms::shape_after_erosion(&mut h, &grid);
+
         // Central 2s x 2s region: global cells [(cx - 0.5) s, (cx + 1.5) s).
         let off = s / 2;
         let mut out = Vec::with_capacity(4 * s * s);
@@ -541,7 +576,8 @@ type ChunkKey = (u64, usize, usize, i64, i64);
 /// Simulated chunks kept on disk between runs, so a region the game has generated once loads in
 /// a fraction of a second instead of minutes of CPU (an 8x8-tile region is ~200 chunks). Chunks
 /// depend only on the world (its heightmap fingerprint) and the zoom parameters, which are in
-/// the key. Bump `FORMAT` whenever `simulate_chunk` changes what it produces.
+/// the key. Bump `FORMAT` whenever `simulate_chunk` changes what it produces (the landform
+/// passes key `landforms::SHAPE_VERSION` into the name as well).
 /// Location: `$PLANET_CHUNK_CACHE`, else `~/.cache/planet_generator/chunks`; set the variable to
 /// an empty string to turn the disk cache off.
 mod disk {
@@ -560,7 +596,8 @@ mod disk {
 
     fn path(k: ChunkKey) -> Option<PathBuf> {
         let (fp, s, iters, cx, cy) = k;
-        dir().map(|d| d.join(format!("{fp:016x}")).join(format!("v{FORMAT}_{s}_{iters}_{cx}_{cy}.f32")))
+        let shape = super::landforms::SHAPE_VERSION;
+        dir().map(|d| d.join(format!("{fp:016x}")).join(format!("v{FORMAT}s{shape}_{s}_{iters}_{cx}_{cy}.f32")))
     }
 
     pub fn load(k: ChunkKey, len: usize) -> Option<Vec<f32>> {
@@ -679,6 +716,15 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
     let cell_km2 = (ctx.cell_m / 1000.0).powi(2);
     let tile_cells = (s * s) as f32;
 
+    // 4b. The site layer: every cell's landform and surface rock from the blended fields, then
+    // the places of the window's tiles (`region::landforms`, `region::sites`).
+    let fields = RegionFields {
+        world, gw, gh: gw, s, gx0, gy0, margin: mf, cell_m: ctx.cell_m, seed: ctx.seed,
+        h: &h, filled: &d.filled, recv: &d.recv, acc: &acc, temp: &temp, moist: &moist,
+    };
+    let (land, rock) = landforms::classify(&fields);
+    let site_plan = sites::plan(&fields, &land, &rock, Core { x0: core_x0, y0: core_y0, w: tiles, h: tiles });
+
     // 5. Crop to the requested window.
     let (w, ht) = (tiles * s, tiles * s);
     let off = mf * s;
@@ -700,11 +746,17 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         moisture: Vec::with_capacity(w * ht),
         biome_color: Vec::with_capacity(w * ht),
         biome_weight: Vec::with_capacity(w * ht),
+        landform: Vec::with_capacity(w * ht),
+        rock: Vec::with_capacity(w * ht),
+        places: site_plan.places,
+        caves: site_plan.caves,
     };
     for j in off..off + ht {
         for i in off..off + w {
             let k = j * gw + i;
             let e = h[k];
+            out.landform.push(land[k]);
+            out.rock.push(rock[k]);
             let lake = if e > 0.0 { (d.filled[k] - e).max(0.0) } else { 0.0 };
             let lake = if lake >= LAKE_MIN_DEPTH_M { lake } else { 0.0 };
             // Drier ground needs a larger catchment before a permanent stream appears.

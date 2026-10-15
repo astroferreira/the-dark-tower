@@ -2150,7 +2150,7 @@ const KM_PER_DAY: f64 = 25.0;
 /// Paths wind: straight-line distance times this is the distance walked.
 const WINDING: f64 = 1.3;
 
-/// The colony's theatre (the play-scale decision in ROADMAP, Update 5): the region around the
+/// The colony's theatre (the play-scale decision in docs/colony/ROADMAP.md, Update 5): the region around the
 /// embark at `tile` with its three nearest living places, a line to each and the days to walk
 /// it. Writes `<prefix>_province.png` and prints the places.
 pub fn save_province_snapshot(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), prefix: &str) -> Result<String, Box<dyn Error>> {

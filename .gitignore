@@ -31,3 +31,13 @@ lore_*.md
 /log.txt
 /annals.html
 /timelapse_*.gif
+
+# Exports and dumps written to the repo root by debug and export flags
+/islands
+/my_islands
+/exports
+/debug_*.txt
+/chronicle.txt
+/legends.md
+*.zip
+/genesis

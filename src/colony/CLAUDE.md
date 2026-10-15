@@ -10,7 +10,7 @@ glowworms, beetles, blind fish, crabs, salamanders and shrimp, and nothing there
 Notes below that tell of beasts or the uncanny are of the myth world. Without myth the fey
 mood is "an inspired mood" ("X is seized by an inspiration and claims the workshop").
 
-The vertical slice of ROADMAP Update 3: settlers living on a playable area with no orders.
+The vertical slice of `docs/colony/ROADMAP.md` Update 3: settlers living on a playable area with no orders.
 
 - The Shadow is kept out of the camp by default (2026-10-12, card 'Switch off the Shadow's
   impact for now'; `colony::shadow_in_camp`): no Shadow raiders in the arc, no darkness on the
@@ -1267,7 +1267,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   A violent death with a priest living gets the rites (`rites`, via `mourn`): one time in two the
   dead rest without a slab. Dev: priests on 76, 11, 5, 23, 3 (days 22-129); seed 76's Thano
   says the rites over Noostond on day 40. Tested (`a_priest_keeps_the_temple`).
-- The call to arms (`warcall.rs`, DF's missions; ROADMAP Update 5 "outflow"): `warcall::plan` at
+- The call to arms (`warcall.rs`, DF's missions; `docs/colony/ROADMAP.md` Update 5 "outflow"): `warcall::plan` at
   founding notes the first war in the history that the founders' people fight
   (`Colony::war_call`). From day 60 with 8+ in the camp, once, a rider of that people calls for
   spears: up to two grown settlers of that people, brave (50+) and valuing arms or loyalty (20+),
@@ -1277,7 +1277,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   memory; annals "fell in Y"), by a hash: 2:1:1. Only seed 3's people are at war on the dev
   world: Tekkeburx comes home limping, Ord falls. Tested (`the_camp_is_called_to_war`).
 - A place's contents start with a capital after its cause ("... in 246. Empty bins, ...").
-- The woods grow back (`regrow.rs`, DF's regrowth; ROADMAP Update 5 ecology coupling): each
+- The woods grow back (`regrow.rs`, DF's regrowth; `docs/colony/ROADMAP.md` Update 5 ecology coupling): each
   felled tree is kept with its kind (`Colony::felled`); at each season's turn trees felled a year
   (120 days) ago return where the ground is open (not built on or beside, no roof, under 15
   footsteps), and the stump goes. Dev: 23-29 trees back on day 151, then 8-21 a season. Tested
@@ -1285,7 +1285,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
 - Defenders behind the first are caught by the foe too (0.15 each, the first 0.3; `fight.rs`):
   armour had rarely been tested, since the first defender is usually a hunter or the watcher.
   Turned blows on 76 (day 161) and 23 (147, 224); `armour_turns_blows` runs 230 days.
-- The tithe (`tithe.rs`, DF's tax collector; ROADMAP Update 5 "tax collectors and tribute
+- The tithe (`tithe.rs`, DF's tax collector; `docs/colony/ROADMAP.md` Update 5 "tax collectors and tribute
   demands"): from day 100, once a camp year, a collector of the trading town's people asks a
   tenth of the store (10 meals at least) and two unsold works (no artifact or masterwork); under
   two meals a head, nothing is taken. The speaker pays when of that people and loyalty + law +
@@ -1297,7 +1297,7 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   `Colony::widowed` (survivor, the dead, day); the widowed mourn 60 days before they may wed
   again; `family_of` says "widow of X" / "widower of X", or "once wed to X" after remarrying.
   Dev year: on 23 (Baangh's widower), 58, 76. Tested (`the_widowed_are_remembered`).
-- Vows of vengeance (`vow.rs`, DF's revenge goals; ROADMAP's director threads on settlers): a
+- Vows of vengeance (`vow.rs`, DF's revenge goals; `docs/colony/ROADMAP.md`'s director threads on settlers): a
   raid's death (`raid_at`) makes the dead's closest (child, parent or widowed spouse, else the
   friend at 12+; grown, no guest, no vow already) swear by the grave to see the killer dead (a
   beast by name, a war band's leader; a moment; `Colony::vows`). Until kept they drill twice as
