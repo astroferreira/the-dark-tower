@@ -1743,6 +1743,8 @@ fn main() {
                         .map(|(n, c)| format!("{n} {:.1}%", *c as f32 * 100.0 / (zoom.width * zoom.height) as f32)).collect();
                     println!("  Saved {stem}_landforms.png and {stem}_rock.png; landforms: {}; {} places, {} caves",
                         mix.join(", "), zoom.places.len(), zoom.caves.len());
+                    let lakes: Vec<String> = region::debug::lakes_by_landform(&zoom).iter().take(8).map(|(n, c)| format!("{n} {c}")).collect();
+                    println!("  Lake cells by landform: {}", lakes.join(", "));
                 }
                 Err(e) => eprintln!("  Failed to save the site layer images: {e}"),
             }

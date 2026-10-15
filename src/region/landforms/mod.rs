@@ -26,10 +26,11 @@ pub mod wet;
 
 use crate::erosion::materials::RockType;
 use crate::region::plan::Landform;
+pub use crate::region::zoom::Drainage;
 use crate::world::WorldData;
 
 /// Keys the chunk cache: bump when any `shape_*` pass changes the heights it makes.
-pub const SHAPE_VERSION: u32 = 1;
+pub const SHAPE_VERSION: u32 = 2;
 
 /// A chunk's bordered grid, as the shape passes see it: `gw` x `gw` cells, cell (0, 0) at the
 /// top-left of world tile (`gx0`, `gy0`), `s` cells per tile.
@@ -62,21 +63,33 @@ impl<'a> ChunkGrid<'a> {
     pub fn idx(&self, i: usize, j: usize) -> usize { j * self.gw + i }
 }
 
-/// Heights before the landscape evolution: build what the rivers then wear.
-pub fn shape_before_erosion(h: &mut [f32], g: &ChunkGrid) {
-    volcanic::shape_before(h, g);
-    glacial::shape_before(h, g);
-    aeolian::shape_before(h, g);
-    rock::shape_before(h, g);
+/// `PLANET_SHAPE_SKIP=karst,glacial,...` leaves those processes' shape passes out (debugging:
+/// what each does to the heights and the water; the chunk cache ignores it, so turn the cache
+/// off with it).
+fn skipped(process: &str) -> bool {
+    static SKIP: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    SKIP.get_or_init(|| std::env::var("PLANET_SHAPE_SKIP").unwrap_or_default().split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .iter().any(|s| s == process)
 }
 
-/// Heights after the landscape evolution: what the final land shows.
-pub fn shape_after_erosion(h: &mut [f32], g: &ChunkGrid) {
-    rock::shape_after(h, g);
-    karst::shape_after(h, g);
-    glacial::shape_after(h, g);
-    fluvial::shape_after(h, g);
-    coast::shape_after(h, g);
+/// Heights before the landscape evolution: build what the rivers then wear.
+pub fn shape_before_erosion(h: &mut [f32], g: &ChunkGrid) {
+    if !skipped("volcanic") { volcanic::shape_before(h, g); }
+    if !skipped("glacial") && !skipped("glacial_before") { glacial::shape_before(h, g); }
+    if !skipped("aeolian") { aeolian::shape_before(h, g); }
+    if !skipped("rock") { rock::shape_before(h, g); }
+}
+
+/// Heights after the landscape evolution: what the final land shows. `d` and `acc` are the
+/// chunk's drainage and contributing area from the evolution's last step (routing it again
+/// would cost as much as the passes themselves), so a pass tests "is this a channel" with
+/// `acc[c] >= river_threshold(s) / (0.25 + moisture)` as the region does.
+pub fn shape_after_erosion(h: &mut [f32], g: &ChunkGrid, d: &Drainage, acc: &[f32]) {
+    if !skipped("rock") { rock::shape_after(h, g, d, acc); }
+    if !skipped("karst") { karst::shape_after(h, g, d, acc); }
+    if !skipped("glacial") && !skipped("glacial_after") { glacial::shape_after(h, g, d, acc); }
+    if !skipped("fluvial") { fluvial::shape_after(h, g, d, acc); }
+    if !skipped("coast") { coast::shape_after(h, g, d, acc); }
 }
 
 /// The blended region's fields with their margin, for `classify` and the site planner

@@ -6,10 +6,10 @@
 use crate::erosion::materials::RockType;
 use crate::region::plan::Landform;
 
-use super::{ChunkGrid, RegionFields};
+use super::{ChunkGrid, Drainage, RegionFields};
 
 pub fn shape_before(_h: &mut [f32], _g: &ChunkGrid) {}
 
-pub fn shape_after(_h: &mut [f32], _g: &ChunkGrid) {}
+pub fn shape_after(_h: &mut [f32], _g: &ChunkGrid, _d: &Drainage, _acc: &[f32]) {}
 
 pub fn classify(_f: &RegionFields, _rock: &[RockType], _land: &mut [Landform]) {}

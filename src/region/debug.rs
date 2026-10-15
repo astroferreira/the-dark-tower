@@ -83,6 +83,19 @@ pub fn save(region: &ZoomRegion, prefix: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Lake cells per landform label (name, count), most first: which passes make standing water.
+pub fn lakes_by_landform(region: &ZoomRegion) -> Vec<(&'static str, usize)> {
+    let mut counts = vec![0usize; Landform::ALL.len()];
+    for (k, &l) in region.landform.iter().enumerate() {
+        if region.lake_depth_m[k] > 0.0 {
+            counts[Landform::ALL.iter().position(|&x| x == l).unwrap_or(0)] += 1;
+        }
+    }
+    let mut out: Vec<(&'static str, usize)> = Landform::ALL.iter().zip(counts).filter(|(_, c)| *c > 0).map(|(l, c)| (l.name(), c)).collect();
+    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out
+}
+
 /// The share of cells per landform (name, count), most common first; plain ground included.
 pub fn landform_mix(region: &ZoomRegion) -> Vec<(&'static str, usize)> {
     let mut counts = vec![0usize; Landform::ALL.len()];

@@ -35,7 +35,7 @@ use crate::tilemap::Tilemap;
 use crate::world::WorldData;
 
 const EARTH_CIRCUMFERENCE_KM: f32 = 40_075.0;
-const NONE: u32 = u32::MAX;
+pub(crate) const NONE: u32 = u32::MAX;
 /// Dimensionless stream-power coefficient per iteration (F = K * sqrt(A_cells) / distance).
 const STREAM_POWER_K: f32 = 0.015;
 /// Dimensionless hillslope diffusion per iteration.
@@ -208,19 +208,19 @@ fn height_key(h: f32) -> u32 {
 // Drainage
 // ---------------------------------------------------------------------------------------------
 
-struct Drainage {
+pub struct Drainage {
     /// Cells from outlets upward (valid topological order for accumulation).
-    order: Vec<u32>,
+    pub order: Vec<u32>,
     /// Downstream neighbour (NONE for outlets).
-    recv: Vec<u32>,
+    pub recv: Vec<u32>,
     /// Depression-filled water level.
-    filled: Vec<f32>,
+    pub filled: Vec<f32>,
 }
 
 /// Priority-flood from the sea and the grid border. Every cell gets a receiver that leads to an
 /// outlet: steepest descent where the ground falls, the spill path across lakes and flats.
 /// `fill_gradient` (m per step) makes filled depressions slope gently toward their outlet.
-fn route(h: &[f32], w: usize, ht: usize, fill_gradient: f32) -> Drainage {
+pub(crate) fn route(h: &[f32], w: usize, ht: usize, fill_gradient: f32) -> Drainage {
     let n = w * ht;
     let mut filled = h.to_vec();
     let mut recv = vec![NONE; n];
@@ -279,7 +279,7 @@ fn route(h: &[f32], w: usize, ht: usize, fill_gradient: f32) -> Drainage {
 }
 
 /// Contributing area (cells) including injected inflow.
-fn accumulate(d: &Drainage, inflow: &[f32]) -> Vec<f32> {
+pub(crate) fn accumulate(d: &Drainage, inflow: &[f32]) -> Vec<f32> {
     let mut acc: Vec<f32> = inflow.iter().map(|&q| 1.0 + q).collect();
     for &i in d.order.iter().rev() {
         let r = d.recv[i as usize];
@@ -531,8 +531,10 @@ impl<'a> Ctx<'a> {
             }
         }
 
-        // Landscape evolution: implicit stream power + hillslope diffusion.
+        // Landscape evolution: implicit stream power + hillslope diffusion. The last step's
+        // drainage is kept for the landform passes after it.
         let land0: Vec<bool> = h.iter().map(|&e| e > 0.0).collect();
+        let mut last: Option<(Drainage, Vec<f32>)> = None;
         for _ in 0..self.iterations {
             let d = route(&h, gw, gw, 0.0);
             let acc = accumulate(&d, &inflow);
@@ -556,10 +558,12 @@ impl<'a> Ctx<'a> {
                     h[k] = (prev[k] + HILLSLOPE_D * lap).max(0.5);
                 }
             }
+            last = Some((d, acc));
         }
 
         // What the final land shows: dolines, benches, terraces, cliffs cut square.
-        landforms::shape_after_erosion(&mut h, &grid);
+        let (d, acc) = last.unwrap_or_else(|| { let d = route(&h, gw, gw, 0.0); let acc = accumulate(&d, &inflow); (d, acc) });
+        landforms::shape_after_erosion(&mut h, &grid, &d, &acc);
 
         // Central 2s x 2s region: global cells [(cx - 0.5) s, (cx + 1.5) s).
         let off = s / 2;
@@ -626,6 +630,13 @@ fn chunk_cache() -> &'static std::sync::Mutex<std::collections::HashMap<ChunkKey
 /// blended with tent weights (a partition of unity), so every cell's height depends only on its
 /// world position: regions generated separately (in any order) join seamlessly.
 pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
+    // `PLANET_REGION_TIMING=1` prints each phase's time (the chunks are the cold cost).
+    let timing = std::env::var_os("PLANET_REGION_TIMING").is_some();
+    let mut t_last = std::time::Instant::now();
+    let mut lap = |what: &str| {
+        if timing { eprintln!("  region {what}: {:.2} s", t_last.elapsed().as_secs_f32()); }
+        t_last = std::time::Instant::now();
+    };
     let ctx = Ctx::new(world, params);
     let s = ctx.s;
     let tiles = params.tiles.max(1);
@@ -669,6 +680,8 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
     fresh.par_iter().filter(|f| f.2).for_each(|(k, c, _)| disk::store(key_of(*k), c));
     chunks.extend(fresh.into_iter().map(|(k, c, _)| (k, c)));
 
+    lap("chunks");
+
     // 2. Blend: each cell mixes the two nearest chunk centres in x and in y (tent weights).
     let mut h = vec![0.0f32; n];
     for j in 0..gw {
@@ -694,6 +707,8 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         }
     }
 
+    lap("blend");
+
     // 3. Climate (a pure function of position and local height).
     let (mut temp, mut moist) = (vec![0.0f32; n], vec![0.0f32; n]);
     temp.par_iter_mut().zip(moist.par_iter_mut()).enumerate().for_each(|(k, (t, m))| {
@@ -708,6 +723,8 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         *m = bicubic(&ctx.smooth_moist, cu, cv).clamp(0.0, 1.0);
     });
 
+    lap("climate");
+
     // 4. Hydrology on the blended terrain (with the margin), inflow from world rivers.
     let mut inflow = vec![0.0f32; n];
     ctx.world_rivers(gx0, gy0, gw, gw, None, &mut inflow);
@@ -716,6 +733,8 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
     let cell_km2 = (ctx.cell_m / 1000.0).powi(2);
     let tile_cells = (s * s) as f32;
 
+    lap("hydrology");
+
     // 4b. The site layer: every cell's landform and surface rock from the blended fields, then
     // the places of the window's tiles (`region::landforms`, `region::sites`).
     let fields = RegionFields {
@@ -723,7 +742,9 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         h: &h, filled: &d.filled, recv: &d.recv, acc: &acc, temp: &temp, moist: &moist,
     };
     let (land, rock) = landforms::classify(&fields);
+    lap("landforms");
     let site_plan = sites::plan(&fields, &land, &rock, Core { x0: core_x0, y0: core_y0, w: tiles, h: tiles });
+    lap("sites");
 
     // 5. Crop to the requested window.
     let (w, ht) = (tiles * s, tiles * s);
@@ -758,7 +779,8 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
             out.landform.push(land[k]);
             out.rock.push(rock[k]);
             let lake = if e > 0.0 { (d.filled[k] - e).max(0.0) } else { 0.0 };
-            let lake = if lake >= LAKE_MIN_DEPTH_M { lake } else { 0.0 };
+            // A doline drains underground: no water stands in it (the flow still crosses it).
+            let lake = if lake >= LAKE_MIN_DEPTH_M && land[k] != Landform::Doline { lake } else { 0.0 };
             // Drier ground needs a larger catchment before a permanent stream appears.
             let threshold = RIVER_AREA_FRACTION * tile_cells / (0.25 + moist[k]);
             let river = if e > 0.0 && lake == 0.0 && acc[k] > threshold {
