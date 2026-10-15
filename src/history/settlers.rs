@@ -227,6 +227,13 @@ pub fn roster(h: &WorldHistory, tile: (usize, usize), n: usize, seed: u64) -> Ve
         let oldest = [seen, left].iter().flatten().map(|e| e.date.year).min().unwrap_or(now);
         let age = (16 + (hash(seed, 30 + k) % 16) as u32).max(now.saturating_sub(oldest) + 6);
         let lived = |e: &Event| e.date.year + age >= now + 6;
+        // Kin too old to have seen their notable's last deed (it is over 64 years gone) would
+        // remember nothing: the next notable instead.
+        if seen.filter(|e| lived(e) && age <= 70).is_none() && left.filter(|e| lived(e) && age <= 70).is_none() {
+            k += 1;
+            if k > 64 { break; }
+            continue;
+        }
         match seen.filter(|e| lived(e) && age <= 70) {
             Some(ev) => lines.push((format!("Younger kin of {}, {} of {}; last saw them at {} ({}).", fig.full_name(), role, tname(s), phrase(h, ev), ev.date.year), Some(ev.id))),
             None => lines.push((format!("Younger kin of {}, {} of {}.", fig.full_name(), role, tname(s)), None)),

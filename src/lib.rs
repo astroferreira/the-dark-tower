@@ -17,6 +17,8 @@
 
 pub mod adventure;
 pub mod astro;
+pub mod myth;
+pub mod terrain_rev;
 #[cfg(feature = "legacy")]
 pub mod ascii;
 pub mod biome_feathering;

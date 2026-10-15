@@ -3,12 +3,16 @@
 
 use std::process::Command;
 
+/// The binary with myth and magic on (`--myth`, `crate::myth`): these tests are of the game's
+/// systems as they were, Shadow, beasts and all; the realistic default has its own tests.
+fn myth_cmd() -> Command { let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator")); c.env("PLANET_MYTH", "1").env_remove("PLANET_TERRAIN_V1"); c }
+
 #[test]
 fn the_sprite_sheet_draws_every_family() {
     let dir = std::env::temp_dir().join(format!("sprites_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("sheet.png");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--sprite-sheet", path.to_str().unwrap()]).output().expect("run planet_generator");
+    let out = myth_cmd().args(["--sprite-sheet", path.to_str().unwrap()]).output().expect("run planet_generator");
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let n: usize = text.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0);
@@ -31,7 +35,7 @@ fn the_sprite_sheet_draws_every_family() {
 fn the_ledger_drives_by_clicks() {
     let dir = std::env::temp_dir().join(format!("ui_drive_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--ui-drive", dir.join("d").to_str().unwrap()]).output().expect("run planet_generator");
+    let out = myth_cmd().args(["--dev", "--ui-drive", dir.join("d").to_str().unwrap()]).output().expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(out.status.success(), "the drive failed:\n{text}");
     let line = text.lines().find(|l| l.starts_with("UI drive: ")).unwrap_or_else(|| panic!("no summary:\n{text}"));
@@ -45,7 +49,7 @@ fn the_ledger_drives_by_clicks() {
 fn the_world_map_shows_its_living_things() {
     let dir = std::env::temp_dir().join(format!("world_life_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--headless", "--tiles-snapshot", dir.join("w").to_str().unwrap()]).output().expect("run planet_generator");
+    let out = myth_cmd().args(["--dev", "--headless", "--tiles-snapshot", dir.join("w").to_str().unwrap()]).output().expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let line = text.lines().find(|l| l.starts_with("World life: ")).unwrap_or_else(|| panic!("no world life line:\n{text}"));
     let n: Vec<usize> = line.split(|c: char| !c.is_ascii_digit()).filter_map(|w| w.parse().ok()).collect();
@@ -60,7 +64,7 @@ fn the_world_map_shows_its_living_things() {
 fn every_kind_draws_in_the_game_frame() {
     let dir = std::env::temp_dir().join(format!("inventory_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--inventory", dir.join("i").to_str().unwrap()]).output().expect("run planet_generator");
+    let out = myth_cmd().args(["--dev", "--inventory", dir.join("i").to_str().unwrap()]).output().expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let line = text.lines().find(|l| l.starts_with("Inventory: ")).unwrap_or_else(|| panic!("no inventory line:\n{text}"));
     let n: Vec<usize> = line.split(|c: char| !c.is_ascii_digit()).filter_map(|w| w.parse().ok()).collect();

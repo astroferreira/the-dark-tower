@@ -17,6 +17,9 @@ fn seed_to_z(seed: u64, offset: f64) -> f64 {
 /// to guarantee seamless periodic wrapping across longitude (X) without grid-plane resonance.
 #[inline]
 fn cylindrical_coords(nx: f64, ny: f64, radius: f64) -> [f64; 3] {
+    // A cylinder does not close at the poles: its noise is pinched into spokes there. Terrain
+    // revision 2 samples the sphere itself (`audit.md` 3.1).
+    if !crate::terrain_rev::v1() { return spherical_coords(nx, ny, radius); }
     let angle = nx * std::f64::consts::TAU;
     let cx = angle.cos() * radius;
     let cz = angle.sin() * radius;
@@ -29,6 +32,21 @@ fn cylindrical_coords(nx: f64, ny: f64, radius: f64) -> [f64; 3] {
     let ry = cy * cos_a - cz * sin_a + 17.382;
     let rz = cy * sin_a + cz * cos_a + 31.914;
     [rx + 11.234, ry, rz]
+}
+
+/// Map coordinates (nx = longitude, ny = colatitude, both 0..1) to a point on a sphere of
+/// `radius`, tilted 20 degrees and offset so the equator and parallels never line up with the
+/// noise lattice: features keep their size and shape at every latitude (`audit.md` 3.1).
+#[inline]
+pub(crate) fn spherical_coords(nx: f64, ny: f64, radius: f64) -> [f64; 3] {
+    let lon = nx * std::f64::consts::TAU;
+    let lat = std::f64::consts::FRAC_PI_2 - ny * std::f64::consts::PI;
+    let cos_lat = lat.cos();
+    let sx = cos_lat * lon.cos() * radius;
+    let sz = cos_lat * lon.sin() * radius;
+    let sy = lat.sin() * radius;
+    let (cos_a, sin_a) = (0.93969, 0.34202);
+    [sx + 11.234, sy * cos_a - sz * sin_a + 17.382, sy * sin_a + sz * cos_a + 31.914]
 }
 
 /// Fractional Brownian Motion in 3D
@@ -67,6 +85,11 @@ fn ridged_fbm_3d(
     let mut amplitude = 1.0;
     let mut frequency = 1.0;
     let mut max_val = 0.0;
+    // Musgrave's heterogeneous ridged multifractal (`audit.md` 3.3): each octave is weighted by
+    // the one before (w = clamp(R G, 0, 1), G = 1.8), so fine crags grow only high on the
+    // ridge spines and the valleys between stay smooth. Revision 1 weighted every octave alike.
+    let signal_weighted = !crate::terrain_rev::v1();
+    let mut weight = 1.0f64;
 
     for i in 0..octaves {
         let n = noise.get([
@@ -74,7 +97,11 @@ fn ridged_fbm_3d(
             p[1] * frequency,
             p[2] * frequency + i as f64 * 30.0,
         ]);
-        let ridge = (1.0 - n.abs()).max(0.0).powf(power);
+        let mut ridge = (1.0 - n.abs()).max(0.0).powf(power);
+        if signal_weighted {
+            ridge *= weight;
+            weight = (ridge * RIDGE_GAIN).clamp(0.0, 1.0);
+        }
         total += amplitude * ridge;
         max_val += amplitude;
         amplitude *= persistence;
@@ -83,6 +110,9 @@ fn ridged_fbm_3d(
 
     (total / max_val) as f32
 }
+
+/// Gain of the signal weighting in the ridged multifractal (Musgrave's G).
+pub(crate) const RIDGE_GAIN: f64 = 1.8;
 
 /// Domain warping in 3D
 fn domain_warp_cylindrical(
@@ -735,6 +765,9 @@ pub fn generate_heightmap_scaled(
     
     // Pre-compute distance from coast for gradient
     let coast_distance = compute_coast_distance(plate_map, plates);
+
+    // Revision 2: mountain belts stand along the convergent plate boundaries (`audit.md` 3.4).
+    let orogens = if crate::terrain_rev::v1() { None } else { Some(orogen_field(plate_map, plates, stress_map, map_scale)) };
     
     let mut heightmap = Tilemap::new_with(width, height, 0.0f32);
     
@@ -809,6 +842,7 @@ pub fn generate_heightmap_scaled(
                     wp_macro,
                     effective_coast,
                     stress,
+                    orogens.as_ref().map(|o| o[y * width + x]),
                     &terrain_noise,
                     &ridge_noise,
                     &detail_noise,
@@ -849,7 +883,16 @@ pub fn generate_heightmap_scaled(
     }
     
     // Apply smoothing pass to reduce harsh transitions
-    smooth_heightmap(&heightmap, 2)
+    let mut heightmap = smooth_heightmap(&heightmap, 2);
+    if !crate::terrain_rev::v1() {
+        // Fracture zones off the spreading ridges, traced along the distance from them.
+        let ridges: Vec<(usize, usize)> = (0..height).flat_map(|y| (0..width).map(move |x| (x, y)))
+            .filter(|&(x, y)| *stress_map.get(x, y) < -0.06 && *heightmap.get(x, y) < -1500.0).collect();
+        let spread = crate::tilemap::geodesic_distance(width, height, ridges, |_, _| true);
+        let km = map_scale.km_per_tile;
+        carve_fracture_zones(&mut heightmap, &spread, 1.5, km, 450.0f32.max(4.0 * km), 1800.0f32.max(12.0 * km), seed);
+    }
+    heightmap
 }
 
 // =============================================================================
@@ -864,6 +907,7 @@ fn generate_continental_elevation(
     p: [f64; 3],
     effective_coast: f32,
     stress: f32,
+    orogen: Option<Orogen>,
     terrain_noise: &Perlin,
     ridge_noise: &Perlin,
     detail_noise: &Perlin,
@@ -927,7 +971,381 @@ fn generate_continental_elevation(
 
     let min_elevation = COASTAL_HEIGHT + CONTINENTAL_MIN * coastal_gradient;
 
+    if let Some(o) = orogen {
+        // Revision 2 (`audit.md` 3.4): the belts follow the plate boundaries, not a noise mask;
+        // the noise corridors stay only as worn-down old fold belts (suture scars). The ridged
+        // texture roughens the belt, most on its rim, least on the plateau.
+        let (belt, rim, foreland) = o.profile();
+        let crest = o.crest_m();
+        let relief = belt * crest * (0.62 + 0.38 * mountain_ridge) + rim * crest * 0.22 * mountain_ridge.powf(1.4);
+        let worn = interior_mountains * 0.35 + foothills * (0.6 + 0.4 * belt);
+        let rift = if stress < -0.05 { tectonic_orogeny.min(0.0) } else { 0.0 };
+        let e = min_elevation + gentle_plains + uplands + worn + relief + rift + fine_relief + foreland;
+        return plateau_ceiling(e).max(COASTAL_HEIGHT);
+    }
+
     (min_elevation + gentle_plains + uplands + foothills + interior_mountains + tectonic_orogeny + fine_relief).max(COASTAL_HEIGHT)
+}
+
+/// Where a cell lies against the nearest convergent plate boundary: how far (km), on the plate
+/// that overrides there or the one that goes under, and how hard the plates converge (0..1).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Orogen {
+    pub dist_km: f32,
+    pub overriding: bool,
+    pub strength: f32,
+}
+
+/// Flexural parameter of the continental lithosphere (km): alpha = (4D / (drho g))^(1/4).
+const FLEXURE_ALPHA_KM: f32 = 110.0;
+
+impl Orogen {
+    /// The belt's crest before the plateau ceiling (m): 2.6 km for weak convergence, 5.2 km for
+    /// the strongest.
+    fn crest_m(&self) -> f32 { 2600.0 + 2600.0 * self.strength }
+
+    /// The belt's cross-section at this distance: its share of the crest (0..1), how much of it
+    /// is the rugged rim rather than the plateau, and the flexural foreland (m, negative in the
+    /// trough, a low bulge beyond). On the overriding plate a steep pro-wedge rises from the
+    /// boundary to a plateau (wide where convergence is strong: Tibet, the Altiplano) and falls
+    /// to the retro-foreland; on the plate going under, a steep front faces a foreland basin
+    /// (the Ganges plain). The foreland follows w(x) = w0 e^(-x/a) cos(x/a).
+    fn profile(&self) -> (f32, f32, f32) {
+        if self.strength <= 0.0 { return (0.0, 0.0, 0.0); }
+        let x = self.dist_km;
+        let s = self.strength;
+        let ss = |e0: f32, e1: f32, v: f32| { let t = ((v - e0) / (e1 - e0)).clamp(0.0, 1.0); t * t * (3.0 - 2.0 * t) };
+        let (belt, rim, front) = if self.overriding {
+            let wedge = 80.0;
+            let plateau = 120.0 + 480.0 * s;
+            let decline = 160.0;
+            let belt = (0.25 + 0.75 * ss(0.0, wedge, x)) * (1.0 - ss(plateau, plateau + decline, x));
+            let rim = (1.0 - ss(wedge, wedge * 2.5, x)).max(ss(plateau - 60.0, plateau + 40.0, x) * (1.0 - ss(plateau + 40.0, plateau + decline, x)));
+            (belt, rim, plateau + decline * 0.7)
+        } else {
+            let width = 90.0 + 60.0 * s;
+            let belt = 0.75 * (1.0 - ss(0.0, width, x));
+            (belt, 1.0 - ss(0.0, width, x), width * 0.8)
+        };
+        let xf = (x - front).max(0.0) / FLEXURE_ALPHA_KM;
+        let w0 = 0.09 * self.crest_m();
+        let foreland = if x > front { -w0 * (-xf).exp() * xf.cos() } else { 0.0 };
+        (belt, rim, foreland)
+    }
+}
+
+/// An orogenic plateau's isostatic ceiling: thickened crust spreads sideways instead of rising
+/// past ~4.5-5.5 km, so heights above 4.5 km approach 5.5 km.
+fn plateau_ceiling(e: f32) -> f32 {
+    if e <= 4500.0 { e } else { 4500.0 + 1000.0 * ((e - 4500.0) / 1000.0).tanh() }
+}
+
+/// For every cell, its `Orogen`: the distance on the sphere to the nearest convergent boundary
+/// cell (two plates meeting with stress above 0.06), whether its plate overrides there (the
+/// continental over the oceanic, else the higher-standing plate) and the convergence strength.
+pub(crate) fn orogen_field(plate_map: &Tilemap<PlateId>, plates: &[Plate], stress: &Tilemap<f32>, map_scale: &MapScale) -> Vec<Orogen> {
+    let (w, h) = (plate_map.width, plate_map.height);
+    let mut sources = Vec::new();
+    let mut overrides = vec![false; w * h];
+    let plate = |id: PlateId| if id.is_none() || id.0 as usize >= plates.len() { None } else { Some(&plates[id.0 as usize]) };
+    for y in 0..h {
+        for x in 0..w {
+            let s = *stress.get(x, y);
+            if s <= 0.06 { continue; }
+            let Some(me) = plate(*plate_map.get(x, y)) else { continue };
+            let other = plate_map.neighbors_8(x, y).into_iter().filter_map(|(nx, ny)| {
+                let id = *plate_map.get(nx, ny);
+                if id == me.id { None } else { plate(id) }
+            }).next();
+            let Some(other) = other else { continue };
+            let me_cont = me.plate_type == PlateType::Continental;
+            let other_cont = other.plate_type == PlateType::Continental;
+            overrides[y * w + x] = if me_cont != other_cont { me_cont } else if me.base_elevation != other.base_elevation { me.base_elevation > other.base_elevation } else { me.id.0 < other.id.0 };
+            sources.push((x, y));
+        }
+    }
+    let (dist, src) = crate::tilemap::geodesic_nearest(w, h, sources, |_, _| true);
+    let km = map_scale.km_per_tile;
+    (0..w * h).map(|i| {
+        let j = src[i];
+        if j == usize::MAX { return Orogen { dist_km: f32::MAX, overriding: false, strength: 0.0 }; }
+        let same = *plate_map.get(i % w, i / w) == *plate_map.get(j % w, j / w);
+        let strength = ((*stress.get(j % w, j / w) - 0.04) / 0.35).clamp(0.0, 1.0);
+        Orogen { dist_km: *dist.get(i % w, i / w) * km, overriding: overrides[j] == same, strength }
+    }).collect()
+}
+
+/// Fjords where ice once filled the valleys (`audit.md` 3.6): from coastal river mouths with a
+/// real catchment, at high latitude (|lat| > 38 degrees, with some relief inland) or under
+/// coastal mountains (over 600 m), the trunk valley is traced upstream (the donor with the
+/// most flow at each step, ~300 km at most) and drowned as a U-shaped trough: half-width
+/// growing with the ice flux as Q^0.35, floor -D (1 - (r/W)^2) (0.25 + 0.75 sin(pi s/L)), so
+/// the mouth's sill is shallow and the basin inland overdeepened, and every fjord is one water
+/// with the sea. Revision 1 carved wherever a noise field crossed a threshold, slicing across
+/// ridges and leaving salt holes inland. Returns the fjords and the tiles carved.
+pub fn carve_glacial_fjords(heightmap: &mut Tilemap<f32>) -> (usize, usize) {
+    use crate::erosion::rivers::{compute_flow_with_filled_routing, DX, DY, NO_FLOW};
+    let (w, h) = (heightmap.width, heightmap.height);
+    let km = crate::erosion::landscape::tile_km(w);
+    let (dir, acc, _) = compute_flow_with_filled_routing(heightmap);
+    let sea = crate::erosion::landscape::sea_mask(heightmap, 0.0);
+    let idx = |x: usize, y: usize| y * w + x;
+    let lat_deg = |y: usize| (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+    let cos_row = |y: usize| (std::f32::consts::FRAC_PI_2 - (y as f32 + 0.5) / h as f32 * std::f32::consts::PI).cos().max(0.15);
+    // Donors: the cells whose flow goes into each cell.
+    let mut donors: Vec<Vec<usize>> = vec![Vec::new(); w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let d = *dir.get(x, y);
+            if d == NO_FLOW { continue; }
+            let nx = (x as i32 + DX[d as usize]).rem_euclid(w as i32) as usize;
+            let ny = y as i32 + DY[d as usize];
+            if ny < 0 || ny >= h as i32 { continue; }
+            donors[idx(nx, ny as usize)].push(idx(x, y));
+        }
+    }
+    let min_acc = (3.0 * (w as f32 / 512.0).powi(2)).max(2.0);
+    let max_len = ((300.0 / km).round() as usize).clamp(1, 16);
+    // Mouths: land cells beside the open sea with a catchment, biggest first.
+    let mut mouths: Vec<usize> = (0..w * h).filter(|&i| {
+        let (x, y) = (i % w, i / w);
+        *heightmap.get(x, y) > 0.0 && *acc.get(x, y) >= min_acc && heightmap.neighbors(x, y).iter().any(|&(nx, ny)| *sea.get(nx, ny))
+    }).collect();
+    mouths.sort_by(|&a, &b| acc.get(b % w, b / w).partial_cmp(acc.get(a % w, a / w)).unwrap().then(a.cmp(&b)));
+    let mut target = vec![f32::MAX; w * h];
+    let mut taken = vec![false; w * h];
+    let mut fjords = 0;
+    for &m in &mouths {
+        if taken[m] { continue; }
+        // The trunk valley, mouth to head.
+        let mut path = vec![m];
+        while path.len() < max_len {
+            let c = *path.last().unwrap();
+            let Some(&up) = donors[c].iter().filter(|&&d| *heightmap.get(d % w, d / w) > 0.0)
+                .max_by(|&&a, &&b| acc.get(a % w, a / w).partial_cmp(acc.get(b % w, b / w)).unwrap()) else { break };
+            if *acc.get(up % w, up / w) < 1.0 { break; }
+            path.push(up);
+        }
+        if path.len() < 2 || path.iter().any(|&c| taken[c]) { continue; }
+        // The valley's walls: the highest ground within a cell of the trunk.
+        let relief = path.iter().flat_map(|&c| heightmap.neighbors_8(c % w, c / w).into_iter().chain(std::iter::once((c % w, c / w))))
+            .map(|(x, y)| *heightmap.get(x, y)).fold(0.0f32, f32::max);
+        // Ice reached the sea through mountains: past 40 degrees under coastal mountains, or
+        // past 55 under hills (Norway, Patagonia, Alaska, Greenland; not the tropics).
+        let lat = lat_deg(m / w);
+        if !(lat > 40.0 && (relief > 600.0 || (lat > 55.0 && relief > 300.0))) { continue; }
+        fjords += 1;
+        let q_mouth = *acc.get(m % w, m / w);
+        let l = path.len() as f32;
+        let d_max = (250.0 + 0.35 * relief).min(1200.0);
+        for (k, &c) in path.iter().enumerate() {
+            let (cx, cy) = (c % w, c / w);
+            let s = k as f32 + 0.5;
+            let along = 0.25 + 0.75 * (std::f32::consts::PI * s / l).sin();
+            let q = *acc.get(cx, cy) / q_mouth;
+            let half = (0.9 * q.max(0.05).powf(0.35) * (78.0 / km).sqrt()).clamp(0.55, 2.5);
+            let reach = half.ceil() as i32;
+            let c_lat = cos_row(cy);
+            for dy in -reach..=reach {
+                let ny = cy as i32 + dy;
+                if ny < 0 || ny >= h as i32 { continue; }
+                let rx = ((reach as f32 / c_lat).ceil() as i32).min(w as i32 / 2);
+                for dx in -rx..=rx {
+                    let r = ((dx as f32 * c_lat).powi(2) + (dy * dy) as f32).sqrt();
+                    if r >= half { continue; }
+                    let nx = (cx as i32 + dx).rem_euclid(w as i32) as usize;
+                    let j = idx(nx, ny as usize);
+                    let z = -d_max * (1.0 - (r / half).powi(2)) * along;
+                    target[j] = target[j].min(z);
+                }
+            }
+            taken[c] = true;
+        }
+        // Keep the next fjord at least two cells off.
+        for &c in &path {
+            let (cx, cy) = ((c % w) as i32, (c / w) as i32);
+            for dy in -2..=2 { for dx in -2..=2 {
+                let ny = cy + dy;
+                if ny < 0 || ny >= h as i32 { continue; }
+                taken[idx((cx + dx).rem_euclid(w as i32) as usize, ny as usize)] = true;
+            } }
+        }
+    }
+    let mut cells = 0;
+    for (i, (_, _, e)) in heightmap.iter_mut().enumerate() {
+        if target[i] < *e && target[i] < 0.0 { *e = target[i]; cells += 1; }
+    }
+    (fjords, cells)
+}
+
+/// Basins younger than the rivers' long work, which it would have filled (`audit.md` 1.1 runs
+/// the erosion last, so 10 Myr of sediment fills every older hollow): ice-scoured basins on
+/// the hard, low ground the last ice sheets covered and have left (land between -12 and 6 C a
+/// year past 40 degrees, below 1500 m, rock harder than 0.55: the Canadian and Baltic shields'
+/// lakes), and
+/// grabens along the continental rifts (tension below -0.03, 500 m deep by -0.10: Tanganyika,
+/// Baikal; the simulated crust has tension on the flanks of fresh rifts). Returns the
+/// cells carved by ice and by rifting.
+pub fn carve_young_basins(heightmap: &mut Tilemap<f32>, temperature: &Tilemap<f32>, stress: &Tilemap<f32>, hardness: &Tilemap<f32>, seed: u64) -> (usize, usize) {
+    let (w, h) = (heightmap.width, heightmap.height);
+    let scour = Perlin::new(1).set_seed((seed as u32).wrapping_add(0x5C0));
+    let f = 14.0 * (w as f64 / 512.0).max(0.4);
+    let (mut ice, mut rift) = (0, 0);
+    let mut graben = vec![0.0f32; w * h];
+    let ss = |e0: f32, e1: f32, x: f32| { let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0); t * t * (3.0 - 2.0 * t) };
+    if std::env::var("PLANET_TERRAIN_DEBUG").is_ok() {
+        let mut v: Vec<f32> = heightmap.iter().filter(|(_, _, &e)| e > 0.0).map(|(x, y, _)| *stress.get(x, y)).collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        if !v.is_empty() { eprintln!("land stress: min {:.3} p1 {:.3} p5 {:.3} p50 {:.3} p95 {:.3}; below -0.03: {}, -0.04: {}, -0.06: {}", v[0], v[v.len() / 100], v[v.len() / 20], v[v.len() / 2], v[v.len() * 19 / 20], v.iter().filter(|&&s| s < -0.03).count(), v.iter().filter(|&&s| s < -0.04).count(), v.iter().filter(|&&s| s < -0.06).count()); }
+    }
+    for y in 0..h {
+        let lat = (90.0 - (y as f32 + 0.5) / h as f32 * 180.0).abs();
+        for x in 0..w {
+            let e = *heightmap.get(x, y);
+            if e <= 5.0 { continue; }
+            let mut cut = 0.0f32;
+            // Ice: patchy scoured hollows where the noise peaks.
+            // (Ground colder than -12 C a year is still under its ice sheet: no lakes to see.)
+            let t = *temperature.get(x, y);
+            let glaciated = ss(6.0, 2.0, t) * ss(-16.0, -11.0, t) * ss(40.0, 48.0, lat) * ss(1500.0, 900.0, e) * ss(0.55, 0.7, *hardness.get(x, y));
+            if glaciated > 0.0 {
+                let p = crate::tilemap::sphere_point(x, y, w, h, f);
+                let n = (1.0 - scour.get(p).abs()) as f32;
+                let depth = 120.0 * ss(0.86, 0.98, n) * glaciated;
+                if depth > 10.0 { cut = cut.max(depth); ice += 1; }
+            }
+            // Rifts: a graben along the extension (the simulated crust's rift flanks reach
+            // -0.03 to -0.12 after smoothing; the legacy stress -0.3).
+            let s = *stress.get(x, y);
+            if s < -0.03 {
+                let depth = 500.0 * ss(0.03, 0.10, -s);
+                if depth > 10.0 { cut = cut.max(depth); rift += 1; graben[y * w + x] = depth; }
+            }
+            // A basin floor stays above sea level (no new seas inland).
+            if cut > 0.0 { heightmap.set(x, y, (e - cut).max(e.min(5.0))); }
+        }
+    }
+    // Rift shoulders: the footwalls rise as the graben sinks (Tanganyika's are 2-3 km), by 0.3
+    // of the graben's depth beside them, closing the trough so its water can stand as a lake.
+    let mut lift = vec![0.0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            if graben[y * w + x] > 0.0 || *heightmap.get(x, y) <= 0.0 { continue; }
+            let beside = heightmap.neighbors_8(x, y).into_iter().map(|(nx, ny)| graben[ny * w + nx]).fold(0.0f32, f32::max);
+            lift[y * w + x] = 0.3 * beside;
+        }
+    }
+    for (i, (_, _, e)) in heightmap.iter_mut().enumerate() { *e += lift[i]; }
+    if std::env::var("PLANET_TERRAIN_DEBUG").is_ok() && rift > 0 {
+        let sea = crate::erosion::landscape::sea_mask(heightmap, 0.0);
+        let coastal = (0..w * h).filter(|&i| graben[i] > 0.0 && heightmap.neighbors_8(i % w, i / w).iter().any(|&(x, y)| *sea.get(x, y))).count();
+        let depth = crate::erosion::landscape::lake_depth(heightmap);
+        let wet = (0..w * h).filter(|&i| graben[i] > 0.0 && *depth.get(i % w, i / w) > 1.0).count();
+        eprintln!("rift cells {rift}: {coastal} beside the sea, {wet} holding water");
+    }
+    (ice, rift)
+}
+
+/// Fracture zones (`audit.md` 3.5): transform faults cut a mid-ocean ridge into segments every
+/// few hundred kilometres, and their scars run out across the ocean floor along the spreading
+/// direction. From points spaced `spacing_km` apart along the ridge axis (ocean cells with
+/// `age` below `axis_age`), each scar is traced both ways up the gradient of `age` (seafloor
+/// age, or any field that grows away from the ridge) for up to `length_km`, as a trough 400 m
+/// deep fading outward with a 120 m step on one side (the floor of different age across it).
+/// Returns the number of scars.
+pub fn carve_fracture_zones(heightmap: &mut Tilemap<f32>, age: &Tilemap<f32>, axis_age: f32, km_per_cell: f32, spacing_km: f32, length_km: f32, seed: u64) -> usize {
+    let (w, h) = (heightmap.width, heightmap.height);
+    let deep = |hm: &Tilemap<f32>, x: usize, y: usize| *hm.get(x, y) < -1500.0;
+    let hash = |i: usize| (i as u64 ^ seed).wrapping_mul(0x9E37_79B9_7F4A_7C15).rotate_left(17);
+    let mut axis: Vec<usize> = (0..w * h).filter(|&i| deep(heightmap, i % w, i / w) && *age.get(i % w, i / w) < axis_age).collect();
+    axis.sort_by_key(|&i| hash(i));
+    let spacing = spacing_km / km_per_cell;
+    let cos_row = |y: f32| (std::f32::consts::FRAC_PI_2 - (y + 0.5) / h as f32 * std::f32::consts::PI).cos().max(0.15);
+    let sep = |a: usize, b: usize| {
+        let (ax, ay, bx, by) = ((a % w) as f32, (a / w) as f32, (b % w) as f32, (b / w) as f32);
+        let mut dx = (ax - bx).abs();
+        dx = dx.min(w as f32 - dx) * cos_row((ay + by) * 0.5);
+        (dx * dx + (ay - by).powi(2)).sqrt()
+    };
+    let mut seeds: Vec<usize> = Vec::new();
+    for &i in &axis {
+        if seeds.iter().all(|&j| sep(i, j) >= spacing) { seeds.push(i); }
+    }
+    let grad = |x: f32, y: f32| -> (f32, f32) {
+        let (xi, yi) = (x.round().rem_euclid(w as f32) as usize, (y.round().max(0.0) as usize).min(h - 1));
+        let at = |dx: i32, dy: i32| *age.get((xi as i32 + dx).rem_euclid(w as i32) as usize, (yi as i32 + dy).clamp(0, h as i32 - 1) as usize);
+        ((at(1, 0) - at(-1, 0)) * 0.5 / cos_row(yi as f32), (at(0, 1) - at(0, -1)) * 0.5)
+    };
+    let mut carve = vec![0.0f32; w * h];
+    let steps = (length_km / km_per_cell).ceil() as usize;
+    for &s0 in &seeds {
+        let (sx, sy) = ((s0 % w) as f32, (s0 / w) as f32);
+        // The two flanks: toward the oldest neighbour and the opposite way.
+        let (mut bx, mut by, mut best) = (0.0f32, 0.0f32, f32::MIN);
+        for (dx, dy) in [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)] {
+            let nx = (sx as i32 + dx).rem_euclid(w as i32) as usize;
+            let ny = (sy as i32 + dy).clamp(0, h as i32 - 1) as usize;
+            let a = *age.get(nx, ny);
+            if a > best { best = a; bx = dx as f32; by = dy as f32; }
+        }
+        for flank in [1.0f32, -1.0] {
+            let (mut x, mut y) = (sx, sy);
+            let (mut dx, mut dy) = (bx * flank, by * flank);
+            for k in 0..steps {
+                let n = (dx * dx + dy * dy).sqrt();
+                if n < 1e-6 { break; }
+                // A step one cell long on the ground: east-west steps cover 1/cos(lat) columns.
+                x += dx / n / cos_row(y);
+                y += dy / n;
+                if y < 0.0 || y > (h - 1) as f32 { break; }
+                let (xi, yi) = (x.round().rem_euclid(w as f32) as usize, y.round() as usize);
+                if !deep(heightmap, xi, yi) { break; }
+                let fade = 1.0 - k as f32 / steps as f32;
+                let i = yi * w + xi;
+                carve[i] = carve[i].min(-400.0 * fade.sqrt());
+                // Across the scar, to its left: the trough's shoulder and the step.
+                let (px, py) = (-dy / n, dx / n);
+                for (off, depth) in [(1.0f32, -140.0 - 120.0), (2.0, -120.0), (-1.0, -140.0)] {
+                    let qx = (x + px * off / cos_row(y)).round().rem_euclid(w as f32) as usize;
+                    let qy = (y + py * off).round().clamp(0.0, (h - 1) as f32) as usize;
+                    if !deep(heightmap, qx, qy) { continue; }
+                    let j = qy * w + qx;
+                    carve[j] = carve[j].min(depth * fade);
+                }
+                // Follow the spreading direction (up the age gradient), turning gently.
+                let (gx, gy) = grad(x, y);
+                let gn = (gx * gx + gy * gy).sqrt();
+                if gn > 1e-4 {
+                    let (gx, gy) = (gx / gn, gy / gn);
+                    if gx * dx + gy * dy > 0.0 { dx = 0.7 * dx / n + 0.3 * gx; dy = 0.7 * dy / n + 0.3 * gy; }
+                }
+            }
+        }
+    }
+    for (i, (_, _, e)) in heightmap.iter_mut().enumerate() { *e += carve[i]; }
+    seeds.len()
+}
+
+/// The continental margin's depth (m) `d_km` out from the shore (`audit.md` 3.5): a gentle
+/// shelf to -130 m (as d^0.6) about 80 km wide, a steep sigmoid slope to -3200 m over 70 km,
+/// then the continental rise, a turbidite apron decaying (e-fold 180 km) into the abyssal
+/// floor at `deep_m`.
+pub(crate) fn margin_depth(d_km: f32, deep_m: f32) -> f32 {
+    const SHELF_KM: f32 = 80.0;
+    const SLOPE_KM: f32 = 70.0;
+    const RISE_KM: f32 = 180.0;
+    const BREAK_M: f32 = -130.0;
+    const FOOT_M: f32 = -3200.0;
+    let d = d_km.max(0.0);
+    if d < SHELF_KM {
+        BREAK_M * (d / SHELF_KM).powf(0.6)
+    } else if d < SHELF_KM + SLOPE_KM {
+        let t = (d - SHELF_KM) / SLOPE_KM;
+        BREAK_M + (FOOT_M - BREAK_M) * t * t * (3.0 - 2.0 * t)
+    } else {
+        let deep = deep_m.min(FOOT_M);
+        deep + (FOOT_M - deep) * (-(d - SHELF_KM - SLOPE_KM) / RISE_KM).exp()
+    }
 }
 
 // =============================================================================
@@ -969,7 +1387,7 @@ fn generate_oceanic_elevation(
     // Base ocean bathymetry (shelf near coast, abyssal plain + ridges + trenches in deep water)
     let base_ocean = if effective_coast >= -shelf_blend_dist {
         let shelf_blend = (-effective_coast / shelf_blend_dist).clamp(0.0, 1.0);
-        let base_shelf = SHELF_DEPTH * shelf_blend;
+        let base_shelf = if crate::terrain_rev::v1() { SHELF_DEPTH * shelf_blend } else { margin_depth(-effective_coast * map_scale.km_per_tile, OCEAN_FLOOR) };
 
         // Nearshore Coastal Archipelagos & drowned rias (smooth, moderate frequency)
         let arch_noise = fbm_3d(coast_noise, [p[0] * 4.2, p[1] * 4.2, p[2] * 4.2], 4, 0.55, 2.0) as f32;
@@ -1011,11 +1429,16 @@ fn generate_oceanic_elevation(
         };
 
         let deep_ocean = ocean_floor + ridge_contribution + trench_contribution;
+        if !crate::terrain_rev::v1() {
+            // Revision 2: shelf, slope and rise, not a straight ramp (`audit.md` 3.5).
+            margin_depth(-effective_coast * map_scale.km_per_tile, deep_ocean)
+        } else {
         // Smooth transition from continental shelf edge to deep ocean floor
         let deep_blend_dist = scale_distance(25.0, map_scale);
         let dist_beyond_shelf = -effective_coast - shelf_blend_dist;
         let t = (dist_beyond_shelf / deep_blend_dist).clamp(0.0, 1.0);
         SHELF_DEPTH * (1.0 - t) + deep_ocean * t
+        }
     };
 
     // Volcanic Island Arcs (subduction zones in ocean)
@@ -2068,6 +2491,12 @@ fn compute_continental_distance(
         }
     }
     
+    // Revision 2: the distance on the sphere, round rather than a square-stepped breadth-first
+    // count (`audit.md` 3.2).
+    if !crate::terrain_rev::v1() {
+        return crate::tilemap::geodesic_distance(width, height, queue.iter().map(|&(x, y, _)| (x, y)), |_, _| true);
+    }
+
     // BFS to fill distance field
     while let Some((x, y, dist)) = queue.pop_front() {
         for (nx, ny) in plate_map.neighbors_8(x, y) {
@@ -2125,6 +2554,13 @@ fn compute_coast_distance(
         }
     }
     
+    // Revision 2: distances on the sphere, inland and out to sea (`audit.md` 3.2).
+    let geodesic = !crate::terrain_rev::v1();
+    if geodesic {
+        let coast: Vec<(usize, usize)> = queue.drain(..).map(|(x, y, _)| (x, y)).collect();
+        distance = crate::tilemap::geodesic_distance(width, height, coast.iter().copied(), |x, y| *is_continental.get(x, y));
+    }
+
     // BFS for land cells only - propagate distance from coast
     while let Some((x, y, dist)) = queue.pop_front() {
         for (nx, ny) in plate_map.neighbors_8(x, y) {
@@ -2153,6 +2589,10 @@ fn compute_coast_distance(
         }
     }
     
+    if geodesic {
+        let coast: Vec<(usize, usize)> = queue.drain(..).map(|(x, y, _)| (x, y)).collect();
+        water_distance = crate::tilemap::geodesic_distance(width, height, coast.iter().copied(), |x, y| !*is_continental.get(x, y));
+    }
     while let Some((x, y, dist)) = queue.pop_front() {
         for (nx, ny) in plate_map.neighbors_8(x, y) {
             if *is_continental.get(nx, ny) {
@@ -2427,24 +2867,35 @@ pub fn apply_regional_noise_stacks(
 
                 let nx = x as f64 / width as f64;
                 let ny = y as f64 / height as f64;
+                // Revision 2 samples the sphere (no seam at the map's east-west edge, no
+                // stretching toward the poles); revision 1 the flat map.
+                let sphere = !crate::terrain_rev::v1();
+                let layer = |noise: &Perlin, freq: f64, octaves: usize| -> f64 {
+                    if sphere {
+                        let p = crate::tilemap::sphere_point(x, y, width, height, freq * 100.0 / std::f64::consts::TAU);
+                        fbm_3d(noise, p, octaves as u32, 0.5, 2.0)
+                    } else {
+                        fbm_simple(noise, nx * freq * 100.0, ny * freq * 100.0, octaves)
+                    }
+                };
 
                 // Select noise based on region type
                 let noise_contribution = if stress > 0.1 {
                     // Mountain regions - more dramatic variation
                     let (freq, amp, octaves) = mountain_params;
-                    fbm_simple(&mountain_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp * stress
+                    layer(&mountain_noise, freq, octaves) as f32 * amp * stress
                 } else if elevation < 0.0 {
                     // Ocean regions - subtle variation
                     let (freq, amp, octaves) = ocean_params;
-                    fbm_simple(&ocean_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+                    layer(&ocean_noise, freq, octaves) as f32 * amp
                 } else if stress < -0.05 {
                     // Floodplain/rift regions - very smooth
                     let (freq, amp, octaves) = floodplain_params;
-                    fbm_simple(&floodplain_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+                    layer(&floodplain_noise, freq, octaves) as f32 * amp
                 } else {
                     // Default forest/grassland - gentle rolling
                     let (freq, amp, octaves) = forest_params;
-                    fbm_simple(&forest_noise, nx * freq * 100.0, ny * freq * 100.0, octaves) as f32 * amp
+                    layer(&forest_noise, freq, octaves) as f32 * amp
                 };
 
                 // Shoreline preservation: fade noise smoothly near sea level and preserve land/ocean sign
@@ -2581,6 +3032,14 @@ fn compute_ocean_mask(heightmap: &Tilemap<f32>) -> Tilemap<bool> {
     is_ocean
 }
 
+/// Distance on the sphere from `sources` (`tilemap::geodesic_distance`, revision 2 of the
+/// chamfer counts below), `f32::MAX` beyond `max_dist` as the breadth-first searches leave it.
+fn capped_geodesic(width: usize, height: usize, sources: impl IntoIterator<Item = (usize, usize)>, max_dist: f32) -> Tilemap<f32> {
+    let mut d = crate::tilemap::geodesic_distance(width, height, sources, |_, _| true);
+    for (_, _, v) in d.iter_mut() { if *v > max_dist + 1.5 { *v = f32::MAX; } }
+    d
+}
+
 /// Compute distance from each cell to nearest ocean water using BFS.
 /// Ocean water is any water connected to the map edges.
 fn compute_distance_to_ocean(heightmap: &Tilemap<f32>, max_dist: f32) -> Tilemap<f32> {
@@ -2602,6 +3061,7 @@ fn compute_distance_to_ocean(heightmap: &Tilemap<f32>, max_dist: f32) -> Tilemap
         }
     }
 
+    if !crate::terrain_rev::v1() { return capped_geodesic(width, height, queue.drain(..), max_dist); }
     while let Some((x, y)) = queue.pop_front() {
         let current_dist = *distance.get(x, y);
         if current_dist >= max_dist {
@@ -2649,6 +3109,7 @@ fn compute_distance_to_land(heightmap: &Tilemap<f32>, max_dist: f32) -> Tilemap<
         }
     }
 
+    if !crate::terrain_rev::v1() { return capped_geodesic(width, height, queue.drain(..), max_dist); }
     while let Some((x, y)) = queue.pop_front() {
         let current_dist = *distance.get(x, y);
         if current_dist >= max_dist {
@@ -2699,6 +3160,7 @@ fn compute_distance_to_water(heightmap: &Tilemap<f32>, max_dist: f32) -> Tilemap
     }
 
     // BFS propagation - process cells in order of distance
+    if !crate::terrain_rev::v1() { return capped_geodesic(width, height, queue.drain(..), max_dist); }
     while let Some((x, y)) = queue.pop_front() {
         let current_dist = *distance.get(x, y);
         if current_dist >= max_dist {
@@ -2854,8 +3316,15 @@ pub fn apply_coastal_beaches(
 
     let beach_cover = (BEACH_WIDTH_KM / tile_km).min(1.0);
     let water_cover = (BEACH_WATER_WIDTH_KM / tile_km).min(1.0);
-    let beach_width = scale_distance(BEACH_WIDTH_KM, map_scale).max(1.0);
-    let beach_water_width = scale_distance(BEACH_WATER_WIDTH_KM, map_scale).max(1.0);
+    // Revision 2: the strips' widths in tiles from the tile's real size, as their cover is (at
+    // 78 km tiles both are the coastal tile alone). Revision 1 took them from `map_scale` (5 km
+    // tiles), reaching ~190 km out and lifting deep polar sea floor by up to 1.2 km once
+    // distances were measured on the sphere.
+    let (beach_width, beach_water_width) = if crate::terrain_rev::v1() {
+        (scale_distance(BEACH_WIDTH_KM, map_scale).max(1.0), scale_distance(BEACH_WATER_WIDTH_KM, map_scale).max(1.0))
+    } else {
+        ((BEACH_WIDTH_KM / tile_km).max(1.0), (BEACH_WATER_WIDTH_KM / tile_km).max(1.0))
+    };
     let beach_rise = scale_elevation(BEACH_MAX_RISE, map_scale);
     let beach_level = scale_elevation(COASTAL_HEIGHT, map_scale);
     let shore_depth = scale_elevation(BEACH_WATER_SHORE_DEPTH, map_scale);
@@ -2915,6 +3384,11 @@ pub fn apply_fjord_incisions(
     seed: u64,
     map_scale: &MapScale,
 ) {
+    if !crate::terrain_rev::v1() {
+        let (fjords, cells) = carve_glacial_fjords(heightmap);
+        if fjords > 0 { println!("  Carved {} fjords ({} tiles) up their glacial valleys", fjords, cells); }
+        return;
+    }
     let width = heightmap.width;
     let height = heightmap.height;
 
@@ -3181,6 +3655,9 @@ pub fn mark_volcano_tiles(
     let height = heightmap.height;
     let mut tiles_modified = 0;
 
+    if !crate::terrain_rev::v1() {
+        return mark_volcano_profiles(heightmap, volcanoes);
+    }
     for volcano in volcanoes {
         let base_peak = volcano.peak_height;
         let radius = 3.0f32;
@@ -3275,6 +3752,51 @@ pub enum LavaState {
 /// - Flow probability based on slope and noise
 ///
 /// Returns a tilemap marking lava presence and state.
+/// Each kind of volcano its own shape (`audit.md` 3.7; revision 1 gave all one Gaussian): a
+/// shield a broad gentle dome (Mauna Loa), a stratovolcano a steep concave cone (Fuji), a
+/// caldera a ring wall round a collapsed crater (Crater Lake). Distances on the sphere.
+fn mark_volcano_profiles(heightmap: &mut Tilemap<f32>, volcanoes: &[VolcanoLocation]) -> usize {
+    let (width, height) = (heightmap.width, heightmap.height);
+    let mut tiles_modified = 0;
+    for volcano in volcanoes {
+        let r_max: f32 = match volcano.volcano_type {
+            VolcanoType::Shield => 4.0,
+            VolcanoType::Stratovolcano => 2.5,
+            VolcanoType::Caldera => 3.5,
+        };
+        let c = heightmap.metric_cos(volcano.y as f32);
+        let ry = r_max.ceil() as i32;
+        let rx = ((r_max / c).ceil() as i32).min(width as i32 / 2);
+        for dy in -ry..=ry {
+            let ny = volcano.y as i32 + dy;
+            if ny < 0 || ny >= height as i32 { continue; }
+            for dx in -rx..=rx {
+                let r = ((dx as f32 * c).powi(2) + (dy * dy) as f32).sqrt();
+                if r > r_max { continue; }
+                let profile = volcano_profile(volcano.volcano_type, r, r_max);
+                let ux = (volcano.x as i32 + dx).rem_euclid(width as i32) as usize;
+                let current = *heightmap.get(ux, ny as usize);
+                heightmap.set(ux, ny as usize, current + volcano.peak_height * profile);
+                tiles_modified += 1;
+            }
+        }
+    }
+    tiles_modified
+}
+
+/// The share of a volcano's height `r` cells from its centre (`r_max` its reach).
+pub(crate) fn volcano_profile(kind: VolcanoType, r: f32, r_max: f32) -> f32 {
+    match kind {
+        VolcanoType::Shield => (-(r / 2.4).powi(2)).exp(),
+        VolcanoType::Stratovolcano => (1.0 - (r / r_max).min(1.0)).powf(1.8),
+        VolcanoType::Caldera => {
+            let ring = (-((r - 1.0) / 1.1).powi(2)).exp();
+            let collapse = if r < 0.8 { -0.35 * (1.0 - (r / 0.8).powi(2)) } else { 0.0 };
+            (ring + collapse).max(-0.2)
+        }
+    }
+}
+
 pub fn generate_lava_map(
     heightmap: &Tilemap<f32>,
     volcanoes: &[VolcanoLocation],
@@ -3302,22 +3824,25 @@ pub fn generate_lava_map(
         // Volcano tile is the molten source
         lava_map.set(volcano.x, volcano.y, LavaState::Molten);
 
-        // Flow lava to adjacent tiles using BFS
-        let mut flow_frontier: Vec<(usize, usize, usize)> = Vec::new();
+        // Flow lava to adjacent tiles, breadth first (revision 1 took the frontier as a stack,
+        // wrapped across the poles and let lava climb 50 m a step: `audit.md` 3.7).
+        let v2 = !crate::terrain_rev::v1();
+        let neighbours = |x: usize, y: usize| if v2 { heightmap.neighbors_8(x, y) } else { get_neighbors_8(x, y, width, height) };
+        let mut flow_frontier: std::collections::VecDeque<(usize, usize, usize)> = std::collections::VecDeque::new();
         let volcano_height = *heightmap.get(volcano.x, volcano.y);
 
         // Start from volcano tile's neighbors
-        let start_neighbors = get_neighbors_8(volcano.x, volcano.y, width, height);
+        let start_neighbors = neighbours(volcano.x, volcano.y);
         for (nx, ny) in start_neighbors {
             let neighbor_height = *heightmap.get(nx, ny);
             // Only flow downhill
             if neighbor_height < volcano_height {
-                flow_frontier.push((nx, ny, 1));
+                flow_frontier.push_back((nx, ny, 1));
             }
         }
 
         // Process flow frontier
-        while let Some((x, y, dist)) = flow_frontier.pop() {
+        while let Some((x, y, dist)) = if v2 { flow_frontier.pop_front() } else { flow_frontier.pop_back() } {
             // Skip if already has lava
             if *lava_map.get(x, y) != LavaState::None {
                 continue;
@@ -3360,12 +3885,12 @@ pub fn generate_lava_map(
 
             // Continue flowing to neighbors if not at max distance
             if dist < MAX_FLOW_DISTANCE {
-                let neighbors = get_neighbors_8(x, y, width, height);
+                let neighbors = neighbours(x, y);
                 for (nx, ny) in neighbors {
                     let neighbor_height = *heightmap.get(nx, ny);
-                    // Only flow downhill or same level
-                    if neighbor_height <= current_height + 50.0 {
-                        flow_frontier.push((nx, ny, dist + 1));
+                    // Lava runs downhill only (revision 1: or up to 50 m uphill)
+                    if if v2 { neighbor_height < current_height } else { neighbor_height <= current_height + 50.0 } {
+                        flow_frontier.push_back((nx, ny, dist + 1));
                     }
                 }
             }

@@ -258,6 +258,120 @@ pub fn detect_aquifers(
     aquifers
 }
 
+/// Deepest water table (m) under a dry, steep, tight ridge, and how fast wetness, porosity and
+/// convergence bring it up (the c1 of d = d_max exp(-c1 moisture porosity TWI)).
+const WATER_TABLE_MAX_M: f32 = 120.0;
+const WATER_TABLE_C1: f32 = 0.6;
+/// The regional uplands that recharge a confined aquifer: their radius (tiles) and how much
+/// higher than the basin they stand on average (m).
+const RECHARGE_RADIUS: usize = 8;
+const RECHARGE_RISE_M: f32 = 150.0;
+/// Share of the uplands' head lost on the way down the aquifer to the basin.
+const HEAD_LOSS: f32 = 0.3;
+
+/// The Beven-Kirkby topographic wetness index ln(a / tan b) of every land cell, less its
+/// smallest value on land (so 0 on the driest ground): a the specific catchment area
+/// (upstream cells x cell width), tan b the local slope (at least 0.001).
+pub fn wetness_index(heightmap: &Tilemap<f32>, flow_acc: &Tilemap<f32>) -> Tilemap<f32> {
+    let (w, h) = (heightmap.width, heightmap.height);
+    let cell_m = crate::erosion::landscape::tile_km(w) * 1000.0;
+    let mut twi = Tilemap::new_with(w, h, 0.0f32);
+    let mut lo = f32::MAX;
+    for y in 0..h {
+        for x in 0..w {
+            if *heightmap.get(x, y) < 0.0 { continue; }
+            let slope = heightmap.analyze_directional_context(x, y).gradient_magnitude / cell_m;
+            let a = flow_acc.get(x, y).max(1.0) * cell_m;
+            let v = (a / slope.max(0.001)).ln();
+            twi.set(x, y, v);
+            lo = lo.min(v);
+        }
+    }
+    if lo == f32::MAX { return twi; }
+    for (x, y, v) in twi.iter_mut() { if *heightmap.get(x, y) >= 0.0 { *v -= lo; } }
+    twi
+}
+
+/// The mean height of the land within `RECHARGE_RADIUS` tiles of each cell (the regional
+/// uplands that feed its aquifers; sea counts as nothing).
+fn regional_land_mean(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
+    let (w, h) = (heightmap.width, heightmap.height);
+    let r = RECHARGE_RADIUS as i32;
+    let land = |x: usize, y: usize| { let e = *heightmap.get(x, y); if e >= 0.0 { (e, 1.0f32) } else { (0.0, 0.0) } };
+    // Box sums, separable: rows (wrapping), then columns (clamped).
+    let mut row = vec![(0.0f32, 0.0f32); w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let mut acc = (0.0, 0.0);
+            for dx in -r..=r {
+                let (e, c) = land((x as i32 + dx).rem_euclid(w as i32) as usize, y);
+                acc.0 += e; acc.1 += c;
+            }
+            row[y * w + x] = acc;
+        }
+    }
+    let mut out = Tilemap::new_with(w, h, 0.0f32);
+    for y in 0..h {
+        for x in 0..w {
+            let mut acc = (0.0, 0.0);
+            for dy in -r..=r {
+                let ny = y as i32 + dy;
+                if ny < 0 || ny >= h as i32 { continue; }
+                let v = row[ny as usize * w + x];
+                acc.0 += v.0; acc.1 += v.1;
+            }
+            out.set(x, y, if acc.1 > 0.0 { acc.0 / acc.1 } else { 0.0 });
+        }
+    }
+    out
+}
+
+/// Aquifers from the wetness of the ground (`audit.md` 4.1): the water table lies at
+/// d = d_max exp(-c1 moisture porosity TWI), at the surface in wet convergent valley floors and
+/// deep under steep dry ridges (revision 1 put it at a fixed share of the elevation, so every
+/// mountain range was a confined aquifer and no basin could be). Confined aquifers lie in the
+/// concave basins (curvature below -5 m) whose recharge uplands stand 150 m above them; the
+/// rest are unconfined, or perched on hills where the table is middling and the rock porous.
+pub fn detect_aquifers_twi(
+    heightmap: &Tilemap<f32>,
+    moisture: &Tilemap<f32>,
+    hardness_map: Option<&Tilemap<f32>>,
+    flow_acc: &Tilemap<f32>,
+    params: &UndergroundWaterParams,
+) -> Tilemap<AquiferInfo> {
+    let (width, height) = (heightmap.width, heightmap.height);
+    let mut aquifers = Tilemap::new_with(width, height, AquiferInfo::none());
+    let twi = wetness_index(heightmap, flow_acc);
+    let uplands = regional_land_mean(heightmap);
+    for y in 0..height {
+        for x in 0..width {
+            let elev = *heightmap.get(x, y);
+            if elev < 0.0 { continue; }
+            let moist = *moisture.get(x, y);
+            let porosity = 1.0 - hardness_map.map(|h| *h.get(x, y)).unwrap_or(0.5);
+            if porosity < params.min_porosity { continue; }
+            let depth = WATER_TABLE_MAX_M * (-WATER_TABLE_C1 * moist * porosity * *twi.get(x, y)).exp();
+            let curvature = heightmap.analyze_directional_context(x, y).curvature;
+            let confined = curvature < -5.0 && *uplands.get(x, y) > elev + RECHARGE_RISE_M;
+            let kind = if confined {
+                AquiferType::Confined
+            } else if depth > 5.0 && depth < 30.0 && elev > 100.0 && porosity > 0.5 {
+                AquiferType::Perched
+            } else {
+                AquiferType::Unconfined
+            };
+            aquifers.set(x, y, AquiferInfo::new(kind, depth, calculate_yield_potential(porosity, moist, depth), calculate_recharge_rate(porosity, moist, params)));
+        }
+    }
+    aquifers
+}
+
+/// The confined aquifer's piezometric head at a cell: the recharge uplands' mean height less
+/// what friction takes on the way.
+pub fn piezometric_head(regional_mean: f32, elev: f32) -> f32 {
+    regional_mean - HEAD_LOSS * (regional_mean - elev).max(0.0)
+}
+
 /// Calculate depth to water table
 fn calculate_aquifer_depth(elevation: f32, porosity: f32, stress: f32, params: &UndergroundWaterParams) -> f32 {
     // Base depth scales with elevation (higher = deeper water table)
@@ -335,6 +449,9 @@ pub fn detect_springs(
     let width = heightmap.width;
     let height = heightmap.height;
     let mut springs = Tilemap::new_with(width, height, SpringInfo::none());
+    // Revision 2: artesian water rises where a confined aquifer's head stands above the ground
+    // and a fault opens the way (`audit.md` 4.1).
+    let uplands = if crate::terrain_rev::v1() { None } else { Some(regional_land_mean(heightmap)) };
 
     for y in 0..height {
         for x in 0..width {
@@ -348,6 +465,15 @@ pub fn detect_springs(
             let aquifer = aquifers.get(x, y);
             let stress = stress_map.get(x, y).abs();
             let flow = *flow_acc.get(x, y);
+
+            if let Some(up) = &uplands {
+                let head = piezometric_head(*up.get(x, y), elev);
+                if aquifer.aquifer_type == AquiferType::Confined && head > elev && stress > 0.15 && aquifer.yield_potential > 0.2 {
+                    let flow_rate = (aquifer.yield_potential * (0.5 + (head - elev) / 500.0)).min(1.0);
+                    springs.set(x, y, SpringInfo::new(SpringType::Artesian, flow_rate, 0.0));
+                    continue;
+                }
+            }
 
             // Check if this could be a spring location
             if let Some(spring_info) = check_spring_conditions(
@@ -479,6 +605,20 @@ pub fn detect_waterfalls(
             let next_elev = *heightmap.get(nx, ny);
             let drop = elev - next_elev;
 
+            if !crate::terrain_rev::v1() {
+                // Revision 2 (`audit.md` 4.2): the fall is exactly the drop, and a caprock ledge
+                // (hard rock over soft downstream, a contrast above 0.15: Niagara's dolomite
+                // over shale) makes one where a smaller drop would not.
+                let hard = |x: usize, y: usize| hardness_map.map(|h| *h.get(x, y)).unwrap_or(0.5);
+                let contrast = hard(x, y) - hard(nx, ny);
+                let min_drop = if contrast > 0.15 { params.waterfall_min_drop * 0.5 } else { params.waterfall_min_drop };
+                if drop >= min_drop {
+                    let width_factor = (flow.ln() / 10.0).clamp(0.1, 1.0);
+                    waterfalls.set(x, y, WaterfallInfo::new(drop, width_factor, dir));
+                }
+                continue;
+            }
+
             // Check if drop is significant enough for a waterfall
             if drop >= params.waterfall_min_drop {
                 // Width scales with flow (log scale)
@@ -517,8 +657,12 @@ impl UndergroundWater {
         let flow_dir = compute_flow_direction(heightmap);
         let flow_acc = compute_flow_accumulation(heightmap, &flow_dir);
 
-        // Detect features
-        let aquifers = detect_aquifers(heightmap, moisture, hardness_map, stress_map, params);
+        // Detect features (revision 2: the water table from the wetness index, `audit.md` 4.1)
+        let aquifers = if crate::terrain_rev::v1() {
+            detect_aquifers(heightmap, moisture, hardness_map, stress_map, params)
+        } else {
+            detect_aquifers_twi(heightmap, moisture, hardness_map, &flow_acc, params)
+        };
         let springs = detect_springs(heightmap, &aquifers, stress_map, &flow_acc, params);
         let waterfalls = detect_waterfalls(heightmap, &flow_acc, &flow_dir, hardness_map, params);
 
@@ -670,6 +814,51 @@ mod tests {
 
         // Land tiles with default moisture/porosity should have aquifers
         assert!(aquifers.get(5, 5).is_present());
+    }
+
+    /// The water table is near the surface in a wet valley floor and deep under a dry ridge;
+    /// a basin below its uplands holds a confined aquifer, a ridge never does.
+    #[test]
+    fn water_table_follows_wetness() {
+        let (w, h) = (48, 24);
+        let mut hm = Tilemap::new_with(w, h, 0.0f32);
+        // A valley along x = 24 between ridges; uplands 600 m, floor 50 m.
+        for y in 0..h { for x in 0..w {
+            let d = (x as f32 - 24.0).abs();
+            hm.set(x, y, 50.0 + (d * 60.0).min(600.0) + y as f32 * 2.0);
+        } }
+        let moisture = Tilemap::new_with(w, h, 0.7f32);
+        let flow_dir = compute_flow_direction(&hm);
+        let flow_acc = compute_flow_accumulation(&hm, &flow_dir);
+        let params = UndergroundWaterParams::default();
+        let a = detect_aquifers_twi(&hm, &moisture, None, &flow_acc, &params);
+        let floor = a.get(24, 4).depth;
+        let ridge = a.get(4, 12).depth;
+        assert!(floor < ridge, "valley floor {floor} m vs ridge {ridge} m");
+        assert_eq!(a.get(24, 12).aquifer_type, AquiferType::Confined, "the basin below its uplands");
+        assert_ne!(a.get(4, 12).aquifer_type, AquiferType::Confined, "a high flank is not confined");
+    }
+
+    /// A waterfall is as tall as the drop it falls over (`audit.md` 4.2).
+    #[test]
+    fn waterfall_height_is_the_drop() {
+        let mut heightmap = Tilemap::new_with(10, 10, 100.0);
+        for x in 0..10 { heightmap.set(x, 5, 50.0); heightmap.set(x, 6, 45.0); }
+        let flow_dir = compute_flow_direction(&heightmap);
+        let flow_acc = compute_flow_accumulation(&heightmap, &flow_dir);
+        let params = UndergroundWaterParams { waterfall_min_flow: 1.0, waterfall_min_drop: 30.0, ..Default::default() };
+        let hard = Tilemap::new_with(10, 10, 0.9f32);
+        let wf = detect_waterfalls(&heightmap, &flow_acc, &flow_dir, Some(&hard), &params);
+        assert!(wf.get(5, 4).is_present && (wf.get(5, 4).drop_height - 50.0).abs() < 1e-3, "drop {}", wf.get(5, 4).drop_height);
+        // A 20 m step over a caprock (hard over soft) falls; on uniform rock it does not.
+        let mut step = Tilemap::new_with(10, 10, 100.0);
+        for x in 0..10 { for y in 5..10 { step.set(x, y, 80.0 - y as f32 * 0.1); } }
+        let fd = compute_flow_direction(&step);
+        let fa = compute_flow_accumulation(&step, &fd);
+        let mut cap = Tilemap::new_with(10, 10, 0.9f32);
+        for x in 0..10 { for y in 5..10 { cap.set(x, y, 0.3); } }
+        assert!(detect_waterfalls(&step, &fa, &fd, Some(&cap), &params).get(5, 4).is_present, "caprock ledge");
+        assert!(!detect_waterfalls(&step, &fa, &fd, Some(&hard), &params).get(5, 4).is_present, "uniform rock");
     }
 
     #[test]

@@ -115,7 +115,8 @@ impl Colony {
         let (harm, striker) = (e.harm, e.striker);
         // Killed at the camp while they were out: they come home to the news.
         if self.slain.contains(&e.beast) {
-            for &i in &e.party { let s = &mut self.settlers[i]; s.alive = true; s.away_until = 0; s.pos = self.camp; s.path.clear(); s.job = Job::Idle; }
+            let cz = self.camp_z();
+            for &i in &e.party { let s = &mut self.settlers[i]; s.alive = true; s.away_until = 0; s.pos = self.camp; s.z = cz; s.path.clear(); s.job = Job::Idle; }
             let names: Vec<String> = e.party.iter().map(|&i| self.settlers[i].name.clone()).collect();
             self.note(format!("{} come home from the hunt to find {} already dead at the camp.", crate::persona::list(&names), e.beast));
             return;
@@ -124,11 +125,13 @@ impl Colony {
         // Back from the lair: each may have been struck.
         let mut fallen = Vec::new();
         let mut hurt = Vec::new();
+        let cz = self.camp_z();
         for (k, &i) in e.party.iter().enumerate() {
             let s = &mut self.settlers[i];
             s.alive = true;
             s.away_until = 0;
             s.pos = self.camp;
+            s.z = cz;
             s.path.clear();
             s.job = Job::Idle;
             s.hunger = s.hunger.min(0.6);

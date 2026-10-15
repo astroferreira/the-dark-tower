@@ -982,7 +982,8 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
         // The magma sea (DF): the bottom three levels of every embark, wherever the caverns
         // leave rock; under ground a volcano stands near (within 8 tiles; `PLANET_FORCE_MAGMA=1`)
         // a pipe of magma rises from it to three levels under the surface.
-        if map.depth > 12 {
+        // (A sea of fire a hundred metres down is myth: real magma lies kilometres under.)
+        if map.depth > 12 && crate::myth::on() {
             // (Under a map deepened for its caverns, the sea fills the levels added too.)
             let top = 3 + map.deepened;
             let molten = |map: &mut LocalMap, x: usize, y: usize, z: i32| {
@@ -1153,29 +1154,36 @@ mod tests {
     /// the caverns' openness) or the water table changes.
     #[test]
     fn neighbouring_embarks_line_up() {
-        let world = crate::world::generate_world_with_style(128, 64, 5, crate::plates::WorldStyle::Earthlike);
-        let (cx, cy) = crate::region::zoom::pick_interesting_window(&world, 4);
-        let params = crate::region::zoom::ZoomParams { center_x: cx, center_y: cy, tiles: 4, cells_per_tile: 32, erosion_iterations: 10, seed: 3 };
-        let region = crate::region::zoom::generate_zoom(&world, &params);
         let s = 32usize;
-        let tc = TILE_M as f64 / region.cell_m as f64;
-        let half = (LOCAL_SIZE / 2) as f64 * tc;
         let n = LOCAL_SIZE;
-        let hs = |x: i64, y: i64| world.handshakes.as_ref().unwrap().get((region.world_x0 + x).rem_euclid(world.width as i64) as usize, (region.world_y0 + y) as usize).tile.clone();
-        // Embark A's centre (B's = A + half an embark in x): one inside a tile, then up to three
-        // on land across a vertical tile border where the rock makes the two tiles' caverns differ.
-        let mut cases: Vec<(f64, f64)> = vec![(region.width as f64 / 2.0 - 15.3, region.height as f64 / 2.0 + 9.7)];
-        'find: for bx in 1..4i64 {
-            for ty in 0..4i64 {
-                let (l, r) = (caverns::tile_fields(&hs(bx - 1, ty)), caverns::tile_fields(&hs(bx, ty)));
-                if l.0 == r.0 { continue; }
-                let (ax, ay) = ((bx as usize * s) as f64 - half / 2.0, (ty as usize * s) as f64 + s as f64 * 0.5 + 0.37);
-                if region.elevation_m[ay as usize * region.width + bx as usize * s] <= 0.0 { continue; }
-                cases.push((ax, ay));
-                if cases.len() == 4 { break 'find; }
+        // The test world: the first of a few seeds whose interesting window has a tile border over
+        // land where the rock makes the two tiles' caverns differ (seed 5 on terrain revision 1;
+        // the audited terrain's seed 5 has none in its window).
+        let mut found = None;
+        for wseed in [5u64, 3, 7, 11, 2] {
+            let world = crate::world::generate_world_with_style(128, 64, wseed, crate::plates::WorldStyle::Earthlike);
+            let (cx, cy) = crate::region::zoom::pick_interesting_window(&world, 4);
+            let params = crate::region::zoom::ZoomParams { center_x: cx, center_y: cy, tiles: 4, cells_per_tile: 32, erosion_iterations: 10, seed: 3 };
+            let region = crate::region::zoom::generate_zoom(&world, &params);
+            let tc = TILE_M as f64 / region.cell_m as f64;
+            let half = (LOCAL_SIZE / 2) as f64 * tc;
+            let hs = |x: i64, y: i64| world.handshakes.as_ref().unwrap().get((region.world_x0 + x).rem_euclid(world.width as i64) as usize, (region.world_y0 + y) as usize).tile.clone();
+            // Embark A's centre (B's = A + half an embark in x): one inside a tile, then up to three
+            // on land across a vertical tile border where the rock makes the two tiles' caverns differ.
+            let mut cases: Vec<(f64, f64)> = vec![(region.width as f64 / 2.0 - 15.3, region.height as f64 / 2.0 + 9.7)];
+            'find: for bx in 1..4i64 {
+                for ty in 0..4i64 {
+                    let (l, r) = (caverns::tile_fields(&hs(bx - 1, ty)), caverns::tile_fields(&hs(bx, ty)));
+                    if l.0 == r.0 { continue; }
+                    let (ax, ay) = ((bx as usize * s) as f64 - half / 2.0, (ty as usize * s) as f64 + s as f64 * 0.5 + 0.37);
+                    if region.elevation_m[ay as usize * region.width + bx as usize * s] <= 0.0 { continue; }
+                    cases.push((ax, ay));
+                    if cases.len() == 4 { break 'find; }
+                }
             }
+            if cases.len() >= 2 { found = Some((world, region, cases, half)); break; }
         }
-        assert!(cases.len() >= 2, "no tile border with different caverns over land");
+        let (world, region, cases, half) = found.expect("no tile border with different caverns over land on five test worlds");
         let (mut ground, mut water, mut cav, mut pools) = ([0usize; 2], [0usize; 2], [0usize; 2], [0usize; 2]);
         for (c, &(ax, ay)) in cases.iter().enumerate() {
             let a = generate_local(&world, &region, None, ax, ay);

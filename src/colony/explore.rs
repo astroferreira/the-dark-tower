@@ -410,7 +410,8 @@ impl Colony {
                     self.note(line.clone());
                     self.moment(p.name.clone(), line, format!("because {} cares more for good iron than for the dead", name), at);
                     // The dead may come for them.
-                    if self.darkness >= 0.2 || crate::history::settlers::hash_pub(self.seed, 0x70B + k as u64) % 3 == 0 { self.tomb_risen = Some((dead, day)); }
+                    // (The robbed dead rising is myth.)
+                    if crate::myth::on() && (self.darkness >= 0.2 || crate::history::settlers::hash_pub(self.seed, 0x70B + k as u64) % 3 == 0) { self.tomb_risen = Some((dead, day)); }
                 }
             }
             PlaceKind::Cave => {

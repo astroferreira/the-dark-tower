@@ -887,6 +887,7 @@ impl Colony {
         let mut s = self.settlers[0].clone();
         s.name = name;
         s.pos = self.camp;
+        s.z = self.camp_z();
         s.path.clear();
         s.hunger = 0.6;
         s.fatigue = 0.6;

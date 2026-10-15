@@ -3,8 +3,12 @@
 
 use std::process::Command;
 
+/// The binary with myth and magic on (`--myth`, `crate::myth`): these tests are of the game's
+/// systems as they were, Shadow, beasts and all; the realistic default has its own tests.
+fn myth_cmd() -> Command { let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator")); c.env("PLANET_MYTH", "1").env_remove("PLANET_TERRAIN_V1"); c }
+
 fn run(args: &[&str]) -> String {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(args).output().expect("run planet_generator");
+    let out = myth_cmd().args(args).output().expect("run planet_generator");
     assert!(out.status.success(), "planet_generator {:?} failed: {}", args, String::from_utf8_lossy(&out.stderr));
     format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr))
 }

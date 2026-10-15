@@ -344,7 +344,9 @@ mod tests {
 
     #[test]
     fn resources_follow_geology_and_are_deterministic() {
-        let world = crate::world::generate_world_with_style(160, 80, 21, crate::plates::WorldStyle::Earthlike);
+        // Seed 1 has mountain belts on both terrain revisions (seed 21, used before the terrain
+        // audit, comes out tectonically quiet on the audited terrain: no stress above 0.13).
+        let world = crate::world::generate_world_with_style(160, 80, 1, crate::plates::WorldStyle::Earthlike);
         let a = compute_resources(&world);
         let b = compute_resources(&world);
         assert_eq!(a.deposits.len(), b.deposits.len());

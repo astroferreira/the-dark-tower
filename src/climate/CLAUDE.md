@@ -57,6 +57,27 @@ systems, a seed draws its own star by default (`src/astro/CLAUDE.md`).
   quantiles, zonal land/ocean precipitation, precipitation and wind by distance from the
   coast, Budyko runoff, the biome mix, and writes `precip.png`.
 
+## The climate after the terrain (audited terrain, `audit.md` 1.3 and 5.2; 2026-10-13)
+- The climate runs on the land as built (after the volcanoes, regional relief and coasts), and
+  the rivers then reshape it; `terrain::follow_heights` moves the mean and seasonal
+  temperatures by the planet's lapse rate (`forcing.lapse_rate`, 6.5 C/km on the Earth) times
+  each cell's change in land height since (the sea surface counts as 0), so a cut valley warms
+  and a built cone cools (seed 42 at 512x256: ~42,000 cells moved by more than 0.1 C).
+  Precipitation and winds are not re-run.
+- `seasons.rs` (`SeasonalClimate::from_simulation`): the sea lags the year, up to a month
+  (`MARITIME_LAG`, pi/6) over the ocean and fading inland over ~300 km (`lag_seasons` turns the
+  annual harmonic of the four seasons, keeping mean and range), so a maritime autumn is warmer
+  than its spring; the sinusoidal fallback lags `Oceanic` tiles by 3/4 of it. Day length is the
+  sunrise hour angle (`day_fraction`: cos w = -tan(lat) tan(decl), Earth's 23.44 degrees), so
+  the midnight sun and polar night cover the polar circle (revision 1: a linear ramp, 24-hour
+  day only on the pole's row).
+- Biome blending (`biome_feathering.rs`): the boundary search carries each cell's nearest foreign
+  biome inland, and `compute_zone_blend_weights` gives the cell's own biome 0.5 at the boundary
+  rising to 1 at `max_depth` (8), the rest to the foreign biome(s) by compatibility; revision 1
+  looked only at the 8 neighbours, so only the border ring ever blended (and its Catmull-Rom
+  weight was a constant 0.5).
+- Terrain revision 1 (`--terrain-v1`) keeps all of these as they were.
+
 ## Biomes
 - Lowland classification (`climate/biomes.rs::classify_lowland`) is a Whittaker diagram on
   mean annual temperature (ice below -22 C or -15 C when very wet, tundra to -10 C, taiga

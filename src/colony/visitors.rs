@@ -218,10 +218,12 @@ impl Colony {
         // A seeker coming back is the same one who left.
         let i = match self.settlers.iter().position(|s| s.name == v.name && s.mind.left) {
             Some(i) => {
+                let cz = self.camp_z();
                 let s = &mut self.settlers[i];
                 s.alive = true;
                 s.mind.left = false;
                 s.pos = self.camp;
+                s.z = cz;
                 s.path.clear();
                 s.job = Job::Idle;
                 s.hunger = s.hunger.min(0.6);

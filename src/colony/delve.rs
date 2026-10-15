@@ -932,7 +932,9 @@ impl Colony {
         // mine for their stone): a gallery off the stair, its rock carried up as stone.
         if self.materials_out() && !self.projects.iter().any(|p| !p.done && p.kind == ProjectKind::StoneCut) {
             if let Some(plan) = self.plan_dig(ProjectKind::StoneCut) {
-                let why = "every boulder and bare rock within reach is broken and no tree stands near; a gallery cut off the stair would bring up stone".to_string();
+                let laid = self.items.iter().filter(|it| it.kind == ItemKind::Stone && it.stored).count();
+                let why = format!("every boulder and bare rock within reach is broken, no tree stands near and {} left to build with; a gallery of {} cuts off the stair would bring up stone",
+                    if laid == 0 { "no stone is".to_string() } else if laid == 1 { "1 stone is".to_string() } else { format!("{} stones are", laid) }, plan.cuts.len());
                 c.push((2.5, ProjectKind::StoneCut, why, plan.cuts.len() as u32, self.spine.unwrap().at));
             }
         }

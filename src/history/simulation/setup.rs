@@ -457,8 +457,20 @@ fn create_factions(
     let mut reign_jobs = Vec::new();
     for &(sx, sy) in sites.iter() {
         let biome = *world.biomes.get(sx, sy);
-        let (race_id, race_type) = pick_race_for_biome(biome, races, rng);
-        let style = get_naming_style(&race_type, naming_styles);
+        // Without myth (`crate::myth`) every people is human; their tongues still differ, by the
+        // land they rose in (no draw from the RNG: a myth world draws as before).
+        let human = (!crate::myth::on()).then(|| races.iter().find(|r| r.1 == RaceType::Human).cloned()).flatten();
+        let (race_id, race_type) = match human.clone() { Some(h) => h, None => pick_race_for_biome(biome, races, rng) };
+        let style = match human {
+            Some(_) => {
+                // (The stern, the flowing and the plain tongues; the harsh ones gave towns like
+                // "Bonecrush".)
+                let tongues = [0usize, 1, 2, 2];
+                let k = tongues[((sx as u64).wrapping_mul(0x9E37_79B9).wrapping_add(sy as u64 * 0x85EB_CA6B) >> 7) as usize % tongues.len()];
+                &naming_styles[k.min(naming_styles.len() - 1)].1
+            }
+            None => get_naming_style(&race_type, naming_styles),
+        };
 
         // Get government type from the race's culture
         let gov_type = history.races.get(&race_id)

@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 
-use planet_generator::{astro, biome_feathering, biomes, cartography, climate, coastline, colony, erosion, exr_export, grid_export, heightmap, history, islands, local, lore, map_export, microclimate, monsters, plates, region, scale, seasons, seeds, soils, terrain, tilemap, tiles, underground_water, water_bodies, weather_zones, world, world_export};
+use planet_generator::{astro, myth, biome_feathering, biomes, cartography, climate, coastline, colony, erosion, exr_export, grid_export, heightmap, history, islands, local, lore, map_export, microclimate, monsters, plates, region, scale, seasons, seeds, soils, terrain, tilemap, tiles, underground_water, water_bodies, weather_zones, world, world_export};
 #[cfg(feature = "legacy")]
 use planet_generator::{explorer, menu};
 #[cfg(feature = "legacy")]
@@ -327,6 +327,18 @@ struct Args {
     /// No Shadow: don't raise a spreading dark power at the dawn of history (sandbox worlds)
     #[arg(long)]
     no_shadow: bool,
+
+    /// Myth and magic: the Shadow, beasts of legend, peoples other than human, fantasy biomes,
+    /// ghosts and the uncanny, the deep's horrors, adventure mode. Off by default: the world is
+    /// medieval and realistic (`crate::myth`; also PLANET_MYTH=1)
+    #[arg(long)]
+    myth: bool,
+
+    /// The terrain as it was before the terrain audit of 2026-10-13 (`audit.md`), bit for bit:
+    /// erosion before the finishing passes, flat rock hardness, cylindrical noise, square
+    /// distance fields (`crate::terrain_rev`; also PLANET_TERRAIN_V1=1)
+    #[arg(long)]
+    terrain_v1: bool,
 
     /// Let the Shadow reach into the camp (its raiders, the dead rising on its land, evil weather,
     /// vampires); off by default while the camp's basic play is worked on
@@ -756,21 +768,29 @@ struct Args {
     upscale_factor: usize,
 }
 
-/// Seed, size and peoples of `--dev`, the small development world. Seed 76 was picked by a
-/// search over 96x48 worlds for the most landmarks (`scripts/dev_seed_search.sh`: 4 rivers,
-/// 2 lakes, 6 ranges, forests, a desert, 2 continents with its history); 64x32
-/// worlds get no rivers. Re-run the search if worldgen changes move the landmarks.
-const DEV_WORLD: (usize, usize, u64, u32) = (96, 48, 76, 8);
+/// Seed, size and peoples of `--dev`, the small development world. Seed 10 was picked by a
+/// search over 96x48 worlds for the most landmarks (`scripts/dev_seed_search.sh`, on the
+/// audited terrain of 2026-10-13: 7 rivers, 5 lakes, 6 ranges, 5 forests, a desert, an island,
+/// 3 continents with its history); 64x32 worlds get no rivers. Re-run the search if worldgen
+/// changes move the landmarks. Terrain revision 1 (`--terrain-v1`, `crate::terrain_rev`) keeps
+/// its own dev world, seed 76 (4 rivers, 2 lakes, 6 ranges, a desert, 2 continents), which the
+/// tests are pinned on.
+const DEV_WORLD: (usize, usize, u64, u32) = (96, 48, 10, 8);
+const DEV_WORLD_V1: (usize, usize, u64, u32) = (96, 48, 76, 8);
 
-/// Dev worlds under other skies (`--dev-sky NAME`, 96x48 like the dev world): (name, seed, the
-/// star's code). Each seed meets `--require rivers=2,forests=1` (the eyeball and two suns also a
-/// lake) and its dev embark founds a living camp (`--sim-projects 10`); re-run that search if
-/// worldgen moves them (`--require` prints nothing when the first seed passes).
-const DEV_SKIES: [(&str, u64, &str); 4] = [
-    ("eyeball", 106, "M3"),
-    ("slow", 309, "K4+d60000"),
-    ("tilted", 302, "G+o700"),
-    ("twosuns", 9, "auto"),
+/// Dev worlds under other skies (`--dev-sky NAME`, 96x48 like the dev world): (name, seed,
+/// seed on terrain revision 1, the star's code, its code on revision 1). Each seed meets
+/// `--require rivers=2,forests=1` (the eyeball and two suns also a lake) and its dev embark
+/// founds a living camp (`--sim-projects 10`); re-run that search if worldgen moves them
+/// (`--require` prints nothing when the first seed passes; the audited terrain moved three of
+/// them on 2026-10-13). The two suns are asked for (`F1+b1`) on the audited terrain: seed 9's
+/// own star was a close F1 pair, seed 20's (whose world has the lake) a single K0; whether a
+/// pair is close is the seed's roll.
+const DEV_SKIES: [(&str, u64, u64, &str, &str); 4] = [
+    ("eyeball", 114, 106, "M3", "M3"),
+    ("slow", 316, 309, "K4+d60000", "K4+d60000"),
+    ("tilted", 302, 302, "G+o700", "G+o700"),
+    ("twosuns", 20, 9, "F1+b1", "auto"),
 ];
 
 /// Parse the command line; `--dev` fills in the development world's settings for any of
@@ -780,6 +800,8 @@ fn parse_args() -> Args {
     use clap::parser::ValueSource;
     let matches = Args::command().get_matches();
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    // The terrain's revision first: the dev presets and world codes depend on it.
+    if args.terrain_v1 { planet_generator::terrain_rev::set_v1(true); }
     if args.adventure_load.is_some() { args.adventure = true; }
     if let Some(path) = &args.adventure_inspect {
         match planet_generator::adventure::Game::peek(std::path::Path::new(path)) {
@@ -803,10 +825,11 @@ fn parse_args() -> Args {
     // A dev world under another sky: its seed and star unless given.
     if let Some(name) = args.dev_sky.clone() {
         match DEV_SKIES.iter().find(|d| d.0.eq_ignore_ascii_case(&name)) {
-            Some(&(_, seed, star)) => {
+            Some(&(_, seed, seed_v1, star, star_v1)) => {
                 args.dev = true;
-                if args.seed.is_none() { args.seed = Some(seed); }
-                if args.star.is_none() { args.star = Some(star.to_string()); }
+                let v1 = planet_generator::terrain_rev::v1();
+                if args.seed.is_none() { args.seed = Some(if v1 { seed_v1 } else { seed }); }
+                if args.star.is_none() { args.star = Some(if v1 { star_v1 } else { star }.to_string()); }
             }
             None => {
                 eprintln!("--dev-sky: one of {}", DEV_SKIES.iter().map(|d| d.0).collect::<Vec<_>>().join(", "));
@@ -817,7 +840,9 @@ fn parse_args() -> Args {
     // A world code fills in the world and the site.
     if let Some(code) = args.code.clone() {
         match parse_world_code(&code) {
-            Some((seed, w, h, style, peoples, years, site, cell, star)) => {
+            Some((seed, w, h, style, peoples, years, site, cell, star, audited)) => {
+                // Codes made before the terrain audit (no ".t2") are their worlds as they were.
+                if !audited { planet_generator::terrain_rev::set_v1(true); }
                 if let Some(c) = cell { tiles::viewer::set_start_cell(c); }
                 if star.is_some() { args.star = star; }
                 args.seed = Some(seed); args.width = w; args.height = h; args.world_style = style;
@@ -830,7 +855,7 @@ fn parse_args() -> Args {
     }
     if args.dev && args.code.is_none() {
         let defaulted = |id: &str| matches.value_source(id) != Some(ValueSource::CommandLine);
-        let (w, h, seed, civs) = DEV_WORLD;
+        let (w, h, seed, civs) = if planet_generator::terrain_rev::v1() { DEV_WORLD_V1 } else { DEV_WORLD };
         if defaulted("width") { args.width = w; }
         if defaulted("height") { args.height = h; }
         if args.seed.is_none() { args.seed = Some(seed); }
@@ -848,9 +873,13 @@ fn parse_args() -> Args {
 /// "76.96x48.earthlike.8.250@45,12" -> (seed, width, height, style, peoples, years, site).
 /// "SEED.WxH.STYLE.PEOPLES.YEARS@X,Y" or, for a camp made where the walker stood,
 /// "...@X,Y:CX,CY" (the cell, in global cells).
-fn parse_world_code(code: &str) -> Option<(u64, usize, usize, String, u32, u32, (usize, usize), Option<(u64, u64)>, Option<String>)> {
+#[allow(clippy::type_complexity)]
+fn parse_world_code(code: &str) -> Option<(u64, usize, usize, String, u32, u32, (usize, usize), Option<(u64, u64)>, Option<String>, bool)> {
     let (world, site) = code.split_once('@')?;
-    let p: Vec<&str> = world.split('.').collect();
+    let mut p: Vec<&str> = world.split('.').collect();
+    // A last part "t2" is the audited terrain (terrain revision 2); codes without it are older.
+    let audited = p.last() == Some(&TERRAIN_CODE);
+    if audited { p.pop(); }
     if p.len() != 5 && p.len() != 6 { return None; }
     // A sixth part is the star system (`astro::SystemSpec::code`); codes without one are the Sun's.
     let star = match p.get(5) { Some(s) => { astro::SystemSpec::from_code(s)?; Some(s.to_string()) } None => None };
@@ -858,12 +887,20 @@ fn parse_world_code(code: &str) -> Option<(u64, usize, usize, String, u32, u32, 
     let (tile, cell) = match site.split_once(':') { Some((t, c)) => (t, Some(c)), None => (site, None) };
     let (x, y) = tile.split_once(',')?;
     let cell = match cell { Some(c) => { let (cx, cy) = c.split_once(',')?; Some((cx.parse().ok()?, cy.parse().ok()?)) } None => None };
-    Some((p[0].parse().ok()?, w.parse().ok()?, h.parse().ok()?, p[2].to_string(), p[3].parse().ok()?, p[4].parse().ok()?, (x.parse().ok()?, y.parse().ok()?), cell, star))
+    Some((p[0].parse().ok()?, w.parse().ok()?, h.parse().ok()?, p[2].to_string(), p[3].parse().ok()?, p[4].parse().ok()?, (x.parse().ok()?, y.parse().ok()?), cell, star, audited))
+}
+
+/// The world code's mark of the audited terrain (revision 2, `crate::terrain_rev`).
+const TERRAIN_CODE: &str = "t2";
+
+/// ".t2" for a world code on the audited terrain, nothing on revision 1 (as codes made before).
+fn terrain_code_part() -> String {
+    if planet_generator::terrain_rev::v1() { String::new() } else { format!(".{TERRAIN_CODE}") }
 }
 
 /// The code for this world and an embark site.
 fn world_code(args: &Args, seed: u64, site: (usize, usize)) -> String {
-    format!("{}{}@{},{}", world_code_base(args, seed), star_code_part(args), site.0, site.1)
+    format!("{}{}{}@{},{}", world_code_base(args, seed), star_code_part(args), terrain_code_part(), site.0, site.1)
 }
 
 fn world_code_base(args: &Args, seed: u64) -> String {
@@ -912,10 +949,20 @@ fn system_spec(args: &Args) -> astro::SystemSpec {
 }
 
 fn pick_dev_embark(world: &world::WorldData, history: Option<&history::world_state::WorldHistory>) -> (usize, usize) {
+    let ranked = dev_embark_candidates(world, history);
+    let first = ranked.first().copied().unwrap_or((world.width / 2, world.height / 2));
+    // On the audited terrain the best tile whose embark has dry land for a camp (seeds 8, 18 and
+    // 23 had put theirs in a river or on the sea at the embark's scale); revision 1 keeps its pick.
+    if planet_generator::terrain_rev::v1() { return first; }
+    ranked.iter().take(12).copied().find(|&t| { let ok = tiles::viewer::embark_habitable(world, history, t); if std::env::var("PLANET_DEBUG_EMBARK").is_ok() { eprintln!("embark candidate {:?}: {}", t, ok); } ok }).unwrap_or(first)
+}
+
+/// The dev embark's candidate tiles, best first (ties to the lowest index), by `pick_dev_embark`'s rule.
+fn dev_embark_candidates(world: &world::WorldData, history: Option<&history::world_state::WorldHistory>) -> Vec<(usize, usize)> {
     let (w, h) = (world.width, world.height);
     let towns: Vec<(usize, usize)> = history.map(|h| h.settlements.values()
         .filter(|s| !s.is_destroyed()).map(|s| s.location).collect()).unwrap_or_default();
-    let mut best = ((w / 2, h / 2), f32::MIN);
+    let mut scored: Vec<((usize, usize), f32)> = Vec::new();
     for y in 1..h - 1 {
         for x in 0..w {
             if *world.heightmap.get(x, y) <= 0.0 || world.water_body_map.get(x, y).is_lake() { continue; }
@@ -941,10 +988,11 @@ fn pick_dev_embark(world: &world::WorldData, history: Option<&history::world_sta
                 + (woods as f32 / 3.0).min(2.0)
                 + if hi - lo > 300.0 { 1.0 } else { 0.0 }
                 + match near { 1..=3 => 2.0, 0 => -5.0, _ => 0.0 };
-            if score > best.1 { best = ((x, y), score); }
+            scored.push(((x, y), score));
         }
     }
-    best.0
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then((a.0 .1, a.0 .0).cmp(&(b.0 .1, b.0 .0))));
+    scored.into_iter().map(|(t, _)| t).collect()
 }
 
 /// The tile atlas: an edited tileset PNG when given (falling back on errors), else the built-in one.
@@ -964,6 +1012,8 @@ fn load_atlas(tileset: Option<&str>) -> tiles::Atlas {
 /// Legendary creatures for a map: the default is calibrated for 512x256 and scales down with
 /// map area, so small test maps aren't overrun by beasts.
 fn legendary_creatures_for(width: usize, height: usize) -> u32 {
+    // (No beasts of legend without myth.)
+    if !myth::on() { return 0; }
     let base = history::config::HistoryConfig::default().initial_legendary_creatures;
     let k = ((width * height) as f64 / (512.0 * 256.0)).min(1.0);
     ((base as f64 * k).round() as u32).max(3)
@@ -999,7 +1049,7 @@ fn main() {
         let initial = tiles::start::StartConfig {
             width: args.width, height: args.height, seed: args.seed.unwrap_or(42),
             style: plates::WorldStyle::from_str(&args.world_style).unwrap_or_default(), plates: args.plates, tectonic_myr: args.tectonic_myr,
-            fantasy: args.fantasy, history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
+            fantasy: args.fantasy, myth: args.myth || myth::from_env(), history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
             civilizations: args.civilizations, shadow: !args.no_shadow, watch: true, adventure: args.adventure,
             star: args.star.clone().unwrap_or_else(|| "auto".into()), hz: args.hz,
         };
@@ -1045,6 +1095,7 @@ fn main() {
             plates: args.plates,
             tectonic_myr: args.tectonic_myr,
             fantasy: args.fantasy,
+            myth: args.myth || myth::from_env(),
             history_years: if args.no_history { 0 } else if args.history_years > 0 { args.history_years } else { DEFAULT_VIEWER_HISTORY_YEARS },
             civilizations: args.civilizations,
             shadow: !args.no_shadow,
@@ -1070,12 +1121,26 @@ fn main() {
                 args.no_shadow = !cfg.shadow;
                 args.watch = cfg.watch;
                 args.adventure = cfg.adventure;
+                args.myth = cfg.myth;
                 args.star = Some(cfg.star.clone());
                 args.hz = cfg.hz;
                 println!("Making a {}x{} {} world, seed {}", cfg.width, cfg.height, cfg.style, cfg.seed);
             }
             Ok(None) => return,
             Err(e) => eprintln!("Start screen unavailable ({e}); using the command-line options"),
+        }
+    }
+    // Myth and magic, on or off for the whole game (`myth.rs`): off, no Shadow, no fantasy
+    // biomes, no beasts of legend (`legendary_creatures_for`), every people human.
+    let myth_on = args.myth || myth::from_env();
+    myth::set(myth_on);
+    if !myth_on {
+        args.no_shadow = true;
+        args.fantasy = 0.0;
+        let adventure = args.adventure || args.adventure_bot.is_some() || args.adventure_snapshot.is_some() || args.adventure_gallery.is_some() || args.adventure_landscape.is_some() || args.adventure_load.is_some();
+        if adventure {
+            eprintln!("Adventure mode is a fantasy of its own (monsters, spells, dragons): it opens only with --myth (or PLANET_MYTH=1).");
+            std::process::exit(2);
         }
     }
 
@@ -1191,8 +1256,8 @@ fn main() {
     };
     // The world code (the site is added per embark).
     if args.load_world.is_none() {
-        tiles::plates::set_world_code(format!("{}.{}x{}.{}.{}.{}{}", master_seed, width, height, args.world_style, args.civilizations,
-            if args.no_history { 0 } else { args.history_years }, star_code_part(&args)));
+        tiles::plates::set_world_code(format!("{}.{}x{}.{}.{}.{}{}{}", master_seed, width, height, args.world_style, args.civilizations,
+            if args.no_history { 0 } else { args.history_years }, star_code_part(&args), terrain_code_part()));
     }
     // Where this world's notes are kept, and any pinned from the command line.
     if let Some(p) = args.load_world.as_ref().or(args.save_world.as_ref()) { lore::notes::set_path(format!("{}.notes.json", p)); }
@@ -1412,7 +1477,7 @@ fn main() {
         seeds.biomes,
     );
     if fantasy_lakes_converted > 0 {
-        println!("Converted {} lakes to fantasy biomes", fantasy_lakes_converted);
+        println!("Converted {} lakes to {}", fantasy_lakes_converted, if myth::on() { "special lakes (salt, ice, lava, acid, light)" } else { "salt flats and frozen lakes" });
     }
 
     // Place unique biomes (exactly one per map)

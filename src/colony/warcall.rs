@@ -90,6 +90,7 @@ impl Colony {
         let day = self.clock.day();
         let name = self.settlers[i].name.clone();
         let roll = crate::history::settlers::hash_pub(self.seed ^ i as u64, 0xCA12) % 4;
+        let cz = self.camp_z();
         let s = &mut self.settlers[i];
         s.away_until = 0;
         if roll == 3 {
@@ -107,6 +108,7 @@ impl Colony {
         }
         s.alive = true;
         s.pos = self.camp;
+        s.z = cz;
         s.path.clear();
         s.job = Job::Idle;
         s.hunger = s.hunger.min(0.6);

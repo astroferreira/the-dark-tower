@@ -1,5 +1,9 @@
 # Playable areas / embarks (`src/local/`)
 
+**Myth (2026-10-13):** without `--myth` caverns grow no fungus trees (cave moss only), their
+life is drawn from real cave fauna (`caverns::REAL_LIFE`), no forgotten beast sleeps in the
+deepest, and there is no magma sea or pipe (real magma lies kilometres down).
+
 ## Playable areas (`src/local/`)
 Dwarf Fortress style embarks: 192x192 tiles of 2 m with 2 m z-levels, generated (~20 ms) from
 the zoomed region around a point.
@@ -177,8 +181,9 @@ the zoomed region around a point.
   7-61% across a border where the rock changes (33% overall), pools 94.5%; now 100% / 100%.
   Dev 45,12 caverns keep their floors (7424 / 12637 / 23447 cells, pools 469 / 202 / 88, were
   332 / 657 / 0); 50,20 is 7 levels deeper and its third layer is no longer clipped (3330 ->
-  8548 cells). Known: a cavern floor at level 0 trapped settlers whose `z` is still 0 before
-  their first step (floors are kept at level 1+). Mountain terraces blend over tile borders the
+  8548 cells). A cavern floor at level 0 had trapped settlers whose `z` was still 0 before
+  their first step (floors are kept at level 1+); open dark over the floor did it again on seed
+  8 on the audited terrain, so settlers are now set down at the camp's level (`Colony::camp_z`). Mountain terraces blend over tile borders the
   same way (`mountain_at`), so hillsides meet too.
 - `LocalMap::cavern_at(x, y, z)`; `places` records the first cavern only where it lies within 13
   levels (`PlaceKind::Cavern`, no carving); `host_rock` now reads the top 30 levels (the deeper map
@@ -300,3 +305,17 @@ the zoomed region around a point.
 - Doorways (`structures::raise`): a door on ground below the house's floor is open up to the
   floor's height (the lintel at the low ground's +2 left no headroom to step up). The chutes had
   put a step under one of Dreammere's wall towers and closed it off.
+
+## Pinned sites on the audited terrain (2026-10-14)
+- The integration tests run on terrain revision 2; the dev world is seed 10 (embark 30,34) and
+  the sites quoted above (Greenburg 44,9, 46,13, 47,14, 50,20, 70,6, 48,8...) are seed 76's on
+  revision 1. The tests now pin: the capital Sturmarkgate at 12,36 (`PLANET_EMBARK_TOWN`) and a
+  walled town at offset 1250,0 (Thunderkeep) for towns on several levels; 42,32 a living beast's
+  lair (Korix the Terrible) and a limestone cave walkable from the surface (caverns at 11, 26 and
+  43 levels); 33,32 the tomb of Zreetsio, captain of Aiz'shaz (also the explore trial's site: the
+  dev embark has no way in); 36,32 four world-river tiles for `--river-survey`; 69,8 a river camp
+  (the wall left to the river by day 11, the field on the bottomland, the spring flood on day
+  121); 0,35 a delve (cellar day 12, bedrooms 52, great hall 55); 6,44 a camp without stone that
+  cuts a gallery for it (day 19); 36,23 the nameless dead of the Battle of the Mambaash Pass; 72,8
+  the mine that wakes the deep, an aquifer and gems; 33,26 a hall in the hill and its engravings;
+  48,8 and 36,41 sites refused or warned for want of food; 53,13 a camp that moves.

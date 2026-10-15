@@ -60,6 +60,103 @@ const OROGEN_RELAX_MYR: f32 = 140.0;
 const VOLCANIC_DECAY_MYR: f32 = 25.0;
 /// Fraction of the continental-to-oceanic thickness gap removed per step on rift flanks.
 const RIFT_THINNING: f32 = 0.06;
+/// Tension on a fresh rift's continental flank (revision 2), before smoothing and output gain.
+const RIFT_TENSION: f32 = 0.6;
+/// How far a rift runs on into a continent from the tip of its young ocean (km), and how far
+/// apart rift tips are (km).
+const RIFT_LENGTH_KM: f32 = 1200.0;
+const RIFT_SPACING_KM: f32 = 2000.0;
+/// At most this many rifts run inland (the Earth has about five active continental rifts), and
+/// each breaks into basins about this long, with sills between (accommodation zones).
+const RIFT_MAX: usize = 6;
+const RIFT_SEGMENT_KM: f32 = 320.0;
+/// Tension along a propagated rift's line (raw, before smoothing over ~3 cells and the output
+/// gain: -0.06 to -0.15 after them, enough for a graben 400-500 m deep).
+const RIFT_LINE_TENSION: f32 = 1.6;
+
+/// Rifts that run on into the continents (revision 2): where a spreading ridge (seafloor
+/// younger than 8 Myr) meets continental crust, the rift propagates ahead of it along the
+/// ridge's axis (perpendicular to the age gradient), as the East African Rift runs on from the
+/// Gulf of Aden: a line of tension up to 1200 km into the continent, fading toward its end,
+/// gently wandering, swelling and easing every ~320 km so the graben breaks into basins with
+/// sills between (Tanganyika, Malawi, Turkana). Tips keep 2000 km apart, the axis must point
+/// into the continent and the rift run 5 cells inland; the youngest six are kept. Adds the
+/// tension to `raw`; returns the rifts.
+fn propagate_rifts(crust: &CrustFields, raw: &mut [f32], km_per_cell: f32) -> usize {
+    let (w, h) = (crust.thickness_km.width, crust.thickness_km.height);
+    let cos_row = |y: f32| ((0.5 - (y + 0.5) / h as f32) * std::f32::consts::PI).cos().max(0.15);
+    let cont = |x: usize, y: usize| *crust.thickness_km.get(x, y) >= CONTINENTAL_THRESHOLD_KM;
+    let at = |x: i64, y: i64| ((x.rem_euclid(w as i64)) as usize, y.clamp(0, h as i64 - 1) as usize);
+    let age = |x: usize, y: usize| *crust.age_myr.get(x, y);
+    // Tips: ridge-axis cells with continental crust within two cells.
+    let mut tips: Vec<(usize, usize)> = Vec::new();
+    for y in 0..h {
+        for x in 0..w {
+            if cont(x, y) || age(x, y) >= 8.0 { continue; }
+            let near = (-2i64..=2).any(|dy| (-2i64..=2).any(|dx| { let (nx, ny) = at(x as i64 + dx, y as i64 + dy); cont(nx, ny) }));
+            if near { tips.push((x, y)); }
+        }
+    }
+    tips.sort_by(|a, b| age(a.0, a.1).partial_cmp(&age(b.0, b.1)).unwrap().then((a.1 * w + a.0).cmp(&(b.1 * w + b.0))));
+    let sep = |a: (usize, usize), b: (usize, usize)| {
+        let mut dx = (a.0 as f32 - b.0 as f32).abs();
+        dx = dx.min(w as f32 - dx) * cos_row((a.1 + b.1) as f32 * 0.5);
+        (dx * dx + (a.1 as f32 - b.1 as f32).powi(2)).sqrt() * km_per_cell
+    };
+    let mut chosen: Vec<(usize, usize)> = Vec::new();
+    let steps = (RIFT_LENGTH_KM / km_per_cell).ceil() as usize;
+    let mut rifts = 0;
+    for &tip in &tips {
+        if chosen.iter().any(|&c| sep(c, tip) < RIFT_SPACING_KM) { continue; }
+        let (x, y) = tip;
+        // The axis: along the ridge, perpendicular to the age gradient (ages of oceanic crust).
+        let a = |dx: i64, dy: i64| { let (nx, ny) = at(x as i64 + dx, y as i64 + dy); if cont(nx, ny) { age(x, y) } else { age(nx, ny) } };
+        let c = cos_row(y as f32);
+        let (gx, gy) = ((a(1, 0) - a(-1, 0)) * 0.5 / c, (a(0, 1) - a(0, -1)) * 0.5);
+        let gn = (gx * gx + gy * gy).sqrt();
+        if gn < 1e-3 { continue; }
+        let (mut ux, mut uy) = (-gy / gn, gx / gn);
+        // Toward the continent.
+        let (mut vx, mut vy, mut vn) = (0.0f32, 0.0f32, 0usize);
+        for dy in -2i64..=2 { for dx in -2i64..=2 {
+            let (nx, ny) = at(x as i64 + dx, y as i64 + dy);
+            if cont(nx, ny) { vx += dx as f32 * c; vy += dy as f32; vn += 1; }
+        } }
+        if vn == 0 { continue; }
+        let along = ux * vx + uy * vy;
+        if along.abs() < 0.6 * (vx * vx + vy * vy).sqrt() { continue; }
+        if along < 0.0 { ux = -ux; uy = -uy; }
+        if rifts >= RIFT_MAX { break; }
+        // Trace it (into a scratch line first: a rift too short to run inland is dropped).
+        let (mut px, mut py) = (x as f32, y as f32);
+        let mut on_land = 0;
+        let mut line: Vec<(usize, f32)> = Vec::new();
+        let segment = (RIFT_SEGMENT_KM / km_per_cell).max(2.0);
+        for k in 0..steps {
+            px += ux / cos_row(py);
+            py += uy;
+            if py < 0.0 || py > (h - 1) as f32 { break; }
+            let (cx, cy) = at(px.round() as i64, py.round() as i64);
+            if !cont(cx, cy) { if on_land > 0 || k > 3 { break; } continue; }
+            on_land += 1;
+            let fade = (1.0 - k as f32 / steps as f32).sqrt();
+            let basin = 0.45 + 0.55 * (std::f32::consts::PI * on_land as f32 / segment).sin().abs();
+            line.push((cy * w + cx, RIFT_LINE_TENSION * fade * basin));
+            // Wander a little (a hash of the tip and the step), keeping the heading.
+            let hsh = ((tip.1 * w + tip.0) as u64 ^ (k as u64).wrapping_mul(0x9E37_79B9)).wrapping_mul(0x2545_F491_4F6C_DD1D);
+            let turn = ((hsh >> 40) as f32 / (1u64 << 24) as f32 - 0.5) * 0.35;
+            let (s, co) = turn.sin_cos();
+            let (nx, ny) = (ux * co - uy * s, ux * s + uy * co);
+            ux = nx; uy = ny;
+        }
+        if on_land >= 5 {
+            for &(i, t) in &line { raw[i] -= t; }
+            chosen.push(tip);
+            rifts += 1;
+        }
+    }
+    rifts
+}
 const HOTSPOT_VOLCANIC_M_PER_MYR: f32 = 10_000.0;
 
 #[derive(Clone, Debug)]
@@ -910,6 +1007,31 @@ impl TectonicSim {
                 s -= 0.35 * (-crust.age_myr.get(d % w, d / w) / 10.0).exp();
             }
             raw[d] = s;
+        }
+        if !crate::terrain_rev::v1() {
+            // Revision 2: continental rifts. Continental crust beside young seafloor (within
+            // two cells, younger than ~30 Myr) is the stretched flank of a rift that has
+            // just opened (thinned there by RIFT_THINNING); it is under tension as the ridge is
+            // (it had none, so land never showed extension: no rift valleys, no rift lakes).
+            let mut young = vec![f32::MAX; n];
+            for d in 0..n {
+                let (x, y) = (d % w, d / w);
+                if *crust.thickness_km.get(x, y) < CONTINENTAL_THRESHOLD_KM { young[d] = *crust.age_myr.get(x, y); }
+            }
+            for _ in 0..2 {
+                let prev = young.clone();
+                for d in 0..n {
+                    for j in self.grid.neighbors8(d) { if prev[j] < young[d] { young[d] = prev[j]; } }
+                }
+            }
+            for d in 0..n {
+                let (x, y) = (d % w, d / w);
+                let t = *crust.thickness_km.get(x, y);
+                if t < CONTINENTAL_THRESHOLD_KM || young[d] == f32::MAX { continue; }
+                raw[d] -= RIFT_TENSION * (-young[d] / 15.0).exp() * (1.0 - smoothstep(30.0, 40.0, t));
+            }
+            let rifts = propagate_rifts(&crust, &mut raw, self.km_per_cell as f32);
+            if std::env::var("PLANET_TERRAIN_DEBUG").is_ok() { eprintln!("continental rifts propagated: {rifts}"); }
         }
         // Downstream stages (volcanoes, cliffs, rock types) are tuned for stress in roughly
         // [-0.2, 0.5], with 0.15 meaning "volcanic" and 0.3 meaning "mountain building".

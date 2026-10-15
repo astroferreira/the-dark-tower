@@ -4,8 +4,12 @@
 
 use std::process::Command;
 
+/// The binary with myth and magic on (`--myth`, `crate::myth`): these tests are of the game's
+/// systems as they were, Shadow, beasts and all; the realistic default has its own tests.
+fn myth_cmd() -> Command { let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator")); c.env("PLANET_MYTH", "1").env_remove("PLANET_TERRAIN_V1"); c }
+
 fn run(acts: &str, seed: Option<&str>) -> String {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator"));
+    let mut c = myth_cmd();
     c.args(["--adventure-bot", acts]);
     if let Some(s) = seed { c.args(["--seed", s]); }
     let out = c.output().expect("run planet_generator");
@@ -24,7 +28,8 @@ fn count(line: &str, label: &str) -> u32 { after(line, &format!("{} ", label)) }
 
 #[test]
 fn a_commoner_grows_into_a_hero() {
-    let out = run("40000", None);
+    // (Seed 1 on the audited terrain: the dev world's hero met two authored rooms in 40000 acts.)
+    let out = run("40000", Some("1"));
     let places = out.lines().find(|l| l.starts_with("Adventure on seed")).expect("places line");
     // The world's places come from its history and its land: towns, ruins, lairs, tombs...
     for kind in [" towns", " ruins", " lairs", " tombs", " caves", " dark fortress"] {
@@ -62,7 +67,7 @@ fn the_same_seed_tells_the_same_adventure() {
 #[test]
 fn an_adventure_saves_and_loads_whole() {
     let path = std::env::temp_dir().join(format!("adv_test_{}.adv", std::process::id()));
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--adventure-bot", "6000"]).env("PLANET_ADV_SAVE", &path).output().expect("run");
+    let out = myth_cmd().args(["--adventure-bot", "6000"]).env("PLANET_ADV_SAVE", &path).output().expect("run");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let _ = std::fs::remove_file(&path);
     let line = text.lines().find(|l| l.starts_with("Save:")).unwrap_or_else(|| panic!("no save line:\n{text}"));
@@ -76,7 +81,7 @@ fn an_adventure_saves_and_loads_whole() {
 fn the_world_moves_and_remembers() {
     let dir = std::env::temp_dir().join(format!("adv_legends_{}", std::process::id()));
     let save = std::env::temp_dir().join(format!("adv_world_{}.adv", std::process::id()));
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--adventure-bot", "26000"])
+    let out = myth_cmd().args(["--adventure-bot", "26000"])
         .env("PLANET_ADV_WORLD", "1").env("PLANET_ADV_LEGENDS", &dir).env("PLANET_ADV_SAVE", &save).output().expect("run");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let _ = std::fs::remove_file(&save);
@@ -96,7 +101,7 @@ fn the_world_moves_and_remembers() {
 /// the sage's "where" marks the lair on the map, the drunk's does not (they have it wrong).
 #[test]
 fn a_sage_and_a_drunk_tell_it_differently() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--adventure-bot", "1"]).env("PLANET_ADV_ASK", "1").output().expect("run");
+    let out = myth_cmd().args(["--adventure-bot", "1"]).env("PLANET_ADV_ASK", "1").output().expect("run");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let sage = text.lines().find(|l| l.starts_with("Ask sage")).unwrap_or_else(|| panic!("no sage:\n{text}"));
     let drunk = text.lines().find(|l| l.starts_with("Ask drunk")).unwrap_or_else(|| panic!("no drunk:\n{text}"));

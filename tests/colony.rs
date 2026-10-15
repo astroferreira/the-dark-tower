@@ -4,9 +4,13 @@
 
 use std::process::Command;
 
+/// The binary with myth and magic on (`--myth`, `crate::myth`): these tests are of the game's
+/// systems as they were, Shadow, beasts and all; the realistic default has its own tests.
+fn myth_cmd() -> Command { let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator")); c.env("PLANET_MYTH", "1").env_remove("PLANET_TERRAIN_V1"); c }
+
 fn run(dir: &std::path::Path) -> (String, String) {
     let prefix = dir.join("colony");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-snapshot", prefix.to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -47,7 +51,7 @@ fn seven_settlers_live_thirty_days_unattended() {
 
 #[test]
 fn patron_verbs_change_behaviour_within_a_day() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-patron"])
         .output()
         .expect("run planet_generator");
@@ -64,7 +68,7 @@ fn patron_verbs_change_behaviour_within_a_day() {
 fn founding_stones_shape_the_colony() {
     let dir = std::env::temp_dir().join(format!("founding_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-founding", dir.join("f").to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -83,7 +87,7 @@ fn founding_stones_shape_the_colony() {
 fn the_colony_wears_its_story() {
     let dir = std::env::temp_dir().join(format!("marks_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-marks", dir.join("m").to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -101,7 +105,7 @@ fn one_code_one_story() {
     let script = dir.join("iv.txt");
     std::fs::write(&script, "0 bless 100 96 6\n400 favour 2\n1500 dream 1 Hut\n").unwrap();
     let hash = |with: bool| -> String {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_planet_generator"));
+        let mut cmd = myth_cmd();
         cmd.args(["--code", "76.96x48.earthlike.8.250@45,12", "--sim-snapshot", dir.join("c").to_str().unwrap()]);
         if with { cmd.args(["--interventions", script.to_str().unwrap()]); }
         let out = cmd.output().expect("run planet_generator");
@@ -119,7 +123,7 @@ fn one_code_one_story() {
 fn the_first_arc_reaches_the_colony() {
     let dir = std::env::temp_dir().join(format!("arc_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-snapshot", dir.join("a").to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -168,7 +172,7 @@ fn the_first_arc_reaches_the_colony() {
 
 #[test]
 fn after_the_hut_the_colony_sets_its_own_work() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-projects", "60"])
         .output()
         .expect("run planet_generator");
@@ -191,8 +195,9 @@ fn after_the_hut_the_colony_sets_its_own_work() {
 #[test]
 fn the_raid_is_the_patrons_to_win_or_lose() {
     let (mut changed, mut lost) = (0, 0);
-    for seed in ["76", "11", "23", "58", "3", "5"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    // (Seeds on the audited terrain: 3 and 15 are raids a careful patron does not change.)
+    for seed in ["10", "11", "3", "5", "7", "15"] {
+        let out = myth_cmd()
             .args(["--dev", "--seed", seed, "--sim-raid"])
             .output()
             .expect("run planet_generator");
@@ -211,14 +216,14 @@ fn the_raid_is_the_patrons_to_win_or_lose() {
     assert!(lost >= 3, "a careless patron lost a settler on only {lost} of 6 seeds");
 }
 
-/// A doomed site says so: the dev world's cold heights at 46,38 and the crater at 28,38 have
-/// little or nothing to eat within reach of a camp, and are refused (or warned) with the reason
-/// instead of starving seven. (The mountain at 48,18 was the first such site; since the mountains
-/// got scree, game and summer shrubs it feeds a camp.)
+/// A doomed site says so: the dev world's bare northern heights at 48,8 and the cold south at
+/// 36,41 have nothing to eat within reach of a camp, and are refused (or warned) with the reason
+/// instead of starving seven. (On the terrain before the audit: the cold heights at 46,38 and the
+/// crater at 28,38 of seed 76.)
 #[test]
 fn a_doomed_site_says_so() {
-    for site in ["46,38", "28,38"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    for site in ["48,8", "36,41"] {
+        let out = myth_cmd()
             .args(["--dev", "--sim-projects", "30", "--tiles-center", site])
             .output()
             .expect("run planet_generator");
@@ -235,8 +240,8 @@ fn a_doomed_site_says_so() {
 /// one anywhere they can walk gives it up on day 1 instead of starving.
 #[test]
 fn settlers_save_themselves_before_they_build() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--sim-move", "20", "--tiles-center", "18,30"])
+    let out = myth_cmd()
+        .args(["--dev", "--sim-move", "20", "--tiles-center", "53,13"])
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
@@ -244,11 +249,11 @@ fn settlers_save_themselves_before_they_build() {
     assert!(text.contains("Moment: They move the camp (because"), "no moment for the move:\n{text}");
     assert!(text.contains("Mark: The old camp"), "the old camp left no mark:\n{text}");
     // Nobody starves after the move (the raid may take one, and the Shadow's raiders a child).
-    assert!(text.contains("Move at 18,30 after 20 days: 9 of 9 alive") || text.contains("Move at 18,30 after 20 days: 8 of 9 alive")
-        || text.contains("Move at 18,30 after 20 days: 7 of 9 alive"), "settlers died after moving:\n{text}");
+    assert!(text.contains("Move at 53,13 after 20 days: 9 of 9 alive") || text.contains("Move at 53,13 after 20 days: 8 of 9 alive")
+        || text.contains("Move at 53,13 after 20 days: 7 of 9 alive"), "settlers died after moving:\n{text}");
     assert!(!text.contains("died of hunger"), "settlers starved after moving:\n{text}");
-    for site in ["46,38", "28,38"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    for site in ["48,8", "36,41"] {
+        let out = myth_cmd()
             .env("PLANET_FORCE_CAMP", "1")
             .args(["--dev", "--sim-projects", "30", "--tiles-center", site])
             .output()
@@ -267,8 +272,8 @@ fn settlers_save_themselves_before_they_build() {
 #[test]
 fn the_refugees_are_a_choice() {
     let mut schedules = std::collections::HashSet::new();
-    for seed in ["76", "11", "23", "58", "3", "5"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    for seed in ["10", "11", "3", "2", "7", "6"] {
+        let out = myth_cmd()
             .args(["--dev", "--seed", seed, "--sim-refugees"])
             .output()
             .expect("run planet_generator");
@@ -292,7 +297,7 @@ fn the_refugees_are_a_choice() {
 /// comes with a reckoning of the store.
 #[test]
 fn after_the_raid_the_next_trouble_and_winter() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--sim-projects", "120"])
         .output()
         .expect("run planet_generator");
@@ -311,7 +316,7 @@ fn after_the_raid_the_next_trouble_and_winter() {
 /// begun.
 #[test]
 fn settlers_plan_ahead() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--sim-projects", "365"])
         .output()
         .expect("run planet_generator");
@@ -341,7 +346,7 @@ fn a_colony_is_found_again_by_its_code() {
     let dir = std::env::temp_dir().join(format!("code_cell_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let hash = |code: &str| {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--code", code, "--sim-snapshot", dir.join("k").to_str().unwrap()])
             .output()
             .expect("run planet_generator");
@@ -366,7 +371,7 @@ fn a_colony_is_found_again_by_its_code() {
 fn three_sites_to_choose_from() {
     let (mut differ, mut watered) = (0, 0);
     for seed in ["76", "11", "23", "58", "3", "5"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--dev", "--seed", seed, "--sites"])
             .output()
             .expect("run planet_generator");
@@ -387,13 +392,14 @@ fn three_sites_to_choose_from() {
 }
 
 /// Coarse data drives fine data (DF): a tile the world map gives a river embarks on that river's
-/// bank, its channel as wide as the world's discharge makes it. Dev tiles round 47,8 hold four
+/// bank, its channel as wide as the world's discharge makes it. Dev tiles round 36,32 hold four
 /// river tiles; none of their embarks held the river before (the tile's centre lies kilometres
 /// from it).
 #[test]
 fn world_rivers_run_through_their_embarks() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--river-survey", "--tiles-center", "47,8"])
+    let out = myth_cmd()
+        // (36,32: four tiles of the river by the dev camp; on the old terrain 47,8 of seed 76.)
+        .args(["--dev", "--river-survey", "--tiles-center", "36,32"])
         .env("PLANET_SURVEY_RADIUS", "2")
         .output()
         .expect("run planet_generator");
@@ -418,7 +424,7 @@ fn world_rivers_run_through_their_embarks() {
 fn skill_makes_roles() {
     // (The first of a few seeds where someone free takes the hammer within ten days: on some the
     // next-best builders hold another trade on day 40. Timelines move with every system.)
-    let roles = |seed: &str| String::from_utf8_lossy(&Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let roles = |seed: &str| String::from_utf8_lossy(&myth_cmd()
         .args(["--dev", "--seed", seed, "--sim-roles"]).output().expect("run planet_generator").stdout).to_string();
     let text = ["58", "2", "5", "11", "76"].iter().map(|s| roles(s)).find(|t| t.contains("takes up the hammer")).unwrap_or_else(|| roles("58"));
     let trial = text.lines().find(|l| l.starts_with("Roles trial:")).unwrap_or_else(|| panic!("no roles trial:\n{text}"));
@@ -428,7 +434,7 @@ fn skill_makes_roles() {
     assert!(text.contains("takes up the hammer"), "no one took up the hammer:\n{text}");
     let dir = std::env::temp_dir().join(format!("roles_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-snapshot", dir.join("r").to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -449,7 +455,7 @@ fn skill_makes_roles() {
 /// the east leaves it empty.
 #[test]
 fn the_plan_follows_blessing_and_taboo() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--sim-plan"])
         .output()
         .expect("run planet_generator");
@@ -467,7 +473,7 @@ fn the_plan_follows_blessing_and_taboo() {
 fn each_people_builds_its_own_way() {
     let names = planet_generator::colony::projects::build_way_names();
     for p in ["dwarf", "elf", "orc", "human"] { assert!(names.iter().any(|n| n == p), "no way for {p} in building_ways.json: {names:?}"); }
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--sim-ways"])
         .output()
         .expect("run planet_generator");
@@ -478,9 +484,9 @@ fn each_people_builds_its_own_way() {
     assert!(orders.len() >= 3, "the peoples build in the same order: {orders:?}");
     let least = text.lines().filter(|l| l.contains(" vs ")).filter_map(|l| l.split("differ in ").nth(1).and_then(|x| x.split('%').next()).and_then(|x| x.parse::<u32>().ok())).min().unwrap_or(0);
     assert!(least >= 8, "two peoples' villages look alike ({least}%):\n{text}");
-    // Dwarves dig their hall into the hill first where there is one (dev seed 19's hillside since
-    // hard times; seeds 5 and 11 had been).
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--seed", "19", "--sim-ways"]).output().expect("run planet_generator");
+    // Dwarves dig their hall into the hill first where there is one (dev seed 14's hillside on the
+    // audited terrain, also 24 and 29; 19, 5 and 11 had been on the old).
+    let out = myth_cmd().args(["--dev", "--seed", "14", "--sim-ways"]).output().expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
     let dwarves = text.lines().find(|l| l.starts_with("Way of the dwarves")).expect("dwarves line");
     assert!(dwarves.contains("works: hall in the hill"), "the dwarves did not dig their hall first: {dwarves}");
@@ -493,10 +499,11 @@ fn settlers_go_under() {
     use planet_generator::local::Material;
     // Soft rock is quick, hard rock slow.
     assert!(dig_minutes(Material::Rock(RockType::Limestone)) * 2 <= dig_minutes(Material::Rock(RockType::Granite)));
-    // Dev 50,20 lies below a hill: by day 120 they have dug a hall into it and sleep there, and
-    // the rock carried out was laid as stone (the palisade mended in it).
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--sim-projects", "120", "--tiles-center", "50,20"])
+    // Dev 33,26 lies below a hill with no timber in reach: by day 120 they have dug a hall into it
+    // and sleep there, and the rock carried out was laid as stone. (Seed 76's 50,20 on the old
+    // terrain.)
+    let out = myth_cmd()
+        .args(["--dev", "--sim-projects", "120", "--tiles-center", "33,26"])
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
@@ -510,26 +517,27 @@ fn settlers_go_under() {
 }
 
 /// Something down there: places in the rock with causes from the history and the rock. Dev
-/// 46,13 holds the living Baelfang's lair; 47,14 (Brolmdustoor Pass) a tomb of a named dead; a
-/// limestone cave can be walked into; and a fair share of embarks hold nothing at all.
+/// 42,32 holds the living Korix the Terrible's lair and a limestone cave that can be walked into;
+/// 33,32 the tomb of Zreetsio, captain of Aiz'shaz, who fell there; and a fair share of embarks
+/// hold nothing at all. (On the old terrain: 46,13, 47,14 and 50,20 of seed 76.)
 #[test]
 fn something_down_there() {
     let places = |site: &str| -> Vec<String> {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--dev", "--sim-projects", "1", "--tiles-center", site])
             .output()
             .expect("run planet_generator");
         String::from_utf8_lossy(&out.stdout).lines().filter(|l| l.trim_start().starts_with("Place:")).map(|l| l.to_string()).collect()
     };
-    let lair = places("46,13");
+    let lair = places("42,32");
     // (Whose lair moves with the history: Baelfang's, then Zaresh the Desolator's since hard times.)
     assert!(lair.iter().any(|l| l.contains("The lair of ") && l.contains("lairs here, and lives")), "no lair of the living beast: {lair:?}");
-    let tomb = places("47,14");
-    assert!(tomb.iter().any(|l| l.contains("(Tomb)") && l.contains("fell here")), "no tomb at Brolmdustoor Pass: {tomb:?}");
-    let cave = places("50,20");
+    let tomb = places("33,32");
+    assert!(tomb.iter().any(|l| l.contains("(Tomb)") && l.contains("fell here")), "no tomb at 33,32: {tomb:?}");
+    let cave = places("42,32");
     assert!(cave.iter().any(|l| l.contains("(Cave)") && l.contains("hollowed by water") && l.contains("walkable from the surface")), "no cave to walk into: {cave:?}");
     let mut none = 0;
-    let sites = ["45,12", "20,35", "55,15", "70,6", "62,10", "80,17", "79,9", "58,18", "52,22", "60,20", "46,16", "54,26"];
+    let sites = ["30,23", "36,26", "45,29", "66,20", "27,29", "30,32", "36,29", "39,26", "45,26", "57,14", "60,14", "69,17"];
     for s in sites { if places(s).is_empty() { none += 1; } }
     assert!(none * 5 >= sites.len() && none * 2 <= sites.len(), "{none} of {} embarks hold nothing", sites.len());
 }
@@ -540,7 +548,7 @@ fn something_down_there() {
 fn settlers_are_rolled_individuals() {
     let dir = std::env::temp_dir().join(format!("who_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-snapshot", dir.join("w").to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -562,7 +570,7 @@ fn minds_break_with_reasons() {
         let dir = std::env::temp_dir().join(format!("mind_{}_{}", seed, std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let log = dir.join("log.txt");
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--dev", "--headless", "--seed", seed, "--sim-projects", days])
             .env("PLANET_DUMP_LOG", &log)
             .output()
@@ -585,7 +593,7 @@ fn minds_break_with_reasons() {
     // that breaks people too.)
 }
 
-/// Digging too deep (Dwarf Fortress): the dev colony at 45,12 sinks a mine for ore, breaks into
+/// Digging too deep (Dwarf Fortress): the dev colony at 72,8 sinks a mine for ore, breaks into
 /// the first cavern, the miners hear the deep stir, and the forgotten beast that slept there
 /// climbs out of the mine, with its generated special attack.
 #[test]
@@ -593,8 +601,8 @@ fn the_mine_wakes_the_deep() {
     let dir = std::env::temp_dir().join(format!("deep_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "45", "--tiles-center", "45,12"])
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--sim-projects", "45", "--tiles-center", "72,8"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -620,7 +628,7 @@ fn raids_are_fought_blow_by_blow() {
     let dir = std::env::temp_dir().join(format!("blows_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "60"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
@@ -645,7 +653,7 @@ fn raids_are_fought_blow_by_blow() {
 /// show a real event of the makers' pasts.
 #[test]
 fn crafts_show_history() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "120"])
         .output()
         .expect("run planet_generator");
@@ -667,7 +675,7 @@ fn caravans_trade_and_bring_news() {
     let dir = std::env::temp_dir().join(format!("trade_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "80"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
@@ -692,10 +700,10 @@ fn news_comes_as_its_teller_tells_it() {
     let dir = std::env::temp_dir().join(format!("news_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let (log, annals) = (dir.join("log.txt"), dir.join("annals.html"));
-    // (Seed 4: caravan news, word, a song and an account told otherwise by day 45. The seed moves
-    // with the history: 76, then 3, then 7, then since hard times 4.)
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--seed", "4", "--sim-projects", "150"])
+    // (Seed 2: caravan news, word, a song and an account told otherwise. The seed moves with the
+    // history and the land: 76, then 3, then 7, then since hard times 4, on the audited terrain 2.)
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--seed", "2", "--sim-projects", "150"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_ANNALS", &annals)
         .output()
@@ -720,7 +728,7 @@ fn a_speaker_proclaims_a_mandate() {
     let dir = std::env::temp_dir().join(format!("speaker_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "35"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
@@ -744,7 +752,7 @@ fn the_dead_walk_under_the_shadow() {
         let dir = std::env::temp_dir().join(format!("dead_{}_{}", seed, std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let log = dir.join("log.txt");
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--dev", "--headless", "--seed", seed, "--sim-projects", "40"])
             .env("PLANET_DUMP_LOG", &log)
             .env(SHADOW.0, SHADOW.1)
@@ -769,7 +777,7 @@ fn strange_moods_make_artifacts_or_madness() {
         std::fs::create_dir_all(&dir).unwrap();
         let log = dir.join("log.txt");
         // Seed 3's mood is a possession by nature (it wants nothing); forced fey, it wants tin.
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--dev", "--headless", "--seed", seed, "--sim-projects", days])
             .env("PLANET_DUMP_LOG", &log)
             .env("PLANET_FORCE_MOOD", if seed == "3" { "fey" } else { "" })
@@ -782,9 +790,9 @@ fn strange_moods_make_artifacts_or_madness() {
         let _ = std::fs::remove_dir_all(&dir);
         text
     };
-    // (Seed 12 makes one on day 25; seed 10, which had by day 60, on day 211 since hard times.)
-    let made = run("12", "60");
-    let art = made.lines().find(|l| l.contains("has made an artifact: ")).unwrap_or_else(|| panic!("no artifact on seed 12:\n{made}"));
+    // (Seeds 2 and 5 make one by day 60 on the audited terrain; 12 had since hard times.)
+    let made = ["2", "5"].iter().map(|s| run(s, "60")).find(|t| t.contains("has made an artifact: ")).unwrap_or_default();
+    let art = made.lines().find(|l| l.contains("has made an artifact: ")).unwrap_or_else(|| panic!("no artifact on seeds 2 or 5:\n{made}"));
     assert!(art.contains(", showing "), "an artifact without its image: {art}");
     let mad = run("3", "90");
     assert!(mad.lines().any(|l| l.contains("sours into madness") && l.contains("wanted ")), "no madness on seed 3:\n{mad}");
@@ -798,7 +806,7 @@ fn the_werebeast_curse_spreads() {
     let dir = std::env::temp_dir().join(format!("were_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "130"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_FORCE_WERE", "Ashiel the Ancient")
@@ -820,7 +828,7 @@ fn riches_draw_trouble() {
     let dir = std::env::temp_dir().join(format!("riches_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--seed", "11", "--sim-projects", "300"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
@@ -838,7 +846,7 @@ fn riches_draw_trouble() {
 fn the_camp_keeps_annals() {
     let dir = std::env::temp_dir().join(format!("annals_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--sim-snapshot", dir.join("a").to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -860,8 +868,10 @@ fn a_temple_to_their_god() {
     let dir = std::env::temp_dir().join(format!("temple_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "40"])
+    // (Seed 1: the devout ask for it on day 22 and keep the festival of day 31 in their god's
+    // honour. The dev camp's temple is pressed for by one voice, which names no god.)
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--seed", "1", "--sim-projects", "40"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -881,7 +891,7 @@ fn thieves_are_judged() {
     let dir = std::env::temp_dir().join(format!("justice_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--seed", "23", "--sim-projects", "100"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
@@ -901,7 +911,7 @@ fn a_lost_relic_is_found_and_claimed() {
     let dir = std::env::temp_dir().join(format!("relic_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "110"])
         .env("PLANET_DUMP_LOG", &log)
         // (Since hard times dev 76 has no lost thing within six tiles: the nearest anywhere whose
@@ -932,7 +942,7 @@ fn a_beast_can_be_slain() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let annals = dir.join("annals.html");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--seed", "11", "--sim-projects", "60"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_ANNALS", &annals)
@@ -953,8 +963,9 @@ fn the_militia_drills_and_arms() {
     let dir = std::env::temp_dir().join(format!("militia_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "65"])
+    // (Seed 1: the dev camp's elves drill but make no spear in 65 days on the audited terrain.)
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--seed", "1", "--sim-projects", "65"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -991,7 +1002,7 @@ fn a_seeker_comes_for_the_relic() {
     let dir = std::env::temp_dir().join(format!("seeker_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "110"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_FORCE_SEEKER", "Orvel")
@@ -1010,15 +1021,15 @@ fn a_seeker_comes_for_the_relic() {
     assert!(text.lines().any(|l| l.contains(" gives ") && l.contains(&format!(" to {}", who))) || has(&format!("{} slips away", who)) || has(&format!("catches {}", who)), "no end to the asking");
 }
 
-/// Engravings (Dwarf Fortress): the dev colony at 50,20 digs a hall and carves its walls with
+/// Engravings (Dwarf Fortress): the dev colony at 33,26 digs a hall and carves its walls with
 /// its own story first (raids, deaths, guests) and then the engraver's past.
 #[test]
 fn the_hall_is_engraved_with_its_story() {
     let dir = std::env::temp_dir().join(format!("engrave_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "150", "--tiles-center", "50,20"])
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--sim-projects", "150", "--tiles-center", "33,26"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -1038,7 +1049,7 @@ fn a_vampire_comes_with_the_migrants() {
     let dir = std::env::temp_dir().join(format!("vampire_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--seed", "3", "--sim-projects", "120"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_FORCE_VAMPIRE", "1")
@@ -1062,7 +1073,7 @@ fn moods_come_in_kinds() {
     let dir = std::env::temp_dir().join(format!("moods_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "200"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_FORCE_MOOD", "fell")
@@ -1084,7 +1095,7 @@ fn settlers_keep_pets() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let annals = dir.join("annals.html");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--seed", "58", "--sim-projects", "160"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_ANNALS", &annals)
@@ -1106,7 +1117,7 @@ fn families_are_made_in_the_camp() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let annals = dir.join("annals.html");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--seed", "23", "--sim-projects", "160"])
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_ANNALS", &annals)
@@ -1121,15 +1132,15 @@ fn families_are_made_in_the_camp() {
     assert!(page.contains("born in ") && page.contains("child of "), "the child is not in the annals");
 }
 
-/// Aquifers (Dwarf Fortress): the dev site 45,12 lies where the land holds water; its mine opens
+/// Aquifers (Dwarf Fortress): the dev site 72,8 lies where the land holds water; its mine opens
 /// wet rock, stops, lines the shaft in stone as a work of its own, and goes on down.
 #[test]
 fn the_mine_strikes_an_aquifer() {
     let dir = std::env::temp_dir().join(format!("aquifer_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "40", "--tiles-center", "45,12"])
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--sim-projects", "40", "--tiles-center", "72,8"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -1143,16 +1154,16 @@ fn the_mine_strikes_an_aquifer() {
     assert!(stdout.contains("aquifer at levels") && stdout.contains("lined"), "the summary does not report the aquifer:\n{stdout}");
 }
 
-/// Gems in the rock (Dwarf Fortress's clusters): digging at 45,12 turns up amber, and the
+/// Gems in the rock (Dwarf Fortress's clusters): digging at 72,8 turns up gems, and the
 /// workshop sets it in a work.
 #[test]
 fn gems_are_found_and_set() {
     let dir = std::env::temp_dir().join(format!("gems_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         // (120 days: with spare hours spent on their needs the camp's first set work came later.)
-        .args(["--dev", "--headless", "--sim-projects", "120", "--tiles-center", "45,12"])
+        .args(["--dev", "--headless", "--sim-projects", "120", "--tiles-center", "72,8"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -1168,7 +1179,7 @@ fn gems_are_found_and_set() {
 /// song of it.
 #[test]
 fn legends_outlive_the_camp() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--seed", "11", "--sim-legend"])
         .output()
         .expect("run planet_generator");
@@ -1213,7 +1224,7 @@ fn run_log(seed: &str, days: &str, env: &[(&str, &str)]) -> String {
     let dir = std::env::temp_dir().join(format!("runlog_{}_{}_{}_{}", seed, days, std::process::id(), n));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_planet_generator"));
+    let mut cmd = myth_cmd();
     cmd.args(["--dev", "--headless", "--seed", seed, "--sim-projects", days]).env("PLANET_DUMP_LOG", &log);
     for (k, v) in env { cmd.env(k, v); }
     let out = cmd.output().expect("run planet_generator");
@@ -1339,9 +1350,9 @@ fn the_tavern_draws_the_world() {
 #[test]
 fn books_are_written() {
     // (A camp laying in its winter store writes less; the chronicle comes after day 120.)
-    // (Seeds 76 and 1 write their chronicles on days 126 and 123 since camps are placed by their
-    // founders.)
-    let logs: Vec<String> = ["76", "1"].iter().map(|s| run_log(s, "140", &[])).collect();
+    // (Seeds 10 and 3 write their chronicles by day 140 on the audited terrain; 76 and 1 had on
+    // the terrain before it.)
+    let logs: Vec<String> = ["10", "3"].iter().map(|s| run_log(s, "140", &[])).collect();
     for text in &logs {
         let books = text.lines().filter(|l| l.contains(" finishes writing ")).count();
         assert!(books <= 8, "too many books in 140 days: {books}");
@@ -1373,7 +1384,8 @@ fn the_pen_breeds_and_feeds() {
 /// the hollow, and a demon climbs out of the mine.
 #[test]
 fn the_deep_shaft_opens_the_hollow() {
-    let found = ["76", "23"].iter().any(|seed| {
+    // (Seeds 1 and 3 on the audited terrain; 76 and 23 before it.)
+    let found = ["1", "3"].iter().any(|seed| {
         let text = run_log(seed, "150", &[]);
         let at = |n: &str| text.lines().position(|l| l.contains(n));
         match (at("strike a vein of adamantine"), at("break into a hollow"), at("the demon")) {
@@ -1381,7 +1393,7 @@ fn the_deep_shaft_opens_the_hollow() {
             _ => false,
         }
     });
-    assert!(found, "no adamantine, hollow and demon on seeds 76 or 23");
+    assert!(found, "no adamantine, hollow and demon on seeds 1 or 3");
 }
 
 /// Places in the hills (Dwarf Fortress's discoveries): the embark's tombs, lairs, old mines and
@@ -1393,8 +1405,8 @@ fn places_in_the_hills_are_found() {
     let logs: Vec<String> = ["58", "3", "4"].iter().map(|s| run_log(s, "200", &[])).collect();
     assert!(logs.iter().any(|t| t.lines().any(|l| l.contains(" finds ") && (l.contains(" in the hills") || l.contains("finds a cave") || l.contains("finds the")))), "no place found");
     for t in &logs { if t.contains("finds the tomb") { assert!(t.contains("breaks into the tomb") || t.contains("leaves it sealed")); } }
-    let caves = ["76", "3"].iter().any(|s| run_log(s, "120", &[]).lines().any(|l| l.contains(" finds a cave in the ")));
-    assert!(caves, "no cave found on seeds 76 or 3");
+    let caves = ["4", "5"].iter().any(|s| run_log(s, "120", &[]).lines().any(|l| l.contains(" finds a cave in the ")));
+    assert!(caves, "no cave found on seeds 4 or 5");
 }
 
 /// Prisoners (Dwarf Fortress's captives): a routed band may leave one behind alive; the speaker
@@ -1455,7 +1467,8 @@ fn snatched_children_come_back_among_the_raiders() {
 #[test]
 fn raiders_lay_siege_to_a_walled_camp() {
     // (Without the Shadow's raiders, seeds 6, 7 and 10 are besieged by war bands from day 147-159.)
-    let logs: Vec<String> = ["6", "10"].iter().map(|s| run_log(s, "210", &[])).collect();
+    // (Seeds 3 and 5 on the audited terrain.)
+    let logs: Vec<String> = ["3", "5"].iter().map(|s| run_log(s, "210", &[])).collect();
     let any = |n: &str| logs.iter().any(|t| t.lines().any(|l| l.contains(n)));
     assert!(any("The camp is besieged; no one goes beyond the palisade."), "no siege");
     assert!(any("of the siege: the fires of "), "the siege's days were not counted");
@@ -1466,11 +1479,13 @@ fn raiders_lay_siege_to_a_walled_camp() {
 /// mist or a cloud of ash comes over the camp; those under a roof are safe, the rest fall ill.
 #[test]
 fn evil_weather_under_the_shadow() {
-    let text = run_log("11", "120", &[SHADOW]);
-    let line = text.lines().find(|l| l.contains(" sky comes ")).unwrap_or_else(|| panic!("no evil weather on seed 11"));
+    // (Seed 3 lies at 0.48 of the Shadow's darkness on the audited terrain, seed 5 at 0.04; 11
+    // and 23 had before it.)
+    let text = run_log("3", "120", &[SHADOW]);
+    let line = text.lines().find(|l| l.contains(" sky comes ")).unwrap_or_else(|| panic!("no evil weather on seed 3"));
     assert!(line.contains("caught in the open") || line.contains("under a roof in time"), "{line}");
-    assert!(!run_log("11", "120", &[]).lines().any(|l| l.contains(" sky comes ")), "evil weather with the Shadow kept out of the camp");
-    let calm = run_log("23", "120", &[SHADOW]);
+    assert!(!run_log("3", "120", &[]).lines().any(|l| l.contains(" sky comes ")), "evil weather with the Shadow kept out of the camp");
+    let calm = run_log("5", "120", &[SHADOW]);
     assert!(!calm.lines().any(|l| l.contains(" sky comes ")), "evil weather where there is no darkness");
 }
 
@@ -1491,8 +1506,9 @@ fn peoples_remember_earlier_camps() {
     // (Seed 23: the Greenburg League holds -20 against the first camp and half of it against a
     // camp founded two tiles away. Seed 76's grudge over the staff is now cancelled by the
     // prisoner it sent home unharmed.)
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--seed", "23", "--sim-legend"])
+    // (Seed 4 on the audited terrain: the Republic of Eastwick's grudge.)
+    let out = myth_cmd()
+        .args(["--dev", "--seed", "4", "--sim-legend"])
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
@@ -1535,7 +1551,8 @@ fn a_pet_stands_by_its_keeper() {
     // day 22.)
     // (Since hard times, and since wolves keep out of the firelight, the flag also brings the
     // pet from anywhere, lets the wolves past the fire and leaves their den: seed 8, day 48.)
-    let found = [("8", "120"), ("3", "260"), ("58", "260")].iter()
+    // (On the audited terrain: seed 1 on day 83, 12 on day 140.)
+    let found = [("1", "120"), ("12", "260"), ("13", "260")].iter()
         .any(|(seed, days)| run_log(seed, days, &[("PLANET_FORCE_PET_PREY", "1")]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
     assert!(found, "no pet stood by its keeper");
 }
@@ -1584,8 +1601,9 @@ fn the_camp_clears_the_den_and_burns_the_restless() {
     // (Since settlers live through more, fewer graves rise: seed 58 burns its restless dead on
     // day 23, seed 11 clears its den the same day.)
     // (The restless dead are the Shadow's: with it in the camp.)
-    // (Since hard times: seed 1 clears its den on day 23, seed 58 burns its dead on day 23.)
-    let logs: Vec<String> = ["1", "58"].iter().map(|s| run_log(s, "60", &[SHADOW])).collect();
+    // (Since hard times: seed 1 clears its den on day 23, seed 58 burns its dead on day 23. On the
+    // audited terrain seed 12 clears its den and seed 7 burns its dead within 60 days.)
+    let logs: Vec<String> = ["12", "7"].iter().map(|s| run_log(s, "60", &[SHADOW])).collect();
     let any = |f: &dyn Fn(&str) -> bool| logs.iter().any(|t| t.lines().any(|l| f(l)));
     assert!(any(&|l| l.contains("go out to the wolves' den at ")), "the wolves were never answered");
     assert!(any(&|l| l.contains("burn what is left on a pyre") || l.contains("burn the bones in it")), "the restless dead were never burned");
@@ -1624,8 +1642,9 @@ fn a_priest_keeps_the_temple() {
 fn the_camp_is_called_to_war() {
     // (Seed 7: called on day 60, home on day 141; seed 5 likewise. Seed 3's people no longer
     // fight the war since hard times reshaped the history.)
-    let text = run_log("7", "160", &[]);
-    let text = if text.contains("comes calling for spears for ") { text } else { run_log("5", "160", &[]) };
+    // (Seeds 4 and 15 on the audited terrain.)
+    let text = run_log("4", "160", &[]);
+    let text = if text.contains("comes calling for spears for ") { text } else { run_log("15", "160", &[]) };
     assert!(text.lines().any(|l| l.contains("comes calling for spears for ") && l.contains(" go.")), "no one went to the war");
     assert!(text.lines().any(|l| l.contains("comes home from ") || l.contains(" will not come home")), "no one came back, or word of them");
 }
@@ -1654,7 +1673,7 @@ fn the_tithe_is_paid_or_refused() {
 fn the_widowed_are_remembered() {
     let found = ["58", "23", "76"].iter().any(|seed| {
         let path = std::env::temp_dir().join(format!("widow_{}_{}.html", seed, std::process::id()));
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--dev", "--headless", "--seed", seed, "--sim-projects", "365"])
             .env("PLANET_ANNALS", &path)
             .output()
@@ -1682,8 +1701,9 @@ fn the_dead_are_avenged_by_vow() {
 fn vengeance_can_end_in_peace() {
     // (Seed 5 offers peace on day 119, 7 on day 143; seed 76, which had, no longer swears
     // vengeance since hard times reshaped the history.)
-    let text = run_log("5", "200", &[]);
-    let text = if text.contains("comes offering peace") { text } else { run_log("7", "200", &[]) };
+    // (Seeds 4 and 8 on the audited terrain.)
+    let text = run_log("4", "200", &[]);
+    let text = if text.contains("comes offering peace") { text } else { run_log("8", "200", &[]) };
     assert!(text.lines().any(|l| l.contains("comes offering peace")), "no peace was offered");
 }
 
@@ -1719,7 +1739,7 @@ fn children_play_and_tag_along() {
     let dir = std::env::temp_dir().join(format!("child_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("decisions.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--seed", "3", "--sim-projects", "620"])
         .env("PLANET_DUMP_DECISIONS", &path)
         .output()
@@ -1735,8 +1755,8 @@ fn children_play_and_tag_along() {
 /// rations, and lifts them when the store will see the camp through.
 #[test]
 fn the_store_is_rationed_in_a_hard_winter() {
-    let text = run_log("76", "110", &[]);
-    assert!(text.lines().any(|l| l.contains("orders the store rationed")), "no rations in seed 76's first winter");
+    let text = run_log("10", "110", &[]);
+    assert!(text.lines().any(|l| l.contains("orders the store rationed")), "no rations in the dev camp's first winter");
 }
 
 /// The water freezes in a deep winter (Dwarf Fortress's freezing rivers): seed 3's winters
@@ -1752,7 +1772,7 @@ fn the_water_freezes_in_a_deep_winter() {
 /// grounds, and come back in spring.
 #[test]
 fn the_herds_winter_elsewhere() {
-    let text = run_log("76", "125", &[]);
+    let text = run_log("10", "125", &[]);
     assert!(text.lines().any(|l| l.contains("have gone down to their winter grounds")), "the herds stayed");
     assert!(text.lines().any(|l| l.contains("are back on the hills with the spring")), "the herds never came back");
 }
@@ -1763,7 +1783,7 @@ fn the_herds_winter_elsewhere() {
 fn only_major_moments_stop_the_clock() {
     let dir = std::env::temp_dir().join(format!("pace_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--sim-snapshot", dir.join("p").to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -1793,7 +1813,7 @@ fn the_bell_sends_everyone_indoors() {
     // Day 14, 20:00.
     std::fs::write(&script, "19920 bell\n").unwrap();
     let (log, dec) = (dir.join("log.txt"), dir.join("dec.txt"));
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--sim-projects", "16"])
         .env("PLANET_SCRIPT", &script).env("PLANET_DUMP_LOG", &log).env("PLANET_DUMP_DECISIONS", &dec)
         .output()
@@ -1817,9 +1837,10 @@ fn the_camp_keeps_a_library() {
     assert!(found, "no library");
 }
 
-/// The delve (Dwarf Fortress's fortress): the dev colony at 45,12 cuts a stair down beside the
+/// The delve (Dwarf Fortress's fortress): the dev colony at 0,35 cuts a stair down beside the
 /// camp to a cellar, then bedrooms and a great hall on levels off the stair; the bedrooms are
-/// given out, slept in, and drawn on their level.
+/// given out, slept in, and drawn on their level. (72,8 on the audited terrain digs its great hall
+/// after day 120.)
 #[test]
 fn the_camp_digs_a_delve() {
     let dir = std::env::temp_dir().join(format!("delve_{}", std::process::id()));
@@ -1827,8 +1848,8 @@ fn the_camp_digs_a_delve() {
     let log = dir.join("log.txt");
     let dec = dir.join("dec.txt");
     let frames = dir.join("f");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "120", "--tiles-center", "45,12"])
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--sim-projects", "120", "--tiles-center", "0,35"])
         .env("PLANET_DUMP_LOG", &log).env("PLANET_DUMP_DECISIONS", &dec).env("PLANET_FRAMES", &frames)
         .output()
         .expect("run planet_generator");
@@ -1855,7 +1876,8 @@ fn the_camp_digs_a_delve() {
 fn fungus_trees_are_felled_in_the_cavern() {
     // (Seed 76 fishes below on day 34, seed 10 on day 23: forced, the cavern's water is sought
     // before the berries.)
-    let logs: Vec<String> = ["76", "10"].iter().map(|s| run_log(s, "90", &[("PLANET_FORCE_CAVERN", "1")])).collect();
+    // (Seeds 1 and 3 on the audited terrain.)
+    let logs: Vec<String> = ["1", "3"].iter().map(|s| run_log(s, "90", &[("PLANET_FORCE_CAVERN", "1")])).collect();
     let text = logs.iter().find(|t| t.lines().any(|l| l.contains("the first blind white fish"))).cloned().unwrap_or_else(|| logs[0].clone());
     assert!(text.lines().any(|l| l.contains("breaks through into darkness")), "no cavern breached");
     assert!(text.lines().any(|l| l.contains("fells a fungus tree in ") && l.contains("haul up the stair")), "no fungus tree felled");
@@ -1872,7 +1894,8 @@ fn the_dead_are_laid_in_the_tombs() {
     // (Without the Shadow fewer die: seed 58 cuts its tombs on day 44 and lays someone there on
     // day 84; seed 15 on days 91 and 241. Seed 14, which had, now outlives its tombs.)
     // (Since hard times: seed 14 cuts its tombs on day 91 and lays someone there on day 239.)
-    let text = run_log("14", "250", &[]);
+    // (On the audited terrain seed 8.)
+    let text = run_log("8", "250", &[]);
     assert!(text.lines().any(|l| l.contains("set to work on tombs under the rock")), "no tombs dug");
     assert!(text.lines().any(|l| l.contains("lay them in a niche of the tombs")), "no one entombed");
 }
@@ -1883,8 +1906,9 @@ fn the_dead_are_laid_in_the_tombs() {
 fn the_deep_shaft_reaches_the_magma_sea() {
     // (Seed 12 reaches it on day 72, 9 on day 73; seed 76's camp no longer sinks a deep shaft
     // since hard times reshaped the history.)
-    let text = run_log("12", "120", &[]);
-    let text = if text.contains("the magma sea glows through the cracks") { text } else { run_log("9", "120", &[]) };
+    // (Seeds 1 and 3 on the audited terrain.)
+    let text = run_log("1", "120", &[]);
+    let text = if text.contains("the magma sea glows through the cracks") { text } else { run_log("3", "120", &[]) };
     assert!(text.lines().any(|l| l.contains("the magma sea glows through the cracks")), "the shaft never reached the magma");
 }
 
@@ -1909,7 +1933,8 @@ fn the_caverns_are_sealed_with_a_hatch() {
 fn ore_becomes_bars_tools_and_iron_spears() {
     // (Seed 9: the seam, smelter, bars, forge, tools and a spear by day 51, the mason's first
     // blocks on day 48; seed 76's smelter had stood cold since hard times.)
-    let text = run_log("9", "90", &[("PLANET_FORCE_ORE", "1")]);
+    // (Seed 8 on the audited terrain: its spear is forged after its tools.)
+    let text = run_log("8", "90", &[("PLANET_FORCE_ORE", "1")]);
     let at = |n: &str| text.lines().position(|l| l.contains(n)).unwrap_or_else(|| panic!("never: {n}\n{text}"));
     let seam = at("strikes a seam of Iron");
     let smelter = at("breaks through the last of a smelter below");
@@ -1923,7 +1948,7 @@ fn ore_becomes_bars_tools_and_iron_spears() {
     assert!(forge < tools && bars < tools && tools < spear, "the forge's tools and spear came before its bars");
     // (Eight loads all go into spears and mail; thirty leave bars to spare: seed 2 sells them to
     // the caravan of day 105, seed 76 to that of day 135.)
-    let spare = ["2", "1"].iter().map(|s| run_log(s, "140", &[("PLANET_FORCE_ORE", "30")])).find(|t| t.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron"))).unwrap_or_default();
+    let spare = ["1", "3"].iter().map(|s| run_log(s, "140", &[("PLANET_FORCE_ORE", "30")])).find(|t| t.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron"))).unwrap_or_default();
     assert!(spare.lines().any(|l| l.contains("The traders of ") && l.contains(" bars of iron")), "no bars sold");
     assert!(text.lines().any(|l| l.contains("dresses the first blocks of")), "no blocks at the mason's");
 }
@@ -1950,7 +1975,7 @@ fn run_decisions(seed: &str, days: &str) -> (String, String) {
     let dir = std::env::temp_dir().join(format!("decisions_{}_{}_{}", seed, days, std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("decisions.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--seed", seed, "--sim-projects", days])
         .env("PLANET_DUMP_DECISIONS", &log)
         .output()
@@ -1990,7 +2015,8 @@ fn settlers_spend_spare_hours_by_their_needs() {
 /// drinkers want a tavern long before travellers come).
 #[test]
 fn the_camp_presses_for_what_its_people_want() {
-    let text = run_log("11", "60", &[]);
+    // (Seed 1's drinkers on the audited terrain; 11's before it.)
+    let text = run_log("1", "60", &[]);
     assert!(text.lines().any(|l| l.contains("They set to work on") && l.contains(" presses for it: ")), "no one pressed for a work");
     assert!(text.lines().any(|l| l.contains("set to work on a tavern") && l.contains("the evenings are long")), "no tavern pressed for early:\n{text}");
 }
@@ -2003,7 +2029,8 @@ fn camps_lay_themselves_out_differently() {
         let (_, out) = run_decisions(seed, "20");
         out.lines().find_map(|l| l.trim().strip_prefix("Layout: wall radius ").and_then(|r| r.split(',').next()).and_then(|r| r.parse::<i32>().ok())).expect("no layout line")
     };
-    let (a, b) = (radius("23"), radius("5"));
+    // (Seed 12's close, orderly founders wall in at 9; seed 1's at 13, on the audited terrain.)
+    let (a, b) = (radius("12"), radius("1"));
     assert!((9..=13).contains(&a) && (9..=13).contains(&b));
     assert!((a - b).abs() >= 3, "walls alike: {a} and {b}");
 }
@@ -2054,23 +2081,22 @@ fn gates_face_where_the_paths_go() {
 /// after; the unwed walk out with whom they are fond of, and some of them wed.
 #[test]
 fn settlers_mourn_and_court() {
-    // (Seed 5 stands at a grave on day 10 and courts from day 6; seed 10 no longer mourns
-    // since hard times reshaped the history.)
-    let (text, _) = run_decisions("5", "60");
+    // (Seed 1 on the audited terrain; seed 5 before it, and 10 before hard times.)
+    let (text, _) = run_decisions("1", "60");
     assert!(text.lines().any(|l| l.contains("wandering        Standing at ") && l.contains("'s grave, remembering them")), "no one stood at a grave");
     assert!(text.lines().any(|l| l.contains("wandering        Walking out with ") && (l.contains(" is fond of ") || l.contains(" is sweet on "))), "no one walked out with anyone");
 }
 
-/// Stone from the rock (DF: dwarves mine for their stone): dev 70,6 breaks every boulder in reach
-/// and has no timber; it cuts a gallery off the stair for stone and builds on, instead of setting
-/// its works aside for good.
+/// Stone from the rock (DF: dwarves mine for their stone): dev 6,44 (70,6 before the audit) breaks
+/// every boulder in reach and has no timber; it cuts a gallery off the stair for stone and builds
+/// on, instead of setting its works aside for good.
 #[test]
 fn a_camp_without_stone_digs_for_it() {
     let dir = std::env::temp_dir().join(format!("stonecut_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--sim-projects", "100", "--tiles-center", "70,6"])
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--sim-projects", "100", "--tiles-center", "6,44"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -2144,7 +2170,7 @@ fn the_raid_is_fought_on_the_map() {
 }
 
 /// The floodplain (cards 'Rivers freeze and flood in game time', 'Fields on the floodplain, and
-/// spring floods'): on the river's bank (dev 48,8) the camp lays its field on the bottomland, which
+/// spring floods'): on the river's bank (dev 69,8; 48,8 before the audit) the camp lays its field on the bottomland, which
 /// yields half again; after a hard winter the thaw floods it, the water goes down and leaves silt,
 /// and the harvest that year is the richer for it.
 #[test]
@@ -2152,8 +2178,8 @@ fn the_river_floods_the_bottomland() {
     let dir = std::env::temp_dir().join(format!("flood_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--tiles-center", "48,8", "--sim-projects", "200"])
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--tiles-center", "69,8", "--sim-projects", "200"])
         .env("PLANET_DUMP_LOG", &log).output().expect("run planet_generator");
     assert!(out.status.success());
     let text = std::fs::read_to_string(&log).unwrap_or_default();
@@ -2180,15 +2206,15 @@ fn the_hut_grows_into_a_hall() {
 }
 
 /// The village follows its ground and grows by stages (card 'A village of their own making'):
-/// on the river's bank (dev 48,8) the palisade leaves the river side to the water; the dev camp
+/// on the river's bank (dev 69,8; 48,8 before the audit) the palisade leaves the river side to the water; the dev camp
 /// becomes a hamlet once four buildings stand within its wall.
 #[test]
 fn the_village_follows_its_ground() {
     let dir = std::env::temp_dir().join(format!("village_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--headless", "--tiles-center", "48,8", "--sim-projects", "40"])
+    let out = myth_cmd()
+        .args(["--dev", "--headless", "--tiles-center", "69,8", "--sim-projects", "40"])
         .env("PLANET_DUMP_LOG", &log).output().expect("run planet_generator");
     assert!(out.status.success());
     let river = std::fs::read_to_string(&log).unwrap_or_default();
@@ -2207,8 +2233,9 @@ fn the_unknown_is_blank_until_someone_goes_in() {
     let dir = std::env::temp_dir().join(format!("explore_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let prefix = dir.join("x");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
-        .args(["--dev", "--sim-explore", prefix.to_str().unwrap()])
+    // (Dev 33,32, the tomb of Zreetsio: the dev embark itself has no way in on the audited terrain.)
+    let out = myth_cmd()
+        .args(["--dev", "--tiles-center", "33,32", "--sim-explore", prefix.to_str().unwrap()])
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -2230,7 +2257,8 @@ fn the_unknown_is_blank_until_someone_goes_in() {
     assert!(frames.iter().all(|&f| f), "frames missing: {frames:?}");
     // (Since hard times seed 4's explorer does not come back on day 3, and is looked for; seed
     // 11's Skax had before.)
-    let logs: Vec<String> = ["76", "11", "23", "3", "4", "58"].iter().map(|s| run_log(s, "20", &[])).collect();
+    // (On the audited terrain seed 5's explorer does not come back.)
+    let logs: Vec<String> = ["10", "11", "23", "3", "4", "5"].iter().map(|s| run_log(s, "20", &[])).collect();
     assert!(logs.iter().any(|t| t.contains("has not come back")), "every explorer came back");
     assert!(logs.iter().any(|t| t.contains("with torches and rope to look for") || t.contains("after") && t.contains("given up for lost")), "no search was made");
 }
@@ -2242,7 +2270,7 @@ fn the_unknown_is_blank_until_someone_goes_in() {
 /// what comes of the dark on at least four of six seeds.
 #[test]
 fn digging_deeper_is_richer_and_foretold() {
-    let run = |args: &[&str]| String::from_utf8_lossy(&Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(args).output().expect("run planet_generator").stdout).to_string();
+    let run = |args: &[&str]| String::from_utf8_lossy(&myth_cmd().args(args).output().expect("run planet_generator").stdout).to_string();
     let text = run(&["--dev", "--sim-depth"]);
     let line = |cap: &str| text.lines().find(|l| l.starts_with(&format!("Depth trial, to {cap} levels:"))).unwrap_or_else(|| panic!("no {cap}-level line:\n{text}")).to_string();
     let ore = |l: &str| -> u32 { l.split(" cells of ore").next().and_then(|x| x.rsplit(", ").next()).and_then(|x| x.trim().parse().ok()).unwrap_or(0) };
@@ -2268,7 +2296,7 @@ fn digging_deeper_is_richer_and_foretold() {
 #[test]
 fn a_small_bestiary_with_causes() {
     for seed in ["76", "11", "23", "3", "5", "58"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--headless", "--seed", seed, "--sim-projects", "1"]).output().expect("run planet_generator");
+        let out = myth_cmd().args(["--dev", "--headless", "--seed", seed, "--sim-projects", "1"]).output().expect("run planet_generator");
         let text = String::from_utf8_lossy(&out.stdout).to_string();
         let line = text.lines().find(|l| l.starts_with("Bestiary: ")).unwrap_or_else(|| panic!("seed {seed}: no bestiary:\n{text}"));
         let n: Vec<u32> = line.split(|c: char| !c.is_ascii_digit()).filter_map(|x| x.parse().ok()).take(2).collect();
@@ -2276,19 +2304,20 @@ fn a_small_bestiary_with_causes() {
         let kinds = line.matches("; wants ").count();
         assert!(kinds as u32 == n[0] && line.matches("; fears ").count() == kinds && line.matches("; its sign: ").count() == kinds, "seed {seed}: a kind without its want, fear or sign: {line}");
     }
-    // Brolmdustoor Pass (47,14): the nameless dead of its battle walk, then are named and rest.
+    // The Mambaash Pass (36,23 on the audited terrain; Brolmdustoor Pass, 47,14, before it): the
+    // nameless dead of its battle walk, then are named and rest.
     let dir = std::env::temp_dir().join(format!("bestiary_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--headless", "--sim-projects", "40", "--tiles-center", "47,14"]).env("PLANET_DUMP_LOG", &log).output().expect("run planet_generator");
+    let out = myth_cmd().args(["--dev", "--headless", "--sim-projects", "40", "--tiles-center", "36,23"]).env("PLANET_DUMP_LOG", &log).output().expect("run planet_generator");
     let text = std::fs::read_to_string(&log).unwrap_or_default();
     let _ = std::fs::remove_dir_all(&dir);
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-    assert!(stdout.lines().any(|l| l.starts_with("Bestiary: ") && l.contains("the nameless dead (soldiers who fell at the Battle of the Brolmdustoor Pass")), "the pass's dead are not in its bestiary:\n{stdout}");
+    assert!(stdout.lines().any(|l| l.starts_with("Bestiary: ") && l.contains("the nameless dead (soldiers who fell at the Battle of the Mambaash Pass")), "the pass's dead are not in its bestiary:\n{stdout}");
     let walked = text.lines().position(|l| l.contains("walks among the old graves")).unwrap_or_else(|| panic!("the nameless dead never walked:\n{text}"));
     let rest = text.lines().position(|l| l.contains("carves a stone for the fallen of")).unwrap_or_else(|| panic!("no one named and buried them:\n{text}"));
     assert!(walked < rest && !text.lines().skip(rest).any(|l| l.contains("walks among the old graves")), "the dead walked after they were named");
     // Wolves turn away at the edge of the firelight on a site with a den.
-    let wary = ["11", "58", "3"].iter().any(|s| run_log(s, "60", &[]).contains("will not come nearer the fire"));
+    let wary = ["12", "13", "17"].iter().any(|s| run_log(s, "60", &[]).contains("will not come nearer the fire"));
     assert!(wary, "no wolves turned from the fire on three seeds");
 }

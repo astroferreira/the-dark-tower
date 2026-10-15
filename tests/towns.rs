@@ -1,15 +1,19 @@
 //! Towns on an embark stand in three dimensions (`local/structures.rs`, DF's site realizations):
-//! the dev world's capital has a keep with a roof to walk on, upper storeys and cellars, all
+//! a stone capital has a keep with a roof to walk on, upper storeys and cellars, all
 //! walked to from the street, and the ground stays solid but for what was cut; a stone wall has
 //! towers. Runs the real binary (`--local-snapshot`, a few seconds once the dev region is cached).
 
 use std::process::Command;
 
+/// The binary with myth and magic on (`--myth`, `crate::myth`): these tests are of the game's
+/// systems as they were, Shadow, beasts and all; the realistic default has its own tests.
+fn myth_cmd() -> Command { let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator")); c.env("PLANET_MYTH", "1").env_remove("PLANET_TERRAIN_V1"); c }
+
 fn snapshot(name: &str, extra: &[&str], env: &[(&str, &str)]) -> String {
     let dir = std::env::temp_dir().join(format!("towns_{}_{}", name, std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let prefix = dir.join("t");
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_planet_generator"));
+    let mut cmd = myth_cmd();
     cmd.args(["--dev", "--headless", "--local-snapshot", prefix.to_str().unwrap()]).args(extra);
     for (k, v) in env { cmd.env(k, v); }
     let out = cmd.output().expect("run planet_generator");
@@ -27,8 +31,10 @@ fn walked(text: &str, what: &str) -> (usize, usize) {
 
 #[test]
 fn towns_stand_on_several_levels() {
-    // The dev world's largest town (a capital): a keep, storeys, cellars.
-    let text = snapshot("capital", &[], &[]);
+    // A capital in stone (the dev world's Sturmarkgate, of a carving people): a keep, storeys,
+    // cellars. (The dev world's own capital, Thunderkeep, builds in earth: lofts, no storeys.
+    // Greenburg on the old terrain.)
+    let text = snapshot("capital", &["--tiles-center", "12,36"], &[("PLANET_EMBARK_TOWN", "Sturmarkgate")]);
     let town = text.lines().find(|l| l.starts_with("Town in three dimensions")).unwrap_or_else(|| panic!("no town line:\n{text}"));
     let nums: Vec<usize> = town.split(|c: char| !c.is_ascii_digit()).filter_map(|n| n.parse().ok()).collect();
     // buildings, ruined, two storeys, lofts, keeps, towers, cellars, ...
@@ -43,8 +49,9 @@ fn towns_stand_on_several_levels() {
     assert!(a * 100 >= b * 97, "cellars out of reach: {a} of {b}");
     assert!(text.contains("below the ground: 0 cells open"), "ground cut where nothing was dug:\n{text}");
 
-    // Dreammere's stone wall (731 m out from its middle): towers a level above the wall's walk.
-    let text = snapshot("wall", &["--tiles-center", "71,12"], &[("PLANET_LOCAL_OFFSET", "731,0")]);
+    // Thunderkeep's fortified wall (1250 m out from its middle): towers a level above the wall's
+    // walk. (Dreammere's, 731 m out, on the old terrain.)
+    let text = snapshot("wall", &[], &[("PLANET_LOCAL_OFFSET", "1250,0")]);
     let (a, b) = walked(&text, "tower roofs:");
     assert!(b >= 2 && a == b, "towers on the wall not reached: {a} of {b}\n{text}");
 }
@@ -56,7 +63,7 @@ fn towns_stand_on_several_levels() {
 #[test]
 fn neighbouring_embarks_join() {
     for tile in ["48,18", "95,10"] {
-        let out = std::process::Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--dev", "--embark-seams", "--tiles-center", tile]).output().expect("run planet_generator");
         assert!(out.status.success());
         let text = String::from_utf8_lossy(&out.stdout).to_string();

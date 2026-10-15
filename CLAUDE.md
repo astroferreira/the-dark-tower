@@ -4,6 +4,17 @@ Procedural world map generator with tectonic plates, erosion, climate, and biome
 Direction: an autonomous, story-first colony simulator; see `ROADMAP.md` (six updates) and
 `TODO.md` (short-term tasks).
 
+**Realistic by default (2026-10-13):** the game takes a medieval, realistic road. Myth and
+magic (`src/myth.rs`) are off unless `--myth` (or `PLANET_MYTH=1`, or the start screen's "Myth
+and magic" row): no Shadow, no beasts of legend or of the deep, every people human (their
+tongues still differ), no fantasy biomes or crystal wastes (lakes become only salt flats or
+frozen lakes, never lava, acid or glowing water: `determine_lake_fantasy_biome`), no ghosts, risen dead, werebeasts,
+vampires or hauntings, caverns with only real cave life and no fungus forests, no magma sea,
+adamantine or hollow, no possessed moods, and adventure mode closed. With `--myth` the game is
+as it was, bit for bit; the integration tests run with it (`myth_cmd` in each test file), and
+`tests/realism.rs` checks the realistic default. Notes below that describe the Shadow, beasts,
+races other than human or the uncanny describe the myth world.
+
 ---
 
 ## Quick Start
@@ -22,11 +33,13 @@ cargo run --release -- --start --seed 42 --world-style pangaea
 cargo run --release -- --no-history
 cargo run --release -- --legacy-explorer
 
-# The Shadow stays out of the colony unless asked for (its raiders, risen dead, evil weather)
-cargo run --release -- --dev-embark --camp-shadow
+# Myth and magic (the Shadow, beasts, dwarves and elves, the uncanny): off unless asked for
+cargo run --release -- --myth
+# The Shadow stays out of the colony even then unless asked for (its raiders, risen dead)
+cargo run --release -- --myth --dev-embark --camp-shadow
 
-# Adventure mode: one hero across the world (the start screen's Play row, or)
-cargo run --release -- --dev --adventure
+# Adventure mode: one hero across the world (a fantasy: needs myth)
+cargo run --release -- --myth --dev --adventure
 
 # Each seed circles its own star; --star sol for the Sun (the original climate), or pin it
 cargo run --release -- --seed 42 --star K3 --hz 0.15 --obliquity 60
@@ -36,23 +49,30 @@ cargo run --release -- --seed 42 --headless --no-history --system   # print the 
 ---
 
 ### Dev world (fast iteration on history and story)
-`cargo run --release -- --dev` generates a 96x48 world (seed 76, 8 civilizations) with 250 years
-of history in about a second, vs ~12 s at 512x256 (`--history-profile` prints time per phase). It has 4 named rivers, 2 lakes, 6 mountain
-ranges, forests, a desert and two continents. Any of `--width`/`--height`/`--seed`/
+`cargo run --release -- --dev` generates a 96x48 world (seed 10, 8 civilizations) with 250 years
+of history in about a second, vs ~12 s at 512x256 (`--history-profile` prints time per phase). It has 7 named rivers, 5 lakes, 6 mountain
+ranges, 5 forests, a desert, an island and three continents, on the audited terrain the tests
+run on (on terrain revision 1, `--terrain-v1`, the dev world is seed 76). Any of `--width`/`--height`/`--seed`/
 `--civilizations` given explicitly overrides the preset; combine with `--watch`, `--tiles`,
 `--journal`, `--gazetteer`, `--director`, `--present` (the state the game starts in) as usual.
 `cargo test --release --test present_day` pins the dev world's present day and consistency.
 The dev world circles the Sun; `--dev-sky eyeball|slow|tilted|twosuns` is a dev world under
 another sky (a red dwarf's locked world, a 600-hour day, a 70-degree tilt, a close pair of suns;
-`DEV_SKIES` in `main.rs`, each with rivers, woods and a camp that lives). Seed 76 came from a search over 96x48 seeds
+`DEV_SKIES` in `main.rs`, each with rivers, woods and a camp that lives). Seed 10 came from a search over 96x48 seeds
 scored by gazetteer landmarks (`scripts/dev_seed_search.sh`, then the top seeds checked with
 `--dev --seed N --headless --gazetteer`, since the history renames and reshapes features;
 `DEV_WORLD` in `main.rs`); 64x32 worlds get no rivers at all. If worldgen changes move the
-landmarks, re-run that search (it was re-run 2026-10-04 after the polar/area changes).
-- Standard seeds (what the notes and tests measure against): the dev world (seed 76, 96x48, the
-  Sun); dev colonies on `--dev --seed N` for N in 1-16, 23 and 58 (tests pick the seeds that show
-  their event; re-pin when a change moves the camps' days); the dev skies (`--dev-sky`: 106 M3,
-  309 K4 + 600-hour day, 302 G + 70 degree tilt, 9 a close pair); seed 42 at 512x256 for the
+landmarks, re-run that search (re-run 2026-10-04 after the polar/area changes, and 2026-10-13
+for the audited terrain: seed 76 kept 2 rivers and no lake on it).
+- Standard seeds (what the notes and tests measure against): the dev world (seed 10, 96x48, the
+  Sun, its embark 30,34; seed 76 on terrain revision 1); dev colonies on `--dev --seed N` for N
+  in 1-40 (tests pick the seeds that show their event; re-pin when a change moves the camps'
+  days; the tests were re-pinned on the audited terrain on 2026-10-14, notes quoting seeds 23, 58
+  and 76 before that date are of revision 1); dev sites by `--tiles-center` (33,32 the tomb of
+  Zreetsio, 42,32 a living beast's lair and a cave, 69,8 a river camp, 0,35 a delve, 36,23 a
+  battlefield's nameless dead); the dev skies (`--dev-sky`: 114 M3, 316 K4 + 600-hour day, 302 G
+  + 70 degree tilt, 20 a close F1 pair asked for with `F1+b1`; on revision 1 106, 309, 302, 9 with
+  its own star); seed 42 at 512x256 for the
   default size (it circles a K6 dwarf; numbers quoted for it are `--star sol`'s) and 256x128 for
   the Shadow's scale; seed 202 for ruins and ecology. `worlds/` stays gitignored (a world file is
   ~170 MB at 512x256): save one locally with `--save-world` and reload it.
@@ -91,6 +111,26 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   (hotspots). `--star sol` (and `--dev`, and old world codes) is the Sun and the original climate,
   bit for bit. H in the viewer shows the heavens; the journal has "The Heavens"; the start
   screen has "The heavens" rows. Notes in `src/astro/CLAUDE.md`.
+
+### The terrain audit (`terrain_rev.rs`, `audit.md`, 2026-10-13)
+- The terrain follows the audit in `audit.md`: the pipeline in causal order (what builds the
+  land, then the climate, then the rivers; see the pipeline below), rock hardness from the crust
+  steering erosion, temperatures that follow the final heights, curvature with the right sign,
+  the sphere's metric (cos latitude) in gradients, blurs and distances, noise sampled on the
+  sphere, round distance fields, signal-weighted ridges, orogens with plateaus and foreland
+  basins, shelf-slope-rise margins and fracture zones, fjords up glacial valleys, volcano shapes
+  by kind, lava that runs downhill, water tables from the wetness index, exact waterfalls,
+  biome blending across the whole border zone, day length from the sunrise hour angle and the
+  sea's seasonal lag. Notes by module in `src/erosion/`, `src/plates/` and `src/climate/`
+  `CLAUDE.md`.
+- `--terrain-v1` (or `PLANET_TERRAIN_V1=1`) is the terrain as it was, bit for bit (checked with
+  `terrain_lab` on seed 42 at 512x256, every stage's image byte-identical). The integration tests
+  run on the audited terrain (re-pinned 2026-10-14; they ran on revision 1 until then), and
+  `tests/terrain.rs` checks it. World codes on
+  the audited terrain end in ".t2" (`10.96x48.earthlike.8.250.t2@37,29`); a code without it is
+  loaded on revision 1, so codes shared before the audit still make their worlds.
+- Seed 42 at 512x256 (audited vs revision 1): big-river water trapped short of the sea 4.4% vs
+  6.4%, closed basins 0.8% vs 0.9% of land, 33 lakes vs 24, 394 river tiles vs 280.
 
 ### Soils (`soils.rs`)
 - `world.soils()` (lazy, never serialized) gives each land tile a soil kind and depth from its
@@ -186,23 +226,32 @@ Detailed notes, tuning numbers and gotchas live next to the code:
 
 ## World Generation Pipeline
 
-`terrain::generate_terrain(&TerrainConfig, &seeds, on_stage)` runs steps 1-6 below plus the
-finishing passes and drainage repair; `main`, `terrain_lab` and the comparison grids
-(`grid_export.rs`) all call it, so they can't drift apart. `on_stage` sees the heightmap (and
-crust/climate) after each named stage and can stop early (the lab's metrics hook in there).
+`terrain::generate_terrain(&TerrainConfig, &seeds, on_stage)` runs steps 0-7 below; `main`,
+`terrain_lab` and the comparison grids (`grid_export.rs`) all call it, so they can't drift
+apart. `on_stage` sees the heightmap (and crust/climate) after each named stage ("tectonic",
+"volcanoes", "noise", "islands", "coastline", "climate", "landscape", "erosion", "fjords",
+"beaches", "final") and can stop early (the lab's metrics hook in there). Terrain revision 1
+(`--terrain-v1`) ran the climate and erosion first and every finishing pass after.
 
 0. **Star system** - `astro::StarSystem::generate` from the seed: the climate's forcing, the
    tectonics' land fraction (water) and hotspots (interior heat)
 1. **Tectonic Plates** - BFS flood-fill creates 6-15 initial plates
 2. **Tectonic Simulation** - Plates rotate about Euler poles on a sphere for ~200 Myr; the
    simulation yields final plates, crust thickness/age, and a `stress_map` (see below)
-3. **Heightmap** - Derived from crust: Airy isostasy on land, age-depth law at sea, solved sea level
-4. **Climate** - Temperature (latitude + elevation), moisture and precipitation
-5. **Landscape evolution** - Uplift vs. precipitation-driven river incision, sediment, rebound
-6. **Finishing passes** - Coastlines, fjords, regional noise, volcanoes, island coasts, beaches;
-   drainage repair (legacy hydraulic/glacial erosion only with `--legacy-erosion`)
-7. **Biomes** - 50+ biome types based on climate
-8. **Water Bodies** - Detect oceans, lakes, rivers
+3. **Heightmap** - Derived from crust: Airy isostasy on land (foreland basins, a plateau
+   ceiling), age-depth law at sea (slope and rise, fracture zones), solved sea level
+4. **Constructive passes** - Volcanoes (shaped by kind), regional relief, island coasts,
+   coastline jitter: the land before the rivers wear it
+5. **Climate** - Temperature (latitude + elevation), moisture and precipitation
+6. **Landscape evolution** - Uplift vs. precipitation-driven river incision on rock of the
+   crust's hardness, sediment, rebound; the water re-poured for the style's land; ice-scoured
+   and rift basins too young to have filled (legacy hydraulic/glacial erosion only with
+   `--legacy-erosion`)
+7. **Finishing passes** - Fjords up the glacial valleys, beaches; the last pits filled (the
+   rivers' lakes kept), flow routed again, temperatures moved by the lapse rate to the final
+   heights
+8. **Biomes** - 50+ biome types based on climate
+9. **Water Bodies** - Detect oceans, lakes, rivers
 
 ---
 

@@ -1,5 +1,15 @@
 # The first colony (`src/colony/`)
 
+**Myth (2026-10-13):** the colony runs in a realistic world by default (`crate::myth` off):
+the beasts of legend and of the deep, werebeasts, vampires, the walking dead, ghosts, hauntings
+of the nameless dead, the robbed tomb's risen, possessed moods, adamantine, the hollow and its
+demon, the magma sea, cavern fungus forests and their hunters all need `--myth` (or
+`PLANET_MYTH=1`; the colony tests run with it). Without it a camp's troubles are war bands,
+outlaws, envoys, wolves and bears, hunger, cold and itself; caverns hold bats, crickets,
+glowworms, beetles, blind fish, crabs, salamanders and shrimp, and nothing there hunts people.
+Notes below that tell of beasts or the uncanny are of the myth world. Without myth the fey
+mood is "an inspired mood" ("X is seized by an inspiration and claims the workshop").
+
 The vertical slice of ROADMAP Update 3: settlers living on a playable area with no orders.
 
 - The Shadow is kept out of the camp by default (2026-10-12, card 'Switch off the Shadow's
@@ -2115,3 +2125,33 @@ The vertical slice of ROADMAP Update 3: settlers living on a playable area with 
   dragged down on day 48. The inventory frame lays a stand-in relic when its camp has none.
 - The adventure bot's ask test asks about the nearest beast the home town has heard of
   (`lore::town_has_heard`): the drunk tells only what the town heard.
+
+## On the audited terrain (2026-10-14)
+- The integration tests run on terrain revision 2 now (`audit.md`); seed 10 is the dev world and
+  `--dev --seed N` the dev colonies. Two founding faults the new land showed (both on `main`'s
+  colony code, harmless wherever they did not bite):
+  - Settlers were set down at level 0 (`z: 0`, the map's floor), trusting `here3` to fall back to
+    the surface. Where open dark lies over the floor (a cavern or the magma sea at the bottom) level
+    0 is standable, so they "stood" in the deep and every way failed: seed 8's six founders never
+    made a choice and starved by day 5 while the seventh worked. Founding, newcomers
+    (`add_settler`), hunters home, guests revived and those back from the war now stand at the
+    camp's level (`Colony::camp_z`).
+  - Founders choose their camp within 30 cells of the embark's middle (`found_by`'s leaning);
+    where nothing there qualified the camp stayed at the middle itself, which on seed 23's embark
+    had no hut site and nothing to eat (they left on day 1). Now they take the best ground anywhere,
+    as `found` does.
+- Re-pinned on the audited terrain (from a 365-day record of dev seeds 1-40, a 150-day record of
+  every land tile and forced runs of seeds 1-16): the temple and militia seed 1 (the dev camp's
+  temple is pressed for by one voice and names no god; its elves make no spear in 65 days), news
+  2, an artifact 2/5 (madness still 3), books 10/3, layout 12 against 1 (walls 9 and 13), hollow
+  1/3, caves 4/5, the war 4/15, peace 4/8, rations and herds 10, tombs 8, the magma 1/3, a work
+  pressed for 1, wolves wary 12/13/17, someone lost 5, a siege 3/5, mourning and courting 1,
+  a pet defending 1/12/13 (forced), evil weather 3 (calm 5), the den 12 and the pyre 7, wood and
+  fish from the dark 1/3 (forced), ore 8 (bars sold 1/3), an inherited grudge 4 (`--sim-legend`);
+  sites: the delve 0,35, a camp without stone 6,44, the river camp 69,8, the Mambaash Pass's dead
+  36,23, the explore trial 33,32. The stone gallery's plan line now carries its numbers (stones
+  left, cuts) like every other work's.
+- `colony::livable(map)` (dry land, a hut site, food not refused by the survey) is what the dev
+  embark on the audited terrain asks of its tile (`main.rs::pick_dev_embark`, the first of the top
+  twelve that passes; revision 1 keeps its first pick). `PLANET_DEBUG_EMBARK=1` prints each
+  candidate's verdict.

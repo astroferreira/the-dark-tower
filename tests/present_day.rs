@@ -7,8 +7,12 @@
 
 use std::process::Command;
 
+/// The binary with myth and magic on (`--myth`, `crate::myth`): these tests are of the game's
+/// systems as they were, Shadow, beasts and all; the realistic default has its own tests.
+fn myth_cmd() -> Command { let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator")); c.env("PLANET_MYTH", "1").env_remove("PLANET_TERRAIN_V1"); c }
+
 fn run_dev(extra: &[&str]) -> String {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless"])
         .args(extra)
         .output()
@@ -104,9 +108,9 @@ fn dev_world_history_is_deterministic() {
 fn a_note_pinned_on_the_map_appears_in_the_journal() {
     let dir = std::env::temp_dir().join(format!("notes_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .current_dir(&dir)
-        .args(["--dev", "--headless", "--note", "65,23:My grandmother was born here", "--journal", "j.html"])
+        .args(["--dev", "--headless", "--note", "13,36:My grandmother was born here", "--journal", "j.html"])
         .output()
         .expect("run planet_generator");
     assert!(out.status.success(), "planet_generator failed: {}", String::from_utf8_lossy(&out.stderr));
@@ -186,7 +190,7 @@ fn exiles_gather_into_bands() {
 /// targets, says why, and accepts the first seed that meets them.
 #[test]
 fn worlds_that_miss_their_targets_are_rejected() {
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--width", "96", "--height", "48", "--seed", "1", "--headless", "--no-history", "--require", "rivers=4,lakes=2,deserts=1"])
         .output()
         .expect("run planet_generator");
@@ -226,7 +230,7 @@ fn the_gazetteer_survives_save_and_load() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("dev.world");
     let gaz = |args: &[&str]| -> String {
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(args).output().expect("run planet_generator");
+        let out = myth_cmd().args(args).output().expect("run planet_generator");
         assert!(out.status.success());
         let text = String::from_utf8_lossy(&out.stdout).to_string();
         text.lines().skip_while(|l| !l.contains("Gazetteer")).collect::<Vec<_>>().join("\n")
@@ -245,7 +249,7 @@ fn the_gazetteer_survives_save_and_load() {
 #[test]
 fn hard_times_leave_more_ruins_with_causes() {
     let ruins = |seed: &str, off: bool| -> usize {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_planet_generator"));
+        let mut cmd = myth_cmd();
         cmd.args(["--dev", "--seed", seed, "--headless", "--gazetteer"]);
         if off { cmd.env("PLANET_NO_HARD_TIMES", "1"); }
         let text = String::from_utf8_lossy(&cmd.output().expect("run planet_generator").stdout).to_string();
@@ -261,7 +265,7 @@ fn hard_times_leave_more_ruins_with_causes() {
     let dump = dir.join("chronicle.txt");
     let mut causes = 0;
     for s in ["9", "12"] {
-        Command::new(env!("CARGO_BIN_EXE_planet_generator")).args(["--dev", "--seed", s, "--headless", "--chronicle-dump", dump.to_str().unwrap()]).output().expect("run planet_generator");
+        myth_cmd().args(["--dev", "--seed", s, "--headless", "--chronicle-dump", dump.to_str().unwrap()]).output().expect("run planet_generator");
         let text = std::fs::read_to_string(&dump).unwrap_or_default();
         causes += text.lines().filter(|l| l.contains(" one by one, and the last families followed") || l.contains("The hungry left ") || l.contains("took what they could carry and left it to ruin")).count();
     }

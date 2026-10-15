@@ -1,5 +1,9 @@
 # Adventure mode (`src/adventure/`, window `src/tiles/adventure.rs`)
 
+**Myth (2026-10-13):** adventure mode is a fantasy of its own (monsters, spells, dragons): it
+opens only with `--myth` (or `PLANET_MYTH=1`); without it `main` refuses with a line and exit
+code 2. The start screen's Play row turns myth on when an adventure is chosen.
+
 One person of the world, from nobody to a name in its history (branch `adventure-mode`,
 2026-10-09). DF's adventure mode for the world's side (places from the history, realized on
 demand from their seed and cause; skills by use; townsfolk who know what their town heard; the
@@ -24,7 +28,8 @@ death that costs experience). Turn-based and deterministic (`Game::act`).
   `--width`, `--height`), `PLANET_ADV_SITES=NAME` lists matching places, `PLANET_ADV_DEATHS=1`
   prints each death as it happens.
 - Tests: `tests/adventure.rs` (a commoner grows: level 12+, a calling, bosses, quests, chests,
-  never stuck in the first half; the same seed twice; a save loads whole and plays on the same),
+  never stuck in the first half, three authored rooms met, on dev seed 1 since the tests moved to
+  the audited terrain (the dev world's hero meets two in 40,000 acts); the same seed twice; a save loads whole and plays on the same),
   unit tests in `site.rs` (13 kinds x 6 seeds: every way down reachable, deterministic),
   `town.rs` (six town shapes: every trade, homes, reachable from the gate, sewers; towns differ),
   `surface.rs` (a road and a river cross a tile's border and meet themselves), `land.rs`

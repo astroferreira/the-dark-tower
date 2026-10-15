@@ -92,9 +92,9 @@ impl Colony {
                 from_start: true,
             });
         }
-        // The nameless dead.
+        // The nameless dead (who walk only with myth).
         let graves = self.nameless_graves();
-        if !graves.is_empty() {
+        if !graves.is_empty() && crate::myth::on() {
             let battle = self.nameless_battle();
             out.push(Kind {
                 name: "the nameless dead".into(),
@@ -151,6 +151,8 @@ impl Colony {
     /// two such nights, someone who holds the old ways dear (or the pious, or the speaker, or the
     /// eldest) means to bury them and give them a name (`bury_option`).
     pub(crate) fn reckon_nameless(&mut self) {
+        // (Hauntings are myth: `crate::myth`.)
+        if !crate::myth::on() { return; }
         if self.nameless_rest || self.clock.hour() != 23 || self.clock.minute() != 30 || self.clock.day() < 5 { return; }
         let graves = self.nameless_graves();
         if graves.is_empty() { return; }

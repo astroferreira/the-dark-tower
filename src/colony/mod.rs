@@ -884,6 +884,10 @@ impl Colony {
         let zc = map.surface_z[(n / 2) * n + n / 2];
         let mut camp = ((n / 2) as u16, (n / 2) as u16);
         let mut best = i32::MAX;
+        // (The best ground anywhere, by distance and trees alone: where founders find nothing
+        // within 30 cells of the middle they go there, not to the middle itself, which on seed
+        // 23's embark on the audited terrain had nothing to eat and no hut site.)
+        let (mut any_camp, mut any_best) = (camp, i32::MAX);
         // The camp goes on dry ground joined to enough land to live from: a camp on an island
         // or a spit in a lake (dev 30,30, a crater lake) was cut off and everyone starved.
         let (patch, sizes) = dry_patches(&map);
@@ -901,6 +905,7 @@ impl Colony {
                     .filter(|&(dx, dy)| matches!(map.cell((x as i32 + dx) as usize, (y as i32 + dy) as usize, map.surface_z[((y as i32 + dy) as usize) * n + (x as i32 + dx) as usize] as usize).plant, Plant::Tree(_)))
                     .count() as i32;
                 let mut score = (x as i32 - centre).abs() + (y as i32 - centre).abs() + trees * 6;
+                if score < any_best { any_best = score; any_camp = (x as u16, y as u16); }
                 if !lean.is_none() {
                     let z = map.surface_z[y * n + x];
                     let wd = water_d.get(y * n + x).copied().unwrap_or(99).min(40) as f32;
@@ -915,6 +920,7 @@ impl Colony {
                 if score < best { best = score; camp = (x as u16, y as u16); }
             }
         }
+        if best == i32::MAX { camp = any_camp; }
         // Clear the camp ground.
         for dy in -1i32..=1 {
             for dx in -1i32..=1 {
@@ -928,7 +934,7 @@ impl Colony {
         let settlers = names.iter().enumerate().map(|(i, name)| {
             let pos = (camp.0 + (i as u16 % 3), camp.1 + (i as u16 / 3) % 3);
             Settler {
-                name: name.clone(), pos: if nav::passable(&map, pos) { pos } else { camp }, z: 0, path: Vec::new(),
+                name: name.clone(), pos: if nav::passable(&map, pos) { pos } else { camp }, z: { let p = if nav::passable(&map, pos) { pos } else { camp }; map.surface_z[p.1 as usize * n + p.0 as usize] }, path: Vec::new(),
                 hunger: 0.2 + 0.2 * rng.gen::<f32>(), fatigue: 0.1 * rng.gen::<f32>(), exposure: 0.0,
                 job: Job::Idle, work_left: 0, carrying: None, why: "Just arrived".into(),
                 alive: true, stuck: 0, retry_at: 0, starving: 0, stride: 0,
@@ -2452,7 +2458,7 @@ impl Colony {
                 // Every failed way waits a quarter hour before the next try (a wander to an
                 // unreachable spot had searched the map every minute).
                 self.settlers[i].retry_at = self.clock.tick + 15;
-                if std::env::var("PLANET_DEBUG_PATH").is_ok() && self.settlers[i].stuck % 500 == 1 { eprintln!("PATHFAIL day {} {} at {:?} {:?} -> {:?} stuck {}", self.clock.day(), self.settlers[i].name, from, job, target, self.settlers[i].stuck); }
+                if std::env::var("PLANET_DEBUG_PATH").is_ok() && self.settlers[i].stuck % 500 == 1 { eprintln!("PATHFAIL day {} {} at {:?} {:?} -> {:?} stuck {} from3 {:?} to3 {:?}", self.clock.day(), self.settlers[i].name, from, job, target, self.settlers[i].stuck, from3, to3); }
                 self.settlers[i].job = Job::Idle;
             }
         }
@@ -2525,6 +2531,11 @@ impl Colony {
         let c = nav::cost3(&self.map, to.0 as usize, to.1 as usize, to.2)? as i32;
         Some(if from.0 != to.0 && from.1 != to.1 { c * 14 / 10 } else if from == (to.0, to.1) { c + 6 } else { c })
     }
+
+    /// The camp's own level (the fire's ground): where those set down at the camp stand. (They had
+    /// kept level 0, the map's floor, which is standable where open dark lies over it: seed 8's
+    /// founders on the audited terrain thought they stood in the deep and never found a way.)
+    pub fn camp_z(&self) -> i32 { self.map.surface_z[self.camp.1 as usize * self.map.width + self.camp.0 as usize] }
 
     /// Where settler `i` stands, with its level (the surface's when their level is not one to
     /// stand on: they were set down somewhere new).
@@ -3196,6 +3207,17 @@ impl Survey {
             Ok(None)
         }
     }
+}
+
+/// Whether a camp of seven could live on an embark: dry land enough, a hut site, and food in
+/// reach (not refused by the survey). The dev embark on the audited terrain takes the best tile
+/// that passes (seed 23's first pick had no hut site and its camp left on day 1).
+pub fn livable(map: &LocalMap) -> bool {
+    if !habitable(map) { return false; }
+    let c = Colony::found(map.clone(), &(0..7).map(|i| format!("s{i}")).collect::<Vec<_>>(), 0);
+    let v = c.survey().verdict();
+    if std::env::var("PLANET_DEBUG_EMBARK").is_ok() { eprintln!("  camp {:?} hut {} verdict {:?}", c.camp, c.hut.is_some(), v); }
+    c.hut.is_some() && v.is_ok()
 }
 
 /// Survey an embark for a camp of seven (founds one on a copy, so it sees what they would).

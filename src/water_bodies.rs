@@ -752,6 +752,11 @@ pub fn determine_lake_fantasy_biome(
         return Some(ExtendedBiome::FrozenLake);
     }
 
+    // Without myth only real lakes: no lakes of lava, acid or light (`crate::myth`).
+    if !crate::myth::on() {
+        return if rng_value < 0.05 && avg_temp < 5.0 { Some(ExtendedBiome::FrozenLake) } else { None };
+    }
+
     // Lava Lake: High volcanic stress
     if avg_stress > 0.4 && rng_value < 0.5 {
         return Some(ExtendedBiome::LavaLake);

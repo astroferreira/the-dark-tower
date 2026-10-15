@@ -1,5 +1,15 @@
 # History simulation (`src/history/`)
 
+**Myth (2026-10-13):** without `--myth` (`crate::myth`) the history has no Shadow
+(`engine.shadow` off), no legendary creatures (`legendary_creatures_for` gives 0: no lairs,
+raids, broods, quests against beasts, titan bones or lair scars), no crystal wastes from fallen
+towers, and every people is human, its tongue drawn by the land it rose in from the stern,
+flowing and plain naming styles (`setup::create_factions`, no RNG draw). The history summary
+prints "Peoples by kind". Gods are believed in, not felt: without myth a god drawn with the
+domain of magic keeps the same draw as the god of knowledge (`Deity::new_god`). With myth the
+history is as it was. Notes below on the Shadow, beasts
+and races are of the myth world.
+
 Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing from the RNG (see the root CLAUDE.md).
 
 ## Speed

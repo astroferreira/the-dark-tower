@@ -47,7 +47,8 @@ impl Colony {
             self.moment("The sea of fire".into(), line, "because the deep shaft reached the bottom of the world, where the magma sea lies".into(), at);
         }
         let three = self.map.caverns.len() >= 3;
-        let struck = three && crate::history::settlers::hash_pub(self.seed, 0xADA) % 2 == 0;
+        // (Adamantine, and the hollow under it, are myth.)
+        let struck = three && crate::myth::on() && crate::history::settlers::hash_pub(self.seed, 0xADA) % 2 == 0;
         let at = self.mine_mouth().unwrap_or(self.camp);
         if struck {
             // Six strands for the smelter (`industry.rs`): wafers of it make spearheads and mail.

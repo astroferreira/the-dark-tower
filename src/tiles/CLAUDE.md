@@ -71,6 +71,9 @@ The default and only maintained front end (minifb window).
   `--heavens-snapshot FILE` draws it at 1280x800 (with `--load-world` too).
 
 ## Start screen (`tiles/start.rs`)
+- (2026-10-13) The old "Fantasy" row (fantasy biome intensity) is now "Myth and magic", off by
+  default (a medieval world); on, it brings the fantasy biomes at their usual share, the Shadow
+  row (shown "None (no myth)" without it) and adventure mode (choosing an adventure turns it on).
 - Shown when the game runs with no arguments, or with `--start` (other flags pre-fill it).
   Rows: play, world size (Dev 96x48 / Small / Standard / Large), seed (type digits, R
   rerolls); under "The heavens" the sun (from the seed, showing its type / the Sun / a class)

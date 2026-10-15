@@ -30,7 +30,8 @@ pub enum MoodKind {
 
 impl MoodKind {
     pub fn word(self) -> &'static str {
-        match self { MoodKind::Fey => "a fey mood", MoodKind::Secretive => "a secretive mood", MoodKind::Possessed => "a possession", MoodKind::Macabre => "a macabre mood", MoodKind::Fell => "a fell mood" }
+        // (Without myth the fey mood is a maker's inspiration: `crate::myth`.)
+        match self { MoodKind::Fey if !crate::myth::on() => "an inspired mood", MoodKind::Fey => "a fey mood", MoodKind::Secretive => "a secretive mood", MoodKind::Possessed => "a possession", MoodKind::Macabre => "a macabre mood", MoodKind::Fell => "a fell mood" }
     }
 }
 
@@ -140,7 +141,8 @@ impl Colony {
         let alive = self.alive();
         let kind = if p.facet(Facet::Cruelty) >= 75 && p.facet(Facet::Violence) >= 60 && alive >= 5 { MoodKind::Fell }
             else if p.facet(Facet::Gloom) >= 70 { MoodKind::Macabre }
-            else if (p.facet(Facet::Imagination) >= 80 && p.facet(Facet::Piety) >= 60) || (self.darkness >= 0.3 && crate::history::settlers::hash_pub(self.seed, 0x9055) % 3 == 0) { MoodKind::Possessed }
+            // (A possession is myth: without it the visionary is in a fey mood like any maker.)
+            else if crate::myth::on() && ((p.facet(Facet::Imagination) >= 80 && p.facet(Facet::Piety) >= 60) || (self.darkness >= 0.3 && crate::history::settlers::hash_pub(self.seed, 0x9055) % 3 == 0)) { MoodKind::Possessed }
             else if p.facet(Facet::Bashfulness) >= 70 || p.facet(Facet::Trust) <= 20 { MoodKind::Secretive }
             else { MoodKind::Fey };
         // PLANET_FORCE_MOOD=fey|secretive|possessed|macabre|fell (for trying each).
@@ -154,6 +156,7 @@ impl Colony {
         self.mood = Some(Mood { kind, victim: None, who, since: day, days: 0, done: false, wants });
         let name = self.settlers[who].name.clone();
         let line = match kind {
+            MoodKind::Fey if !crate::myth::on() => format!("{} is seized by an inspiration and claims the workshop.", name),
             MoodKind::Fey => format!("{} is taken by a strange mood and claims the workshop.", name),
             MoodKind::Secretive => format!("{} is taken by a secretive mood, claims the workshop and speaks to no one.", name),
             MoodKind::Possessed => format!("{} is possessed: {} walks into the workshop with someone else's eyes.", name, if self.settlers[who].persona.female { "she" } else { "he" }),

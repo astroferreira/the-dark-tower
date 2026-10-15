@@ -10,6 +10,10 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::process::Command;
 
+/// The binary with myth and magic on (`--myth`, `crate::myth`): these tests are of the game's
+/// systems as they were, Shadow, beasts and all; the realistic default has its own tests.
+fn myth_cmd() -> Command { let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator")); c.env("PLANET_MYTH", "1").env_remove("PLANET_TERRAIN_V1"); c }
+
 /// Capitalised words (letters, apostrophes, hyphens) in `text`, with whether each starts a
 /// sentence.
 fn capitalised(text: &str) -> Vec<(String, bool)> {
@@ -71,7 +75,7 @@ fn dev_chronicle_names_only_real_things() {
     let dir = std::env::temp_dir().join(format!("flavour_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let dump = dir.join("chronicle.tsv");
-    let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let out = myth_cmd()
         .args(["--dev", "--headless", "--chronicle-dump", dump.to_str().unwrap()])
         .output()
         .expect("run planet_generator");
@@ -131,7 +135,7 @@ fn settlers_and_rumours_keep_to_their_lifetimes() {
         let dir = std::env::temp_dir().join(format!("receipts_{}_{}", seed, std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let prefix = dir.join("r");
-        let out = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+        let out = myth_cmd()
             .args(["--dev", "--seed", seed, "--sim-snapshot", prefix.to_str().unwrap()])
             .output()
             .expect("run planet_generator");

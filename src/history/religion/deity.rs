@@ -88,6 +88,8 @@ impl Deity {
         let all = Domain::all();
         for _ in 0..domain_count {
             let d = all[rng.gen_range(0..all.len())];
+            // (Without myth no god keeps magic: the same draw, the god of knowledge.)
+            let d = if d == Domain::Magic && !crate::myth::on() { Domain::Knowledge } else { d };
             if !domains.contains(&d) {
                 domains.push(d);
             }

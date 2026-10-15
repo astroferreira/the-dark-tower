@@ -211,6 +211,17 @@ impl WorldHistory {
             total_dynasties: self.dynasties.len(),
             legendary_creatures: self.legendary_creatures.len(),
             living_legendary: self.living_legendary_count(),
+            kinds: {
+                // The peoples by kind ("8 human"; with myth dwarves, elves, orcs...).
+                let mut k: Vec<(String, usize)> = Vec::new();
+                let mut fs: Vec<_> = self.factions.values().collect();
+                fs.sort_by_key(|f| f.id);
+                for f in fs {
+                    let name = self.races.get(&f.race_id).map(|r| format!("{:?}", r.base_type).to_lowercase()).unwrap_or_else(|| "unknown".into());
+                    match k.iter_mut().find(|x| x.0 == name) { Some(x) => x.1 += 1, None => k.push((name, 1)) }
+                }
+                k.iter().map(|(n, c)| format!("{} {}", c, n)).collect::<Vec<_>>().join(", ")
+            },
             artifacts: self.artifacts.len(),
             monuments: self.monuments.len(),
             religions: self.religions.len(),
@@ -234,6 +245,8 @@ pub struct HistorySummary {
     pub total_dynasties: usize,
     pub legendary_creatures: usize,
     pub living_legendary: usize,
+    /// The peoples by kind of folk.
+    pub kinds: String,
     pub artifacts: usize,
     pub monuments: usize,
     pub religions: usize,
@@ -250,6 +263,7 @@ impl std::fmt::Display for HistorySummary {
         writeln!(f, "Figures: {} ({} living)", self.total_figures, self.living_figures)?;
         writeln!(f, "Dynasties: {}", self.total_dynasties)?;
         writeln!(f, "Legendary creatures: {} ({} alive)", self.legendary_creatures, self.living_legendary)?;
+        writeln!(f, "Peoples by kind: {}", self.kinds)?;
         writeln!(f, "Artifacts: {}, Monuments: {}", self.artifacts, self.monuments)?;
         writeln!(f, "Religions: {}, Wars: {}", self.religions, self.wars)?;
         writeln!(f, "World population: {}", self.total_population)

@@ -322,6 +322,16 @@ fn main() {
 
     let result = terrain::generate_terrain(&cfg, &seeds, &mut |st: &terrain::Stage| {
         let hm = st.heightmap;
+        // LAB_DUMP_HEIGHTS=stage[,stage...]: those stages' heights as raw little-endian f32, row
+        // by row, in <out>/heights_<stage>_<w>x<h>.f32.
+        if std::env::var("LAB_DUMP_HEIGHTS").map_or(false, |v| v.split(',').any(|s| s == st.name)) {
+            let bytes: Vec<u8> = hm.iter().flat_map(|(_, _, &e)| e.to_le_bytes()).collect();
+            let _ = std::fs::write(format!("{out}/heights_{}_{}x{}.f32", st.name, hm.width, hm.height), bytes);
+            if st.name == "tectonic" {
+                let bytes: Vec<u8> = st.stress_map.iter().flat_map(|(_, _, &e)| e.to_le_bytes()).collect();
+                let _ = std::fs::write(format!("{out}/stress_{}x{}.f32", hm.width, hm.height), bytes);
+            }
+        }
         match st.name {
             "tectonic" => {
                 report("tectonic", hm, &out, None);

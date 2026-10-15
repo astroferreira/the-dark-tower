@@ -320,8 +320,10 @@ pub fn pick_interesting_window(world: &WorldData, tiles: usize) -> (usize, usize
 /// World-tile chunks are simulated with this many tiles of border on each side.
 const CHUNK_BORDER_TILES: i64 = 1;
 /// Hydrology margin (tiles) simulated around the requested window, so streams crossing its
-/// edge see their upstream catchment.
-const FINAL_MARGIN_TILES: usize = 2;
+/// edge see their upstream catchment: 3 on the audited terrain, whose relief, built before the
+/// rivers, drains in catchments that reach further (with 2, regions 3 tiles apart differed on 3
+/// of 8 test worlds, up to 3.4% of their pixels; 0 with 3); 2 on terrain revision 1.
+fn final_margin_tiles() -> usize { if crate::terrain_rev::v1() { 2 } else { 3 } }
 /// Cached chunks kept in memory before the cache is cleared (~260 KB each at 128 cells/tile).
 const CHUNK_CACHE_LIMIT: usize = 1500;
 
@@ -593,7 +595,7 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
     let (ww, wh) = (world.width, world.height);
     let core_x0 = params.center_x as i64 - (tiles / 2) as i64;
     let core_y0 = params.center_y as i64 - (tiles / 2) as i64;
-    let mf = FINAL_MARGIN_TILES;
+    let mf = final_margin_tiles();
     let (gx0, gy0) = (core_x0 - mf as i64, core_y0 - mf as i64);
     let gt = tiles + 2 * mf;
     let gw = gt * s;

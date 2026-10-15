@@ -44,6 +44,9 @@ impl Ord for ExpansionCell {
 /// Convert 2D map coordinates (normalized nx in [0, 1], ny in [0, 1]) to 3D cylindrical coordinates
 /// to guarantee seamless periodic wrapping across longitude (X) without polar artifacts or grid-plane resonance.
 fn cylindrical_coords(nx: f64, ny: f64, radius: f64) -> [f64; 3] {
+    // Revision 2: the sphere itself, so the plates' noise is not pinched at the poles
+    // (`audit.md` 3.1).
+    if !crate::terrain_rev::v1() { return crate::heightmap::spherical_coords(nx, ny, radius); }
     let angle = nx * std::f64::consts::TAU;
     let cx = angle.cos() * radius;
     let cz = angle.sin() * radius;

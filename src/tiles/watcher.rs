@@ -1778,7 +1778,8 @@ fn draw_panel(buf: &mut [u32], w: usize, h: usize, p: Rect, f: Option<&Step>, so
         ("Legendary beasts", format!("{}", s.beasts), String::new()),
         ("Treasures", format!("{}", s.artifacts), format!("{} monuments", s.monuments)),
     ];
-    for (label, value, note) in rows {
+    // (No beasts of legend without myth: `crate::myth`.)
+    for (label, value, note) in rows.into_iter().filter(|r| r.0 != "Legendary beasts" || crate::myth::on()) {
         fell(buf, w, h, x as i64, y, label, INK, 1, false);
         let vx = x + 140;
         fell(buf, w, h, vx as i64, y, &value, if label == "Wars raging" && s.wars > 0 { RUBRIC } else { INK }, 1, true);

@@ -90,6 +90,9 @@ impl Colony {
 
     /// 23:30: the unremembered walk.
     pub(crate) fn ghosts_walk(&mut self) {
+        // (The dead walking is myth: `crate::myth`. Without it the restless are still mourned
+        // and remembered with a slab, but nobody sees them walk.)
+        if !crate::myth::on() { return; }
         let day = self.clock.day();
         for k in 0..self.restless.len() {
             let r = self.restless[k].clone();

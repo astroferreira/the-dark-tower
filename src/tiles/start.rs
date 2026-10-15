@@ -25,6 +25,8 @@ pub struct StartConfig {
     pub plates: Option<usize>,
     pub tectonic_myr: f32,
     pub fantasy: f32,
+    /// Myth and magic (`crate::myth`): off, a medieval, realistic world.
+    pub myth: bool,
     /// 0: no history.
     pub history_years: u32,
     pub civilizations: u32,
@@ -106,7 +108,7 @@ impl Menu {
             size,
             style,
             myr: nearest(&MYR, |v| v, cfg.tectonic_myr),
-            fantasy: nearest(&FANTASY, |v| v.0, cfg.fantasy),
+            fantasy: if cfg.myth { nearest(&FANTASY, |v| v.0, cfg.fantasy) } else { 0 },
             years: nearest(&YEARS, |v| v as f32, cfg.history_years as f32),
             peoples: nearest(&PEOPLES, |v| v as f32, cfg.civilizations as f32),
             star: STARS.iter().position(|s| s.0.eq_ignore_ascii_case(&cfg.star)).unwrap_or(0),
@@ -134,14 +136,23 @@ impl Menu {
                 self.cfg.plates = opts[step_index(i, opts.len(), d)];
             }
             Row::Myr => self.myr = step_index(self.myr, MYR.len(), d),
-            Row::Fantasy => self.fantasy = step_index(self.fantasy, FANTASY.len(), d),
+            // Myth and magic on or off (the fantasy biomes come with it, at their usual share).
+            Row::Fantasy => {
+                self.cfg.myth = !self.cfg.myth;
+                self.fantasy = if self.cfg.myth { nearest(&FANTASY, |v| v.0, crate::biomes::DEFAULT_FANTASY_INTENSITY) } else { 0 };
+                if !self.cfg.myth { self.cfg.adventure = false; }
+            }
             Row::Years => self.years = step_index(self.years, YEARS.len(), d),
             Row::Peoples => self.peoples = step_index(self.peoples, PEOPLES.len(), d),
             Row::Sun => self.star = step_index(self.star, STARS.len(), d),
             Row::Zone => self.zone = step_index(self.zone, ZONES.len(), d),
-            Row::Shadow => self.cfg.shadow = !self.cfg.shadow,
+            // (The Shadow and adventure mode are myth: off without it.)
+            Row::Shadow => if self.cfg.myth { self.cfg.shadow = !self.cfg.shadow },
             Row::Watch => self.cfg.watch = !self.cfg.watch,
-            Row::Play => self.cfg.adventure = !self.cfg.adventure,
+            Row::Play => {
+                self.cfg.adventure = !self.cfg.adventure;
+                if self.cfg.adventure && !self.cfg.myth { self.cfg.myth = true; self.fantasy = nearest(&FANTASY, |v| v.0, crate::biomes::DEFAULT_FANTASY_INTENSITY); }
+            }
             Row::Begin => {}
         }
         self.sync();
@@ -182,7 +193,7 @@ impl Menu {
             Row::Zone => "Its orbit",
             Row::Plates => "Tectonic plates",
             Row::Myr => "Age of the crust",
-            Row::Fantasy => "Fantasy",
+            Row::Fantasy => "Myth and magic",
             Row::Years => "Written history",
             Row::Peoples => "Founding peoples",
             Row::Shadow => "The Shadow",
@@ -206,10 +217,10 @@ impl Menu {
             Row::Sun => if self.star == 0 { format!("From the seed: {}", self.system().star.spectral.label()) } else { STARS[self.star].1.to_string() },
             Row::Zone => ZONES[self.zone].1.to_string(),
             Row::Myr => format!("{:.0} million years", c.tectonic_myr),
-            Row::Fantasy => FANTASY[self.fantasy].1.to_string(),
+            Row::Fantasy => if c.myth { "On: beasts, the uncanny, strange lands".into() } else { "Off: a medieval world".into() },
             Row::Years => if c.history_years == 0 { "None".into() } else { format!("{} years", c.history_years) },
             Row::Peoples => c.civilizations.to_string(),
-            Row::Shadow => if c.shadow { "Rises".into() } else { "None (sandbox)".into() },
+            Row::Shadow => if !c.myth { "None (no myth)".into() } else if c.shadow { "Rises".into() } else { "None (sandbox)".into() },
             Row::Watch => if c.watch { "Yes".into() } else { "No".into() },
             Row::Play => if c.adventure { "An adventure".into() } else { "A colony".into() },
             Row::Begin => String::new(),
@@ -236,10 +247,10 @@ impl Menu {
             }
             Row::Plates => "How many tectonic plates the crust starts with. More plates make more, smaller continents and more mountain belts.".into(),
             Row::Myr => "How long the plates drift before the present. Older worlds have seen more collisions and rifting: more ranges, more scattered lands.".into(),
-            Row::Fantasy => "How much of the world is strange: crystal woods, glowing marshes, ashlands. None is a natural world.".into(),
+            Row::Fantasy => "Off, the world is medieval and real: every people human, no beasts of legend, no Shadow, no ghosts or wonders, caves that hold only what caves hold. On, the old fantasy: dwarves, elves and orcs, dragons and forgotten beasts, the Shadow, crystal woods and ashlands, the restless dead, and adventure mode.".into(),
             Row::Years => "Years of history simulated before the present day: peoples found towns, build roads, wage wars, and the land remembers. None makes an empty world.".into(),
             Row::Peoples => "The peoples who found the first realms. Fewer means each one matters more.".into(),
-            Row::Shadow => "A dark power rises at the dawn of history and spreads across the land, taking town after town. Turn it off for a world without a central enemy.".into(),
+            Row::Shadow => if !c.myth { "The Shadow is myth: turn on myth and magic for it.".into() } else { "A dark power rises at the dawn of history and spreads across the land, taking town after town. Turn it off for a world without a central enemy.".into() },
             Row::Watch => "Open a window that plays the history back as it is written: towns, roads and borders spreading, wars and falls in the chronicle.".into(),
             Row::Play => if self.cfg.adventure { "One person of the world, from nobody to a name in its history: start in a town's sewers with a club, take a calling at level 8, and go out to the ruins, lairs, tombs and temples the history left, for loot, quests and the beasts of legend.".into() }
                 else { "Found a camp of settlers with pasts and watch them live: they build, dig, quarrel, pray and fight what the history sends against them.".into() },

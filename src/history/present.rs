@@ -234,6 +234,11 @@ impl PresentDay {
 
     /// One line of counts for the end-of-history report.
     pub fn counts(&self) -> String {
+        // (Without myth there are no beasts or Shadow to count.)
+        if !crate::myth::on() {
+            return format!("Present day (year {}): {} peoples, {} wars, {} sieges, {} grudges, {} disputes, {} towns fallen in the last {} years",
+                self.year, self.peoples, self.wars.len(), self.sieges.len(), self.grudges.len(), self.disputes.len(), self.fallen.len(), RECENT_YEARS);
+        }
         format!(
             "Present day (year {}): {} peoples, {} wars, {} sieges, {} grudges, {} living beasts ({} near a town), {} towns on the Shadow's frontier, {} known weakness of the Shadow, {} disputes, {} towns fallen in the last {} years",
             self.year, self.peoples, self.wars.len(), self.sieges.len(), self.grudges.len(), self.beasts.len(),
@@ -256,6 +261,8 @@ impl PresentDay {
         for g in &self.grudges {
             let _ = writeln!(s, "  {} and {} ({}){}", g.a, g.b, g.opinion, g.because.as_ref().map(|c| format!(", since {}", c)).unwrap_or_default());
         }
+        // (Beasts of legend and the Shadow are myth: their parts only with it, `crate::myth`.)
+        if crate::myth::on() {
         let _ = writeln!(s, "Living beasts:");
         for b in &self.beasts {
             let near = b.town.as_ref().map(|(t, d)| format!("{} tiles from {}", d, t)).unwrap_or_else(|| "far from any town".into());
@@ -269,6 +276,7 @@ impl PresentDay {
         let _ = writeln!(s, "The check: {}", self.shadow_shape.as_deref().unwrap_or("not yet come"));
         let _ = writeln!(s, "What can wound it:");
         for w in &self.weaknesses { let _ = writeln!(s, "  {}", w); }
+        }
         let _ = writeln!(s, "Disputes over resources (last {} years):", RECENT_YEARS);
         for d in &self.disputes { let _ = writeln!(s, "  {} between {} and {} ({} times)", d.resource, d.a, d.b, d.times); }
         let _ = writeln!(s, "Rulers without a living heir: {}", if self.heirless.is_empty() { "none".into() } else { self.heirless.join(", ") });

@@ -196,6 +196,31 @@ impl SeasonalClimate {
             }
         }
 
+        let mut seasonal_temperatures = [
+            sim.seasonal_temperatures[0].clone(),
+            sim.seasonal_temperatures[1].clone(),
+            sim.seasonal_temperatures[2].clone(),
+            sim.seasonal_temperatures[3].clone(),
+        ];
+        if !crate::terrain_rev::v1() {
+            // The sea's heat capacity delays the year (`audit.md` 5.2): over the ocean the
+            // seasons run up to a month (pi/6) late, on the coast by less, fading over ~300 km
+            // inland, so a maritime autumn is warmer than its spring.
+            let km = crate::erosion::landscape::tile_km(width);
+            let sea = (0..height).flat_map(|y| (0..width).map(move |x| (x, y))).filter(|&(x, y)| *heightmap.get(x, y) <= 0.0);
+            let dist = crate::tilemap::geodesic_distance(width, height, sea, |_, _| true);
+            for y in 0..height {
+                for x in 0..width {
+                    let d = *dist.get(x, y);
+                    let lag = if d == f32::MAX { 0.0 } else { MARITIME_LAG * (-d * km / 300.0).exp() };
+                    if lag < 1e-3 { continue; }
+                    let s: [f32; 4] = std::array::from_fn(|k| *seasonal_temperatures[k].get(x, y));
+                    let lagged = lag_seasons(s, lag);
+                    for k in 0..4 { seasonal_temperatures[k].set(x, y, lagged[k]); }
+                }
+            }
+        }
+
         Self {
             base_temperature: sim.mean_temperature.clone(),
             base_moisture: sim.mean_moisture.clone(),
@@ -203,12 +228,7 @@ impl SeasonalClimate {
             moisture_amplitude: sim.moisture_amplitude.clone(),
             moisture_phase: sim.moisture_phase.clone(),
             climate_type,
-            seasonal_temperatures: Some([
-                sim.seasonal_temperatures[0].clone(),
-                sim.seasonal_temperatures[1].clone(),
-                sim.seasonal_temperatures[2].clone(),
-                sim.seasonal_temperatures[3].clone(),
-            ]),
+            seasonal_temperatures: Some(seasonal_temperatures),
             seasonal_moistures: Some([
                 sim.seasonal_moistures[0].clone(),
                 sim.seasonal_moistures[1].clone(),
@@ -244,6 +264,14 @@ impl SeasonalClimate {
         // Flip for southern hemisphere
         if !is_northern_hemisphere {
             phase += std::f32::consts::PI;
+        }
+
+        // Revision 2: the sea lags the year (`audit.md` 5.2).
+        if !crate::terrain_rev::v1() {
+            phase -= match self.climate_type.get(x, y) {
+                ClimateSeasonType::Oceanic => MARITIME_LAG * 0.75,
+                _ => 0.0,
+            };
         }
 
         base + amplitude * phase.cos()
@@ -432,8 +460,42 @@ pub fn calculate_seasonal_conditions(
     }
 }
 
+/// The ocean's seasonal lag behind the sun (radians of the year: pi/6, about a month).
+pub const MARITIME_LAG: f32 = std::f32::consts::PI / 6.0;
+
+/// Delay the annual cycle of four seasonal temperatures [spring, summer, autumn, winter] by
+/// `lag` radians: the first harmonic (phases -pi/2, 0, pi/2, pi) is turned, the mean and the
+/// half-yearly part kept.
+pub fn lag_seasons(s: [f32; 4], lag: f32) -> [f32; 4] {
+    let mean = (s[0] + s[1] + s[2] + s[3]) / 4.0;
+    let a = (s[1] - s[3]) / 2.0; // cos part
+    let b = (s[2] - s[0]) / 2.0; // sin part
+    let half = (s[1] + s[3] - s[0] - s[2]) / 4.0; // cos 2phi part
+    let phases = [-std::f32::consts::FRAC_PI_2, 0.0, std::f32::consts::FRAC_PI_2, std::f32::consts::PI];
+    std::array::from_fn(|k| {
+        let p = phases[k];
+        mean + a * (p - lag).cos() + b * (p - lag).sin() + half * (2.0 * p).cos()
+    })
+}
+
+/// Share of the day the sun is up (0 polar night, 0.5 twelve hours, 1 midnight sun) at
+/// latitude `lat` under solar declination `decl` (radians): the sunrise hour angle,
+/// cos w = -tan(lat) tan(decl), over pi.
+pub fn day_fraction(lat: f32, decl: f32) -> f32 {
+    (-(lat.tan() * decl.tan())).clamp(-1.0, 1.0).acos() / std::f32::consts::PI
+}
+
 /// Calculate approximate day length factor
 fn calculate_day_length(latitude_normalized: f32, season: Season, is_northern: bool) -> f32 {
+    if !crate::terrain_rev::v1() {
+        // Revision 2 (`audit.md` 5.2): the sunrise hour angle, so the midnight sun and the
+        // polar night cover the whole polar circle, not only the pole's row. Seasons are the
+        // northern calendar's, as in `get_temperature`.
+        let lat = latitude_normalized * std::f32::consts::FRAC_PI_2 * if is_northern { 1.0 } else { -1.0 };
+        let tilt = 23.44f32.to_radians();
+        let decl = match season { Season::Summer => tilt, Season::Winter => -tilt, Season::Spring | Season::Autumn => 0.0 };
+        return day_fraction(lat, decl);
+    }
     // Simplified model: day length varies with latitude and season
     // At equator: always ~0.5 (12 hours)
     // At poles: 0 in winter, 1 in summer
@@ -480,6 +542,28 @@ mod tests {
         let med = ClimateSeasonType::Mediterranean;
         let trop = ClimateSeasonType::Tropical;
         assert!((med.moisture_phase() - trop.moisture_phase()).abs() > 2.0);
+    }
+
+    /// Inside the polar circle the sun stays up all summer day and down all winter day;
+    /// outside it does not (`audit.md` 5.2).
+    #[test]
+    fn polar_circle_has_midnight_sun() {
+        let at = |lat_deg: f32, s: Season| calculate_day_length(lat_deg / 90.0, s, true);
+        assert!(at(70.0, Season::Summer) > 0.999 && at(70.0, Season::Winter) < 0.001);
+        assert!(at(60.0, Season::Summer) < 0.95 && at(60.0, Season::Winter) > 0.05);
+        assert!((at(45.0, Season::Spring) - 0.5).abs() < 1e-4);
+        // The south has the opposite seasons.
+        assert!(calculate_day_length(70.0 / 90.0, Season::Summer, false) < 0.001);
+    }
+
+    /// A lagged year keeps its mean and range, and its autumn is warmer than its spring.
+    #[test]
+    fn the_sea_lags_the_year() {
+        let s = [10.0, 20.0, 10.0, 0.0];
+        let l = lag_seasons(s, MARITIME_LAG);
+        assert!((l.iter().sum::<f32>() / 4.0 - 10.0).abs() < 1e-4);
+        assert!(l[2] > l[0] + 5.0, "autumn {} spring {}", l[2], l[0]);
+        assert!(lag_seasons(s, 0.0).iter().zip(s).all(|(a, b)| (a - b).abs() < 1e-4));
     }
 
     #[test]

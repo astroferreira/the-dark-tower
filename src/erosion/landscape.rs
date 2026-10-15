@@ -275,6 +275,20 @@ pub fn evolve(
     stress: &Tilemap<f32>,
     p: &LandscapeParams,
 ) -> LandscapeReport {
+    evolve_with_hardness(heightmap, precipitation_mm, stress, None, p)
+}
+
+/// `evolve` on rock of varying hardness 0..1 (`audit.md` 1.2): the erodibility is
+/// K (1 - hardness)^2, scaled so its mean over the land is K, so rivers cut soft basins and
+/// fold belts faster than cratons and intrusions (water gaps, hogbacks) while the world as a
+/// whole loses as much rock as on uniform ground.
+pub fn evolve_with_hardness(
+    heightmap: &mut Tilemap<f32>,
+    precipitation_mm: &Tilemap<f32>,
+    stress: &Tilemap<f32>,
+    hardness: Option<&Tilemap<f32>>,
+    p: &LandscapeParams,
+) -> LandscapeReport {
     let (w, hgt) = (heightmap.width, heightmap.height);
     let g = Grid { w, h: hgt, dx: CIRCUMFERENCE_M / w as f32 };
     let area = g.dx * g.dx;
@@ -287,6 +301,20 @@ pub fn evolve(
         .collect();
     let dt = p.duration_yr / p.steps.max(1) as f32;
     let k_eff = p.k_fluvial * (g.dx / (CIRCUMFERENCE_M / 512.0)).powf(-0.27);
+    let v1 = crate::terrain_rev::v1();
+    let erodibility: Vec<f32> = match hardness {
+        None => vec![1.0; n],
+        Some(hd) => {
+            // The mean is weighted by height above the sea, where the rivers do their work, so
+            // the world loses as much rock as on uniform ground (an unweighted mean let the hard
+            // uplands erode at a third of the rate: seed 42 lost 14M km3, not 32M).
+            let raw: Vec<f32> = hd.iter().map(|(_, _, &v)| (1.0 - v.clamp(0.0, 1.0)).powi(2)).collect();
+            let (mut sum, mut wsum) = (0.0f64, 0.0f64);
+            for (i, &r) in raw.iter().enumerate() { if h[i] > 0.0 { sum += r as f64 * h[i] as f64; wsum += h[i] as f64; } }
+            let mean = if wsum > 0.0 { (sum / wsum) as f32 } else { 1.0 };
+            raw.iter().map(|&r| r / mean.max(1e-4)).collect()
+        }
+    };
     let sigma = (p.flexure_km * 1000.0 / g.dx).max(0.5);
     let km3 = |m: f64| m * area as f64 * 1e-9;
 
@@ -351,7 +379,7 @@ pub fn evolve(
                 let (dxc, dyc) = ((i % w) as i64 - (rc % w) as i64, (i / w) as i64 - (rc / w) as i64);
                 if dxc != 0 && dyc != 0 { g.dx * std::f32::consts::SQRT_2 } else { g.dx }
             };
-            let f = k_eff * dt * q[i].powf(p.m) / d;
+            let f = k_eff * erodibility[i] * dt * q[i].powf(p.m) / d;
             let new = (h[i] + f * base) / (1.0 + f);
             eroded[i] = h[i] - new;
             h[i] = new;
@@ -390,7 +418,12 @@ pub fn evolve(
             seen[mouth] = k as u32;
             while let Some((i, dist)) = bfs.pop_front() {
                 if left <= 0.0 { break; }
-                let target = -p.shelf_depth_m - p.shelf_drop_m_per_cell * dist as f32;
+                // Revision 2: the margin a delta builds, a shelf ~80 km out to its break at
+                // -130 m, then the slope, the rest piled at its foot as the continental rise
+                // (`heightmap::margin_depth`; `audit.md` 3.5). Revision 1 laid a wedge 40 m
+                // deep at the mouth and 60 m deeper a cell, ten cells out (~780 km of shelf).
+                let target = if v1 { -p.shelf_depth_m - p.shelf_drop_m_per_cell * dist as f32 }
+                    else { crate::heightmap::margin_depth((dist as f32 + 0.5) * g.dx / 1000.0, h[i]) };
                 if h[i] < target {
                     let d = (target - h[i]).min(left);
                     h[i] += d;
@@ -445,6 +478,13 @@ pub fn lake_depth(heightmap: &Tilemap<f32>) -> Tilemap<f32> {
 /// Detail passes that run after the landscape evolution (fjords, regional noise, volcanoes)
 /// pock the land with small pits, and depression filling leaves flats; both end rivers.
 pub fn fill_pits(heightmap: &mut Tilemap<f32>, min_lake_cells: usize, min_lake_depth_m: f32) -> usize {
+    fill_pits_keeping(heightmap, min_lake_cells, min_lake_depth_m, None)
+}
+
+/// `fill_pits`, but with `lakes` (a `lake_depth` map taken earlier, after the landscape
+/// evolution) only the hollows holding one of those lakes may stay: every hollow the later
+/// passes made is filled whatever its size or depth (`audit.md` 1.1).
+pub fn fill_pits_keeping(heightmap: &mut Tilemap<f32>, min_lake_cells: usize, min_lake_depth_m: f32, lakes: Option<&Tilemap<f32>>) -> usize {
     const FILL_GRADIENT_M: f32 = 0.05;
     let (w, hgt) = (heightmap.width, heightmap.height);
     let g = Grid { w, h: hgt, dx: CIRCUMFERENCE_M / w as f32 };
@@ -493,7 +533,8 @@ pub fn fill_pits(heightmap: &mut Tilemap<f32>, min_lake_cells: usize, min_lake_d
             k += 1;
         }
         let depth = comp.iter().map(|&i| r.level[i] - e[i]).fold(0.0f32, f32::max);
-        if comp.len() >= min_lake_cells && depth >= min_lake_depth_m {
+        let was_lake = lakes.map_or(true, |l| comp.iter().any(|&i| *l.get(i % w, i / w) > 1.0));
+        if was_lake && comp.len() >= min_lake_cells && depth >= min_lake_depth_m {
             for &i in &comp { keep[i] = true; }
         }
     }
@@ -545,6 +586,39 @@ mod tests {
             if e <= 0.0 || *depth.get(x, y) > 0.0 { continue; }
             assert!(m.neighbors_8(x, y).iter().any(|&(nx, ny)| *m.get(nx, ny) < e), "flat or pit at ({x},{y})");
         }
+    }
+
+    /// Only the lakes that were there before may stay: a hollow dug later is filled.
+    #[test]
+    fn fill_pits_keeping_fills_new_hollows() {
+        let mut m = island();
+        let before = lake_depth(&m);
+        // A new deep 4x4 hollow where there was none.
+        for y in 10..14 { for x in 28..32 { let v = *m.get(x, y) - 500.0; m.set(x, y, v); } }
+        fill_pits_keeping(&mut m, 4, 10.0, Some(&before));
+        let depth = lake_depth(&m);
+        let deepest = |x0: usize, y0: usize| (x0..x0 + 4).flat_map(|x| (y0..y0 + 4).map(move |y| (x, y))).map(|(x, y)| *depth.get(x, y)).fold(0.0f32, f32::max);
+        assert!(deepest(28, 10) < 0.01, "the new hollow should be filled");
+        assert!(deepest(38, 14) > 100.0, "the old lake should stay");
+    }
+
+    /// Soft rock erodes faster than hard: a ridge of hard rock stands above soft ground after.
+    #[test]
+    fn hard_rock_resists_rivers() {
+        let precip = Tilemap::new_with(64, 32, 1000.0f32);
+        let stress = Tilemap::new_with(64, 32, 0.0f32);
+        let mut hard = Tilemap::new_with(64, 32, 0.2f32);
+        for y in 0..32 { for x in 26..30 { hard.set(x, y, 0.9); } }
+        let mut a = island();
+        let mut b = island();
+        let p = LandscapeParams { steps: 10, ..Default::default() };
+        evolve_with_hardness(&mut a, &precip, &stress, Some(&hard), &p);
+        evolve(&mut b, &precip, &stress, &p);
+        let band = |m: &Tilemap<f32>, x0: usize| (x0..x0 + 4).flat_map(|x| (8..24).map(move |y| (x, y))).map(|(x, y)| *m.get(x, y)).sum::<f32>();
+        let orig = island();
+        let lost = |m: &Tilemap<f32>, x0: usize| band(&orig, x0) - band(m, x0);
+        assert!(lost(&a, 26) < lost(&b, 26), "hard band lost {} vs uniform {}", lost(&a, 26), lost(&b, 26));
+        assert!(lost(&a, 20) > lost(&b, 20) * 0.9, "soft band lost {} vs uniform {}", lost(&a, 20), lost(&b, 20));
     }
 
     #[test]

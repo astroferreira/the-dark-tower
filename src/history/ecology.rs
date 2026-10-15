@@ -745,7 +745,7 @@ fn update_scars(history: &mut WorldHistory, world: &WorldData, eco: &mut Ecology
             }
             EventType::MonumentDestroyed => {
                 let Some(m) = history.monuments.values().find(|m| m.destruction_event == Some(ev.id)) else { continue };
-                if m.monument_type != MonumentType::Tower || has_scar(eco, ScarSource::FallenTower(m.id.0)) { continue; }
+                if m.monument_type != MonumentType::Tower || has_scar(eco, ScarSource::FallenTower(m.id.0)) || !crate::myth::on() { continue; }
                 let (x, y) = m.location;
                 new_scars.push((
                     Scar { source: ScarSource::FallenTower(m.id.0), x, y, radius: 1.4, biome: ExtendedBiome::CrystalWasteland, event: EventId(0) },
@@ -796,6 +796,8 @@ fn update_scars(history: &mut WorldHistory, world: &WorldData, eco: &mut Ecology
     // Towers left standing in a razed town fall within a generation, and the power bound in
     // their stones grows crystal over the land.
     for m in history.monuments.values() {
+        // (A tower's bound power growing crystal is myth: `crate::myth`.)
+        if !crate::myth::on() { break; }
         if m.monument_type != MonumentType::Tower || has_scar(eco, ScarSource::FallenTower(m.id.0)) { continue; }
         let Some(town) = history.settlements.values().find(|s| s.location == m.location && s.destroyed.is_some()) else { continue };
         let fell = town.destroyed.map(|d| d.year).unwrap_or(date.year);

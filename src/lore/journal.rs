@@ -830,6 +830,9 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
     body.push_str("</div></section>");
 
     // --- Beasts of legend -------------------------------------------------------------------
+    // (A world without myth has none: the part is left out and the later parts renumbered.)
+    let no_beasts = beasts.is_empty() && !crate::myth::on();
+    if !no_beasts {
     let _ = write!(toc, "<li><a href=\"#beasts\">Beasts of Legend<span>{}</span></a></li>", beasts.len());
     let _ = write!(body, "<section class=\"part\" id=\"beasts\"><p class=\"eyebrow\">Part the Fifth</p><h2>Beasts of Legend</h2><p class=\"part-intro\">The monsters that raided most often, and those whose lairs or carcasses changed the land.</p><div class=\"cards\">");
     for c in &beasts {
@@ -849,6 +852,7 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         let _ = write!(body, "<p class=\"fate\">{}</p>{}</article>", fate, written(Subject::Beast(c.id.0)));
     }
     body.push_str("</div></section>");
+    }
 
     // --- The land ---------------------------------------------------------------------------
     if let Some(eco) = &history.ecology {
@@ -929,6 +933,11 @@ pub fn render_journal(world: &WorldData, history: &WorldHistory, gaz: &Gazetteer
         body.push_str("</ul></section>");
     }
 
+    if no_beasts {
+        for (a, b) in [("Part the Sixth", "Part the Fifth"), ("Part the Seventh", "Part the Sixth"), ("Part the Eighth", "Part the Seventh"), ("Part the Ninth", "Part the Eighth")] {
+            body = body.replace(a, b);
+        }
+    }
     let chips: String = KINDS.iter().map(|(k, label)| format!("<button type=\"button\" class=\"chip k-{k}\" data-k=\"{k}\" aria-pressed=\"true\">{label}</button>")).collect();
     let title = format!("Annals of {}", world_name);
     format!(

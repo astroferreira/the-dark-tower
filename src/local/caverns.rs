@@ -32,6 +32,10 @@ const LIFE: [[&[&str]; 2]; LAYERS] = [
     [&["things that hunt by sound", "pale serpents", "giant rock grubs", "burrowing horrors"], &["pale serpents", "drowned crawlers", "blind giant crabs", "things that hunt by sound"]],
 ];
 
+/// What real caves hold, at every depth, without myth (`crate::myth`): no giant spiders,
+/// burrowing horrors or things that hunt by sound, and nothing among them hunts people.
+const REAL_LIFE: [&[&str]; 2] = [&["bats", "cave crickets", "glowworms", "cave beetles"], &["blind cave fish", "pale crabs", "cave salamanders", "cave shrimp"]];
+
 /// One layer as it lies under this embark.
 #[derive(Clone, Debug, Default)]
 pub struct Cavern {
@@ -188,12 +192,13 @@ pub(super) fn carve(map: &mut LocalMap, runs: &[[Option<Run>; LAYERS]], fields: 
             if flooded { continue; }
             let fl = map.idx(i, j, f as usize);
             let r = hash(gx, gy, 0xCA7E + k as u64);
-            if t > f + 1 && r < 0.05 + 0.08 * wet_c + 0.03 * k as f32 { map.cells[fl].plant = Plant::Tree(TreeKind::Fungus); fungus += 1; }
+            // (Fungus trees taller than a hut are myth: without it, cave moss.)
+            if t > f + 1 && r < 0.05 + 0.08 * wet_c + 0.03 * k as f32 && crate::myth::on() { map.cells[fl].plant = Plant::Tree(TreeKind::Fungus); fungus += 1; }
             else if r < 0.4 { map.cells[fl].plant = Plant::Grass; }
         }
         if !listed { continue; }
         let hk = |salt: u64| { let mut h = (tile.0 as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (tile.1 as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ salt ^ seed as u64; h ^= h >> 31; h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9); h ^ (h >> 29) };
-        let pool = LIFE[k][if wet > 0.45 { 1 } else { 0 }];
+        let pool = if crate::myth::on() { LIFE[k][if wet > 0.45 { 1 } else { 0 }] } else { REAL_LIFE[if wet > 0.45 { 1 } else { 0 }] };
         let mut life: Vec<String> = Vec::new();
         for s in 0..3u64 { let x = pool[(hk(0x11FE + s * 7 + k as u64) % pool.len() as u64) as usize]; if !life.iter().any(|l| l == x) { life.push(x.to_string()); } }
         out.push(Cavern {
@@ -202,8 +207,8 @@ pub(super) fn carve(map: &mut LocalMap, runs: &[[Option<Run>; LAYERS]], fields: 
         });
     }
     // A forgotten beast sleeps in the deepest layer with room (the same under a 3x3 block of
-    // world tiles: its seed is the block's).
-    if let Some(deep) = out.iter_mut().filter(|c| c.floor_cells >= 300).max_by_key(|c| c.layer) {
+    // world tiles: its seed is the block's). Only with myth.
+    if let Some(deep) = out.iter_mut().filter(|c| c.floor_cells >= 300 && crate::myth::on()).max_by_key(|c| c.layer) {
         let block = ((tile.0 / 3) as u64, (tile.1 / 3) as u64);
         let bseed = block.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ block.1.wrapping_mul(0xC2B2_AE3D_27D4_EB4F) ^ (seed as u64).wrapping_mul(0xFB);
         let mut spheres = vec!["darkness".to_string(), "earth".to_string()];

@@ -29,6 +29,9 @@ const OCEANIC_EXCESS_M_PER_KM: f32 = 121.0; // rho 2900 / 3300
 /// Elevation of equilibrium-thickness continental crust above the reference level.
 const CONTINENT_BASE_M: f32 = 500.0;
 const TRENCH_DEPTH_M: f32 = 3200.0;
+/// Revision 2's trench, cut after the blur: 4.5 km below the floor beside it at full
+/// subduction (the Mariana Trench lies ~5 km below the Pacific floor).
+const TRENCH_DEPTH_M_V2: f32 = 4500.0;
 /// Interior uplift: metres gained from the continental margin to the deep interior, over how
 /// many cells (at 512 wide), and the crust thickness that counts as continental for it.
 const INLAND_UPLIFT_M: f32 = 600.0;
@@ -66,7 +69,7 @@ pub fn generate_tectonic_terrain(
 ) -> TectonicTerrain {
     let mut rng = ChaCha8Rng::seed_from_u64(seeds.tectonics);
     let (plate_map, plates) = generate_plates(width, height, plates_count, style, &mut rng);
-    let land_fraction = if params.land_scale == 1.0 { style.target_land_fraction() } else { (style.target_land_fraction() * params.land_scale as f64).clamp(0.04, 0.75) };
+    let land_fraction = land_fraction_for(style, params.land_scale);
     let params = TectonicParams { target_land_fraction: land_fraction as f32, ..params.clone() };
     let mut sim = TectonicSim::new(&plate_map, &plates, &mut rng, &params);
     sim.run();
@@ -83,6 +86,12 @@ pub fn generate_tectonic_terrain(
     }
 }
 
+/// The share of the planet's surface left dry: the style's, scaled by the star system's water
+/// (`land_scale`, 1 for the Earth's).
+pub fn land_fraction_for(style: WorldStyle, land_scale: f32) -> f64 {
+    if land_scale == 1.0 { style.target_land_fraction() } else { (style.target_land_fraction() * land_scale as f64).clamp(0.04, 0.75) }
+}
+
 fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -90,8 +99,12 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
 
 /// Isostatic surface elevation (m, relative to the un-levelled reference) of a crustal column.
 pub fn isostatic_elevation_m(thickness_km: f32, age_myr: f32, volcanic_m: f32) -> f32 {
-    // Parsons & Sclater (1977) ocean-floor subsidence.
-    let depth = if age_myr < 70.0 {
+    // Parsons & Sclater (1977) ocean-floor subsidence; revision 2 the GDH1 plate model (Stein &
+    // Stein 1992: the same half-space sqrt(t) to 20 Myr, then flattening with e^(-0.0278 t)),
+    // which fits the Earth's old floor better (60 Myr: 5185 m, not 5427).
+    let depth = if !crate::terrain_rev::v1() {
+        if age_myr < 20.0 { 2600.0 + 365.0 * age_myr.max(0.0).sqrt() } else { 5651.0 - 2473.0 * (-0.0278 * age_myr).exp() }
+    } else if age_myr < 70.0 {
         2600.0 + 365.0 * age_myr.max(0.0).sqrt()
     } else {
         5651.0 - 2473.0 * (-age_myr / 36.0).exp()
@@ -128,9 +141,18 @@ fn blur(map: &Tilemap<f32>, passes: usize) -> Tilemap<f32> {
 
 fn ridged(noise: &Perlin, p: [f64; 3], freq: f64, octaves: u32) -> f32 {
     let (mut amp, mut f, mut sum, mut norm) = (1.0, freq, 0.0, 0.0);
+    // Revision 2: each octave weighted by the one before (Musgrave; `audit.md` 3.3), so crags
+    // grow on the crests and the valleys between stay smooth.
+    let weighted = !crate::terrain_rev::v1();
+    let mut weight = 1.0f64;
     for _ in 0..octaves {
         let n = 1.0 - noise.get([p[0] * f + 5.1, p[1] * f + 9.7, p[2] * f + 2.3]).abs();
-        sum += amp * n * n;
+        let mut n = n * n;
+        if weighted {
+            n *= weight;
+            weight = (n * crate::heightmap::RIDGE_GAIN).clamp(0.0, 1.0);
+        }
+        sum += amp * n;
         norm += amp;
         amp *= 0.5;
         f *= 2.1;
@@ -183,11 +205,111 @@ fn drain_to_ocean(map: &Tilemap<f32>, sea_level: f32, gradient: f32) -> Tilemap<
     out
 }
 
+/// Flexural parameter of the continental lithosphere (km) and the share of a thrust belt's
+/// excess height that shows as the foreland basin's depth beside a broad belt.
+const FLEXURE_ALPHA_KM: f32 = 110.0;
+const FORELAND_SHARE: f32 = 0.12;
+
+/// Foreland basins (`audit.md` 3.4): the load of thickened crust (its height above normal
+/// continental crust) bends the lithosphere over the flexural length, w(r) = w0 e^(-r/a)
+/// cos(r/a): a trough beside the belt (Ganges, Po, Llanos) and a low forebulge beyond. Airy
+/// isostasy already compensates the belt itself, so only the ground off the load moves.
+fn foreland_flexure(base: &mut Tilemap<f32>, thickness: &Tilemap<f32>) {
+    let (w, h) = (base.width, base.height);
+    let km = crate::erosion::landscape::tile_km(w);
+    let a = FLEXURE_ALPHA_KM / km;
+    let r_max = (2.4 * a).ceil() as i32;
+    if r_max < 1 || a < 0.35 { return; }
+    let load: Vec<f32> = thickness.iter().map(|(_, _, &t)| CONTINENT_M_PER_KM * (t - 38.0).max(0.0)).collect();
+    if load.iter().all(|&l| l == 0.0) { return; }
+    let rows: Vec<f32> = (0..h).map(|y| (std::f32::consts::FRAC_PI_2 - (y as f32 + 0.5) / h as f32 * std::f32::consts::PI).cos().max(0.15)).collect();
+    // Normalised so a load spread wider than the kernel deflects the ground under it by its
+    // full height (w0 = load).
+    let kernel = |r: f32| (-r / a).exp() * (r / a).cos();
+    let mut norm = 0.0f32;
+    for dy in -r_max..=r_max { for dx in -r_max..=r_max { norm += kernel(((dx * dx + dy * dy) as f32).sqrt()); } }
+    let mut out = vec![0.0f32; w * h];
+    for y in 0..h {
+        let c = rows[y];
+        let rx = ((r_max as f32 / c).ceil() as i32).min(w as i32 / 2);
+        for x in 0..w {
+            let i = y * w + x;
+            if load[i] > 300.0 || *thickness.get(x, y) < 20.0 { continue; }
+            let mut d = 0.0f32;
+            for dy in -r_max..=r_max {
+                let ny = y as i32 + dy;
+                if ny < 0 || ny >= h as i32 { continue; }
+                for dx in -rx..=rx {
+                    let r = ((dx as f32 * c).powi(2) + (dy * dy) as f32).sqrt();
+                    if r > r_max as f32 { continue; }
+                    let nx = (x as i32 + dx).rem_euclid(w as i32) as usize;
+                    let l = load[ny as usize * w + nx];
+                    if l > 0.0 { d += l * kernel(r) * c; }
+                }
+            }
+            out[i] = -FORELAND_SHARE * d / norm * (1.0 - smoothstep(0.0, 300.0, load[i]));
+        }
+    }
+    for (i, (_, _, e)) in base.iter_mut().enumerate() { *e += out[i]; }
+}
+
+/// How far pelagic sediment raises the sea floor (m) by `age_myr`: it builds up toward ~700 m
+/// (e-fold 80 Myr: the old Pacific's half a kilometre and more), and a column of sediment
+/// over water-filled crust stands at 0.4 of its thickness ((rho_m - rho_s) / (rho_m - rho_w)).
+pub fn sediment_lift_m(age_myr: f32) -> f32 {
+    0.4 * 700.0 * (1.0 - (-age_myr.max(0.0) / 80.0).exp())
+}
+
+/// The seafloor's ages remapped, in their order, to the Earth's steady-state age-area
+/// distribution (Parsons 1982): area falls linearly with age to nothing at 180 Myr (the
+/// oldest floor subducted), a mean of 60 Myr (the Earth's is ~64). The simulation spreads new
+/// floor at its ridges but subducts too little of the old: its oceans averaged 69-111 Myr with
+/// 10% or more at the 180 Myr cap, so the age-depth law sank half the ocean below 5.5 km. Area
+/// weighted (cos latitude); ties share their mean rank. Crust of 26 km and more is unchanged.
+pub fn steady_state_ages(crust: &CrustFields) -> Tilemap<f32> {
+    const T_MAX: f64 = 180.0;
+    let (w, h) = (crust.age_myr.width, crust.age_myr.height);
+    let rows = row_weights(h);
+    let mut out = crust.age_myr.clone();
+    let mut cells: Vec<(f32, usize)> = crust.age_myr.iter().enumerate()
+        .filter(|(i, _)| *crust.thickness_km.get(i % w, i / w) < 26.0)
+        .map(|(i, (_, _, &a))| (a, i)).collect();
+    if cells.is_empty() { return out; }
+    cells.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap().then(a.1.cmp(&b.1)));
+    let total: f64 = cells.iter().map(|&(_, i)| rows[i / w]).sum();
+    let mut below = 0.0f64;
+    let mut k = 0;
+    while k < cells.len() {
+        let mut j = k;
+        let mut group = 0.0;
+        while j < cells.len() && cells[j].0 == cells[k].0 { group += rows[cells[j].1 / w]; j += 1; }
+        let f = ((below + group * 0.5) / total).clamp(0.0, 1.0);
+        let age = (T_MAX * (1.0 - (1.0 - f).sqrt())) as f32;
+        for &(_, i) in &cells[k..j] { out.set(i % w, i / w, age); }
+        below += group;
+        k = j;
+    }
+    out
+}
+
+/// An orogenic plateau's ceiling: thickened crust spreads sideways rather than rising past
+/// ~4.5-5.5 km (Tibet, the Altiplano), so heights above 4.5 km approach 5.5 km.
+fn plateau_ceiling(e: f32) -> f32 {
+    if e <= 4500.0 { e } else { 4500.0 + 1000.0 * ((e - 4500.0) / 1000.0).tanh() }
+}
+
 /// Cells from each continental-crust cell to the nearest non-continental crust (0 elsewhere).
 fn continental_interior_distance(thickness: &Tilemap<f32>) -> Tilemap<f32> {
     use std::collections::VecDeque;
     let (w, h) = (thickness.width, thickness.height);
     let is_cont = |x: usize, y: usize| *thickness.get(x, y) >= INLAND_CRUST_KM;
+    if !crate::terrain_rev::v1() {
+        // Revision 2: the distance on the sphere (`audit.md` 3.2), not a square-stepped count.
+        let margin = (0..h).flat_map(|y| (0..w).map(move |x| (x, y))).filter(|&(x, y)| !is_cont(x, y));
+        let mut d = crate::tilemap::geodesic_distance(w, h, margin, |_, _| true);
+        for (_, _, v) in d.iter_mut() { if *v == f32::MAX { *v = 0.0; } }
+        return d;
+    }
     let mut dist = Tilemap::new_with(w, h, f32::MAX);
     let mut q = VecDeque::new();
     for y in 0..h {
@@ -230,6 +352,9 @@ fn distance_to_coast(elev: &Tilemap<f32>, sea_level: f32) -> Tilemap<f32> {
             }
         }
     }
+    if !crate::terrain_rev::v1() {
+        return crate::tilemap::geodesic_distance(w, h, q.drain(..), |_, _| true);
+    }
     while let Some((x, y)) = q.pop_front() {
         let d = *dist.get(x, y) + 1.0;
         for (nx, ny) in elev.neighbors_8(x, y) {
@@ -246,19 +371,41 @@ fn distance_to_coast(elev: &Tilemap<f32>, sea_level: f32) -> Tilemap<f32> {
 /// leaves `target_land_fraction` of the map dry.
 pub fn build_heightmap(crust: &CrustFields, seed: u64, target_land_fraction: f64) -> Tilemap<f32> {
     let (w, h) = (crust.thickness_km.width, crust.thickness_km.height);
+    let v2 = !crate::terrain_rev::v1();
+    // Revision 2: the seafloor's ages in the Earth's steady state (`steady_state_ages`).
+    let ages = if v2 { steady_state_ages(crust) } else { crust.age_myr.clone() };
 
     // Isostatic base, softened so the sharp continent/ocean step becomes a shelf and slope.
     let mut base = Tilemap::new_with(w, h, 0.0f32);
     for y in 0..h {
         for x in 0..w {
             let t = *crust.thickness_km.get(x, y);
-            let e = isostatic_elevation_m(t, *crust.age_myr.get(x, y), *crust.volcanic_m.get(x, y));
+            let e = isostatic_elevation_m(t, *ages.get(x, y), *crust.volcanic_m.get(x, y));
             // Trenches only cut un-thickened oceanic crust.
             let trench = if t < 12.0 { TRENCH_DEPTH_M * *crust.trench.get(x, y) } else { 0.0 };
-            base.set(x, y, e - trench);
+            // Revision 2: the trench is cut after the blur (which left a one-cell trench at a
+            // seventh of its depth: no ocean below 6 km), and old floor carries its sediment.
+            if v2 {
+                let ocean = 1.0 - smoothstep(14.0, 26.0, t);
+                base.set(x, y, e + ocean * sediment_lift_m(*ages.get(x, y)));
+            } else {
+                base.set(x, y, e - trench);
+            }
         }
     }
     let mut base = blur(&base, 2);
+    if v2 {
+        for (x, y, e) in base.iter_mut() {
+            if *crust.thickness_km.get(x, y) < 12.0 { *e -= TRENCH_DEPTH_M_V2 * *crust.trench.get(x, y); }
+        }
+    }
+    if v2 {
+        // Revision 2 (`audit.md` 3.4): the thrust belts' weight bends the plate beside them into
+        // a foreland basin (with a low bulge beyond), and thickened crust stops rising at an
+        // orogenic plateau's ceiling.
+        foreland_flexure(&mut base, &crust.thickness_km);
+        for (_, _, e) in base.iter_mut() { *e = plateau_ceiling(*e); }
+    }
 
     // Continental interiors stand higher than their margins (thicker, colder lithosphere and
     // long-wavelength dynamic support), giving every continent a gentle seaward slope. This
@@ -308,10 +455,34 @@ pub fn build_heightmap(crust: &CrustFields, seed: u64, target_land_fraction: f64
             elev.set(x, y, e);
         }
     }
+    if v2 {
+        // Fracture zones: transform faults' scars across the ocean floor from the ridges.
+        let km = crate::erosion::landscape::tile_km(w);
+        let mut ocean = ages.clone();
+        for (x, y, a) in ocean.iter_mut() { if *crust.thickness_km.get(x, y) >= 14.0 { *a = 200.0; } }
+        let zones = crate::heightmap::carve_fracture_zones(&mut elev, &ocean, 8.0, km, 450.0f32.max(4.0 * km), 1800.0f32.max(10.0 * km), seed);
+        if std::env::var("PLANET_TERRAIN_DEBUG").is_ok() { eprintln!("fracture zones: {zones}"); }
+    }
 
     // Sea level: pour in enough water to leave the target land fraction dry. Water stands only
     // where it joins the ocean, so closed hollows inland stay dry even below sea level.
     let sea_level = sea_level_for_land_fraction(&elev, target_land_fraction);
+    if std::env::var("PLANET_TERRAIN_DEBUG").is_ok() {
+        let mut a: Vec<f32> = ages.iter().filter(|(x, y, _)| *crust.thickness_km.get(*x, *y) < 14.0).map(|(_, _, &a)| a).collect();
+        a.sort_by(|p, q| p.partial_cmp(q).unwrap());
+        let q = |f: f32| a.get(((a.len() as f32 - 1.0) * f) as usize).copied().unwrap_or(0.0);
+        eprintln!("sea level {:+.0} m above the datum; ocean ages p10 {:.0} p50 {:.0} p90 {:.0} mean {:.0} Myr ({} cells)", sea_level, q(0.1), q(0.5), q(0.9), a.iter().sum::<f32>() / a.len().max(1) as f32, a.len());
+    }
+    // Revision 2: the ocean floor's depth is the age-depth law's below sea level, as it is
+    // measured on the Earth; the water poured in for the land fraction stood ~860 m above the
+    // law's datum and sank every abyss by as much (35-47% of the ocean below 6 km, Earth ~2%).
+    // The continents keep their height above the sea; the shift fades across the margin as the
+    // isostatic blend does (crust 14-26 km, blurred as the base was).
+    let ocean_lift = if v2 {
+        let mut wgt = Tilemap::new_with(w, h, 0.0f32);
+        for (x, y, &t) in crust.thickness_km.iter() { wgt.set(x, y, 1.0 - smoothstep(14.0, 26.0, t)); }
+        Some(blur(&wgt, 2))
+    } else { None };
 
     // Fractal coastline roughness in a band around the shoreline: breaks straight rift edges and
     // round volcanic islands into headlands, coves and islets. It is confined by distance to
@@ -321,15 +492,31 @@ pub fn build_heightmap(crust: &CrustFields, seed: u64, target_land_fraction: f64
     let band = COAST_BAND_CELLS * (w as f32 / 512.0).max(0.5);
     let coast = Perlin::new(s.wrapping_add(53));
     let mut out = Tilemap::new_with(w, h, 0.0f32);
+    let km = crate::erosion::landscape::tile_km(w);
     for (x, y, &v) in elev.iter() {
         let mut e = v - sea_level;
+        if let Some(l) = &ocean_lift { e += sea_level * *l.get(x, y); }
+        if v2 && e < 0.0 {
+            // Revision 2 (`audit.md` 3.5): past the shelf a passive margin falls as a steep
+            // continental slope to its foot at -3.2 km, and the turbidites shed down it build
+            // a rise that grades into the abyss over a few hundred km. Raise-only, so wide
+            // shelves on drowned continental crust stay; trench margins keep their trench.
+            let d_km = *coast_dist.get(x, y) * km;
+            let passive = 1.0 - smoothstep(0.1, 0.4, *crust.trench.get(x, y));
+            if d_km >= 80.0 && passive > 0.0 {
+                let apron = crate::heightmap::margin_depth(d_km, e);
+                if apron > e { e += (apron - e) * passive; }
+            }
+        }
         let p = cell_dir(x, y, w, h);
         let in_band = (-(*coast_dist.get(x, y) / band).powi(2)).exp();
         let gentle = (-(e / COAST_ROUGHNESS_FALLOFF_M).powi(2)).exp();
         e += COAST_ROUGHNESS_M * in_band * gentle * fbm(&coast, p, 7.0, 6);
         // Isostasy alone overshoots the very highest peaks; real ranges are limited by erosion
-        // and crustal strength, so compress the extreme tail.
-        out.set(x, y, if e > 4500.0 { 4500.0 + (e - 4500.0) * 0.55 } else { e });
+        // and crustal strength, so compress the extreme tail (above the plateau ceiling, where
+        // only the ridges' peaks reach, in revision 2).
+        let knee = if v2 { 5200.0 } else { 4500.0 };
+        out.set(x, y, if e > knee { knee + (e - knee) * 0.55 } else { e });
     }
 
     // Shallow hollows left by the detail relief would have silted up or been breached long ago;

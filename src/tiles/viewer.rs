@@ -401,6 +401,12 @@ pub fn colony_code(colony: &crate::colony::Colony) -> String {
 fn code_file(code: &str) -> String { code.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' }).collect() }
 
 /// The playable area and seed for a colony at a world tile's centre, or at a global cell.
+/// Whether the default embark on `tile` (`colony_site` with no cell) has dry land enough for a
+/// camp (`colony::habitable`).
+pub fn embark_habitable(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize)) -> bool {
+    crate::colony::livable(&colony_site(world, history, tile, None).0)
+}
+
 pub(crate) fn colony_site(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, usize), cell: Option<(u64, u64)>) -> (crate::local::LocalMap, u64, (f64, f64)) {
     let s = cells_per_tile() as f64;
     let zs = load_region(world, history, tile, world.seed());

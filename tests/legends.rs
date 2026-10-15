@@ -6,9 +6,13 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 
+/// The binary with myth and magic on (`--myth`, `crate::myth`): these tests are of the game's
+/// systems as they were, Shadow, beasts and all; the realistic default has its own tests.
+fn myth_cmd() -> Command { let mut c = Command::new(env!("CARGO_BIN_EXE_planet_generator")); c.env("PLANET_MYTH", "1").env_remove("PLANET_TERRAIN_V1"); c }
+
 /// Run the dev world in `cwd` (which holds a camp's legend) and write its legends to `cwd/out`.
 fn export(cwd: &Path, out: &str) -> String {
-    let run = Command::new(env!("CARGO_BIN_EXE_planet_generator"))
+    let run = myth_cmd()
         .current_dir(cwd)
         .args(["--dev", "--headless", "--legends", out])
         .output()
@@ -56,9 +60,10 @@ fn dev_legends_are_whole_linked_and_stable() {
     let (beast, treasure) = (first_of(&js, "beast"), first_of(&js, "treasure"));
     // An earlier camp that slew that beast and kept that treasure.
     std::fs::create_dir_all(cwd.join("colonies")).unwrap();
-    let camp = format!(r#"[{{"code": "76@45,12", "name": "the camp at 45,12", "tile": [45, 12], "day": 120, "alive": 5, "came": 7, "fate": "lives",
+    // (The dev world is seed 10 on the audited terrain, its embark 30,34.)
+    let camp = format!(r#"[{{"code": "10@30,34", "name": "the camp at 30,34", "tile": [30, 34], "day": 120, "alive": 5, "came": 7, "fate": "lives",
         "deeds": ["Day 52: Babagk drives a spear into {beast}, which does not rise."], "slain": ["{beast}"], "relic": "{treasure}, kept in the camp", "regards": []}}]"#);
-    std::fs::write(cwd.join("colonies/legends_76.json"), camp).unwrap();
+    std::fs::write(cwd.join("colonies/legends_10.json"), camp).unwrap();
     let stderr = export(cwd, "a");
     let dir = cwd.join("a");
     let files = read_all(&dir);

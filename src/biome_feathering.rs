@@ -111,10 +111,15 @@ pub fn compute_biome_feathering(
     let noise = Perlin::new(1).set_seed(seed as u32);
 
     // Step 1: Compute distance field from biome boundaries
-    let (depth_map, gradient_map) = compute_distance_field(biomes, config, &noise);
+    let (depth_map, gradient_map, nearest_foreign) = compute_distance_field(biomes, config, &noise);
 
-    // Step 2: Compute blend weights using Catmull-Rom interpolation
-    let blend_weights = compute_blend_weights(biomes, &depth_map, config, &noise);
+    // Step 2: Compute blend weights using Catmull-Rom interpolation (revision 1), or across
+    // the whole zone toward the nearest foreign biome (revision 2, `audit.md` 5.1)
+    let blend_weights = if crate::terrain_rev::v1() {
+        compute_blend_weights(biomes, &depth_map, config, &noise)
+    } else {
+        compute_zone_blend_weights(biomes, &depth_map, &nearest_foreign, config)
+    };
 
     BiomeFeatherMap {
         depth_map,
@@ -125,17 +130,20 @@ pub fn compute_biome_feathering(
 }
 
 /// Compute signed distance field from biome boundaries
+/// The third map is each cell's nearest foreign biome: at a boundary the commonest other
+/// biome among its neighbours, carried inland by the search (itself where nothing differs).
 fn compute_distance_field(
     biomes: &Tilemap<ExtendedBiome>,
     config: &FeatherConfig,
     noise: &Perlin,
-) -> (Tilemap<f32>, Tilemap<(f32, f32)>) {
+) -> (Tilemap<f32>, Tilemap<(f32, f32)>, Tilemap<ExtendedBiome>) {
     let width = biomes.width;
     let height = biomes.height;
 
     // Initialize with max distance
     let mut distance = Tilemap::new_with(width, height, f32::MAX);
     let mut gradient = Tilemap::new_with(width, height, (0.0f32, 0.0f32));
+    let mut foreign = biomes.clone();
 
     // Find all boundary cells (cells adjacent to different biome)
     let mut boundary_queue: VecDeque<(usize, usize, f32)> = VecDeque::new();
@@ -150,6 +158,7 @@ fn compute_distance_field(
             });
 
             if is_boundary {
+                foreign.set(x, y, commonest_foreign(biomes, x, y));
                 // Add Gaussian jitter to boundary depth
                 let jitter = gaussian_jitter(x, y, noise, config.gaussian_sigma, config.noise_frequency);
                 let depth = (jitter * config.noise_amplitude).max(0.0);
@@ -168,6 +177,10 @@ fn compute_distance_field(
 
             if new_dist < current_dist && new_dist < config.max_depth as f32 {
                 distance.set(nx, ny, new_dist);
+                // The same foreign biome lies beyond the same boundary (only within one biome:
+                // the search never crosses into another, those cells are boundaries themselves).
+                let f = *foreign.get(x, y);
+                foreign.set(nx, ny, f);
 
                 // Compute gradient (direction toward boundary)
                 let gx = x as f32 - nx as f32;
@@ -192,7 +205,66 @@ fn compute_distance_field(
         }
     }
 
-    (distance, gradient)
+    (distance, gradient, foreign)
+}
+
+/// The other biome most often among a cell's eight neighbours (ties to the first met).
+fn commonest_foreign(biomes: &Tilemap<ExtendedBiome>, x: usize, y: usize) -> ExtendedBiome {
+    let me = *biomes.get(x, y);
+    let mut counts: Vec<(ExtendedBiome, usize)> = Vec::new();
+    for (nx, ny) in biomes.neighbors_8(x, y) {
+        let b = *biomes.get(nx, ny);
+        if b == me { continue; }
+        match counts.iter_mut().find(|(c, _)| *c == b) { Some(e) => e.1 += 1, None => counts.push((b, 1)) }
+    }
+    counts.iter().fold(None, |best: Option<(ExtendedBiome, usize)>, &(b, n)| match best { Some((_, m)) if m >= n => best, _ => Some((b, n)) }).map_or(me, |(b, _)| b)
+}
+
+/// Blend weights across the whole feathering zone (`audit.md` 5.1; revision 1 looked only at a
+/// cell's eight neighbours, so past the first ring every cell was its own biome alone): the
+/// cell's own biome weighs 0.5 at the boundary rising smoothly to 1 at `max_depth`, and the rest
+/// goes to the foreign biomes, those among its neighbours at a boundary (by how many) or else
+/// the nearest one carried in from it, scaled by how well the two blend.
+fn compute_zone_blend_weights(
+    biomes: &Tilemap<ExtendedBiome>,
+    depth_map: &Tilemap<f32>,
+    nearest_foreign: &Tilemap<ExtendedBiome>,
+    config: &FeatherConfig,
+) -> Tilemap<Vec<(ExtendedBiome, f32)>> {
+    let (width, height) = (biomes.width, biomes.height);
+    let max = config.max_depth as f32;
+    let mut weights_map: Tilemap<Vec<(ExtendedBiome, f32)>> = Tilemap::new_with(width, height, Vec::new());
+    for y in 0..height {
+        for x in 0..width {
+            let depth = *depth_map.get(x, y);
+            let me = *biomes.get(x, y);
+            if depth >= max - 1.0 {
+                weights_map.set(x, y, vec![(me, 1.0)]);
+                continue;
+            }
+            let own = 0.5 + 0.5 * smooth_step(0.0, 1.0, depth / max);
+            let mut shares: Vec<(ExtendedBiome, f32)> = Vec::new();
+            for (nx, ny) in biomes.neighbors_8(x, y) {
+                let b = *biomes.get(nx, ny);
+                if b == me { continue; }
+                match shares.iter_mut().find(|(c, _)| *c == b) { Some(e) => e.1 += 1.0, None => shares.push((b, 1.0)) }
+            }
+            if shares.is_empty() {
+                let f = *nearest_foreign.get(x, y);
+                if f != me { shares.push((f, 1.0)); }
+            }
+            let total: f32 = shares.iter().map(|(_, n)| n).sum();
+            let mut weights: Vec<(ExtendedBiome, f32)> = shares.iter()
+                .map(|&(b, n)| (b, (1.0 - own) * biome_compatibility(me, b) * n / total.max(1.0)))
+                .filter(|(_, w)| *w > 0.01)
+                .collect();
+            let rest: f32 = weights.iter().map(|(_, w)| w).sum();
+            weights.push((me, 1.0 - rest));
+            weights.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            weights_map.set(x, y, weights);
+        }
+    }
+    weights_map
 }
 
 /// Compute blend weights for each tile based on neighboring biomes.
@@ -454,6 +526,21 @@ mod tests {
 
         // Water to land = low
         assert!(biome_compatibility(Ocean, Desert) < 0.3);
+    }
+
+    /// The blend reaches past the first ring (`audit.md` 5.1): three tiles in from a border
+    /// the other biome still has a share, smaller than at the border, and none deep inside.
+    #[test]
+    fn blending_spans_the_zone() {
+        use ExtendedBiome::*;
+        let (w, h) = (40, 10);
+        let mut b = Tilemap::new_with(w, h, TemperateForest);
+        for y in 0..h { for x in 20..w { b.set(x, y, BorealForest); } }
+        let config = FeatherConfig { noise_amplitude: 0.0, ..Default::default() };
+        let map = compute_biome_feathering(&b, &config, 1);
+        let share = |x: usize| map.get_biome_weights(x, 5).iter().find(|(k, _)| *k == BorealForest).map_or(0.0, |(_, v)| *v);
+        assert!(share(19) > share(16) && share(16) > 0.05, "border {} three in {}", share(19), share(16));
+        assert_eq!(share(10), 0.0, "deep inside (the map wraps: x = 0 is a border too)");
     }
 
     #[test]
