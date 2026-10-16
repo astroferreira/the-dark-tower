@@ -647,8 +647,10 @@ the Claude Doc "Ink graphics: sprites and examples".
 
 ## The region in ink: relief, ground, places (`region_ink.rs`; ROADMAP Stage 3, 2026-10-16)
 - `PLANET_EMBARK_PLACE="cave mouth"` (with `--local-snapshot`) embarks at the region's nearest
-  place of that kind, so a place seen in the region can be looked at in its embark (Stage 5/6;
-  `viewer::save_local_snapshots`).
+  place of that kind, or the nearest cell of a landform class by name ("dune", "beach"), so a
+  thing seen in the region can be looked at in its embark (Stage 5/6;
+  `viewer::save_local_snapshots`). In the walker, P hops to the nearest place not stood on
+  (nearest first; the status says its title and cause) and Enter embarks with it at the middle.
 - The walker's frame is drawn from the site layer as well as the fields: every landform has its
   ground (`ground_wash`: bare rock washed in its rock's colour through `local_ink::rock_wash`,
   pavements, playas, sand, lava, ash, ice and snow, the wet ground's greens) looked up through a

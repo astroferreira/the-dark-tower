@@ -4,8 +4,9 @@
 #
 #   scripts/gallery.sh [OUT_DIR] [WORLD_ARGS...]
 #
-# Sites come from $SITES ("X,Y X,Y ...") or, by default, the generation sites written in
-# CLAUDE.md for seed 42 at 512x256 under the Sun. For each site it runs --local-snapshot
+# Sites come from $SITES ("X,Y X,Y:place ...": a site may name a place or a landform to embark
+# on, "177,133:waterfall", "124,153:dune", through PLANET_EMBARK_PLACE) or, by default, the
+# twelve embarks of ROADMAP Stage 6 on seed 42 under the Sun. For each site it runs --local-snapshot
 # (the region in ink at 4 px, the embark's surface, the level below, the section) and --zoom
 # (the landform classes), then composes one contact sheet per world: rows are sites, columns
 # are the five views. The sheet is made with Pillow if python3 has it, else ImageMagick's
@@ -24,9 +25,8 @@ WORLD_ARGS=("$@")
 if [ ${#WORLD_ARGS[@]} -eq 0 ]; then
     if [ -f worlds/s42_sol.world ]; then WORLD_ARGS=(--load-world worlds/s42_sol.world); else WORLD_ARGS=(--seed 42 --star sol --width 512 --height 256); fi
 fi
-# The generation sites of seed 42 (CLAUDE.md, "Standard seeds"), when none are given.
-SITES=${SITES:-"$(grep -o 'generation sites (seed 42[^:]*): [^.]*' CLAUDE.md | head -1 | grep -oE '[0-9]+,[0-9]+' | tr '\n' ' ')"}
-if [ -z "$SITES" ]; then SITES="392,97 177,133 124,153 382,62 272,48 18,106"; fi
+# The twelve embarks of Stage 6 on seed 42 (a place or a ground each), when none are given.
+SITES=${SITES:-"177,133:waterfall 177,133:cave_mouth 177,133:long_barrow 399,67:henge 399,67:stone_circle 399,67:crannog 399,67:flint_mine 124,153:dune 194,172:beach 392,97:scree 384,88:lavafield 395,116:seacliff"}
 
 BIN=target/release/planet_generator
 [ -x "$BIN" ] || cargo build --release
@@ -34,14 +34,18 @@ mkdir -p "$OUT"
 export PLANET_CHUNK_CACHE=${PLANET_CHUNK_CACHE:-$PWD/.chunk_cache_main}
 
 rows=()
-for site in $SITES; do
+for entry in $SITES; do
+    site=${entry%%:*}
+    place=""
+    [ "$entry" != "$site" ] && place=${entry#*:} && place=${place//_/ }
     tag=${site/,/_}
-    echo "== $site"
-    "$BIN" "${WORLD_ARGS[@]}" --headless --no-history --local-snapshot "$OUT/s$tag" --tiles-center "$site" 2>&1 | grep -E "^Site|^Relief|Region in ink:" || true
+    [ -n "$place" ] && tag="${tag}_${place// /_}"
+    echo "== $site ${place:+at $place}"
+    PLANET_EMBARK_PLACE="$place" "$BIN" "${WORLD_ARGS[@]}" --headless --no-history --local-snapshot "$OUT/s$tag" --tiles-center "$site" 2>&1 | grep -E "^Site|^Relief|^Embarking|^Place:|Region in ink:" || true
     "$BIN" "${WORLD_ARGS[@]}" --headless --no-history --zoom "$site" --map-output-dir "$OUT" 2>&1 | grep -E "landforms:" || true
     zoom=$(ls "$OUT"/zoom_*_"${site/,/_}"_landforms.png 2>/dev/null | head -1 || true)
     below=$(ls "$OUT"/s${tag}_z*.png 2>/dev/null | sort | sed -n 2p || true)
-    rows+=("$site|$OUT/s${tag}_region_4px.png|${zoom:-}|$OUT/s${tag}_surface.png|${below:-}|$OUT/s${tag}_section.png")
+    rows+=("$entry|$OUT/s${tag}_region_4px.png|${zoom:-}|$OUT/s${tag}_surface.png|${below:-}|$OUT/s${tag}_section.png")
 done
 
 SHEET="$OUT/gallery.png"

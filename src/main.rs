@@ -788,6 +788,12 @@ struct Args {
     /// --zoom-tiles, --zoom-scale and --zoom-erosion like --zoom
     #[arg(long, value_name = "X,Y")]
     places: Option<String>,
+
+    /// Views agree (ROADMAP Stage 6): make the embark round each carvable place of the region
+    /// round world tile "X,Y" and check it shows the place at its middle; print the tally
+    /// ("views agree: A of B") and exit. Takes --zoom-tiles etc. like --zoom
+    #[arg(long, value_name = "X,Y")]
+    views_agree: Option<String>,
 }
 
 /// Seed, size and peoples of `--dev`, the small development world. Seed 10 was picked by a
@@ -1814,6 +1820,38 @@ fn main() {
                 print!("{}", region::sites::names::listing(&zoom, t0.elapsed().as_secs_f32()));
             }
             _ => eprintln!("--places expects \"X,Y\" (a world tile inside {}x{}), got '{}'", width, height, spec),
+        }
+        std::process::exit(0);
+    }
+
+    // Views agree: every place the region lists is carved in its embark at that cell
+    // (`local::sites::shows`).
+    if let Some(spec) = &args.views_agree {
+        let parts: Vec<_> = spec.split(',').map(|p| p.trim().parse::<usize>()).collect();
+        match parts.as_slice() {
+            [Ok(x), Ok(y)] if *x < width && *y < height => {
+                let params = region::zoom::ZoomParams {
+                    center_x: *x, center_y: *y, tiles: args.zoom_tiles.max(1),
+                    cells_per_tile: args.zoom_scale, erosion_iterations: args.zoom_erosion, seed: master_seed,
+                };
+                let _ = (world_data.soils(), world_data.resources());
+                let zoom = region::zoom::generate_zoom(&world_data, &params);
+                let s = (zoom.params.cells_per_tile.max(8) & !1) as i64;
+                let (tx, ty) = ((zoom.world_x0 * s) as f64, (zoom.world_y0 * s) as f64);
+                let (mut agree, mut judged) = (0usize, 0usize);
+                let mut failed: Vec<String> = Vec::new();
+                for p in &zoom.places {
+                    let (px, py) = (p.x - tx + 0.5, p.y - ty + 0.5);
+                    if px < 2.0 || py < 2.0 || px > zoom.width as f64 - 2.0 || py > zoom.height as f64 - 2.0 { continue; }
+                    let map = local::generate_local(&world_data, &zoom, None, px, py);
+                    let Some(ok) = local::sites::shows(&map, p.kind) else { continue };
+                    judged += 1;
+                    if ok { agree += 1; } else { failed.push(format!("{} at {:.0},{:.0}", p.title(), p.x, p.y)); }
+                }
+                println!("views agree: {agree} of {judged} places of the region round {x},{y} are shown in their embarks");
+                for f in failed.iter().take(40) { println!("  not shown: {f}"); }
+            }
+            _ => eprintln!("--views-agree expects \"X,Y\" (a world tile inside {}x{}), got '{}'", width, height, spec),
         }
         std::process::exit(0);
     }

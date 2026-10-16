@@ -32,6 +32,10 @@ cargo build --release
 # Generation work (the roadmap's loop): a world without history, the region and an embark
 cargo run --release -- --seed 42 --star sol --no-history          # the viewer; Z walks the region, Enter embarks
 cargo run --release -- --dev --headless --local-snapshot cave --tiles-center 42,32   # region (ink), surface, levels, section as PNG
+PLANET_EMBARK_PLACE="long barrow" cargo run --release -- --load-world worlds/s42_sol.world --headless --no-history --local-snapshot out/b --tiles-center 177,133   # embark at a place (or a ground: "dune")
+cargo run --release -- --load-world worlds/s42_sol.world --headless --no-history --places 177,133        # a region's places by age
+cargo run --release -- --load-world worlds/s42_sol.world --headless --no-history --views-agree 177,133   # every place shown in its embark?
+scripts/gallery.sh out/gallery                                                       # twelve embarks on seed 42, one sheet
 cargo run --release -- --seed 42 --star sol --headless --no-history --gazetteer       # named features and landmarks
 cargo run --release --bin terrain_lab -- 42 512 256 earthlike out  # per-stage metrics and images (src/erosion/CLAUDE.md)
 

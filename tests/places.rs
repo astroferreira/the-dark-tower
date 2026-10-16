@@ -47,3 +47,14 @@ fn places_do_not_depend_on_the_window() {
     let either: f32 = it.next().unwrap().trim().parse().unwrap();
     assert!(either == 0.0 || both / either >= 0.95, "places agree {both} of {either}:\n{agree}");
 }
+
+/// Every carvable place of the dev cave region is shown in its embark at its cell (ROADMAP
+/// Stage 6: views agree).
+#[test]
+fn views_agree() {
+    let text = run(cmd().args(["--dev", "--headless", "--no-history", "--views-agree", "42,32"]));
+    let line = text.lines().find(|l| l.starts_with("views agree:")).expect("the tally");
+    let a: f32 = line.split(' ').nth(2).unwrap().parse().unwrap();
+    let b: f32 = line.split(" of ").nth(1).unwrap().split(' ').next().unwrap().parse().unwrap();
+    assert!(b >= 5.0 && a / b >= 0.8, "{line}\n{text}");
+}

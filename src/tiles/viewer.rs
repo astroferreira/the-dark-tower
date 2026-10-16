@@ -1353,6 +1353,19 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
                 if pressed(Key::F) { px_per_cell = 4.0; dirty = true; }
                 if pressed(Key::K) { show_key = !show_key; dirty = true; }
+                // P walks to the nearest place not stood on (nearest first, so presses hop from
+                // place to place), set on its cell's middle so Enter embarks with it at the
+                // embark's middle (ROADMAP Stage 6: find a thing in the ink, go to it, go in).
+                if pressed(Key::P) {
+                    let mut near: Vec<(f64, &crate::region::plan::Place)> = z.region.places.iter()
+                        .map(|p| (((p.x + 0.5 - player.0).powi(2) + (p.y + 0.5 - player.1).powi(2)).sqrt(), p)).collect();
+                    near.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                    match near.iter().find(|(d, _)| *d > 1.5) {
+                        Some((d, p)) => { player = (p.x + 0.5, p.y + 0.5); status = format!("{}, {:.0} cells on: {}", p.title(), d, p.cause); }
+                        None => status = "No place in this region".into(),
+                    }
+                    dirty = true;
+                }
                 // [ and ] make the region smaller or larger (made again round the walker, on the
                 // worker, as when walking on).
                 let resize = if pressed(Key::LeftBracket) { -1 } else if pressed(Key::RightBracket) { 1 } else { 0 };
@@ -3925,7 +3938,23 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
                 .min_by(|a, b| ((a.0 - ex).powi(2) + (a.1 - ey).powi(2)).partial_cmp(&((b.0 - ex).powi(2) + (b.1 - ey).powi(2))).unwrap_or(std::cmp::Ordering::Equal));
             match best {
                 Some((px, py, p)) => { println!("Embarking at {} (region cell {:.1},{:.1}; {})", p.title(), px, py, p.cause); (px, py) }
-                None => { println!("No place like '{want}' in the region"); (ex, ey) }
+                None => {
+                    // No such place: the nearest cell of a landform class of that name ("dune",
+                    // "beach", "bog", "scree"...), away from the window's edge.
+                    let r = &zs.region;
+                    let mut best: Option<(f64, usize)> = None;
+                    for (k, l) in r.landform.iter().enumerate() {
+                        if !format!("{l:?}").to_lowercase().contains(&want) { continue; }
+                        let (x, y) = ((k % r.width) as f64, (k / r.width) as f64);
+                        if x < 3.0 || y < 3.0 || x > r.width as f64 - 4.0 || y > r.height as f64 - 4.0 { continue; }
+                        let d = (x - ex).powi(2) + (y - ey).powi(2);
+                        if best.map_or(true, |b| d < b.0) { best = Some((d, k)); }
+                    }
+                    match best {
+                        Some((_, k)) => { let (x, y) = ((k % r.width) as f64 + 0.5, (k / r.width) as f64 + 0.5); println!("Embarking on {:?} ground (region cell {:.1},{:.1})", r.landform[k], x, y); (x, y) }
+                        None => { println!("No place or ground like '{want}' in the region"); (ex, ey) }
+                    }
+                }
             }
         }
         None => (ex, ey),

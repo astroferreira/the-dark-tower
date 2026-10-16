@@ -22,6 +22,8 @@ pub mod site;
 pub mod places;
 pub mod caverns;
 pub mod caves;
+pub mod ground;
+pub mod sites;
 pub mod audit;
 
 use noise::{NoiseFn, Perlin};
@@ -670,8 +672,55 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     // Ore deposits within a couple of world tiles feed veins in the rock below.
     let veins = vein_sources(world, world_tile, &region.params);
 
+    // The waterfalls' steps (ROADMAP Stage 6): the region's heights carry each fall as one
+    // cell's drop, which the bicubic spreads over the cell; here the ground downstream of the
+    // lip's centre is taken straight down to the pool's level, so the fall stands at the
+    // place's cell (`fall_adjust`, a pure function of position).
+    let falls: Vec<(f64, f64, f64, f64, f32, f64)> = region.places.iter().filter(|p| p.kind == crate::region::plan::PlaceKind::Waterfall).filter_map(|p| {
+        let (lx, ly) = (p.x - (region.world_x0 * s) as f64, p.y - (region.world_y0 * s) as f64);
+        if (lx - cx).abs() > 3.0 || (ly - cy).abs() > 3.0 { return None; }
+        let (li, lj) = (lx.round() as i64, ly.round() as i64);
+        if li < 0 || lj < 0 || li >= rw as i64 || lj >= rh as i64 { return None; }
+        let k = lj as usize * rw + li as usize;
+        // The pool: the greatest fall within three receivers (as `sites::water` picked it).
+        let (mut r, mut pool, mut drop) = (k, k, 0.0f32);
+        for _ in 0..3 {
+            let next = region.receiver[r] as usize;
+            if next == r || next >= rw * rh { break; }
+            r = next;
+            let d = region.elevation_m[k] - region.elevation_m[r];
+            if d > drop { drop = d; pool = r; }
+            if region.elevation_m[r] <= 0.0 || region.lake_depth_m[r] > 0.0 { break; }
+        }
+        // The world's drop where the region's erosion smoothed the knickpoint (`sites::water`
+        // keeps the pool at the deeper of the two).
+        if let Some(z) = p.z_m { drop = drop.max(region.elevation_m[k] - z); }
+        if pool == k || drop < 1.0 { return None; }
+        let (pi, pj) = ((pool % rw) as f64, (pool / rw) as f64);
+        let (dx, dy) = (pi - li as f64, pj - lj as f64);
+        let len = (dx * dx + dy * dy).sqrt().max(1e-6);
+        Some((li as f64 + 0.5, lj as f64 + 0.5, dx / len, dy / len, drop, len))
+    }).collect();
+    let fall_adjust = |zx: f64, zy: f64| -> f32 {
+        let mut adj = 0.0f32;
+        for &(lx, ly, dx, dy, drop, len) in &falls {
+            let (ax, ay) = (zx - lx, zy - ly);
+            let along = ax * dx + ay * dy;
+            let across = (ax * dy - ay * dx).abs();
+            if across > 1.0 || along <= 0.0 || along >= len { continue; }
+            adj += (smoothstep(0.0, len as f32, along as f32) - 1.0) * drop;
+        }
+        adj
+    };
+    // The ground's vocabulary from the landform classes (`ground.rs`): the wind for the dunes'
+    // waves, the noise for broken ground and rills.
+    let lat_deg = (90.0 - ((region.world_y0 * s) as f64 + cy) / (s as f64 * world.height as f64) * 180.0) as f32;
+    let wind = ground::wind_at(lat_deg);
+    let landform_noise = Perlin::new(seed.wrapping_add(708));
+    let warp_noise = Perlin::new(seed.wrapping_add(709));
+
     // Per-column surface, water level and climate.
-    struct Col { e: f32, base: f32, water_level: Option<f32>, temp: f32, moist: f32, slope: f32, river_d: f32, river_hw: f32, river_w: f32, sea: bool }
+    struct Col { e: f32, base: f32, water_level: Option<f32>, temp: f32, moist: f32, slope: f32, river_d: f32, river_hw: f32, river_w: f32, sea: bool, gr: Option<ground::GroundRule> }
     let mut cols: Vec<Col> = Vec::with_capacity(n * n);
     let mut mountains = 0.0f32;
     for j in 0..n {
@@ -679,10 +728,14 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let zx = cx + (i as f64 + 0.5 - n as f64 / 2.0) * tile_cells;
             let zy = cy + (j as f64 + 0.5 - n as f64 / 2.0) * tile_cells;
             let (mx, my) = (ox_m + zx * cell_m, oy_m + zy * cell_m);
-            let base = bicubic(&region.elevation_m, rw, rh, zx, zy);
+            let base = bicubic(&region.elevation_m, rw, rh, zx, zy) + fall_adjust(zx, zy);
             let gx = (bicubic(&region.elevation_m, rw, rh, zx + 0.5, zy) - bicubic(&region.elevation_m, rw, rh, zx - 0.5, zy)) / cell_m as f32;
             let gy = (bicubic(&region.elevation_m, rw, rh, zx, zy + 0.5) - bicubic(&region.elevation_m, rw, rh, zx, zy - 0.5)) / cell_m as f32;
             let slope = (gx * gx + gy * gy).sqrt();
+            // The landform under the column (through a jitter of half a cell, so class borders
+            // are ragged) and what it asks of the ground.
+            let (land, land_rock) = ground::landform_at(region, zx, zy, mx, my, &warp_noise, span_m);
+            let gr = ground::rule(land, land_rock);
             let temp = bilinear(&region.temperature_c, rw, rh, zx, zy);
             let moist = bilinear(&region.moisture, rw, rh, zx, zy);
 
@@ -712,6 +765,12 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let m_amp = mountain_at(mx, my);
             mountains = mountains.max(m_amp);
             e += terrace(m_amp, mx, my) * calm;
+            if let Some(g) = gr {
+                if g.relief != ground::Relief::None {
+                    let sl = (gx * gx + gy * gy).sqrt().max(1e-6);
+                    e += ground::relief_at(g.relief, mx, my, wind, (gx as f64 / sl as f64, gy as f64 / sl as f64), &landform_noise, span_m) * calm;
+                }
+            }
 
             let mut water_level = None;
             let bank = (hw * 0.8).max(2.0);
@@ -736,11 +795,18 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
                 e = e.min(bed);
                 water_level = Some(level);
             }
+            // Pools in the hollows of wet ground (bog, fen, marsh, backswamp, tidal flats): the
+            // water line a little under the smooth ground, so the low cells of the relief fill.
+            if let (Some(g), None) = (gr, water_level) {
+                if let Some(pm) = g.pools_m {
+                    if base > 0.5 && e < base - pm { water_level = Some(base - pm); }
+                }
+            }
             let sea = base <= 0.0 || e < 0.0 && water_level.is_none() && base < 2.0;
             if sea {
                 water_level = Some(0.0);
             }
-            cols.push(Col { e, base, water_level, temp, moist, slope, river_d, river_hw: if river_w > 0.0 { hw } else { 0.0 }, river_w, sea });
+            cols.push(Col { e, base, water_level, temp, moist, slope, river_d, river_hw: if river_w > 0.0 { hw } else { 0.0 }, river_w, sea, gr });
         }
     }
 
@@ -857,12 +923,13 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
 
             // Soil: the world tile's soil depth, thinner on slopes, none on cliffs; deeper by the
             // river where floods lay silt.
-            let soil_levels = if c.slope > 0.9 {
+            let mut soil_levels = if c.slope > 0.9 {
                 0
             } else {
                 let levels = soil_depth_m / Z_STEP_M + if near_river { 1.0 } else { 0.0 };
                 (levels.min(8.0) * (1.0 - c.slope * 1.1).clamp(0.15, 1.0)).round().max(1.0) as i32
             };
+            if let Some(m) = c.gr.and_then(|g| g.soil_max) { soil_levels = soil_levels.min(m); }
             use crate::soils::SoilKind as SK;
             let soil = if near_river || c.sea && c.e > -3.0 {
                 if hash(gtx, gty, 1) < 0.5 { Material::Sand } else { Material::Gravel }
@@ -916,6 +983,13 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             } else {
                 soil
             };
+            // The landform's own floor (bare rock on a cliff, sand on a dune, gravel on scree,
+            // clay on a playa) where the class sets one.
+            let floor_material = match c.gr.and_then(|g| g.floor) {
+                Some(m) if !underwater && !glacier && c.temp >= -2.0 => m,
+                _ => floor_material,
+            };
+            let (tree_mul, shrub_mul, grass_ok, boulder_add) = c.gr.map_or((1.0, 1.0, true, 0.0), |g| (g.trees, g.shrubs, g.grass, g.boulders));
             // What grows follows the world's biome for the tile this column lies on (looked up
             // through a jitter so tile borders blend), so a desert embark is a desert and the
             // caused landscapes (dead woods, ashlands, bone fields...) are drawn as what they are;
@@ -931,16 +1005,16 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let r = hash(gtx, gty, 7);
             let plant = if underwater || near_river || matches!(floor_material, Material::Ice | Material::Rock(_)) {
                 Plant::None
-            } else if r < tree_density * grove {
+            } else if r < tree_density * grove * tree_mul {
                 Plant::Tree(species[(hash(gtx, gty, 9) * species.len() as f32) as usize % species.len()])
-            } else if r < tree_density * grove + shrub_density {
+            } else if r < tree_density * grove * tree_mul + shrub_density * shrub_mul {
                 Plant::Shrub
-            } else if matches!(floor_material, Material::Soil | Material::Clay) && c.moist > 0.12 && c.temp > -3.0 {
+            } else if grass_ok && matches!(floor_material, Material::Soil | Material::Clay) && c.moist > 0.12 && c.temp > -3.0 {
                 Plant::Grass
             } else {
                 Plant::None
             };
-            let boulder = !underwater && plant == Plant::None && hash(gtx, gty, 11) < 0.004 + 0.06 * smoothstep(0.2, 0.8, c.slope);
+            let boulder = !underwater && plant == Plant::None && hash(gtx, gty, 11) < 0.004 + 0.06 * smoothstep(0.2, 0.8, c.slope) + boulder_add;
             let k = map.idx(i, j, sz as usize);
             map.cells[k] = Cell { shape: Shape::Floor, material: floor_material, water: 0, plant, boulder };
 
@@ -1079,7 +1153,10 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     }
     // The caves the region planned (`caves.rs`), cut in absolute levels so neighbouring embarks
     // share them; they are places too.
-    let planned_caves = caves::carve(&mut map, region, cx, cy);
+    let mut planned_caves = caves::carve(&mut map, region, cx, cy);
+    // The region's places made at their columns (`sites.rs`): mounds, stones, banks and
+    // ditches, ruined walls, shafts, bones, springs.
+    planned_caves.extend(sites::carve(&mut map, region, cx, cy, region.params.seed));
     site::furnish(&mut map, &battles);
     // Something down there: lairs, tombs, old mines and caves, each with its cause.
     {

@@ -10,15 +10,28 @@ Survey (`--region-survey`, `--place-census`, `--survey-find`, `scripts/gallery.s
 marks, glyphs, labels, the key), places (natural wonders, the ages before, names), caves as
 graphs planned in the region and carved in the embark, caverns as rooms and passages.
 
-## Stage 6: the embark worth a look, and exploring it (now)
-- [ ] The embark's surface from the landform classes: outcrops, cliff faces off the mountains,
-      scree, boulder fields, dunes, playa, beach, bog, reed beds, gravel bars, fords, oxbows.
-- [ ] Carve the places: barrow mounds, stone circles, standing stones, hill-fort ramparts,
-      enclosures' banks, lynchets, cairns, kill-site bones, middens, flint-mine shafts; cave
-      shafts the colony can climb.
-- [ ] `views_agree`: a place's region cell is its embark's carving (`PLANET_EMBARK_PLACE`).
-- [ ] The viewer: place labels and an inspector line in walking mode; "embark here" on a place.
-- [ ] The gallery of twelve sites (region, surface, a level, the section) looked at.
+## Stage 6: the embark worth a look, and exploring it (done 2026-10-16; notes in `src/local/CLAUDE.md`)
+The ground from the landform classes (`local/ground.rs`), the waterfall's step, every region
+place carved at its column (`local/sites.rs`), `--views-agree X,Y` (seed 42: 96% and 95% of a
+window's places shown in their embarks; the dev world 88%) and its test, P in the walker,
+`PLANET_EMBARK_PLACE` for places and grounds, the gallery of twelve embarks
+(`scripts/gallery.sh`).
+
+## Stage 6 follow-ups
+- [ ] Fords and crannogs miss where the river or the lake does not cross the embark's middle
+      (the place sits on the cell, the water a few hundred metres off): put the ford on the
+      channel's nearest column and the crannog on the lake's nearest shallows.
+- [ ] A place inspector in the walker and the embark (name, kind, why here, what it holds,
+      what was found); "embark here" from the world map's wonders; a world code that lands on
+      a place.
+- [ ] The river at 2 m beyond the falls and the ford: riffles and pools, gravel bars on the
+      inside of bends, undercut banks, the levee as a ridge.
+- [ ] The coast at 2 m: rock pools, wrack, the cliff's ledges.
+- [ ] Mounds read as stepped diamonds at 2 m levels; a barrow wants a rounder profile (half
+      levels are not drawn) or a drawn hummock in the ink.
+- [ ] Lynchets and cairn lines on hillsides; the rock shelter's hearth; the midden's shells as
+      a material.
+- [ ] A blind review of the gallery (7+/10 is the exit).
 
 ## Follow-ups from Stages 4-5
 - [ ] `--survey-find` lacks a limestone plateau, a glaciated valley and a rift lake on seed 42.

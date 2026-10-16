@@ -363,3 +363,64 @@ the zoomed region around a point.
   15,144 floor cells; sections show rooms joined by narrow winding passages instead of blobs
   alone. Not done: an underground lake fed by the karst's shafts, a river that resurges, a
   chasm; ice and talus caves and mine adits.
+
+## The embark worth a look (`local/ground.rs`, `sites.rs`; ROADMAP Stage 6, 2026-10-16)
+- The ground from the landform classes (`ground.rs`): each column reads the region's landform
+  at its cell through a smooth warp of up to a third of a cell (`landform_at`; a hashed
+  per-block jitter had made 4-column squares at class borders) and `ground::rule(class, rock)`
+  says what the ground is at 2 m: bare rock of the surface rock on cliffs, outcrops, tors,
+  aretes, columnar basalt and sea cliffs (no soil, no trees, broken ground); gravel and
+  boulders on scree (a quarter of the floor), moraine and drumlins, fans and outwash;
+  limestone pavement and desert pavement bare; sand on dunes, sand seas and coastal dunes with
+  the dunes' waves (`Relief::Dunes`: crests across the wind, 60 m apart and up to 3.5 m, a
+  slip face on the lee, bent by noise; the wind from the belts, `wind_at`), on beaches, spits
+  and bars; clay on playas (flat, bare), badlands and yardangs with rills down the slope
+  (`Relief::Rills`); basalt on lava fields, ash on ash plains, gravel on thermal ground, craters
+  and cinder cones; the bog's, fen's, marsh's, backswamp's and tidal flat's clay with pools in
+  the hollows (`pools_m`: the water line a little under the smooth ground, so the relief's
+  low cells fill; roughly a quarter to a third of a bog); the braided river's gravel bars; the
+  floodplain's and terrace's soil, the levee's wood. Plants and boulders scale per class
+  (`trees`, `shrubs`, `grass`, `boulders`); the heights still come from the region. The lakes,
+  oxbows, tarns and deltas carry themselves; gorges, falls, dolines and sinks are the heights'.
+- The waterfall's step (`generate_local`, `fall_adjust`): the region carries each fall as its
+  cells' drop, which the bicubic spreads over them (and its erosion has often smoothed the
+  world's knickpoint to a few metres); the ground downstream of the lip's centre (the place's
+  cell) is taken straight down to the pool's level, the pool being the greatest fall within
+  three receivers as `sites::water` picked it, and the drop the deeper of the region's and the
+  world's (`Place::z_m` keeps the pool at the world's drop below the lip), across the valley's
+  width (one cell) only; a pure function of position, so neighbours agree. The river's water
+  level follows the bed, so the fall and the plunge pool stand in the section.
+- The places carved (`sites.rs`, after the caves, before `furnish` and `places::place`):
+  every region place on or near the embark is made at its column (`caves::place_column`):
+  a long barrow a mound 30 x 10 m, two levels, with a passage and chamber at the old ground
+  from a notch at its east end (an `UnderPlace` of kind `Tomb` named for the place, so it is
+  found and explored as the chronicle's are); round barrows along their ridgeway's cells or
+  four round the place; a shell midden a low gravel mound; stone circles (10-19 standing
+  stones, `Feature::Stone`, 16-28 m across), standing stones and dolmens; a henge a bank with
+  the ditch inside and two gaps, an enclosure a bank with the ditch outside and five gaps, a
+  hill fort a rampart and ditch 50-70 m across with a gate and 3-5 hut rings of stones;
+  clearance cairns 6-11 heaps of boulders; kill sites, bone beds and fossil beds scattered
+  bones; a flint mine 2-4 shafts and copper workings one, each an old mine on levels
+  (`places::layout` `OldMine`, an `UnderPlace`); a quarry an open cut two levels deep with
+  spoil; a crannog the lake's bed raised to the water in a 20 m disc of gravel and timber with
+  a causeway to the nearest dry shore; a watchtower and a mill ruined walls of dressed stone
+  (`ruin_walls`: 40% and 30% fallen, a doorway south); a drowned village four house rings on
+  the lake bed; a ford a gravel bar across the channel at a wade's depth; a ridgeway a trail
+  (`Feature::Trail`) and a causeway split logs (`Material::Wood`) along the place's cells;
+  springs of every kind `Feature::Spring`; erratics, boulder fields, petrified forests, rock
+  art boulders; a tor a granite stack two levels high; a giant tree; a cave mouth, painted
+  cave or rock shelter without a planned graph a short cave of its own (`places::layout`
+  `Cave`). Everything is keyed on the place's cell and the column's place, so neighbouring
+  embarks carve one place alike; the ground is never cut where water lies.
+- Views agree: `--views-agree X,Y` makes the embark round every carvable place of the region
+  (in process, ~0.1 s each) and asks `sites::shows(map, kind)` whether the kind's own sign
+  stands at the embark's middle (a mound a level over the ring round it, 8+ standing stones,
+  a bank and a ditch, 10+ boulders, bones, an old mine or cave with its mouth near the middle,
+  wood on the water, dressed stone, a ford's shallows, a trail, a spring, a two-level step in
+  the water for a fall) and prints "views agree: A of B"; `tests/places.rs::views_agree` asks
+  80% on the dev cave region.
+- Looking: `PLANET_EMBARK_PLACE="<text>"` now also takes a landform class by name ("dune",
+  "beach", "scree", "lavafield", "seacliff": the nearest cell of that class) when no place
+  matches; `scripts/gallery.sh` renders Stage 6's twelve embarks (`SITES` entries
+  "X,Y:place_or_ground"). In the walker, P hops to the nearest place (its title and cause in
+  the status; Enter then embarks with it at the middle).

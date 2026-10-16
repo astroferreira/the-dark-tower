@@ -153,7 +153,9 @@ pub fn plan(f: &RegionFields, _land: &[Landform], rock: &[RockType], core: Core,
             if let Some((k, d, pool)) = best {
                 let (ax, ay) = at(k);
                 let mut p = Place::point(PlaceKind::Waterfall, ax as f64, ay as f64, tile);
-                p.z_m = Some(f.h[pool]);
+                // The pool's height: the region's, or the world's drop below the lip where the
+                // region's erosion has smoothed the knickpoint (the embark cuts the step to it).
+                p.z_m = Some(f.h[pool].min(f.h[k] - wf.drop_height));
                 p.rank = world_rank(&drops, wf.drop_height);
                 // Why here: hard rock at the lip over softer rock a tile downstream (Niagara's
                 // dolomite over shale), else the knickpoint the world's river makes leaving the
