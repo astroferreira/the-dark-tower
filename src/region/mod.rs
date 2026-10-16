@@ -13,6 +13,7 @@ pub mod plan;
 pub mod landforms;
 pub mod sites;
 pub mod debug;
+pub mod survey;
 
 pub use handshake::{
     TileHandshake, RegionHandshake, WorldHandshakes,

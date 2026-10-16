@@ -21,6 +21,7 @@ pub mod wildlife;
 pub mod site;
 pub mod places;
 pub mod caverns;
+pub mod caves;
 pub mod audit;
 
 use noise::{NoiseFn, Perlin};
@@ -1076,12 +1077,18 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             }
         }
     }
+    // The caves the region planned (`caves.rs`), cut in absolute levels so neighbouring embarks
+    // share them; they are places too.
+    let planned_caves = caves::carve(&mut map, region, cx, cy);
     site::furnish(&mut map, &battles);
     // Something down there: lairs, tombs, old mines and caves, each with its cause.
     {
         let (x0, y0) = (region.world_x0, region.world_y0);
         let tile_of = |x: f64, y: f64| (((x0 * s + x as i64).div_euclid(s)).rem_euclid(world.width as i64) as usize, ((y0 * s + y as i64).div_euclid(s)).clamp(0, world.height as i64 - 1) as usize);
-        map.places = places::place(&mut map, lore, world, world_tile, tile_of, region.params.seed);
+        let has_cave = !planned_caves.is_empty();
+        map.places = planned_caves;
+        let more = places::place(&mut map, lore, world, world_tile, tile_of, region.params.seed, has_cave);
+        map.places.extend(more);
     }
 
     // Ramps: a floor next to ground exactly one level higher leads up (DF style).

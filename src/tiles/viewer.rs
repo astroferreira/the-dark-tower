@@ -119,7 +119,7 @@ fn load_region(world: &WorldData, history: Option<&WorldHistory>, tile: (usize, 
 }
 
 /// Names of the settlements in a zoomed region.
-fn draw_region_labels(l: &crate::lore::RegionLore, cam: &ZoomCamera, buf: &mut [u32], w: usize, h: usize) {
+fn draw_region_labels(l: &crate::lore::RegionLore, cam: &ZoomCamera, buf: &mut [u32], w: usize, h: usize, avoid: &[(i64, i64, i64, i64)]) {
     use crate::history::civilizations::settlement::SettlementType;
     let labels: Vec<Label> = l.sites.iter().map(|site| {
         let (rank, min_px, color) = match (site.destroyed_year.is_some(), site.kind) {
@@ -138,7 +138,7 @@ fn draw_region_labels(l: &crate::lore::RegionLore, cam: &ZoomCamera, buf: &mut [
         };
         Label { x: site.x as f32, y: site.y as f32 + 9.0, text, rank, min_tile_px: min_px, color, style, angle: 0.0 }
     }).collect();
-    place_labels(&labels, cam.px_per_cell, w, h, buf, &[], |x, y| {
+    place_labels(&labels, cam.px_per_cell, w, h, buf, avoid, |x, y| {
         (w as f32 / 2.0 + (x - cam.cx) * cam.px_per_cell, h as f32 / 2.0 + (y - cam.cy) * cam.px_per_cell)
     });
 }
@@ -672,6 +672,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut zoom_active = false;
         let mut player = (0.0f64, 0.0f64);
         let mut px_per_cell = 4.0f32;
+        // K in the walker: the key to the ground and the places in view (`region_ink::draw_legend`).
+        let mut show_key = false;
         let mut pending: Option<std::thread::ScopedJoinHandle<'_, ZoomState>> = None;
         // A region being surveyed for Z (on a worker: the window stays live): the loader, the
         // tile, when it began, and where the walker will stand.
@@ -835,6 +837,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     // The mode and status line in any mode (the key sweep reads it).
                     "status" => println!("UI script frame {}: mode {} {} | window {}x{} mouse {:?} | {}", ui_frame, if local_active { "camp" } else if zoom_active { "region" } else { "world" }, args.join(" "), w, h, script_mouse, status),
                     "quit" => script_quit = true,
+                    // The window's title as last set (the walker's hover words are there).
+                    "title" => println!("UI script frame {}: title {}", ui_frame, last_title),
                     "report" => {
                         if let Some((colony, _)) = local.as_ref() {
                             println!("UI script frame {}: speed {} open {:?} sheet {:?} tool {:?} favour {} marks {} stones {} bell {} status \"{}\"", ui_frame, speed, ui.open, ui.sheet, ui.tool, colony.patron.favour, colony.patron.marks.len(), colony.stones.len(), colony.bell_rung(), status);
@@ -1348,6 +1352,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     dirty = true;
                 }
                 if pressed(Key::F) { px_per_cell = 4.0; dirty = true; }
+                if pressed(Key::K) { show_key = !show_key; dirty = true; }
                 // [ and ] make the region smaller or larger (made again round the walker, on the
                 // worker, as when walking on).
                 let resize = if pressed(Key::LeftBracket) { -1 } else if pressed(Key::RightBracket) { 1 } else { 0 };
@@ -1488,9 +1493,20 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         }
                     });
                 }
+                // Under the mouse: the cell's landform, rock and slope, and the nearest place
+                // within six cells, with why it is there.
+                let (mx, my) = (lx + ((mouse.0 - w as f32 / 2.0) / px_per_cell) as f64, ly + ((mouse.1 - h as f32 / 2.0) / px_per_cell) as f64);
+                let hover = if mx >= 0.0 && my >= 0.0 && (mx as usize) < r.width && (my as usize) < r.height {
+                    let mut words = z.ink.describe(mx as usize, my as usize);
+                    if let Some(p) = z.ink.nearest_place(mx, my, 6.0) {
+                        words += &format!("; {}", p.title());
+                        if !p.cause.is_empty() { words += &format!(": {}", p.cause); }
+                    }
+                    words
+                } else { String::new() };
                 let title = format!(
-                    "{} | {} | {:.1}°C | site: {} | arrows/WASD walk, Shift run, Enter embark, Esc map{} | {}",
-                    place, ground, r.temperature_c[k], site_line.1, loading, status
+                    "{} | {} | {:.1}°C | {} | site: {} | arrows/WASD walk, Shift run, Enter embark, K key, Esc map{} | {}",
+                    place, ground, r.temperature_c[k], hover, site_line.1, loading, status
                 );
                 let _ = km;
                 if title != last_title { window.set_title(&title); last_title = title; }
@@ -1779,14 +1795,17 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     // (Kept between frames: a walk shifts the last frame, on whole pixels.)
                     let cam_z = super::region_ink::snap_camera(&cam_z, w, h);
                     super::region_ink::draw_kept(&z.ink, &cam_z, season, &mut buf, w, h);
-                    if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h); }
+                    // The places' glyphs and names first; the towns' names keep off them.
+                    let taken = super::region_ink::draw_places(&z.ink, &cam_z, &mut buf, w, h);
+                    if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h, &taken); }
                     // The playable area an embark here would cover.
                     let half = (LOCAL_SIZE as f32 * TILE_M / z.region.cell_m * px_per_cell / 2.0).max(6.0);
                     draw_box(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, half, 0x009A_3324);
                     draw_marker(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, (px_per_cell * 0.6).clamp(4.0, 10.0));
                     let hint = if pending.is_some() && status.starts_with("The region:") { status.clone() }
-                        else { format!("Arrows walk, Shift runs.   [ ] the region smaller or larger ({} tiles).   Enter: settle.   Z: the map.", region_tiles()) };
+                        else { format!("Arrows walk, Shift runs.   [ ] the region smaller or larger ({} tiles).   K: the key.   Enter: settle.   Z: the map.", region_tiles()) };
                     super::colony_hud::draw_hint(&hint, &mut buf, w, h);
+                    if show_key { super::region_ink::draw_legend(&z.ink, &cam_z, &mut buf, w, h); }
                 } else {
                     // (Kept between frames, shifted when panned; on whole pixels.)
                     render_world_cached(&tw, &atlas, &cam, &mut buf, w, h);
@@ -2173,7 +2192,8 @@ pub fn save_province_snapshot(world: &WorldData, history: Option<&WorldHistory>,
     let cam = ZoomCamera { cx: ((x0 + x1) / 2.0) as f32, cy: ((y0 + y1) / 2.0) as f32, px_per_cell: (h as f64 / span) as f32 };
     let mut buf = vec![0u32; w * h];
     super::region_ink::draw(&zs.ink, &cam, crate::seasons::Season::Summer, &mut buf, w, h);
-    draw_region_labels(lore, &cam, &mut buf, w, h);
+    let taken = super::region_ink::draw_places(&zs.ink, &cam, &mut buf, w, h);
+    draw_region_labels(lore, &cam, &mut buf, w, h, &taken);
     let to_screen = |x: f64, y: f64| ((w as f32 / 2.0 + (x as f32 - cam.cx) * cam.px_per_cell), (h as f32 / 2.0 + (y as f32 - cam.cy) * cam.px_per_cell));
     let (sx, sy) = to_screen(ex, ey);
     // The 250 km theatre as a ring.
@@ -3375,7 +3395,8 @@ pub fn world_frame_bench(world: &WorldData, history: Option<&WorldHistory>, atla
             let t0 = std::time::Instant::now();
             let cam_z = super::region_ink::snap_camera(&cam_z, w, h);
             super::region_ink::draw_kept(&z.ink, &cam_z, crate::seasons::Season::Summer, &mut buf, w, h);
-            if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h); }
+            let taken = super::region_ink::draw_places(&z.ink, &cam_z, &mut buf, w, h);
+            if let Some(l) = &z.lore { draw_region_labels(l, &cam_z, &mut buf, w, h, &taken); }
             ms.push(t0.elapsed().as_secs_f64() * 1000.0);
             cpu.push(thread_cpu_ms() - c0);
         }
@@ -3844,7 +3865,8 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
         let mut vbuf = vec![0u32; vw * vh];
         let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: 1.0 };
         super::region_ink::draw(&zs.ink, &cam, crate::seasons::Season::Summer, &mut vbuf, vw, vh);
-        if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh); }
+        let taken = super::region_ink::draw_places(&zs.ink, &cam, &mut vbuf, vw, vh);
+        if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh, &taken); }
         image::RgbImage::from_fn(vw as u32, vh as u32, |x, y| {
             let p = vbuf[y as usize * vw + x as usize];
             image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
@@ -3856,11 +3878,21 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
             let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: z };
             let t0 = std::time::Instant::now();
             super::region_ink::draw(&zs.ink, &cam, season, &mut vbuf, vw, vh);
-            println!("Region in ink at {} px a cell: {:.1} ms", z, t0.elapsed().as_secs_f64() * 1000.0);
-            if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh); }
+            let t1 = std::time::Instant::now();
+            let taken = super::region_ink::draw_places(&zs.ink, &cam, &mut vbuf, vw, vh);
+            println!("Region in ink at {} px a cell: {:.1} ms (places and their names {:.1} ms)", z, (t1 - t0).as_secs_f64() * 1000.0, t1.elapsed().as_secs_f64() * 1000.0);
+            if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh, &taken); }
             save_rgb_png(&path, vw, vh, |x, y| { let p = vbuf[y * vw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
             written.push(path);
+            // The 4 px frame again with the key open (K in the walker).
+            if z == 4.0 && tag.is_empty() {
+                super::region_ink::draw_legend(&zs.ink, &cam, &mut vbuf, vw, vh);
+                let path = format!("{prefix}_region_4px_key.png");
+                save_rgb_png(&path, vw, vh, |x, y| { let p = vbuf[y * vw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+                written.push(path);
+            }
         }
+        println!("Region in ink: {}", super::region_ink::summary(&zs.ink));
     }
     // Embark on the settlement in this tile if there is one, else by a river.
     let s = cells_per_tile() as f64;
@@ -3881,12 +3913,34 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
         Some((dx, dy)) => (ex + dx / zs.region.cell_m as f64, ey + dy / zs.region.cell_m as f64),
         None => (ex, ey),
     };
+    // PLANET_EMBARK_PLACE="cave mouth" embarks with the region's nearest place of that kind (its
+    // kind's word or its name holding the text) at the embark's middle (ROADMAP Stage 6).
+    let (ex, ey) = match std::env::var("PLANET_EMBARK_PLACE").ok() {
+        Some(want) => {
+            let want = want.to_lowercase();
+            let (tx, ty) = (zs.region.world_x0 as f64 * s, zs.region.world_y0 as f64 * s);
+            let best = zs.region.places.iter()
+                .filter(|p| p.kind.word().to_lowercase().contains(&want) || p.name.to_lowercase().contains(&want))
+                .map(|p| (p.x - tx + 0.5, p.y - ty + 0.5, p))
+                .min_by(|a, b| ((a.0 - ex).powi(2) + (a.1 - ey).powi(2)).partial_cmp(&((b.0 - ex).powi(2) + (b.1 - ey).powi(2))).unwrap_or(std::cmp::Ordering::Equal));
+            match best {
+                Some((px, py, p)) => { println!("Embarking at {} (region cell {:.1},{:.1}; {})", p.title(), px, py, p.cause); (px, py) }
+                None => { println!("No place like '{want}' in the region"); (ex, ey) }
+            }
+        }
+        None => (ex, ey),
+    };
     let region = &zs.region;
     let t0 = std::time::Instant::now();
     let map = crate::local::generate_local(world, region, zs.lore.as_ref(), ex, ey);
     println!("Playable area: {}x{} tiles x {} z-levels, biome {:?}, generated in {:.2}s", map.width, map.height, map.depth, map.biome, t0.elapsed().as_secs_f32());
     let site = crate::local::site::report(&map);
     println!("Site ({} kinds): {}", site.len(), site.join(", "));
+    for pl in &map.places {
+        let levels: std::collections::BTreeSet<i32> = pl.cells.iter().map(|c| c.1).collect();
+        println!("Place: {} ({:?}): {} cells on {} levels ({}..{}), mouth {:?}; {}", pl.name, pl.kind, pl.cells.len(), levels.len(),
+            levels.iter().next().copied().unwrap_or(0), levels.iter().next_back().copied().unwrap_or(0), pl.mouth, pl.cause);
+    }
     // Relief at human scale (card 'Mountains at human scale'): the levels between the lowest and
     // highest ground, and the highest face (the most the ground falls within two cells).
     {
@@ -3922,6 +3976,7 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
     };
     let cam = |z: i32, surface_view: bool| LocalCamera { cx: n as f32 / 2.0, cy: n as f32 / 2.0, tile_px: 6.0, z, surface_view };
     render_local(&map, atlas, &cam(cz, true), &mut buf, w, h);
+    super::local_ink::draw_place_mouths(&map, &cam(cz, true), &mut buf, w, h);
     save("surface", &buf)?;
     render_local(&map, atlas, &cam(cz, false), &mut buf, w, h);
     save(&format!("z{cz}"), &buf)?;

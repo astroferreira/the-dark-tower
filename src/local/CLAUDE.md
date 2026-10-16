@@ -319,3 +319,47 @@ the zoomed region around a point.
   cuts a gallery for it (day 19); 36,23 the nameless dead of the Battle of the Mambaash Pass; 72,8
   the mine that wakes the deep, an aquifer and gems; 33,26 a hall in the hill and its engravings;
   48,8 and 36,41 sites refused or warned for want of food; 53,13 a camp that moves.
+
+## Caves from the site layer (`local/caves.rs`; ROADMAP Stage 5, 2026-10-16)
+- `caves::carve(map, region, cx, cy)` runs after the caverns and before `furnish` and
+  `places::place`: every `region.caves` graph whose footprint crosses the embark is cut in
+  absolute levels (`level = (z_m - z_min_m) / Z_STEP_M`), so two neighbouring embarks carve one
+  cave and it runs on under their shared edge (`--embark-seams` on 42,32: 0.01 levels across
+  the edge, as before). Node positions map from absolute region cells (cell k's centre at k +
+  0.5, the frame `bicubic` reads) to columns (`col`). The passages are walked breadth-first from
+  the `Mouth` node, so the place's cells begin at the mouth and end at the far end.
+- Cuts: a passage (`cut_passage`) a column's step at a time along the segment, its floor
+  following the nodes' levels a level at a time at most (walkable: `nav::steps3` climbs one
+  level with headroom), kept `ROOF` (2) levels under the ground over the whole of its width
+  (`roofed`), `width_m / 2` columns either side (a vadose canyon one column, a gallery three),
+  `height_m / 2` levels of headroom (2-8); only the mouth's own passage may cut the ground open
+  within `ENTRANCE_COLS` (4) of the mouth (the way in; a sump passing under the mouth stays
+  under it). A `Chamber` (`cut_room`) is a round room of one floor level as low as the roof over
+  all of it allows. A `Shaft` (`cut_shaft`) is a stair column (`Shape::Stair`) from the upper
+  level to the lower, from the surface itself when the upper node is at the ground (a sink, a
+  skylight). A `Skylight` opens a hole from the tube's floor to the sky. A flooded sump holds
+  `WATER_FULL` in its cells, a vadose canyon `STREAM_WATER` (2) in its floor cell; a cleanup pass
+  over the cave's columns drops water that a later cut left in rock or over open air (the
+  audit's "water in a solid cell" and "floating water"). Columns with water in the way are left
+  uncut (a river bed, a lake). `open_column` makes the floor `Floor` (gravel where it was air).
+- Each graph becomes an `UnderPlace` (`PlaceKind::Cave`, the graph's name, the region place's
+  cause and contents where its mouth has one, the mouth's column if it lies on the map), so the
+  colony's finding, exploring and "the unknown is blank" work unchanged; `places::place` makes
+  no hashed cave where a planned one was cut (`has_cave`). A cave is kilometres long and an
+  embark 384 m across, so most embarks hold a piece: at seed 42's Skodroeskae (the Falls
+  region, `PLANET_EMBARK_PLACE="cave mouth" --tiles-center 177,133`) the mouth at the middle,
+  the dry gallery running south off the map, the sump's tail and the resurgence 30 columns
+  north: 1,264 cells on 6 levels, audit clean.
+- `PLANET_EMBARK_PLACE="<text>"` with `--local-snapshot` embarks with the region's nearest
+  place whose kind's word or name holds the text at the embark's middle ("Embarking at X, a
+  cave mouth (region cell ...)"); `--local-snapshot` prints a `Place:` line per place (cells,
+  levels, mouth, cause) and draws the places' mouths on the surface image without a colony
+  (`local_ink::draw_place_mouths`).
+- The caverns take shape (`caverns::plan`): a cell opens where the broad noise peaks (rooms, as
+  before) or along the zero lines of a second field (`lines`, scale 55 m across and 30 m down:
+  tunnels ~8 m wide at the band's middle, `TUNNEL_NARROWNESS` 7, narrowing toward the band's
+  edges, `TUNNEL_OPEN` 0.75), the detail roughening both; still a pure function of position
+  (`neighbouring_embarks_line_up` holds). The dev cave site's first layer grew from 8,382 to
+  15,144 floor cells; sections show rooms joined by narrow winding passages instead of blobs
+  alone. Not done: an underground lake fed by the karst's shafts, a river that resurges, a
+  chasm; ice and talus caves and mine adits.

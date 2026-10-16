@@ -187,3 +187,137 @@
   great river's mouth (382,62) fen 6%, marsh 2%, coastal dunes 1.6%, lagoon 1.1%, beach 0.9%,
   estuary 0.6%; the Falls region (177,133) marsh 2.5%, terraces 2.3%, backswamp 1.3%,
   floodplain 1%, levees 0.7%, oxbows; the dev cave region terraces 2.4%, marsh 2.1%, bog 1.3%.
+
+## Survey (`region/survey.rs`; ROADMAP Stage 1, 2026-10-16)
+- `--region-survey X,Y` (with `--zoom-tiles`, `--zoom-scale`, `--zoom-erosion` as `--zoom`)
+  generates the region and prints the land, river and lake cells, the landform and rock mix,
+  the drainage density (km of channel per km2 of land), the streams by Strahler order and
+  Horton's bifurcation ratio, Hack's exponent (log L against log A over the window's outlets
+  with 50+ cells), the hypsometric integral (Pike and Wilson's elevation-relief ratio), slope
+  percentiles in degrees, the geomorphon shares (Jasiewicz and Stepinski's ten forms, lookup 8
+  cells, flatness 1 degree), every place with its cause and the caves, the phase timings
+  (`zoom::last_timings`), `check`'s violations, and how far the window agrees with the one three
+  tiles east on their overlap (landform, rock and places); it writes `survey_<seed>_<x>_<y>.png`
+  (four panels: hillshaded height, the landform classes, the slope, the places lettered by
+  kind). The realistic bands (`BIFURCATION_BAND` 3-5, `HACK_BAND` 0.5-0.6, `HYPSOMETRIC_BAND`
+  0.3-0.6, `DRAINAGE_DENSITY_BAND` 0.1-1 km/km2) come from `docs/reference/`. Nothing in it
+  runs on the generation path.
+- `--place-census [N]` samples N windows (default 24; 0 every window) centred on land tiles
+  chosen by hash, and prints the places by kind and by age, the windows with none, the cause
+  coverage, each kind's median spacing and `check`'s violations. `--survey-find` scans the world
+  for the gallery's standard sites (a limestone plateau, a young volcano, a glaciated valley, a
+  desert interior, a big river's floodplain and its delta, a hard and a soft coast, a bog, a rift
+  lake, a Mediterranean hillside) and prints the sentence for CLAUDE.md.
+- `check(region)`: every place inside the window and on land (unless its kind stands in water),
+  a Waterfall on a channel with a 2 m drop within three steps, a Spring by a channel head or at a
+  slope foot, a CaveMouth of an underground kind, a `cave` index pointing at a cave whose Mouth
+  node lies within 2 cells. Kinds without a rule pass.
+- `sites/water.rs`: the world's springs and waterfalls (`WorldData::underground_water`) brought
+  down as the first places: per core tile a Waterfall at the lip on the tile's main stem (channel
+  cells with a tenth of the tile's largest catchment) with the greatest fall within three
+  receivers, its pool's height, a rank by the world's drops and a cause from the hardness (a
+  caprock ledge, hard rock, the upland's edge); up to two Springs where the spring's kind fits
+  (artesian and karst at a slope foot, a seepage spring under a scarp at a foot, else at the
+  channel head with the largest catchment), thermal springs left to `natural.rs`.
+- Numbers (seed 42 under the Sun): the volcano 16,104 drainage density 0.052 km/km2,
+  bifurcation 8.05, Hack 0.45 over 70 basins, hypsometric 0.45, slope p50 2.8 degrees, geomorphons
+  slope 55% / spur 12% / hollow 8%; the floodplain 399,67 flat 99.5%, hypsometric 0.59, Hack 0.17
+  (basins of a plain); the hard coast 395,116 bifurcation 9.9, Hack 0.25; the Falls region
+  177,133 bifurcation 5.9, Hack 0.28, hypsometric 0.55. Drainage density sits under the band and
+  the bifurcation ratio over it on every window: only permanent streams are drawn (2% of a tile's
+  area) and first-order streams are many. The dev world at 3.26 km cells is flat to the
+  geomorphons (100%) and no measure of realism. Two windows three tiles apart agree 99.7-100%
+  on landform and rock and on nearly every place (136 of 137 on the dev cave region, 156 of 158
+  on the Falls region): the fluvial labels and the places that read the channel distance can
+  differ where a receiver chain leaves the margin.
+- Cost: the survey itself ~0.3 s on an 8-tile window; `classify and plan` ~1.1 s with the places.
+
+## Places: natural wonders and the ages before (`sites/natural.rs`, `prehistory.rs`, `names.rs`; ROADMAP Stage 4, 2026-10-16)
+- Every planner works on a `Scan` (`natural.rs`): the blended fields and labels, a `ScanData`
+  (sea, lake, river width, bog, the running minima and maxima over a short (750 m) and a long
+  (3 km) radius: `rel_s`/`rel_l` the height over the lowest ground about, `prom_s`/`prom_l` the
+  height under the highest, van Herk running extrema; summed-area tables of sea, lake, river
+  and bog: `Sat::count`/`share`) made once a window and handed from planner to planner
+  (`ScanData::take_or_new` / `hand_over`), and `TileFacts` of the world tile (climate, soil,
+  fertility, ore within 3 tiles, volcanoes, `once_cold`, `desert()`). Rules: `best(tile, test)`
+  the best-scoring cell of the tile (every other cell, `STRIDE`), `several(tile, max, test)`,
+  `put(out, kind, i, j, cause)` keeps places `MIN_APART` (3 cells) from each other and
+  `MIN_APART_SAME` (8) from their own kind. Rates are per tile by hash (`one_in(tile, salt,
+  n)`, `lattice(tile, salt, n)`: one tile in an n x n block), never a roll.
+- Natural wonders (`natural.rs`, after the world's springs and waterfalls of `water.rs`): a
+  gorge (one tile in 5, walls 100 m within 3 cells on a channel), a tarn (one in 5, 150 m
+  walls), a hot spring only on `ThermalGround` or one tile in 2 near young volcanism, geysers
+  and mud pots there, a natural arch and sea stacks on hard open coasts, blowholes, erratics
+  (one in 10 where the ice reached) and boulder fields, a salt spring, a tar seep on sediment
+  near oil, a petrified forest in old ash, a fossil bed in a sedimentary cliff, amber on a cold
+  wooded shore, a meteorite crater (one tile in 4,000), an oxbow (one in 8 beside a slow river
+  40 m+ wide, on an `Oxbow` cell first), a tor on worn granite, a limestone pavement, a giant
+  tree, a crater lake in a real crater; cave mouths at limestone cliff feet (one tile in 8), at
+  a sink or resurgence (one in 6), a doline or cenote (one in 8) and in sea cliffs (one in 8).
+- The ages before (`prehistory.rs`): per tile `Ages::of` says who lived there: hunters (not
+  under ice, warmer than -5 C), farmers (fertility 0.3+, over 3 C, moisture over 0.18),
+  builders of stone (farmers with 15% of the tile's land on hard rock), the first metal (every
+  farmed tile: it came by trade; its workings only with ore within 3 tiles), the last age
+  (fertility 0.55+). One farmed tile in five is a **farmed valley** (`VALLEY_ONE_IN`), where the
+  works cluster: the barrow on the crest, the enclosure on the terrace, the fort on the spur,
+  the track along the ridge; the other tiles carry a stray thing or two (`gate(ages, tile,
+  salt, valley, stray)`: one in `valley` on a valley tile, one in `stray` elsewhere, 0 never).
+  Hunters: rock shelters under a face (`cliff_foot`: gentle ground under 25 m of rise with a
+  steep neighbour; sandstone and limestone first), one limestone cave mouth in eight repainted
+  as a painted cave, kill sites at bog and lake edges and bone beds in river gravels where the
+  land was once cold, shell middens on sheltered shores. Farmers: flint mines on limestone
+  plateaus, a long barrow on a convex crest (`crest`: gentle, 30-150 m over the long low, near
+  the local top), an enclosure on a terrace, lynchets on the hillside below the barrows,
+  clearance cairns on stony fields. Builders: a stone circle (one tile in a 4x4 block, on a
+  hard flat with the sky round it), standing stones, dolmens, rock art on bare outcrops over
+  the valley, a henge on a terrace (one in 5x5), the ridgeway (`ridge_walk`: 6-14 cells along
+  the crest from the tile's highest gentle ground, `Place::cells`), a causeway across a bog
+  (`causeway_walk`: dry shore to dry shore, 2-10 cells of bog), a ford where the river runs
+  15-150 m wide at under 0.01 m/m with dry land on both banks. Metal: a line of round barrows
+  along the ridgeway (else on a crest), the hill fort on a spur (`spur_score`: the ground falls
+  20 m within 1.5 km in 5+ of 8 directions), a crannog on a 1-4 m lake margin, a hoard and a
+  body in the bog, copper workings on steep hard ground near ore, desert kites. The last age: a
+  watchtower on a height (near the sea first), a quarry in bare hard rock, a mill on a quick
+  stream 4-60 m wide, a drowned village under a lake 5 m+ deep.
+- Names and words (`names.rs`, last): each 6x6 block of tiles has a tongue (`Tongue::of`: nine
+  onsets, five vowels, seven codas drawn by the block's hash, and how often a name runs to a
+  third syllable), so one valley's names sound alike and the next valley's differ; a place's
+  name is two or three syllables keyed on its cell, its epithet one of its kind's ("where the
+  first farmers laid their dead"), its description the cause woven into the age's sentence,
+  its contents what a visitor or a spade finds (`contents`, half of them by hash), its rank by
+  rarity (`rank_of`: a meteorite crater 20 ... a ford 170) where the planner set none.
+  `--places X,Y` lists a window's places by age (`listing`).
+- Seed 42 under the Sun, 8-tile windows: the Falls region 177,133 168 places (52 natural, 4
+  hunters', 41 farmers', 44 builders', 26 metal, 1 last age) and 21 caves; the floodplain
+  399,67 144 places and 25 caves; the volcano 16,104 76 (61 natural: gorges, hot springs,
+  tarns); the desert interior 142,147 ~90. Before the farmed-valley gate every tile fired every
+  rule it could (231-266 a window, 33 fords and 32 barrows on 64 tiles). `--place-census 12`:
+  every window has places of several kinds, 100% with a cause, 0 `check` violations.
+  `tests/places.rs` keeps the floors.
+
+## Caves as systems (`sites/caves.rs`; ROADMAP Stage 5, 2026-10-16)
+- Cave graphs (`plan::CaveGraph`: nodes in absolute cells and metres, passages with a kind,
+  width, height and whether a stream runs) planned per core tile, after the natural wonders:
+  a karst cave on one carbonate tile in three (`KARST_ONE_IN`; limestone at the surface or
+  within 30 m of it in the tile's rock stack, a twelfth of the tile's cells at least): the sink
+  is flat carbonate ground off the channels, 15 m+ over the tile's lowest land, picked by hash;
+  the stream's way under follows the steepest descent on the raw heights (a pure function of
+  position, unlike the window's routing) until it leaves the carbonate, meets a channel or a
+  lake 12 m+ below the sink, or reaches the sea, within two tiles. `build_karst`: the
+  resurgence at the chain's end, the mouth 40-70 m up the slope toward it, a dry upper gallery
+  (`Phreatic`, the old level, rising 1% back to the chain's middle under 8 m of roof), a
+  breakdown `Chamber` (14-40 m wide), a `Shaft` 10-30 m down to the stream level (at least
+  `MIN_DROP_M` 10 m under the mouth), the `Vadose` canyon (1.5-4 m wide, 8-20 m tall, the
+  stream in its floor) climbing to the sink's shaft, the flooded `Phreatic` sump from under the
+  chamber to the spring, and where limestone lies at the surface a shaft on down to the first
+  cavern (`FIRST_CAVERN_M` 22). Lava tubes on a volcano's own tile (1-2 from the vent down the
+  steepest descent, 5 m under the ground, a skylight every other node, the mouth at the lower
+  end), sea caves on one hard coast tile in five (`SEA_CAVE_ONE_IN`; 30-70 m into the
+  headland), rock shelters under a sandstone slope (one in 4; 8 m back). Every size and wander
+  is hashed on absolute cells (`f.abs_cell`), so two windows plan a tile's caves bit for bit
+  (`two_windows_plan_the_same_caves`; a sea cave's depth hashed on grid cells had differed by a
+  millimetre). A graph's mouth becomes a `CaveMouth` (or `RockShelter`) place with
+  `Place::cave`, its floor the deepest node, or takes over a natural mouth within 2 cells;
+  `cave_cause` / `cave_description` / `cave_contents` word them.
+- Region cost: ~0.1 s a window. The embark carves the graphs (`local/caves.rs`, notes in
+  `src/local/CLAUDE.md`); the region draws the mouths as places.

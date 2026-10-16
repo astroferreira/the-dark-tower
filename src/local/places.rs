@@ -140,11 +140,11 @@ fn plan_way_in(map: &LocalMap, ax: i32, ay: i32, salt: u64, taken: &[(u16, u16)]
 /// One cut of a place: open the cell over a floor (a room), open two (a step down a slope, or a
 /// den two levels high), or cut a stair.
 #[derive(Clone, Copy)]
-enum Cut { Open(i32, i32, i32), Tall(i32, i32, i32), Stair(i32, i32, i32) }
+pub(super) enum Cut { Open(i32, i32, i32), Tall(i32, i32, i32), Stair(i32, i32, i32) }
 
 /// Whether the cells a cut works on are rock or ground to cut (or open air at or above the
 /// surface), out of the caverns and the water, inside the map.
-fn cuttable(map: &LocalMap, c: Cut) -> bool {
+pub(super) fn cuttable(map: &LocalMap, c: Cut) -> bool {
     let (x, y, z, n) = match c { Cut::Open(x, y, z) => (x, y, z, 1), Cut::Tall(x, y, z) => (x, y, z, 2), Cut::Stair(x, y, z) => (x, y, z, 1) };
     if x < 4 || y < 4 || x >= map.width as i32 - 4 || y >= map.height as i32 - 4 || z < 3 || (z + 3) as usize >= map.depth { return false; }
     let (ux, uy) = (x as usize, y as usize);
@@ -156,7 +156,7 @@ fn cuttable(map: &LocalMap, c: Cut) -> bool {
     })
 }
 
-fn apply(map: &mut LocalMap, c: Cut) {
+pub(super) fn apply(map: &mut LocalMap, c: Cut) {
     let n = map.width;
     let open = |map: &mut LocalMap, x: usize, y: usize, zz: i32| {
         let k = map.idx(x, y, zz as usize);
@@ -189,7 +189,7 @@ fn apply(map: &mut LocalMap, c: Cut) {
 
 /// A place laid out on several levels from a mouth on flat dry ground at `(mx, my)`: the cuts
 /// and the floor cells walked (column, level), the far end last.
-fn layout(map: &LocalMap, kind: PlaceKind, mx: i32, my: i32, salt: u64) -> Option<(Vec<Cut>, Vec<((u16, u16), i32)>)> {
+pub(super) fn layout(map: &LocalMap, kind: PlaceKind, mx: i32, my: i32, salt: u64) -> Option<(Vec<Cut>, Vec<((u16, u16), i32)>)> {
     let z0 = map.surface_z[my as usize * map.width + mx as usize];
     let dirs = [(1i32, 0i32), (0, 1), (-1, 0), (0, -1)];
     let d0 = (hash(mx as i64, my as i64, salt) % 4) as usize;
@@ -306,7 +306,8 @@ pub(crate) fn host_rock(map: &LocalMap) -> Option<RockType> {
 }
 
 /// Put the places this embark's history and rock call for. `centre` is kept clear (the camp).
-pub fn place(map: &mut LocalMap, lore: Option<&crate::lore::RegionLore>, world: &crate::world::WorldData, world_tile: (usize, usize), tile_of: impl Fn(f64, f64) -> (usize, usize), seed: u64) -> Vec<UnderPlace> {
+/// `has_cave`: the region's planned caves already cut one here (`caves.rs`), so no hashed cave.
+pub fn place(map: &mut LocalMap, lore: Option<&crate::lore::RegionLore>, world: &crate::world::WorldData, world_tile: (usize, usize), tile_of: impl Fn(f64, f64) -> (usize, usize), seed: u64, has_cave: bool) -> Vec<UnderPlace> {
     let mut out: Vec<UnderPlace> = Vec::new();
     let (n, h) = (map.width as i32, map.height as i32);
     let mut want: Vec<(PlaceKind, String, String, Vec<String>)> = Vec::new();
@@ -358,7 +359,7 @@ pub fn place(map: &mut LocalMap, lore: Option<&crate::lore::RegionLore>, world: 
     // shale on a third, in karst always.
     let roll = hash(world_tile.0 as i64, world_tile.1 as i64, 0xCA4E);
     let hollowed = match rock { Some(RockType::Limestone) => roll % 2 == 0, Some(RockType::Sandstone) | Some(RockType::Shale) => roll % 3 == 0, _ => false };
-    if karst || hollowed {
+    if (karst || hollowed) && !has_cave {
         let why = if karst { format!("the {:?} here is hollowed by water", biome) } else { format!("the {:?} here is hollowed by water", rock.unwrap()).to_lowercase() };
         want.push((PlaceKind::Cave, format!("A cave in the {}", format!("{:?}", rock.unwrap_or(RockType::Limestone)).to_lowercase()), why, vec!["dripping stone and a cold draught".into()]));
     }

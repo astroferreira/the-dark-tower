@@ -87,7 +87,13 @@ for the audited terrain: seed 76 kept 2 rivers and no lake on it).
   its own star); seed 42 at 512x256 for the
   default size (it circles a K6 dwarf; numbers quoted for it are `--star sol`'s) and 256x128 for
   the Shadow's scale; seed 202 for ruins and ecology. `worlds/` stays gitignored (a world file is
-  ~170 MB at 512x256): save one locally with `--save-world` and reload it.
+  ~170 MB at 512x256): save one locally with `--save-world` and reload it. Generation sites
+  (seed 42, 512x256, `--star sol`; `--survey-find` picks them, `scripts/gallery.sh` renders
+  them): young volcano 16,104; desert interior 142,147; big river floodplain 399,67; river delta
+  383,61; hard coast 395,116; soft coast 194,172; bog 3,27; Mediterranean hillside 463,81; also
+  the massif of Mount Buld 392,97 (glaciers), the Falls region 177,133 (a river country with
+  dolines) and the salt flats at the date line 508,123. `worlds/s42_sol.world` is that world
+  saved without history (34 MB; `--load-world`).
 - Small maps: the river threshold (`water_bodies::river_flow_threshold`) scales with
   (width/512)^2 below 512 wide (unchanged at 512+), and legendary creatures scale with map
   area (`legendary_creatures_for` in `main.rs`; 1500 at 512x256).

@@ -13,7 +13,7 @@ magma sea, every ancient people human. Procedural, but it has to look made.
 
 ---
 
-## Where we are (2026-10-15)
+## Where we are (2026-10-15; Stages 1-5 done 2026-10-16, see the module notes; the table below is the starting point)
 
 Measured on the dev world's cave-and-lair site (`--dev --headless --local-snapshot cave
 --tiles-center 42,32`) and on seed 42 at 512x256.

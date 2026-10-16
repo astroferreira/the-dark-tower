@@ -766,6 +766,28 @@ struct Args {
     /// Upscaling factor for exported maps (1 = native, 2 = 2x, 4 = 4x, etc.)
     #[arg(long, default_value = "1")]
     upscale_factor: usize,
+
+    // === The survey (ROADMAP Stage 1) ===
+
+    /// Survey the region round a world tile: landform and rock mix, geomorphometry, slopes,
+    /// geomorphons, places and timings, and `survey_<seed>_<x>_<y>.png` in --map-output-dir
+    #[arg(long, value_name = "X,Y")]
+    region_survey: Option<String>,
+
+    /// Count the places over the world: N sampled windows of --zoom-tiles (0 = every window)
+    #[arg(long, value_name = "N", num_args = 0..=1, default_missing_value = "24")]
+    place_census: Option<usize>,
+
+    /// Find the standard generation sites of this world (a limestone plateau, a young
+    /// volcano, a glaciated valley...), print them and exit
+    #[arg(long)]
+    survey_find: bool,
+
+    /// List the places of the region round world tile "X,Y" (natural wonders and the ages
+    /// before: `region::sites`), grouped by age with their causes and words, then exit. Takes
+    /// --zoom-tiles, --zoom-scale and --zoom-erosion like --zoom
+    #[arg(long, value_name = "X,Y")]
+    places: Option<String>,
 }
 
 /// Seed, size and peoples of `--dev`, the small development world. Seed 10 was picked by a
@@ -1749,6 +1771,51 @@ fn main() {
                 Err(e) => eprintln!("  Failed to save the site layer images: {e}"),
             }
         }
+    }
+
+    // The survey (ROADMAP Stage 1): measure a region, count the places over the world, find
+    // the standard sites (`region::survey`).
+    if let Some(spec) = &args.region_survey {
+        let parts: Vec<_> = spec.split(',').map(|p| p.trim().parse::<usize>()).collect();
+        match parts.as_slice() {
+            [Ok(x), Ok(y)] if *x < width && *y < height => {
+                let params = region::zoom::ZoomParams {
+                    center_x: *x, center_y: *y, tiles: args.zoom_tiles.max(1),
+                    cells_per_tile: args.zoom_scale, erosion_iterations: args.zoom_erosion, seed: master_seed,
+                };
+                print!("{}", region::survey::run(&world_data, &params, std::path::Path::new(&args.map_output_dir)));
+            }
+            _ => eprintln!("--region-survey expects \"X,Y\" (a world tile inside {}x{}), got '{}'", width, height, spec),
+        }
+    }
+    if let Some(n) = args.place_census {
+        let tiles = args.zoom_tiles.max(1);
+        let census = region::survey::census(&world_data, n, tiles, master_seed);
+        print!("{}", region::survey::census_report(&census, master_seed, tiles));
+    }
+    if args.survey_find {
+        let sites = region::survey::find_sites(&world_data);
+        print!("{}", region::survey::sites_report(&world_data, &sites));
+        std::process::exit(0);
+    }
+    // The places of a region, listed by age (`region::sites::names::listing`).
+    if let Some(spec) = &args.places {
+        let parts: Vec<_> = spec.split(',').map(|p| p.trim().parse::<usize>()).collect();
+        match parts.as_slice() {
+            [Ok(x), Ok(y)] if *x < width && *y < height => {
+                let params = region::zoom::ZoomParams {
+                    center_x: *x, center_y: *y, tiles: args.zoom_tiles.max(1),
+                    cells_per_tile: args.zoom_scale, erosion_iterations: args.zoom_erosion, seed: master_seed,
+                };
+                // The world's soils and resources are computed on first use: not the planner's time.
+                let _ = (world_data.soils(), world_data.resources());
+                let t0 = std::time::Instant::now();
+                let zoom = region::zoom::generate_zoom(&world_data, &params);
+                print!("{}", region::sites::names::listing(&zoom, t0.elapsed().as_secs_f32()));
+            }
+            _ => eprintln!("--places expects \"X,Y\" (a world tile inside {}x{}), got '{}'", width, height, spec),
+        }
+        std::process::exit(0);
     }
 
     // Handle island listing and export

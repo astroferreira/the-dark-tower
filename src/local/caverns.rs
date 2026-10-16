@@ -24,6 +24,10 @@ const BAND_M: [f32; LAYERS] = [5.0, 6.5, 8.0];
 const ROOF: i32 = 4;
 /// Floor cells a layer needs to count.
 const MIN_FLOOR: usize = 40;
+/// A passage opens where the line field is within 1/narrowness of zero (a tunnel ~8 m wide at
+/// the band's middle), and how open it counts at its middle.
+const TUNNEL_NARROWNESS: f32 = 7.0;
+const TUNNEL_OPEN: f32 = 0.75;
 
 /// What lives in each layer, by how wet it is (dry, wet).
 const LIFE: [[&[&str]; 2]; LAYERS] = [
@@ -103,6 +107,7 @@ pub(super) fn plan(refs: &[f32], ground: &[i32], fields: &[([f32; LAYERS], f32)]
     let detail = Perlin::new(seed.wrapping_add(812));
     let lift = Perlin::new(seed.wrapping_add(813));
     let band_n = Perlin::new(seed.wrapping_add(814));
+    let lines = Perlin::new(seed.wrapping_add(815));
     let mut out = vec![[None; LAYERS]; n * n];
     for col in 0..n * n {
         let (mx, my) = abs(col % n, col / n);
@@ -121,8 +126,14 @@ pub(super) fn plan(refs: &[f32], ground: &[i32], fields: &[([f32; LAYERS], f32)]
             for z in lo..=hi {
                 let zm = (z as f32 + 0.5) * Z_STEP_M;
                 let edge = 1.0 - ((zm - centre).abs() / band).min(1.0);
-                let v = shape.get([mx / 38.0, my / 38.0, zm as f64 / 9.0 + k as f64 * 50.0]) as f32
-                    + 0.45 * detail.get([mx / 14.0, my / 14.0, zm as f64 / 4.0 + k as f64 * 50.0]) as f32;
+                // Rooms and passages (ROADMAP Stage 5): chambers where the broad noise peaks,
+                // and passages along the zero lines of a second field (tunnels a few metres
+                // wide winding between the chambers, narrowing toward the band's edges), the
+                // detail roughening both.
+                let room = shape.get([mx / 38.0, my / 38.0, zm as f64 / 9.0 + k as f64 * 50.0]) as f32;
+                let line = lines.get([mx / 55.0, my / 55.0, zm as f64 / 30.0 + k as f64 * 70.0]) as f32;
+                let tunnel = (1.0 - line.abs() * TUNNEL_NARROWNESS).clamp(0.0, 1.0) * TUNNEL_OPEN;
+                let v = room.max(tunnel - 0.1) + 0.45 * detail.get([mx / 14.0, my / 14.0, zm as f64 / 4.0 + k as f64 * 50.0]) as f32;
                 if v + open_k + 0.5 * edge > 0.82 {
                     // Keep one solid run per column per layer (no floating slabs).
                     if first_open.is_none() { first_open = Some(z); }

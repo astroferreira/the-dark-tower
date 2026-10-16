@@ -4,31 +4,30 @@ Short-term tasks for the generation roadmap (`ROADMAP.md`: the region view and t
 as places worth exploring). Colony, charter, genesis and adventure tasks are parked in
 `docs/colony/TODO.md` and on the board; nothing there is worked on in this period.
 
-## Stage 1: survey and measure (now)
-- [ ] `--region-survey X,Y`: landform mix, drainage density, Horton's bifurcation ratio, Hack's
-      exponent, hypsometric integral, slope histogram, geomorphon shares, the places with
-      causes, frame times; a `survey_<seed>_<x>_<y>.png` (height, class, slope, places).
-      Reference: `docs/reference/numerical_tests.md`, `realistic_map_indicators.md`.
-- [ ] `--place-census`: places by kind and cause over a world, per region, regions with none.
-- [ ] `scripts/gallery.sh`: the standard sites as one contact sheet per seed (region 4 px,
-      embark surface, one level below, the section).
-- [ ] Choose and pin the standard sites on seed 42 at 512x256 under the Sun (a limestone
-      plateau, a young volcano, a glaciated valley, a desert interior, a floodplain and its
-      delta, a hard coast and a soft one, a bog, a rift lake, a Mediterranean hillside); write
-      them into `CLAUDE.md`'s standard seeds.
-- [ ] `tests/region.rs` and `tests/places.rs`: pins of today's numbers; `views_agree` (a place
-      listed by the survey is drawn at its region cell and carved at that cell in the embark).
-- [ ] Bring the world's springs and waterfalls (`underground_water.rs`, `TileWaterFeatures`)
-      down to the region: the first "caused, not rolled" places, and the first `views_agree`
-      cases.
+## Stages 1-5: done (2026-10-16; notes in `src/region/CLAUDE.md`, `src/local/CLAUDE.md`, `src/tiles/CLAUDE.md`)
+Survey (`--region-survey`, `--place-census`, `--survey-find`, `scripts/gallery.sh`), landforms
+(rock, karst, ice, fire, wind, river, coast, wet ground), the region in ink (ground washes and
+marks, glyphs, labels, the key), places (natural wonders, the ages before, names), caves as
+graphs planned in the region and carved in the embark, caverns as rooms and passages.
 
-## Stage 2 first cuts
-- [ ] Surface rock per region cell from the handshake rock stack and the hardness map, with a
-      dip; cliffs and scree where slope and hardness pass a threshold.
-- [ ] Karst on limestone: dolines and a sinking stream that resurges at the plateau's foot
-      (the region's drainage routed through the ground).
-- [ ] Hot springs, geysers and fumaroles placed by young volcanism and stress instead of
-      `biomes.rs::should_spawn`.
+## Stage 6: the embark worth a look, and exploring it (now)
+- [ ] The embark's surface from the landform classes: outcrops, cliff faces off the mountains,
+      scree, boulder fields, dunes, playa, beach, bog, reed beds, gravel bars, fords, oxbows.
+- [ ] Carve the places: barrow mounds, stone circles, standing stones, hill-fort ramparts,
+      enclosures' banks, lynchets, cairns, kill-site bones, middens, flint-mine shafts; cave
+      shafts the colony can climb.
+- [ ] `views_agree`: a place's region cell is its embark's carving (`PLANET_EMBARK_PLACE`).
+- [ ] The viewer: place labels and an inspector line in walking mode; "embark here" on a place.
+- [ ] The gallery of twelve sites (region, surface, a level, the section) looked at.
+
+## Follow-ups from Stages 4-5
+- [ ] `--survey-find` lacks a limestone plateau, a glaciated valley and a rift lake on seed 42.
+- [ ] The deep caverns: an underground lake fed by the karst's shafts, a river that resurges,
+      a chasm; ice and talus caves; mine adits that meet natural passages.
+- [ ] Cave mouths: the natural planner's sinks and cliff mouths should be the graphs' own
+      mouths (today a graph's mouth joins a natural one only within 2 cells).
+- [ ] A section through a column (`PLANET_LOCAL_COL`), since a cave's gallery runs off the
+      embark along one.
 
 ## Terrain and regions (carried over)
 - [ ] Sub-tile detail (valleys narrower than a tile) only exists in zoomed regions; if the

@@ -506,6 +506,44 @@ fn render_ground_inner(map: &LocalMap, worn: Option<&[u16]>, level: Option<i32>,
     });
 }
 
+/// The ways into the places in the rock, on the map alone (no colony): a dark opening two cells
+/// across framed by its kind, as `draw_colony` draws them (there behind the unknown's mask).
+pub fn draw_place_mouths(map: &LocalMap, cam: &LocalCamera, buf: &mut [u32], w: usize, h: usize) {
+    let t = cam.tile_px;
+    let to_screen = |x: f32, y: f32| ((x - cam.cx) * t + w as f32 / 2.0, (y - cam.cy) * t + h as f32 / 2.0);
+    let mut put = |x: i64, y: i64, c: Rgb, a: f32| {
+        if x < 0 || y < 0 || x as usize >= w || y as usize >= h { return; }
+        let k = y as usize * w + x as usize;
+        let p = buf[k];
+        let old = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
+        buf[k] = pack(mix(old, c, a));
+    };
+    for pl in map.places.iter() {
+        let Some(m) = pl.mouth else { continue };
+        use crate::local::places::PlaceKind;
+        let (px, py) = to_screen(m.0 as f32 - 0.5, m.1 as f32 - 0.5);
+        let s2 = 2.0 * t;
+        for yy in py as i64..(py + s2).ceil() as i64 { for xx in px as i64..(px + s2).ceil() as i64 {
+            let (u, v) = ((xx as f32 - px) / s2, (yy as f32 - py) / s2);
+            let (ex, ey) = ((u - 0.5) / 0.34, (v - 0.82) / 0.62);
+            let r = (ex * ex + ey * ey).sqrt();
+            let inside = r < 1.0 && v < 0.82;
+            let rim = (r - 1.0).abs() < 0.12 && v < 0.84;
+            let line = 1.2 / s2;
+            match pl.kind {
+                PlaceKind::OldMine if ((u - 0.14).abs() < 0.05 || (u - 0.86).abs() < 0.05) && v > 0.18 && v < 0.86 => put(xx, yy, [150.0, 110.0, 70.0], 0.95),
+                PlaceKind::OldMine if (v - 0.2).abs() < 0.05 && u > 0.1 && u < 0.9 => put(xx, yy, [150.0, 110.0, 70.0], 0.95),
+                PlaceKind::Tomb | PlaceKind::Halls if (v - 0.16).abs() < 0.07 && u > 0.08 && u < 0.92 =>
+                    put(xx, yy, if (v - 0.16).abs() > 0.07 - line { INK } else { [204.0, 196.0, 178.0] }, 0.95),
+                PlaceKind::Lair if (v - 0.9).abs() < 0.04 && ((u * 7.0).fract() < 0.5) && (u - 0.5).abs() < 0.45 => put(xx, yy, [232.0, 224.0, 204.0], 0.95),
+                _ if rim => put(xx, yy, INK, 0.9),
+                _ if inside => put(xx, yy, mix([46.0, 40.0, 38.0], [20.0, 18.0, 18.0], v), 0.95),
+                _ => {}
+            }
+        } }
+    }
+}
+
 /// The camera moved onto whole screen pixels (as the surface is drawn: `render_local_ink`), so
 /// everything drawn over the ground stays put on it while the view pans.
 pub fn snap_camera(cam: &LocalCamera, w: usize, h: usize) -> LocalCamera {

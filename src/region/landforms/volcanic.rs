@@ -302,7 +302,7 @@ pub fn classify(f: &RegionFields, rock: &[RockType], land: &mut [Landform]) {
 /// the east toward the equator to 30 degrees, westerlies poleward to 60, polar easterlies
 /// beyond; blended over 4 degrees at the belt edges. The same rule `aeolian.rs` uses (the
 /// climate's wind field is not kept on `WorldData`).
-pub(super) fn wind_dir(lat: f32) -> (f32, f32) {
+pub(crate) fn wind_dir(lat: f32) -> (f32, f32) {
     let a = lat.abs();
     let poleward = if lat >= 0.0 { -1.0f32 } else { 1.0 };
     let belt = |a: f32| -> (f32, f32) {

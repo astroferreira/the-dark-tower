@@ -41,8 +41,8 @@ const STREAM_POWER_K: f32 = 0.015;
 /// Dimensionless hillslope diffusion per iteration.
 const HILLSLOPE_D: f32 = 0.08;
 /// Fraction of one world tile's area a catchment needs before it shows as a river (humid).
-const RIVER_AREA_FRACTION: f32 = 0.02;
-const LAKE_MIN_DEPTH_M: f32 = 0.5;
+pub(crate) const RIVER_AREA_FRACTION: f32 = 0.02;
+pub(crate) const LAKE_MIN_DEPTH_M: f32 = 0.5;
 /// Radius (world tiles) of the smoothing applied to world temperature/moisture before zooming.
 const CLIMATE_SMOOTH_TILES: usize = 1;
 /// Share of the world biome colour mixed over the local climate colour table when rendering.
@@ -626,15 +626,27 @@ fn chunk_cache() -> &'static std::sync::Mutex<std::collections::HashMap<ChunkKey
     CACHE.get_or_init(Default::default)
 }
 
+thread_local! {
+    static LAST_TIMINGS: std::cell::Cell<[f32; 4]> = const { std::cell::Cell::new([0.0; 4]) };
+}
+
+/// Phase times (s) of this thread's last `generate_zoom`: chunks, blend, climate and
+/// hydrology, landforms and sites (`--region-survey` prints them).
+pub fn last_timings() -> [f32; 4] { LAST_TIMINGS.with(|t| t.get()) }
+
 /// Generate a high-resolution region. Terrain is assembled from fixed world-tile chunks
 /// blended with tent weights (a partition of unity), so every cell's height depends only on its
 /// world position: regions generated separately (in any order) join seamlessly.
 pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
-    // `PLANET_REGION_TIMING=1` prints each phase's time (the chunks are the cold cost).
+    // `PLANET_REGION_TIMING=1` prints each phase's time (the chunks are the cold cost); the
+    // survey reads the last region's phases from `last_timings`.
     let timing = std::env::var_os("PLANET_REGION_TIMING").is_some();
     let mut t_last = std::time::Instant::now();
+    let mut laps: Vec<f32> = Vec::new();
     let mut lap = |what: &str| {
-        if timing { eprintln!("  region {what}: {:.2} s", t_last.elapsed().as_secs_f32()); }
+        let dt = t_last.elapsed().as_secs_f32();
+        laps.push(dt);
+        if timing { eprintln!("  region {what}: {dt:.2} s"); }
         t_last = std::time::Instant::now();
     };
     let ctx = Ctx::new(world, params);
@@ -745,6 +757,9 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
     lap("landforms");
     let site_plan = sites::plan(&fields, &land, &rock, Core { x0: core_x0, y0: core_y0, w: tiles, h: tiles });
     lap("sites");
+    // chunks, blend, climate and hydrology, landforms and sites.
+    let at = |i: usize| laps.get(i).copied().unwrap_or(0.0);
+    LAST_TIMINGS.with(|t| t.set([at(0), at(1), at(2) + at(3), at(4) + at(5)]));
 
     // 5. Crop to the requested window.
     let (w, ht) = (tiles * s, tiles * s);

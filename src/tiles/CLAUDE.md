@@ -644,3 +644,52 @@ the Claude Doc "Ink graphics: sprites and examples".
   76.96x48.earthlike.8.250@45,12 --day 200`). `--sim-snapshot` writes `_follow.png` (the first
   settler found below on a second founding, as following shows them) and prints "Following: ...".
   The level key sits under the camp card however tall it grows.
+
+## The region in ink: relief, ground, places (`region_ink.rs`; ROADMAP Stage 3, 2026-10-16)
+- `PLANET_EMBARK_PLACE="cave mouth"` (with `--local-snapshot`) embarks at the region's nearest
+  place of that kind, so a place seen in the region can be looked at in its embark (Stage 5/6;
+  `viewer::save_local_snapshots`).
+- The walker's frame is drawn from the site layer as well as the fields: every landform has its
+  ground (`ground_wash`: bare rock washed in its rock's colour through `local_ink::rock_wash`,
+  pavements, playas, sand, lava, ash, ice and snow, the wet ground's greens) looked up through a
+  warp where landforms meet (`land_at`) so their borders are ragged, and its marks
+  (`ground_marks`: cliff ticks along the face, scree and sand stipple, crags on outcrops, tors
+  and stacks, columnar basalt's columns, badlands' rills, pavement cross-hatch with gaps, a
+  dotted ring round dolines, kettles, craters and cenotes, a half ring for sinks and
+  resurgences, a dashed stream down a dry valley, crevasses across a glacier, patterned ground's
+  and playas' polygons (`worley_edge`), lava's pressure ridges, fumaroles' puffs, barchans whose
+  horns point downwind on a grid along the wind (`Ink::wind`, hashed per region), yardangs'
+  streaks, boulders on erratics, tufts on bog, marsh, fen and salt marsh, reeds on reed beds).
+  Relief: light from the north-west (pale toward it, hatched away from it by slope), hachures
+  down slopes over 0.16, the contours as before; the cliffs' upper edge and the ice's edge are
+  inked from smoothed masks (`cliff`, `ice`). Woods get an ink edge along their boundary
+  (`woodf`) and kinds by the ground and climate: broadleaf, fir, palm, mangrove on stilts, dead
+  trees on ash and lava; no trees on bare rock, ice, bog, playa, dunes, flats or beaches.
+  Water marks on the channels: rapids barred, a fall's bar and drop lines.
+- Places (`draw_places`): a cartographer's glyph per `PlaceKind` (`draw_glyph`: shapes in a unit
+  box scanned over the glyph's pixels: a cave's dark arch, a spring's ring and thread, a fall's
+  bar, hot springs' wavy lines, a geyser's plume, an arch, a stack, a tor, an erratic, an
+  ammonite for a fossil bed, amber, a crater's rays, an oxbow, a tarn, a pavement, a blowhole, a
+  giant tree, a rock shelter with its hearth, bones, a midden, mines and quarries, barrows as
+  dotted ellipses, a barrow cemetery, an enclosure, a henge, a hill fort's ring with ticks, a
+  stone circle, a standing stone, a dolmen, rock art, a crannog, hoards and bog bodies, a desert
+  kite, tracks (a ridgeway dashed and a causeway along their `cells`), a ford, lynchets, cairns,
+  a broken tower, a mill, a drowned village, a ruin, a tomb, crossed swords for a battlefield, a
+  gorge) in ink, sea ink for water places, rubric for the chronicle's; a label under each
+  (`label_style`: natural places italic, the works of the ages in small capitals, the greatest
+  (rank under 40) larger) placed greatest first, whole or not at all, never over another label
+  or glyph; a place shows from a zoom by its rank (`min_ppc`: the greatest from 0.5 px a cell,
+  local things from 8). `draw_places` returns the boxes it took, so the towns' labels
+  (`draw_region_labels`) keep off them. ~0.2 ms a frame.
+- `K` in the walker toggles the key (`draw_legend`): a parchment card bottom-left with a swatch
+  per landform in view (a stroke for rock and karst, a dot for wet ground and rivers, a blue
+  rim for ice) and a glyph per place kind in view. The walker's title names the cell's landform,
+  rock and slope in degrees (`Ink::describe`) and the nearest place within six cells with its
+  cause (`Ink::nearest_place`). `--local-snapshot` writes `_region_4px_key.png` (the 4 px frame
+  with the key open) and prints "Region in ink: N classes (...); M places of K kinds".
+- `PLANET_INK_DEMO=1` is the glyph gallery (`region_ink::demo`): the region's classes are
+  guessed from its own fields (slope, height, wetness, rock, the shore) and one place of every
+  kind is put on fitting ground, with names, so every symbol can be looked at whatever the land
+  holds. Not the site layer: a gallery.
+- Frame cost at 1280x800: 9.6-10.7 ms at 4 px a cell on the dev cave region (it was 7-11 ms
+  before the ground marks); `draw_kept` still shifts the last frame on a walk.
