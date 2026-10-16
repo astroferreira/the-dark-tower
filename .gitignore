@@ -41,3 +41,6 @@ lore_*.md
 /legends.md
 *.zip
 /genesis
+
+# Region chunk caches made beside the checkout
+/.chunk_cache*

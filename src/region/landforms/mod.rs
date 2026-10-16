@@ -30,7 +30,7 @@ pub use crate::region::zoom::Drainage;
 use crate::world::WorldData;
 
 /// Keys the chunk cache: bump when any `shape_*` pass changes the heights it makes.
-pub const SHAPE_VERSION: u32 = 2;
+pub const SHAPE_VERSION: u32 = 3;
 
 /// A chunk's bordered grid, as the shape passes see it: `gw` x `gw` cells, cell (0, 0) at the
 /// top-left of world tile (`gx0`, `gy0`), `s` cells per tile.

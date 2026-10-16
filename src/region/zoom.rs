@@ -779,11 +779,15 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
             out.landform.push(land[k]);
             out.rock.push(rock[k]);
             let lake = if e > 0.0 { (d.filled[k] - e).max(0.0) } else { 0.0 };
-            // A doline drains underground: no water stands in it (the flow still crosses it).
-            let lake = if lake >= LAKE_MIN_DEPTH_M && land[k] != Landform::Doline { lake } else { 0.0 };
-            // Drier ground needs a larger catchment before a permanent stream appears.
+            // No water stands on dry ground: a doline drains underground, a playa is a dry
+            // lakebed, a dune field's hollows hold sand (the flow still crosses them). The
+            // world's own desert lakes are whole tiles, and keep their water.
+            let dry = matches!(land[k], Landform::Doline | Landform::Playa | Landform::Dune | Landform::SandSea | Landform::DesertPavement | Landform::Yardang);
+            let lake = if lake >= LAKE_MIN_DEPTH_M && !dry { lake } else { 0.0 };
+            // Drier ground needs a larger catchment before a permanent stream appears; a stream
+            // that reaches a playa dies in it (the flow still crosses the dry bed underground).
             let threshold = RIVER_AREA_FRACTION * tile_cells / (0.25 + moist[k]);
-            let river = if e > 0.0 && lake == 0.0 && acc[k] > threshold {
+            let river = if e > 0.0 && lake == 0.0 && acc[k] > threshold && land[k] != Landform::Playa {
                 // Hydraulic geometry: width (m) ~ 0.8 sqrt(A km2), the cell's true area shrinking
                 // toward the poles (as the world's own river widths do).
                 0.8 * (acc[k] * cell_km2 * out.lat_cos(j - off)).sqrt()

@@ -113,3 +113,77 @@
   outcrop 4%, glacial valley 3%, moraine 0.3%, cirque 0.2%, tarn 0.1%; Mount Fielein (18,106)
   the same picture; the Falls region (177,133) doline 0.5%, pavement, dry valleys, a sink and a
   resurgence; the dev cave region (42,32) doline 0.6%, pavement 0.5%.
+
+## Landforms: fire, wind, river, coast and wet ground (`landforms/volcanic.rs`, `aeolian.rs`, `fluvial.rs`, `coast.rs`, `wet.rs`; Stage 2, 2026-10-16)
+- Volcanic (`volcanic`), from `WorldData::volcanoes` (tile, kind, active) and `lava_map`: a
+  vent's edifice reaches 4 tiles (shield), 2.5 (stratovolcano), 3 (caldera); "young" volcanism
+  is an active vent within 2 tiles or lava on the tile. Before erosion: cinder cones on a hashed
+  lattice 2.5 km apart on the flanks (0.3-1.8 tiles out, 350-900 m across, 25-80 m high, 35% of
+  points on an active vent's flanks, 18% on an old one's) and the lava's pressure ridges (ridged
+  noise up to 12 m over the lava's share of the ground). After erosion: the summit's crater (a
+  600 m bowl 80 m deep on a stratovolcano, 2.5 km / 60 m on a shield, 0.3 tile / 150 m with a
+  sunken floor for a caldera) with a low rim. Labels: Crater / Caldera, CinderCone, LavaField
+  (lava share > 0.5, slope < 0.3), Fumarole (within 0.6 tiles of an active vent on steep
+  ground, by noise), ThermalGround (stress > 0.15 within 3 tiles of young volcanism, gentle
+  ground, by noise: the caused spots the site planner's hot springs, geysers and mud pots take),
+  AshPlain (gentle ground within 1.5 tiles downwind of an active vent), ColumnarBasalt (old
+  basalt on slopes over 0.12). `wind_dir(lat)`: the belts' prevailing wind (trades from the
+  east to 30 degrees, westerlies to 60, polar easterlies beyond, blended over 4 degrees); the
+  climate's wind field is not kept on `WorldData`.
+- Wind (`aeolian`), in dry country (moisture < 0.2 at the cell and a desert biome, desert soil
+  or moisture < 0.15 on the tile): a dune field is a wave in absolute cells along (40%) or
+  across (60%, by 4-tile block) the wind, 2 km between crests, up to 30 m, warped by noise and
+  scaled by a sand-supply noise (`SAND_MIN` 0.35), raised before erosion on flat ground (slope
+  < 0.03); labelled Dune, or SandSea where the tile and its eight neighbours are all desert.
+  Yardang: streaks along the wind cut into Shale / Sediment; DesertPavement: flat stony ground
+  on hard rock off alluvium; Playa: the world's salt-flat tiles and lakes in moisture < 0.15.
+- Rivers (`fluvial`), labels only (the channel and its drainage are known on the blended
+  region; the embark carves the levee, the oxbow and the terrace from them in Stage 6):
+  `channels(f)` gives every cell its nearest channel downstream, its height above it (HAND)
+  and the steps to it, by path compression down the receiver chain; a channel is the region's
+  rule (acc > 0.02 tile / (0.25 + moisture)). Floodplain where a big river (catchment 0.3 tile)
+  runs at under 0.004 m/m: HAND < 5 m within a meander belt of 12 m per sqrt(km2) of catchment;
+  Levee the first step from a great river (2 tiles), Backswamp the belt's far half under 2 m,
+  Oxbow arcs (1.2 km) hashed at 0.4% of a great river's floodplain cells, Terrace at 8-40 m
+  HAND within three belts on slopes under 0.03. On the channel: Gorge where both banks rise 60
+  m within three cells across the flow, Waterfall where one step drops 8 m (scaled by the
+  cell) and 2.5x the reaches above and below, Rapids a 3 m step on a gradient over 0.005,
+  Braided below mountain tiles (3x3 relief over 1,500 m) at 0.003-0.02 m/m, Fan a 2 km cone
+  below an apex where a steep tributary meets gentle ground (relief 800 m). Mouths: Delta where
+  a big river meets the sea (radius 3 sqrt(tiles) cells, the whole fan on an open coast, three
+  lobes in sheltered water: the fetch is the sea in a half-disc of 12 cells), Estuary (cells
+  under 4 m) at smaller mouths.
+- Coasts (`coast`): the shore is land within 2 cells of the sea; openness is the sea's share of
+  the 21x21 cells round a cell (a summed-area table). After erosion, hard shores (hardness >
+  0.6) facing the open sea are raised toward the ground 3-4 cells inland (0.6 and 0.8 of it), so
+  the sea meets a step. Labels: SeaCliff (hard, open > 0.3, slope over 0.05 at 610 m, 12 m up),
+  Stack (one shallow sea cell in twelve beside a cliff), Beach (soft, flat, under 12 m),
+  SaltMarsh / Mangrove (under 3 m, flat, sheltered; mangrove over 20 C, marsh over 5 C),
+  TidalFlat (sheltered sea within 3 cells of land, shallower than 2 m), Bar / Spit /
+  BarrierIsland (hashed 8-cell blocks of shallow soft open shore 2-4 cells out, 35% of blocks;
+  stretches under 3 cells are bars, the rest spits or islands) with Lagoon behind them,
+  CoastalDune 2-3 cells behind a beach where it is dry or in the westerlies, RaisedBeach a
+  5-20 m bench 2-5 cells in on hard rising coasts (stress > 0).
+- Wet ground (`wet`, last in the order): Bog on flats (slope < 0.02) colder than 10 C and
+  wetter than 0.6 (14 C and 0.45 on peat soil), Fen within 3 steps of a channel on wet flats
+  under 3 m HAND, Marsh on a lake's margin, ReedBed in a lake's 0.5-2 m shallows.
+- Tests (one per file at least): chunk-overlap agreement for the cones and craters, the dunes
+  and the cliff step; a crater at the summit and cones on the flanks and nothing volcanic far
+  from a vent; dunes only in the desert; a great river builds a floodplain and a delta;
+  channels resolve every cell; soft shores are beaches and hard steep ones cliffs; cold wet
+  flats are bog with marsh and reeds round a lake. Synthetic planes need a little hashed
+  relief, else every column drains straight down and each shore cell is a channel.
+- Dry ground holds no water (`generate_zoom`'s crop): a doline, a playa and a dune field's
+  hollows lose their standing water, and a stream that reaches a playa ends there (its flow
+  still crosses the bed; on the drained bed the routing had drawn ruled diagonal channels). The
+  Mistlight desert (124,153): 333,000 lake cells to 12,000, river cells 21,500 to 7,100; the
+  salt flats at the date line (508,123): 218,000 to 272. The aeolian pass gates on `desert_at`
+  and `salt_at` (the per-tile desert and salt-flat tests read bilinearly through a 0.18-tile
+  warp, `tile_field_at`): per-tile gates had switched the dunes and playas along the tile grid.
+  A river's own cells are never dunes, so a river keeps its course through a sand sea.
+- Seed 42 at 512x256 under the Sun, after all eight passes: the active caldera at 384,88 lava
+  field 26%, glacial valley 9%, snowfield 5%, cinder cones 1.2%, moraine 1%, rapids 0.9%, gorge
+  0.5%; the Mistlight desert (124,153) playa 35%, sand sea 28%, dunes 13%, pavement 4%; the
+  great river's mouth (382,62) fen 6%, marsh 2%, coastal dunes 1.6%, lagoon 1.1%, beach 0.9%,
+  estuary 0.6%; the Falls region (177,133) marsh 2.5%, terraces 2.3%, backswamp 1.3%,
+  floodplain 1%, levees 0.7%, oxbows; the dev cave region terraces 2.4%, marsh 2.1%, bog 1.3%.
