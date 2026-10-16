@@ -695,6 +695,10 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         // region's load, 7-15 s cold).
         type Founded = (ZoomState, crate::colony::Colony, (f64, f64), i32, bool);
         let mut founding: Option<(std::thread::ScopedJoinHandle<'_, Founded>, (usize, usize), std::time::Instant)> = None;
+        // Embarking from the walker (Enter): the embark, the checks and the founding on a worker
+        // too, so the window stays live (it had run on the window's thread and froze it).
+        type WalkFounded = Result<(crate::colony::Colony, i32, Option<String>), String>;
+        let mut walk_embark: Option<(std::thread::ScopedJoinHandle<'_, WalkFounded>, (usize, usize), std::time::Instant)> = None;
         if let (true, Some(tile)) = (embark, start) {
             let cell = START_CELL.get().copied();
             founding = Some((scope.spawn(move || in_background(|| {
@@ -796,11 +800,11 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 buf = vec![0; w * h];
                 dirty = true;
             }
-            ui_frame += 1;
+            if walk_embark.is_none() { ui_frame += 1; }
             let mut script_keys: Vec<Key> = Vec::new();
             let mut script_down = false;
             let mut script_quit = false;
-            for (f, verb, args) in ui_script.iter().filter(|e| e.0 == ui_frame) {
+            for (f, verb, args) in ui_script.iter().filter(|e| walk_embark.is_none() && e.0 == ui_frame) {
                 let _ = f;
                 match verb.as_str() {
                     "click" => { if let (Some(x), Some(y)) = (args.first().and_then(|v| v.parse().ok()), args.get(1).and_then(|v| v.parse().ok())) { script_mouse = Some((x, y)); script_down = true; } }
@@ -1431,35 +1435,53 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     dirty = true;
                     continue;
                 }
-                if pressed(Key::Enter) {
-                    // Embark: the playable area is centred on the walker.
-                    window.set_title("Generating playable area...");
-                    let t0 = std::time::Instant::now();
-                    // At the walker's position, kept to the precision a world code records, so the
-                    // code rebuilds exactly this camp.
-                    let cell = ((player.0 * CELL_FRAC).max(0.0) as u64, (player.1 * CELL_FRAC).max(0.0) as u64);
-                    let here = ((player.0 / s as f64) as usize % world.width, ((player.1 / s as f64) as usize).min(world.height - 1));
-                    let (map, colony_seed, _) = colony_site(world, history, here, Some(cell));
-                    let _ = &z;
-                    let cz = map.surface_z[(map.height / 2) * map.width + map.width / 2];
-                    let lcam = LocalCamera { cx: map.width as f32 / 2.0, cy: map.height as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: true };
+                // The camp being made on the worker: step into it when it is ready.
+                if walk_embark.as_ref().map_or(false, |e| e.0.is_finished()) {
+                    let (handle, _, t0) = walk_embark.take().unwrap();
+                    let made = match handle.join() {
+                        Ok(r) => r,
+                        Err(_) => Err("making the camp failed here (a fault in the embark); walk on".to_string()),
+                    };
+                    let (mut colony, cz, hard) = match made {
+                        Ok(m) => m,
+                        Err(why) => { status = why; dirty = true; continue; }
+                    };
+                    let lcam = LocalCamera { cx: colony.map.width as f32 / 2.0, cy: colony.map.height as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: true };
                     status = format!("embarked in {:.2}s", t0.elapsed().as_secs_f32());
-                    if !crate::colony::habitable(&map) {
-                        status = "too much water here to make camp; walk to drier ground".into();
-                        continue;
-                    }
-                    let verdict = crate::colony::survey(&map).verdict();
-                    if let Err(why) = &verdict {
-                        status = format!("no camp here: {why}; walk on");
-                        continue;
-                    }
-                    let mut colony = found_colony(map, history, here, colony_seed, 7);
-                    colony.cell = Some(cell);
                     colony.heed_legends(&legends);
                     local = Some((colony, lcam));
                     fresh_colony = true;
                     local_active = true;
-                    if let Ok(Some(hard)) = verdict { status = format!("A hard place to live: {hard}"); }
+                    if let Some(hard) = hard { status = format!("A hard place to live: {hard}"); }
+                    dirty = true;
+                    continue;
+                }
+                if let Some((_, here, t0)) = &walk_embark {
+                    status = format!("Making camp at {},{}: the land at 2 m, the caves and the old places, the fire... {:.0} s", here.0, here.1, t0.elapsed().as_secs_f32());
+                    dirty = true;
+                }
+                if pressed(Key::Enter) && walk_embark.is_none() {
+                    // Embark: the playable area is centred on the walker, made on a worker.
+                    // At the walker's position, kept to the precision a world code records, so the
+                    // code rebuilds exactly this camp.
+                    let cell = ((player.0 * CELL_FRAC).max(0.0) as u64, (player.1 * CELL_FRAC).max(0.0) as u64);
+                    let here = ((player.0 / s as f64) as usize % world.width, ((player.1 / s as f64) as usize).min(world.height - 1));
+                    let _ = &z;
+                    walk_embark = Some((scope.spawn(move || in_background(|| -> WalkFounded {
+                        let (map, colony_seed, _) = colony_site(world, history, here, Some(cell));
+                        let cz = map.surface_z[(map.height / 2) * map.width + map.width / 2];
+                        if !crate::colony::habitable(&map) {
+                            return Err("too much water here to make camp; walk to drier ground".into());
+                        }
+                        let hard = match crate::colony::survey(&map).verdict() {
+                            Err(why) => return Err(format!("no camp here: {why}; walk on")),
+                            Ok(h) => h,
+                        };
+                        let mut colony = found_colony(map, history, here, colony_seed, 7);
+                        colony.cell = Some(cell);
+                        Ok((colony, cz, hard))
+                    })), here, std::time::Instant::now()));
+                    status = format!("Making camp at {},{}...", here.0, here.1);
                     dirty = true;
                     continue;
                 }
@@ -1815,7 +1837,10 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let half = (LOCAL_SIZE as f32 * TILE_M / z.region.cell_m * px_per_cell / 2.0).max(6.0);
                     draw_box(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, half, 0x009A_3324);
                     draw_marker(&mut buf, w, h, w as f32 / 2.0, h as f32 / 2.0, (px_per_cell * 0.6).clamp(4.0, 10.0));
+                    // Making camp here (on the worker), or why not: on the chip, where it is seen.
+                    let embark_word = walk_embark.is_some() || ["Making camp", "no camp here", "too much water", "making the camp failed"].iter().any(|p| status.starts_with(p));
                     let hint = if pending.is_some() && status.starts_with("The region:") { status.clone() }
+                        else if embark_word { status.clone() }
                         else { format!("Arrows walk, Shift runs.   [ ] the region smaller or larger ({} tiles).   K: the key.   Enter: settle.   Z: the map.", region_tiles()) };
                     super::colony_hud::draw_hint(&hint, &mut buf, w, h);
                     if show_key { super::region_ink::draw_legend(&z.ink, &cam_z, &mut buf, w, h); }
