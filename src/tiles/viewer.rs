@@ -793,7 +793,14 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut ui_frame: u64 = 0;
         let mut script_mouse: Option<(f32, f32)> = None;
         let mut script_shot: Option<String> = None;
+        // A frame that ends early (`continue`) skips presenting it, and minifb reads the keys only
+        // in `update`: the key that sent it there would still read as pressed on every frame
+        // after (a Z on an unsurveyed tile looped for ever, the window hung). So a frame that
+        // was not presented is first given an `update`.
+        let mut presented = true;
         while window.is_open() {
+            if !presented { window.update(); }
+            presented = false;
             let (w, h) = window.get_size();
             if (w, h) != size {
                 size = (w, h);
@@ -1907,10 +1914,12 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                 }
                 window.update_with_buffer(&buf, w, h)?;
+                presented = true;
                 if let Some(path) = script_shot.take() { save_rgb_png(&path, w, h, |x, y| { let q = buf[y * w + x]; [(q >> 16) as u8, (q >> 8) as u8, q as u8] }); println!("UI script frame {}: saved {}", ui_frame, path); }
                 dirty = false;
             } else {
                 window.update();
+                presented = true;
                 // Keep polling while a region loads so the swap shows up promptly.
                 if pending.is_some() { dirty = pending.as_ref().map(|p| p.is_finished()).unwrap_or(false); }
             }
