@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "planet-lab": {
+      "command": "./target/release/planet_lab",
+      "args": ["mcp"]
+    }
+  }
+}

@@ -98,6 +98,8 @@ pub fn load_history(path: &Path) -> io::Result<LoadedHistory> {
 
 /// Rebuild ID generators so they start after the highest existing IDs.
 pub fn rebuild_id_generators(history: &mut WorldHistory) {
+    // The chronicle's lookup indexes are not saved either.
+    history.chronicle.reindex();
     let gens = &mut history.id_generators;
 
     gens.faction = IdGenerator::starting_at(

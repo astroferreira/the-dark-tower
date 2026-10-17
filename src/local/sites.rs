@@ -460,6 +460,25 @@ pub(super) fn carve(map: &mut LocalMap, region: &ZoomRegion, cx: f64, cy: f64, s
     out
 }
 
+/// Views agree over a region: for every place the region lists (away from its edge) whose kind
+/// the embark carves, whether the embark made round the place's cell shows it. Returns the
+/// places shown, the places judged and the titles of those not shown ("X at ax,ay").
+pub fn views_agree(world: &crate::world::WorldData, zoom: &crate::region::zoom::ZoomRegion) -> (usize, usize, Vec<String>) {
+    let s = (zoom.params.cells_per_tile.max(8) & !1) as i64;
+    let (tx, ty) = ((zoom.world_x0 * s) as f64, (zoom.world_y0 * s) as f64);
+    let (mut agree, mut judged) = (0usize, 0usize);
+    let mut failed: Vec<String> = Vec::new();
+    for p in &zoom.places {
+        let (px, py) = (p.x - tx + 0.5, p.y - ty + 0.5);
+        if px < 2.0 || py < 2.0 || px > zoom.width as f64 - 2.0 || py > zoom.height as f64 - 2.0 { continue; }
+        let map = generate_local(world, zoom, None, px, py);
+        let Some(ok) = shows(&map, p.kind) else { continue };
+        judged += 1;
+        if ok { agree += 1; } else { failed.push(format!("{} at {:.0},{:.0}", p.title(), p.x, p.y)); }
+    }
+    (agree, judged, failed)
+}
+
 /// Whether the embark made round a place of `kind` shows it at its middle (`views_agree`): the
 /// kind's own sign within reach of the centre. None for a kind the embark does not carve.
 pub fn shows(map: &LocalMap, kind: PlaceKind) -> Option<bool> {

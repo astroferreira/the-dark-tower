@@ -56,6 +56,36 @@ window's places shown in their embarks; the dev world 88%) and its test, P in th
       cause or stop appearing (karst, volcanic and thermal kinds move to the region's site
       layer in Stage 2/4).
 
+## Tools (the lab, `src/lab/CLAUDE.md`; plan of 2026-10-17)
+- [x] The agent harness: `planet_lab` over MCP and the shell (worlds, tiles, regions, places,
+      renders) and the history debugger (query, event, why, entity, stats, export, branch).
+- [ ] Sieges and their ends carry no location: record the town's tile.
+- [ ] A treaty recorded as the cause of a raid between the same peoples (`infer_cause`).
+- [x] The history explorer (`history_explorer`, `--history-explorer DIR`): legends reader,
+      timeline, causal graph, family trees, the web of peoples, the map through the years,
+      checks, compare.
+- [ ] Heirs born to parents of 2-11 years, in chains (explorer checks: 26 on dev, 163 at
+      256x128); no one has more than two children (houses are single-heir lines).
+- [ ] Sieges, war declarations, quests, treaties and miracles carry no place (0 of 364 sieges
+      at 256x128).
+- [ ] A town gets two trade routes to the same town in successive years (Southview and
+      Ravenpool, dev, 261 and 262).
+- [ ] Wars between peoples across the ocean (long lines in the web's geography layout): check
+      the war's reach rule.
+- [ ] Interventions in `history_branch` (a figure dies, a town falls at the fork).
+- [x] Colony tools (`colony_*`, the recorder) and the colony explorer (days, activity, needs,
+      map replay, bonds, works, checks, compare).
+- [x] A colony on a world loaded from its file was not the fresh world's: the chronicle's
+      indexes were not rebuilt on load (`Chronicle::reindex`).
+- [ ] (colony, paused) Diggers deep in the mine eat at 85% hunger and then climb ~3.5 h: 100%
+      hunger with 50-90 meals stored (dev, 10 times in 60 days; Jofulot Day 33 17:28).
+- [ ] (colony, paused) A settler in a building's footprint when it is stamped is moved 11 cells
+      off and back onto their old path six minutes later (dev Day 6 12:08, Renildpun).
+- [ ] `--sim-*` trials with `--load-world` drop the saved history (they force `--dev`; `main`
+      drops a loaded history when `history_years` is set).
+- [ ] Tunables and structured causes (a place's `Why` with its factors), then the Workbench
+      window; the seed census and visual diff; place kinds as data; the set-piece editor.
+
 ## Housekeeping
 - [ ] Remove or silence long-standing compiler warnings in `history/simulation/step.rs`,
       `geomorphometry.rs`.

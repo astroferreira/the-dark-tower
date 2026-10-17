@@ -106,6 +106,28 @@ impl Chronicle {
         }
     }
 
+    /// Refill the indexes a saved chronicle does not keep (`by_id`, `last_pair`, `last_entity`,
+    /// all `serde(skip)`), as `record` filled them, after loading. Without them a loaded
+    /// history knew no one's latest deed: the colony's roster found no notables to be kin of
+    /// (the dev world's kin came as wanderers) and new events lost their inferred causes.
+    pub fn reindex(&mut self) {
+        self.by_id.clear();
+        self.last_pair.clear();
+        self.last_entity.clear();
+        for (i, event) in self.events.iter().enumerate() {
+            let f = &event.factions_involved;
+            for a in 0..f.len() {
+                for b in a + 1..f.len() {
+                    let key = if f[a] < f[b] { (f[a], f[b]) } else { (f[b], f[a]) };
+                    self.last_pair.insert(key, event.id);
+                }
+                self.last_entity.insert(crate::history::EntityId::Faction(f[a]), event.id);
+            }
+            for p in &event.primary_participants { self.last_entity.insert(p.clone(), event.id); }
+            self.by_id.insert(event.id, i);
+        }
+    }
+
     /// The latest event the two peoples were both part of.
     pub fn last_between(&self, a: crate::history::FactionId, b: crate::history::FactionId) -> Option<EventId> {
         self.last_pair.get(&if a < b { (a, b) } else { (b, a) }).copied()

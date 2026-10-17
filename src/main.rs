@@ -303,6 +303,16 @@ struct Args {
     #[arg(long)]
     save_world: Option<String>,
 
+    /// Write the history explorer (a self-contained HTML app: legends reader, timeline, causal
+    /// graph, family trees, the web of peoples, the map through the years, checks) into DIR
+    #[arg(long)]
+    history_explorer: Option<String>,
+
+    /// Save the world as it stands just before its history is simulated (no scars yet), so the
+    /// history can be replayed exactly on its land (`planet_lab`'s history_branch)
+    #[arg(long)]
+    save_prehistory: Option<String>,
+
     /// Load a world saved with --save-world instead of generating one (seconds, not minutes)
     #[arg(long)]
     load_world: Option<String>,
@@ -974,53 +984,6 @@ fn system_spec(args: &Args) -> astro::SystemSpec {
     if args.locked.is_some() { spec.locked = args.locked; }
     if args.binary.is_some() { spec.binary = args.binary; }
     spec
-}
-
-fn pick_dev_embark(world: &world::WorldData, history: Option<&history::world_state::WorldHistory>) -> (usize, usize) {
-    let ranked = dev_embark_candidates(world, history);
-    let first = ranked.first().copied().unwrap_or((world.width / 2, world.height / 2));
-    // On the audited terrain the best tile whose embark has dry land for a camp (seeds 8, 18 and
-    // 23 had put theirs in a river or on the sea at the embark's scale); revision 1 keeps its pick.
-    if planet_generator::terrain_rev::v1() { return first; }
-    ranked.iter().take(12).copied().find(|&t| { let ok = tiles::viewer::embark_habitable(world, history, t); if std::env::var("PLANET_DEBUG_EMBARK").is_ok() { eprintln!("embark candidate {:?}: {}", t, ok); } ok }).unwrap_or(first)
-}
-
-/// The dev embark's candidate tiles, best first (ties to the lowest index), by `pick_dev_embark`'s rule.
-fn dev_embark_candidates(world: &world::WorldData, history: Option<&history::world_state::WorldHistory>) -> Vec<(usize, usize)> {
-    let (w, h) = (world.width, world.height);
-    let towns: Vec<(usize, usize)> = history.map(|h| h.settlements.values()
-        .filter(|s| !s.is_destroyed()).map(|s| s.location).collect()).unwrap_or_default();
-    let mut scored: Vec<((usize, usize), f32)> = Vec::new();
-    for y in 1..h - 1 {
-        for x in 0..w {
-            if *world.heightmap.get(x, y) <= 0.0 || world.water_body_map.get(x, y).is_lake() { continue; }
-            // A temperate first home: no ice, tundra or scorched desert.
-            let t = *world.temperature.get(x, y);
-            if !(4.0..=24.0).contains(&t) { continue; }
-            let (mut river, mut woods, mut lo, mut hi) = (false, 0, f32::MAX, f32::MIN);
-            for dy in -1i64..=1 {
-                for dx in -1i64..=1 {
-                    let (nx, ny) = ((x as i64 + dx).rem_euclid(w as i64) as usize, (y as i64 + dy) as usize);
-                    if world.water_body_map.get(nx, ny).is_river() { river = true; }
-                    if format!("{:?}", world.biomes.get(nx, ny)).contains("Forest") { woods += 1; }
-                    let e = *world.heightmap.get(nx, ny);
-                    lo = lo.min(e);
-                    hi = hi.max(e);
-                }
-            }
-            let near = towns.iter().map(|&(tx, ty)| {
-                let dx = x.abs_diff(tx).min(w - x.abs_diff(tx));
-                dx.max(y.abs_diff(ty))
-            }).min().unwrap_or(usize::MAX);
-            let score = if river { 3.0 } else { 0.0 }
-                + (woods as f32 / 3.0).min(2.0)
-                + if hi - lo > 300.0 { 1.0 } else { 0.0 }
-                + match near { 1..=3 => 2.0, 0 => -5.0, _ => 0.0 };
-            scored.push(((x, y), score));
-        }
-    }
-    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then((a.0 .1, a.0 .0).cmp(&(b.0 .1, b.0 .0))));
-    scored.into_iter().map(|(t, _)| t).collect()
 }
 
 /// The tile atlas: an edited tileset PNG when given (falling back on errors), else the built-in one.
@@ -1836,18 +1799,7 @@ fn main() {
                 };
                 let _ = (world_data.soils(), world_data.resources());
                 let zoom = region::zoom::generate_zoom(&world_data, &params);
-                let s = (zoom.params.cells_per_tile.max(8) & !1) as i64;
-                let (tx, ty) = ((zoom.world_x0 * s) as f64, (zoom.world_y0 * s) as f64);
-                let (mut agree, mut judged) = (0usize, 0usize);
-                let mut failed: Vec<String> = Vec::new();
-                for p in &zoom.places {
-                    let (px, py) = (p.x - tx + 0.5, p.y - ty + 0.5);
-                    if px < 2.0 || py < 2.0 || px > zoom.width as f64 - 2.0 || py > zoom.height as f64 - 2.0 { continue; }
-                    let map = local::generate_local(&world_data, &zoom, None, px, py);
-                    let Some(ok) = local::sites::shows(&map, p.kind) else { continue };
-                    judged += 1;
-                    if ok { agree += 1; } else { failed.push(format!("{} at {:.0},{:.0}", p.title(), p.x, p.y)); }
-                }
+                let (agree, judged, failed) = local::sites::views_agree(&world_data, &zoom);
                 println!("views agree: {agree} of {judged} places of the region round {x},{y} are shown in their embarks");
                 for f in failed.iter().take(40) { println!("  not shown: {f}"); }
             }
@@ -2135,6 +2087,9 @@ fn main() {
         };
         // Load game data (embedded defaults + optional data/ directory overrides)
         let game_data = history::data::GameData::load_from(std::path::Path::new("data"));
+        if let Some(path) = &args.save_prehistory {
+            if let Err(e) = world::save_world(&world_data, None, std::path::Path::new(path)) { eprintln!("--save-prehistory: {e}"); }
+        }
         // Anomalous biomes come from history (scars), not from the dice of world generation.
         let restored = history::ecology::Ecology::naturalize(&mut world_data);
         if restored > 0 { eprintln!("Restored {} randomly placed anomaly tiles to natural biomes", restored); }
@@ -2545,6 +2500,15 @@ fn main() {
         }
     }
 
+    if let Some(dir) = &args.history_explorer {
+        match history.as_ref() {
+            Some(h) => match planet_generator::lab::explorer::write(&world_data, h, &format!("seed {}", master_seed), &load_atlas(args.tileset.as_deref()), std::path::Path::new(dir), true) {
+                Ok(w) => eprintln!("Wrote the history explorer to {}/index.html: {} events, {} named things, data {:.1} MB", w.dir.display(), w.events, w.entities, w.data_bytes as f64 / 1e6),
+                Err(e) => eprintln!("--history-explorer: {e}"),
+            },
+            None => eprintln!("--history-explorer needs a history: load a world saved with history, or add --history-years"),
+        }
+    }
     if let Some(dir) = &args.legends {
         match history.as_ref() {
             Some(h) => {
@@ -2578,7 +2542,7 @@ fn main() {
             }
         });
         let center = if args.dev_embark && center.is_none() {
-            let site = pick_dev_embark(&world_data, history.as_ref());
+            let site = tiles::dev_embark::pick_dev_embark(&world_data, history.as_ref());
             println!("Dev embark at tile {},{}", site.0, site.1);
             Some(site)
         } else { center };

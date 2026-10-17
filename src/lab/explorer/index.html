@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<link rel="stylesheet" href="explorer.css">
+</head>
+<body>
+<header class="bar">
+  <a class="home" href="#/">The Annals</a>
+  <nav id="tabs">
+    <a href="#/" data-tab="read">Legends</a>
+    <a href="#/timeline" data-tab="timeline">Timeline</a>
+    <a href="#/causes" data-tab="causes">Causes</a>
+    <a href="#/family" data-tab="family">Family</a>
+    <a href="#/web" data-tab="web">Connections</a>
+    <a href="#/map" data-tab="map">Map</a>
+    <a href="#/checks" data-tab="checks">Checks</a>
+    <a href="#/compare" data-tab="compare" id="tab-compare" hidden>Compare</a>
+  </nav>
+  <div class="find"><input id="q" type="search" placeholder="Find a person, people, town, war, event..." autocomplete="off"><ul id="hits"></ul></div>
+  <button id="theme" class="ghost" title="Light or dark">&#9680;</button>
+</header>
+<main id="view"></main>
+<aside id="drawer" hidden><button id="drawer-close" class="ghost" title="Close">&times;</button><div id="drawer-body"></div></aside>
+<div id="tip" hidden></div>
+<script src="data.js"></script>
+<script src="data2.js"></script>
+<script src="explorer.js"></script>
+</body>
+</html>

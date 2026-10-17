@@ -81,6 +81,7 @@ pub mod rhythm;
 pub mod prowl;
 pub mod melee;
 pub mod flood;
+pub mod delver;
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -865,6 +866,8 @@ pub struct Colony {
     milestones: crate::history::det::HashSet<&'static str>,
     /// Items carried along with a hauled one (a forager's basket): stored when it arrives.
     basket: crate::history::det::HashMap<usize, Vec<usize>>,
+    /// Real-time ARPG delving and transport technology state (`delver.rs`).
+    pub arpg: delver::ArpgState,
 }
 
 impl Colony {
@@ -948,7 +951,7 @@ impl Colony {
         let mut c = Colony {
             map, clock: Clock { tick: 6 * 60 }, settlers, items, camp, hut: None,
             shrub_ready: Default::default(), claimed: Default::default(), unreachable: Default::default(),
-            log: Vec::new(), decisions: Vec::new(), rng, seed, milestones: Default::default(), basket: Default::default(),
+            log: Vec::new(), decisions: Vec::new(), rng, seed, milestones: Default::default(), basket: Default::default(), arpg: Default::default(),
             patron: Patron { favour: FAVOUR_MAX, marks: Vec::new(), favourite: None, dreams: Vec::new(), last_refill_day: 1 },
             name: None, place_names: Vec::new(), stones: Vec::new(), marks: Vec::new(), builders: Vec::new(), interventions: Vec::new(), script_at: 0, arc: None, banner: None, moments: Vec::new(), departed: None, last_move: 0, opinions: Default::default(), grudges: Default::default(), quarrelled: false, chilled_nights: 0, plan_line: String::new(), builder_share: (0, 0), way: None, steps: Vec::new(), next_creature: 0, game_unreachable: Default::default(), wood_in_reach: true, hunted: 0, dig_plan: None, ore_found: 0, stone_dug: 0, hall_cells: Vec::new(), hall_z: 0, rooms: Vec::new(), spine: None, delve_mouth: None, dig_fails: 0, digs_given_up: Vec::new(), cave_fish: Vec::new(), magma_forge: false, tower: None, dig_rooms: Vec::new(), breach: None, jetty: None, water_walked: 0, water_distance: 0, fishing_spots: Vec::new(), creatures: Vec::new(), clash_at: None, clash_tick: 0, foes_seen: Vec::new(), prowl_count: 0, melee: None, bottom: std::cell::OnceCell::new(), flood: None, frozen_dawns: 0, silted: false, stage: 0, scouted: 0, prowled: Vec::new(), raid_side: String::new(), raid_watch: Vec::new(), cell: None, milestones_hit: Vec::new(), sagas_written: 0, watcher: None, breached: Vec::new(), omens: Vec::new(), dig_hold_until: 0, mine_cap: None, land_ore: std::cell::OnceCell::new(), hatch_rule: if std::env::var("PLANET_FORCE_HATCH").is_ok() { Some(true) } else if std::env::var("PLANET_NO_HATCH").is_ok() { Some(false) } else { None }, grumbled_day: 0, hatch_held: None, cave_hunter: None, cave_bites: 0, cavern_feet: Vec::new(), placed: Vec::new(), haunts: Vec::new(), talks_said: Vec::new(), gate_dirs: Vec::new(), mourning: Vec::new(), set_aside: Vec::new(), kept: Vec::new(), progress: Vec::new(), bridges: Vec::new(), bridges_up: false, hatch: None, works: Vec::new(), trade: None, next_caravan: 0, caravans: 0, tools_bought: false, traded_before: 0, migrants: Vec::new(), migrant_day: None, speaker: None, mandate: None, mandate_day: 0, darkness: 0.0, shadow_name: None, mood: None, mood_done: false, were: None, cursed: Vec::new(), blows: (0.0, None), slain: Vec::new(), hoard_due: None, treasures: Vec::new(), arms: Vec::new(), engravings: Vec::new(), visitors: Vec::new(), last_visit: 0, seeker_night: None, vampire: None, drained: Default::default(), drained_dead: Vec::new(), vampire_noticed: false, watch_blocked_until: 0, pets: Vec::new(), healer: None, expecting: Vec::new(), born: Vec::new(), children: Vec::new(), aquifer_struck: None, dig_paused: false, aquifer_lined: false, gems: Vec::new(), restless: Vec::new(), expedition: None, world_width: 512, drink: 0, caged: Vec::new(), food_warned_day: 0, sellsword_hired: None, pen: None, ores: Vec::new(), hollow_day: None, fighting_people: None, places_found: Vec::new(), mouths_seen: Vec::new(), nameless_rest: false, hauntings: 0, haunt_night: None, burier: None, rumoured: Vec::new(), revealed: Vec::new(), explorer: None, lost: Vec::new(), turned_away: std::cell::RefCell::new((0, None)), tomb_risen: None, prisoner: None, regards: Vec::new(), armour: Vec::new(), hides_used: 0, snatchers: Vec::new(), snatched: Vec::new(), siege: None, guilds: Vec::new(), grievances: Default::default(), lord_risen: false, request: None, salt_until: 0, seed_grain: false, herbs: 0, recognized: Default::default(), remains: Vec::new(), wolf_bites: 0, dens_cleared: Vec::new(), risings: Default::default(), burned: Vec::new(), hungry_days: 0, stolen: Vec::new(), thief_day: 0, consecrated: false, war_call: None, felled: Vec::new(), widowed: Vec::new(), vows: Vec::new(), moods_had: Vec::new(), slaughter_day: 0, supper: None, suppers: 0, clothes: Default::default(), cloth: 0, cloth_used: 0, dreamt: Vec::new(), come_of_age: Vec::new(), rations: false, ice: false, herds_away: false, bell_until: 0, lord: None, shrubs: Vec::new(), ripe_today: std::cell::Cell::new((u64::MAX, true)), treeless_day: std::cell::Cell::new(u64::MAX), relic: None, were_bites: Default::default(), changed: Vec::new(), crimes: Vec::new(), stocks: None, projects: Vec::new(), hut_material: ItemKind::Log, heard: Vec::new(), migrant_news: Vec::new(), industry: Default::default(), shrub_buckets: Vec::new(), tree_buckets: Vec::new(),
         };
@@ -1665,7 +1668,7 @@ impl Colony {
         if self.arc.is_some() { self.arc_tick(); }
         if self.relic.is_some() { self.relic_tick(); }
         if self.hoard_due.is_some() { self.hoard_home(); }
-        if !self.map.places.is_empty() { self.explore_tick(); }
+        if !self.map.places.is_empty() && !self.is_delving() { self.explore_tick(); }
         // The nameless dead (`bestiary.rs`).
         if !self.nameless_rest && self.clock.minute() % 10 == 0 { self.reckon_nameless(); self.bury_the_nameless(); }
         // Needs fall an hour at a time (`needs.rs`).
@@ -1709,7 +1712,7 @@ impl Colony {
         for i in 0..self.settlers.len() {
             if !self.settlers[i].alive { continue; }
             self.update_needs(i, night);
-            if !self.settlers[i].alive { continue; }
+            if !self.settlers[i].alive || self.is_arpg_controlled(i) { continue; }
             // Choose: when the job is done, or every hour if something matters much more now.
             let idle = self.settlers[i].job == Job::Idle;
             if (idle && self.clock.tick >= self.settlers[i].retry_at) || (!idle && self.clock.tick % 60 == (i as u64 * 7) % 60) {
@@ -2553,6 +2556,9 @@ impl Colony {
 
     /// Where to draw settler `i`: between its cell and the next one on its path.
     pub fn draw_pos(&self, i: usize) -> (f32, f32) {
+        if let Some(d) = self.arpg.delver.as_ref().filter(|d| d.who == i) {
+            return (d.x - 0.5, d.y - 0.5);
+        }
         let s = &self.settlers[i];
         let here = (s.pos.0 as f32, s.pos.1 as f32);
         match s.path.first() {

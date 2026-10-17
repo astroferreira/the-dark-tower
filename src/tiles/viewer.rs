@@ -581,6 +581,40 @@ pub(crate) fn apply_ui_action(a: super::colony_ui::Action, colony: &mut crate::c
         Action::Refugees(take) => { *status = match colony.answer_refugees(take) { Ok(l) => l, Err(e) => e }; *moment_card = None; *speed = (*speed_before).max(1); }
         Action::Look(x, y) => { lcam.surface_view = true; *cam_target = Some((x as f32 + 0.5, y as f32 + 0.5)); }
         Action::Top => ui.scroll_by(-1.0e9, body_h),
+        Action::ToggleDelve(who) => {
+            *moment_card = None;
+            match colony.toggle_delver(who.or(ui.selected)) {
+                Ok(msg) => {
+                    *status = msg;
+                    if colony.is_delving() {
+                        ui.open = None;
+                        ui.sheet = None;
+                        if *speed == 0 { *speed = 1; }
+                        if lcam.tile_px < 22.0 { lcam.tile_px = 24.0; }
+                    }
+                }
+                Err(e) => *status = e,
+            }
+        }
+        Action::UpgradeTransport => {
+            *status = match colony.upgrade_transport() {
+                Ok(l) => l,
+                Err(e) => e,
+            };
+        }
+        Action::StrikeCamp => {
+            *moment_card = None;
+            colony.arpg.strike_camp_open = !colony.arpg.strike_camp_open;
+            if colony.arpg.strike_camp_open {
+                if colony.is_delving() {
+                    let _ = colony.toggle_delver(None);
+                }
+                if *speed > 0 { *speed_before = *speed; *speed = 0; }
+                *status = "Strike Camp manifest open: Enter to march on the Region map, U to upgrade transport, Esc to stay.".into();
+            } else {
+                *status = "Stayed at the camp.".into();
+            }
+        }
     }
     (false, false)
 }
@@ -761,6 +795,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         // Colonies left behind (Esc, Enter): kept as they were, marked on the map, resumed by
         // Enter on their ground.
         let mut left: Vec<(crate::colony::Colony, LocalCamera)> = Vec::new();
+        let mut packed_company: Option<crate::colony::delver::PackedCompany> = None;
+        let mut delve_down_prev = false;
         // The legends of camps made in this world before (`colony::legend`).
         let mut legends = crate::colony::legend::load(world.seed());
         let mut stash = false;
@@ -807,11 +843,13 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 buf = vec![0; w * h];
                 dirty = true;
             }
-            if walk_embark.is_none() { ui_frame += 1; }
+            if founding.is_none() && surveying.is_none() && walk_embark.is_none() {
+                ui_frame += 1;
+            }
             let mut script_keys: Vec<Key> = Vec::new();
             let mut script_down = false;
             let mut script_quit = false;
-            for (f, verb, args) in ui_script.iter().filter(|e| walk_embark.is_none() && e.0 == ui_frame) {
+            for (f, verb, args) in ui_script.iter().filter(|e| founding.is_none() && surveying.is_none() && walk_embark.is_none() && e.0 == ui_frame) {
                 let _ = f;
                 match verb.as_str() {
                     "click" => { if let (Some(x), Some(y)) = (args.first().and_then(|v| v.parse().ok()), args.get(1).and_then(|v| v.parse().ok())) { script_mouse = Some((x, y)); script_down = true; } }
@@ -842,6 +880,28 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                             let pick = if verb == "select" { args.first().and_then(|v| v.parse::<usize>().ok()) } else { (0..colony.settlers.len()).find(|&i| colony.settlers[i].alive && colony.below(i)) };
                             if let Some(i) = pick { ui.selected = Some(i); println!("UI script frame {}: selecting {}", ui_frame, colony.settlers[i].name); }
                             else { println!("UI script frame {}: nobody below", ui_frame); }
+                        }
+                    }
+                    // Step the active delver into the first delve chamber (for automated UI verification).
+                    "delve_chamber" => {
+                        if let Some((colony, lcam)) = local.as_mut() {
+                            if let Some(foe) = colony.arpg.foes.first().cloned() {
+                                if let Some(d) = colony.arpg.delver.as_mut() {
+                                    d.x = foe.x - 1.2;
+                                    d.y = foe.y;
+                                    d.z = foe.z;
+                                    d.aim_angle = 0.0;
+                                    colony.settlers[d.who].pos = (d.x as u16, d.y as u16);
+                                    colony.settlers[d.who].z = d.z;
+                                    lcam.cx = d.x;
+                                    lcam.cy = d.y;
+                                    lcam.z = d.z;
+                                    lcam.surface_view = false;
+                                }
+                                colony.reveal_around_delver();
+                                script_mouse = Some((w as f32 / 2.0 + 36.0, h as f32 / 2.0));
+                                script_down = true;
+                            }
                         }
                     }
                     "shot" => script_shot = args.first().cloned(),
@@ -992,6 +1052,12 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 for (k, t) in [(Key::C, Tab::Settlers), (Key::I, Tab::Stocks), (Key::O, Tab::Works), (Key::L, Tab::Annals), (Key::T, Tab::Camp)] {
                     if pressed(k) { actions.push(Action::Tab(t)); }
                 }
+                if dream_for.is_none() && !leave_asked && pressed(Key::E) {
+                    actions.push(Action::ToggleDelve(ui.selected));
+                }
+                if dream_for.is_none() && !leave_asked && pressed(Key::Z) {
+                    actions.push(Action::StrikeCamp);
+                }
                 let body = super::colony_ui::body_rect(w, h);
                 let wheel_on_panel = wheel != 0.0 && ui.open.is_some() && body.contains(mouse.0, mouse.1);
                 if wheel_on_panel { ui.scroll_by(-wheel * 40.0, body.h as f32); dirty = true; }
@@ -999,7 +1065,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     if let Some(hit) = dream_hits.iter().chain(ui_hits.iter()).find(|hh| hh.rect.contains(mouse.0, mouse.1)) { actions.push(hit.action); ui_clicked = true; }
                     else if over_ui_now { ui_clicked = true; }
                 }
-                if pressed(Key::Escape) && inspect.is_empty() && moment_card.is_none() && dream_for.is_none() && !leave_asked {
+                if pressed(Key::Escape) && !colony.arpg.strike_camp_open && inspect.is_empty() && moment_card.is_none() && dream_for.is_none() && !leave_asked {
                     if ui.tool.take().is_some() { ui_esc = true; status = "Put down.".into(); }
                     else if ui.sheet.is_some() { ui_esc = true; actions.push(Action::Back); }
                     else if ui.open.is_some() { ui_esc = true; actions.push(Action::Close); }
@@ -1010,6 +1076,35 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let fx = apply_ui_action(a, colony, lcam, &mut ui, &mut speed, &mut speed_before, &mut moment_card, &mut dream_for, &mut name_input, &mut inspect, &mut status, &mut cam_target, body.h as f32);
                     space_now |= fx.0;
                     skip_now |= fx.1;
+                }
+                if colony.arpg.strike_camp_open {
+                    if pressed(Key::U) {
+                        status = match colony.upgrade_transport() { Ok(l) => l, Err(e) => e };
+                        dirty = true;
+                    } else if pressed(Key::Escape) {
+                        colony.arpg.strike_camp_open = false;
+                        ui_esc = true;
+                        if speed == 0 { speed = speed_before.max(1); }
+                        status = "Stayed in camp.".into();
+                        dirty = true;
+                    } else if pressed(Key::Enter) {
+                        let code = colony_code(colony);
+                        let _ = crate::colony::legend::save(world.seed(), &mut legends, colony.legend(&code));
+                        let pkg = colony.pack_company();
+                        status = format!(
+                            "{} struck camp with {} ({} carry slots) — walk the Region map and press Enter on new ground to pitch camp!",
+                            pkg.origin_name(),
+                            pkg.transport.name(),
+                            pkg.slots_max
+                        );
+                        packed_company = Some(pkg);
+                        local_active = false;
+                        zoom_active = true;
+                        inspect.clear();
+                        stash = true;
+                        dirty = true;
+                        continue;
+                    }
                 }
                 // Choosing a dream: 1-4 pick it, Esc lets it go.
                 if let Some(i) = dream_for {
@@ -1040,7 +1135,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     speed = speed_before.max(1);
                     dirty = true;
                 }
-                if (pressed(Key::Space) || space_now) && !leave_asked && !choosing && !answering {
+                if (pressed(Key::Space) || space_now) && !leave_asked && !choosing && !answering && (!colony.is_delving() || moment_card.is_some() || space_now) {
                     if moment_card.take().is_some() { speed = speed_before.max(1); }
                     else if speed == 0 { speed = speed_before.max(1); }
                     else { speed_before = speed; speed = 0; }
@@ -1081,6 +1176,48 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                     if n > 0 { dirty = true; }
                 }
+                if colony.is_delving() && !colony.arpg.strike_camp_open {
+                    dirty = true;
+                    if speed == 0 && moment_card.is_none() && !leave_asked && !choosing {
+                        speed = 1;
+                    }
+                    let aim_world = (
+                        lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px,
+                        lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px,
+                    );
+                    let mx_in = (held(Key::D) || held(Key::Right) || script_keys.contains(&Key::D) || script_keys.contains(&Key::Right)) as i32 as f32
+                        - (held(Key::A) || held(Key::Left) || script_keys.contains(&Key::A) || script_keys.contains(&Key::Left)) as i32 as f32;
+                    let my_in = (held(Key::S) || held(Key::Down) || script_keys.contains(&Key::S) || script_keys.contains(&Key::Down)) as i32 as f32
+                        - (held(Key::W) || held(Key::Up) || script_keys.contains(&Key::W) || script_keys.contains(&Key::Up)) as i32 as f32;
+                    let primary_down = down && !over_ui_now;
+                    let primary_clicked = down && !delve_down_prev && !over_ui_now;
+                    delve_down_prev = down;
+                    let arpg_in = crate::colony::delver::ArpgInput {
+                        move_x: mx_in,
+                        move_y: my_in,
+                        aim_world,
+                        primary_down,
+                        primary_clicked,
+                        secondary_down: right,
+                        throw_pressed: pressed(Key::G),
+                        dash_pressed: pressed(Key::Space) && moment_card.is_none(),
+                        torch_pressed: pressed(Key::F),
+                        stair_down_pressed: pressed(Key::Period),
+                        stair_up_pressed: pressed(Key::Comma),
+                    };
+                    if let Some(msg) = colony.step_arpg((frame_dt as f32).max(1.0 / 60.0), arpg_in) {
+                        status = msg;
+                    }
+                    if let Some(d) = &colony.arpg.delver {
+                        lcam.cx = d.x;
+                        lcam.cy = d.y;
+                        cam_target = None;
+                        lcam.z = d.z;
+                        lcam.surface_view = !colony.below(d.who);
+                    }
+                } else {
+                    delve_down_prev = down;
+                }
                 // Minor moments go to the status line without stopping the clock.
                 while moment_card.is_none() && colony.moments.len() > seen_moments && !colony.moments[seen_moments].major() {
                     let m = &colony.moments[seen_moments];
@@ -1091,7 +1228,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 if moment_card.is_none() && colony.moments.len() > seen_moments {
                     let m = colony.moments[seen_moments].clone();
                     seen_moments += 1;
-                    if pause_on_moments {
+                    if pause_on_moments && !colony.is_delving() {
                         if speed > 0 { speed_before = speed; }
                         speed = 0;
                         cam_target = Some((m.at.0 as f32 + 0.5, m.at.1 as f32 + 0.5));
@@ -1106,17 +1243,19 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     last_selected = ui.selected;
                     if let Some(i) = ui.selected { status = format!("Following {}: the view goes where they go, below too (pan to stop)", colony.settlers[i].name); }
                 }
-                if let (true, Some(i), None) = (following, ui.selected, ui.sheet) {
-                    if colony.settlers.get(i).map_or(false, |s| s.alive) && moment_card.is_none() {
-                        let p = colony.draw_pos(i);
-                        cam_target = Some((p.0 + 0.5, p.1 + 0.5));
-                        let z = colony.here3(i).2;
-                        if colony.below(i) {
-                            if lcam.surface_view || lcam.z != z { lcam.surface_view = false; lcam.z = z; auto_level = true; dirty = true; }
-                        } else if auto_level && !lcam.surface_view {
-                            lcam.surface_view = true; auto_level = false; dirty = true;
-                        }
-                    } else { following = false; }
+                if !colony.is_delving() {
+                    if let (true, Some(i), None) = (following, ui.selected, ui.sheet) {
+                        if colony.settlers.get(i).map_or(false, |s| s.alive) && moment_card.is_none() {
+                            let p = colony.draw_pos(i);
+                            cam_target = Some((p.0 + 0.5, p.1 + 0.5));
+                            let z = colony.here3(i).2;
+                            if colony.below(i) {
+                                if lcam.surface_view || lcam.z != z { lcam.surface_view = false; lcam.z = z; auto_level = true; dirty = true; }
+                            } else if auto_level && !lcam.surface_view {
+                                lcam.surface_view = true; auto_level = false; dirty = true;
+                            }
+                        } else { following = false; }
+                    }
                 }
                 // Ease the camera to the moment's place (about 600 ms).
                 if let Some(t) = cam_target {
@@ -1135,6 +1274,10 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     dirty = true;
                 } else if esc && moment_card.is_some() {
                     moment_card = None;
+                    dirty = true;
+                } else if esc && colony.is_delving() {
+                    let _ = colony.toggle_delver(None);
+                    status = "Returned to Patron oversight.".into();
                     dirty = true;
                 } else if (esc || pressed(Key::Q)) && !leave_now {
                     leave_asked = true;
@@ -1160,11 +1303,11 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     };
                     stash = true;
                 }
-                if (pressed(Key::Backspace) || right_clicked) && !inspect.is_empty() {
+                if (pressed(Key::Backspace) || right_clicked) && !inspect.is_empty() && !colony.is_delving() {
                     inspect.pop();
                     dirty = true;
                 }
-                if clicked && !ui_clicked {
+                if clicked && !ui_clicked && (!colony.is_delving() || over_panel || ui.tool.is_some()) {
                     let (mx, my) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
                     if over_panel {
                         if let Some(hit) = inspect_hits.iter().find(|hh| hh.rect.contains(mouse.0, mouse.1)) {
@@ -1191,16 +1334,16 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 // The patron's verbs at the mouse: F bless the ground, X forbid it (again on a
                 // mark lifts it), G favour the settler under it, R choose a dream for them, N
                 // name the settlement. D only pans.
-                if !choosing && !leave_asked {
+                if !choosing && !leave_asked && !colony.arpg.strike_camp_open {
                     let (mx, my) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
                     let at = (mx.max(0.0) as u16, my.max(0.0) as u16);
                     let who = colony.settler_at(mx, my, 0.9, if lcam.surface_view { None } else { Some(lcam.z) });
                     let said = if pressed(Key::H) { Some(colony.place_stone(crate::colony::StoneKind::Hall, at)) }
                         else if pressed(Key::J) { Some(colony.place_stone(crate::colony::StoneKind::Grove, at)) }
                         else if pressed(Key::K) { Some(colony.place_stone(crate::colony::StoneKind::Shrine, at)) }
-                        else if pressed(Key::F) { Some(colony.mark_place(at, 6, false)) }
+                        else if !colony.is_delving() && pressed(Key::F) { Some(colony.mark_place(at, 6, false)) }
                         else if pressed(Key::X) { Some(colony.mark_place(at, 6, true)) }
-                        else if pressed(Key::G) { Some(who.map(|i| colony.favour_settler(i)).unwrap_or_else(|| Err("G favours the settler under the mouse; there is no one there".into()))) }
+                        else if !colony.is_delving() && pressed(Key::G) { Some(who.map(|i| colony.favour_settler(i)).unwrap_or_else(|| Err("G favours the settler under the mouse; there is no one there".into()))) }
                         // The bell: everyone under a roof until dawn (`Colony::ring_bell`).
                         else if pressed(Key::B) { Some(colony.ring_bell()) }
                         else if pressed(Key::R) {
@@ -1233,28 +1376,32 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     lcam.cy = before.1 - (mouse.1 - h as f32 / 2.0) / lcam.tile_px;
                     dirty = true;
                 }
-                if pan_x != 0 || pan_y != 0 {
+                if (pan_x != 0 || pan_y != 0) && !colony.is_delving() {
                     following = false;
                     let px = if running { 24.0 } else { 8.0 };
                     lcam.cx = (lcam.cx + pan_x as f32 * px / lcam.tile_px).clamp(0.0, map.width as f32);
                     lcam.cy = (lcam.cy + pan_y as f32 * px / lcam.tile_px).clamp(0.0, map.height as f32);
                     dirty = true;
                 }
-                match (down, drag) {
-                    (true, None) if !press_over_ui => drag = Some((mouse, (lcam.cx, lcam.cy))),
-                    (true, None) => {}
-                    (true, Some((start, c0))) => {
-                        if (mouse.0 - start.0).abs() + (mouse.1 - start.1).abs() > 4.0 { following = false; cam_target = None; }
-                        lcam.cx = (c0.0 - (mouse.0 - start.0) / lcam.tile_px).clamp(0.0, map.width as f32);
-                        lcam.cy = (c0.1 - (mouse.1 - start.1) / lcam.tile_px).clamp(0.0, map.height as f32);
-                        dirty = true;
+                if !colony.is_delving() {
+                    match (down, drag) {
+                        (true, None) if !press_over_ui => drag = Some((mouse, (lcam.cx, lcam.cy))),
+                        (true, None) => {}
+                        (true, Some((start, c0))) => {
+                            if (mouse.0 - start.0).abs() + (mouse.1 - start.1).abs() > 4.0 { following = false; cam_target = None; }
+                            lcam.cx = (c0.0 - (mouse.0 - start.0) / lcam.tile_px).clamp(0.0, map.width as f32);
+                            lcam.cy = (c0.1 - (mouse.1 - start.1) / lcam.tile_px).clamp(0.0, map.height as f32);
+                            dirty = true;
+                        }
+                        (false, _) => drag = None,
                     }
-                    (false, _) => drag = None,
+                } else {
+                    drag = None;
                 }
                 // DF keys: '<' goes up a level, '>' goes down.
                 let up = window.is_key_pressed(Key::Comma, KeyRepeat::Yes) || window.is_key_pressed(Key::PageUp, KeyRepeat::Yes) || script_keys.contains(&Key::Comma);
                 let dn = window.is_key_pressed(Key::Period, KeyRepeat::Yes) || window.is_key_pressed(Key::PageDown, KeyRepeat::Yes) || script_keys.contains(&Key::Period);
-                if up || dn {
+                if (up || dn) && !colony.is_delving() {
                     // From the surface view, start from the ground's level under the view's centre.
                     if lcam.surface_view {
                         let (gx, gy) = ((lcam.cx as usize).min(map.width - 1), (lcam.cy as usize).min(map.height - 1));
@@ -1266,7 +1413,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
                 // [ and ]: up or down to the next level with something dug or built on it.
                 let (jump_up, jump_dn) = (pressed(Key::LeftBracket), pressed(Key::RightBracket));
-                if jump_up || jump_dn {
+                if (jump_up || jump_dn) && !colony.is_delving() {
                     let levels = colony.delve_levels();
                     let cur = if lcam.surface_view { map.surface_z[colony.camp.1 as usize * map.width + colony.camp.0 as usize] } else { lcam.z };
                     let next = if jump_dn { levels.iter().copied().find(|&z| z < cur) } else { levels.iter().rev().copied().find(|&z| z > cur) };
@@ -1278,7 +1425,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                     dirty = true;
                 }
-                if pressed(Key::V) {
+                if pressed(Key::V) && !colony.is_delving() {
                     // Into the level view at the ground's level under the view's centre.
                     if lcam.surface_view {
                         let (gx, gy) = ((lcam.cx as usize).min(map.width - 1), (lcam.cy as usize).min(map.height - 1));
@@ -1287,7 +1434,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     lcam.surface_view = !lcam.surface_view;
                     dirty = true;
                 }
-                if pressed(Key::U) { section_view = !section_view; dirty = true; }
+                if pressed(Key::U) && !colony.arpg.strike_camp_open { section_view = !section_view; dirty = true; }
                 // Hover: describe the tile under the mouse at the viewed level.
                 let (hx, hy) = (lcam.cx + (mouse.0 - w as f32 / 2.0) / lcam.tile_px, lcam.cy + (mouse.1 - h as f32 / 2.0) / lcam.tile_px);
                 let info = if hx >= 0.0 && hy >= 0.0 && (hx as usize) < map.width && (hy as usize) < map.height {
@@ -1444,7 +1591,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 }
                 // The camp being made on the worker: step into it when it is ready.
                 if walk_embark.as_ref().map_or(false, |e| e.0.is_finished()) {
-                    let (handle, _, t0) = walk_embark.take().unwrap();
+                    let (handle, here, t0) = walk_embark.take().unwrap();
                     let made = match handle.join() {
                         Ok(r) => r,
                         Err(_) => Err("making the camp failed here (a fault in the embark); walk on".to_string()),
@@ -1453,13 +1600,28 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         Ok(m) => m,
                         Err(why) => { status = why; dirty = true; continue; }
                     };
+                    let _ = here;
                     let lcam = LocalCamera { cx: colony.map.width as f32 / 2.0, cy: colony.map.height as f32 / 2.0, tile_px: 16.0, z: cz, surface_view: true };
                     status = format!("embarked in {:.2}s", t0.elapsed().as_secs_f32());
                     colony.heed_legends(&legends);
+                    if let Some(pkg) = packed_company.take() {
+                        status = format!(
+                            "The company from {} pitched camp here with {} ({}/{} carry slots)!",
+                            pkg.origin_name(),
+                            pkg.transport.name(),
+                            pkg.slots_used,
+                            pkg.slots_max
+                        );
+                        colony.unpack_company(pkg);
+                        seen_moments = colony.moments.len();
+                        fresh_colony = false;
+                        speed = 1;
+                    } else {
+                        fresh_colony = true;
+                        if let Some(hard) = hard { status = format!("A hard place to live: {hard}"); }
+                    }
                     local = Some((colony, lcam));
-                    fresh_colony = true;
                     local_active = true;
-                    if let Some(hard) = hard { status = format!("A hard place to live: {hard}"); }
                     dirty = true;
                     continue;
                 }
@@ -1791,6 +1953,20 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                             if lcam.surface_view { super::local_ink::draw_colony(colony, lcam, &mut buf, w, h, history); }
                             else { super::local_ink::draw_level(colony, lcam, &mut buf, w, h, history); }
                         }
+                        if colony.is_delving() && !lcam.surface_view {
+                            let half = ((w as f32 / 14.0) as usize / 2).max(8);
+                            let cx = lcam.cx as usize;
+                            super::local_ink::draw_docked_section_ink(
+                                colony,
+                                lcam.cy as usize,
+                                cx.saturating_sub(half),
+                                (cx + half).min(colony.map.width),
+                                &mut buf,
+                                w,
+                                h,
+                                116,
+                            );
+                        }
                     }
                     let right = super::colony_ui::reserve_right(&ui, w);
                     let hide_chip = super::colony_ui::over_ui(&ui, w, h, mouse);
@@ -1848,6 +2024,12 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     let embark_word = walk_embark.is_some() || ["Making camp", "no camp here", "too much water", "making the camp failed"].iter().any(|p| status.starts_with(p));
                     let hint = if pending.is_some() && status.starts_with("The region:") { status.clone() }
                         else if embark_word { status.clone() }
+                        else if let Some(pkg) = &packed_company {
+                            format!(
+                                "Company from {} on the march with {} ({}/{} carry slots).   WASD/Arrows walk, Shift runs.   Enter: pitch new camp!",
+                                pkg.origin_name(), pkg.transport.name(), pkg.slots_used, pkg.slots_max
+                            )
+                        }
                         else { format!("Arrows walk, Shift runs.   [ ] the region smaller or larger ({} tiles).   K: the key.   Enter: settle.   Z: the map.", region_tiles()) };
                     super::colony_hud::draw_hint(&hint, &mut buf, w, h);
                     if show_key { super::region_ink::draw_legend(&z.ink, &cam_z, &mut buf, w, h); }

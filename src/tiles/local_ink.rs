@@ -1947,6 +1947,9 @@ fn draw_colony_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mu
         placed.push((lx, ly, lw, lh));
         super::fonts::draw(buf, w, h, lx, ly, &label, Face::Italic, px, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
     }
+    if mask.is_none() {
+        draw_arpg_overlay(colony, cam, buf, w, h, history, true);
+    }
     // A banner for a moment: four real seconds from when it is first drawn, fading over the last
     // (it had lasted 720 game minutes: a second at 10x, for ever while paused), within three
     // game days of the moment. A parchment card with a double rule, as the other cards.
@@ -2661,6 +2664,7 @@ fn draw_delve_inner(colony: &crate::colony::Colony, cam: &LocalCamera, buf: &mut
             break;
         }
     }
+    draw_arpg_overlay(colony, cam, buf, w, h, history, false);
 }
 
 /// A disc of `fill` ringed in `ring`, at opacity `a` (as `draw_colony`'s disc).
@@ -2765,3 +2769,385 @@ fn draw_creature(put: &mut dyn FnMut(i64, i64, Rgb, f32), colony: &crate::colony
         }
     }
 }
+
+/// Real-time ARPG delve overlay: surface delve entrance beacons, placed wall torches, wall damage
+/// cracks, physical loot drops, real-time dungeon enemies with wind-up telegraphs and HP bars,
+/// projectiles, weapon slash / pickaxe swing arcs, hit sparks, and floating damage/loot numbers.
+pub fn draw_arpg_overlay(
+    colony: &crate::colony::Colony,
+    cam: &LocalCamera,
+    buf: &mut [u32],
+    w: usize,
+    h: usize,
+    history: Option<&crate::history::world_state::WorldHistory>,
+    is_surface: bool,
+) {
+    use crate::colony::delver::{DelveFx, FoeKind, FoeState};
+    if !colony.is_delving() && colony.arpg.loot.is_empty() && colony.arpg.torches.is_empty() {
+        return;
+    }
+    let t = cam.tile_px;
+    let scale = (t / 16.0).clamp(0.55, 1.4);
+    let to_screen = |x: f32, y: f32| ((x - cam.cx) * t + w as f32 / 2.0, (y - cam.cy) * t + h as f32 / 2.0);
+    let view_z = if is_surface {
+        colony.arpg.delver.as_ref().map_or_else(|| colony.camp_z(), |d| d.z)
+    } else {
+        cam.z
+    };
+
+    let mut put = |x: i64, y: i64, c: Rgb, a: f32| {
+        if x < 0 || y < 0 || x as usize >= w || y as usize >= h { return; }
+        let k = y as usize * w + x as usize;
+        let p = buf[k];
+        let old = [((p >> 16) & 0xFF) as f32, ((p >> 8) & 0xFF) as f32, (p & 0xFF) as f32];
+        buf[k] = pack(mix(old, c, a));
+    };
+
+    // 1. Placed wall torches: warm amber halo and wall sconce flame.
+    for &((tx, ty), tz) in &colony.arpg.torches {
+        if (tz - view_z).abs() > 1 { continue; }
+        let (sx, sy) = to_screen(tx as f32 + 0.5, ty as f32 + 0.5);
+        let r = (3.4 * t) as i64;
+        for dy in -r..=r {
+            for dx in -r..=r {
+                let d2 = (dx * dx + dy * dy) as f32 / ((r * r).max(1) as f32);
+                if d2 < 1.0 {
+                    put(sx as i64 + dx, sy as i64 + dy, [248.0, 178.0, 72.0], (1.0 - d2) * 0.16);
+                }
+            }
+        }
+        disc_a(&mut put, 0.95, sx, sy, (t * 0.22).max(3.5), [248.0, 162.0, 44.0], INK);
+        disc_a(&mut put, 0.95, sx, sy - 2.0, (t * 0.13).max(2.0), [254.0, 232.0, 128.0], [200.0, 80.0, 24.0]);
+    }
+
+    // 2. Surface delve entrance beacons & directional compass arrow when in Delver Mode.
+    if let Some(d) = &colony.arpg.delver {
+        let (dx_s, dy_s) = to_screen(d.x, d.y);
+        // Active delver golden ring + directional lantern cone + aim reticle.
+        let ring_r = (t * 0.58).max(8.0);
+        let steps = (ring_r * 6.3) as i64 + 12;
+        for k in 0..steps {
+            let a = k as f32 / steps as f32 * std::f32::consts::TAU;
+            for o in [0.0, 1.0] {
+                put((dx_s + (ring_r - o) * a.cos()) as i64, (dy_s + (ring_r - o) * a.sin()) as i64, [224.0, 168.0, 46.0], 0.9);
+            }
+        }
+        // Companion rings.
+        for &c_idx in &d.companions {
+            if let Some(cs) = colony.settlers.get(c_idx).filter(|s| s.alive) {
+                let (cx_s, cy_s) = to_screen(cs.pos.0 as f32 + 0.5, cs.pos.1 as f32 + 0.5);
+                let cr = (t * 0.46).max(6.0);
+                for k in 0..32 {
+                    let a = k as f32 / 32.0 * std::f32::consts::TAU;
+                    put((cx_s + cr * a.cos()) as i64, (cy_s + cr * a.sin()) as i64, [72.0, 136.0, 184.0], 0.8);
+                }
+            }
+        }
+        // Directional lantern cone in front of delver.
+        let cone_len = (3.6 * t) as i64;
+        for dy in -cone_len..=cone_len {
+            for dx in -cone_len..=cone_len {
+                let dist = ((dx * dx + dy * dy) as f32).sqrt();
+                if dist < 4.0 || dist > cone_len as f32 { continue; }
+                let ang = (dy as f32).atan2(dx as f32);
+                let mut diff = (ang - d.aim_angle).rem_euclid(std::f32::consts::TAU);
+                if diff > std::f32::consts::PI { diff = std::f32::consts::TAU - diff; }
+                if diff < 0.58 {
+                    let falloff = (1.0 - dist / cone_len as f32) * (1.0 - diff / 0.58);
+                    put(dx_s as i64 + dx, dy_s as i64 + dy, [248.0, 200.0, 104.0], falloff * 0.14);
+                }
+            }
+        }
+        // Shield block arc.
+        if d.blocking {
+            let sr = (t * 0.72).max(10.0);
+            for k in -16..=16 {
+                let a = d.aim_angle + (k as f32 / 16.0) * 0.85;
+                for o in [-1.0, 0.0, 1.0, 2.0] {
+                    put((dx_s + (sr + o) * a.cos()) as i64, (dy_s + (sr + o) * a.sin()) as i64, [96.0, 168.0, 224.0], 0.92);
+                }
+            }
+        }
+        // Aim reticle at 1.65 cells along aim_angle.
+        let (rx, ry) = to_screen(d.x + d.aim_angle.cos() * 1.65, d.y + d.aim_angle.sin() * 1.65);
+        for o in -4i64..=4 {
+            if o.abs() >= 2 {
+                put(rx as i64 + o, ry as i64, [180.0, 48.0, 36.0], 0.85);
+                put(rx as i64, ry as i64 + o, [180.0, 48.0, 36.0], 0.85);
+            }
+        }
+
+        // Surface delve beacons & compass chevron.
+        if is_surface || (view_z - colony.camp_z()).abs() <= 2 {
+            let mut nearest_mouth: Option<((u16, u16), &str, f32)> = None;
+            for pl in &colony.map.places {
+                let Some(m) = pl.mouth else { continue };
+                let (mx, my) = (m.0 as f32 + 0.5, m.1 as f32 + 0.5);
+                let dist = ((mx - d.x).powi(2) + (my - d.y).powi(2)).sqrt();
+                if nearest_mouth.map_or(true, |(_, _, best)| dist < best) {
+                    nearest_mouth = Some((m, &pl.name, dist));
+                }
+                let (msx, msy) = to_screen(mx, my);
+                let br = (t * 1.25).max(14.0);
+                for k in 0..48 {
+                    if k % 4 == 0 { continue; }
+                    let a = k as f32 / 48.0 * std::f32::consts::TAU;
+                    for o in [0.0, 1.0, 2.0] {
+                        put((msx + (br - o) * a.cos()) as i64, (msy + (br - o) * a.sin()) as i64, [196.0, 56.0, 36.0], 0.92);
+                    }
+                }
+            }
+            if let Some((m, _, dist)) = nearest_mouth.filter(|&(_, _, dist)| dist > 4.5) {
+                let ang = (m.1 as f32 + 0.5 - d.y).atan2(m.0 as f32 + 0.5 - d.x);
+                let (cx_p, cy_p) = to_screen(d.x + ang.cos() * 3.0, d.y + ang.sin() * 3.0);
+                disc_a(&mut put, 0.92, cx_p, cy_p, 6.0, [208.0, 64.0, 40.0], INK);
+            }
+            // Campfire unload ring when carrying loot.
+            if !d.pack.is_empty() {
+                let (csx, csy) = to_screen(colony.camp.0 as f32 + 0.5, colony.camp.1 as f32 + 0.5);
+                let cr = (t * 3.2).max(20.0);
+                for k in 0..64 {
+                    if k % 2 == 0 { continue; }
+                    let a = k as f32 / 64.0 * std::f32::consts::TAU;
+                    put((csx + cr * a.cos()) as i64, (csy + cr * a.sin()) as i64, [218.0, 164.0, 44.0], 0.85);
+                }
+            }
+        }
+    }
+
+    // 3. Wall crack overlays on rock/ore walls being pickaxed.
+    for &((wx, wy, wz), dmg) in &colony.arpg.wall_damage {
+        if (wz - view_z).abs() > 1 { continue; }
+        let (sx, sy) = to_screen(wx as f32, wy as f32);
+        let n_cracks = (dmg as usize).clamp(1, 5);
+        for c_i in 0..n_cracks {
+            let steps = (t * 0.7) as i64;
+            let (ox, oy) = (sx + t * 0.5, sy + t * 0.5);
+            let a = (c_i as f32 * 1.25) + 0.4;
+            for s in 0..steps {
+                let r = (s as f32 / steps.max(1) as f32) * (t * 0.45);
+                let jag = if (s / 3) % 2 == 0 { 0.15 } else { -0.15 };
+                let px = (ox + (a + jag).cos() * r) as i64;
+                let py = (oy + (a + jag).sin() * r) as i64;
+                put(px, py, INK, 0.92);
+                put(px + 1, py, [220.0, 90.0, 40.0], 0.65);
+            }
+        }
+    }
+
+    // 4. Physical floor loot drops.
+    let mut loot_labels: Vec<(f32, f32, String)> = Vec::new();
+    let mut text_labels: Vec<(f32, f32, String, super::fonts::Face, f32, u32)> = Vec::new();
+    if let Some(d) = &colony.arpg.delver {
+        if is_surface || (view_z - colony.camp_z()).abs() <= 2 {
+            let mut nearest_mouth: Option<((u16, u16), &str, f32)> = None;
+            for pl in &colony.map.places {
+                let Some(m) = pl.mouth else { continue };
+                let (mx, my) = (m.0 as f32 + 0.5, m.1 as f32 + 0.5);
+                let dist = ((mx - d.x).powi(2) + (my - d.y).powi(2)).sqrt();
+                if nearest_mouth.map_or(true, |(_, _, best)| dist < best) {
+                    nearest_mouth = Some((m, &pl.name, dist));
+                }
+                let (msx, msy) = to_screen(mx, my);
+                let br = (t * 1.25).max(14.0);
+                let tag = format!("DELVE: {} [walk in or >]", pl.name);
+                text_labels.push((msx, msy - br - 16.0, tag, super::fonts::Face::Italic, 13.0, 0x009A_281E));
+            }
+            if let Some((m, mname, dist)) = nearest_mouth.filter(|&(_, _, dist)| dist > 4.5) {
+                let ang = (m.1 as f32 + 0.5 - d.y).atan2(m.0 as f32 + 0.5 - d.x);
+                let (cx_p, cy_p) = to_screen(d.x + ang.cos() * 3.0, d.y + ang.sin() * 3.0);
+                let hint = format!("{} ({:.0}m)", mname, dist);
+                text_labels.push((cx_p, cy_p - 18.0, hint, super::fonts::Face::Italic, 12.0, 0x009A_281E));
+            }
+        }
+    }
+    for drop in &colony.arpg.loot {
+        if (drop.z - view_z).abs() > 1 { continue; }
+        if is_surface && drop.z < colony.map.surface_z[(drop.y as usize).min(colony.map.height - 1) * colony.map.width + (drop.x as usize).min(colony.map.width - 1)] - 1 {
+            continue;
+        }
+        let (sx, sy) = to_screen(drop.x, drop.y);
+        let col = drop.item.color();
+        let r = (t * 0.28).clamp(4.0, 8.0);
+        // Gleaming diamond/disc on the ground.
+        disc_a(&mut put, 0.96, sx, sy, r, col, INK);
+        disc_a(&mut put, 0.9, sx - r * 0.28, sy - r * 0.28, (r * 0.35).max(1.5), [252.0, 248.0, 236.0], col);
+        let near_delver = colony.arpg.delver.as_ref().map_or(false, |d| ((d.x - drop.x).powi(2) + (d.y - drop.y).powi(2)).sqrt() <= 4.5);
+        if t >= 11.0 || near_delver {
+            loot_labels.push((sx, sy - r - 12.0, drop.item.label()));
+        }
+    }
+
+    // 5. Real-time dungeon enemies with wind-up telegraphs and HP bars.
+    for foe in &colony.arpg.foes {
+        if (foe.z - view_z).abs() > 1 { continue; }
+        if is_surface && foe.z < colony.map.surface_z[(foe.y as usize).min(colony.map.height - 1) * colony.map.width + (foe.x as usize).min(colony.map.width - 1)] - 1 {
+            continue;
+        }
+        let (sx, sy) = to_screen(foe.x, foe.y);
+        let a = if foe.z == view_z { 1.0 } else { 0.4 };
+        // Wind-up red telegraph ring & lunge arrow!
+        if let FoeState::Windup { timer, dx, dy } = foe.state {
+            let pulse = (1.0 - (timer / 0.42).clamp(0.0, 1.0)) * 0.85 + 0.15;
+            let wr = (t * (0.75 + foe.size * 0.25)).max(10.0);
+            for k in 0..40 {
+                let ang = k as f32 / 40.0 * std::f32::consts::TAU;
+                for o in [0.0, 1.0, 2.0] {
+                    put((sx + (wr - o) * ang.cos()) as i64, (sy + (wr - o) * ang.sin()) as i64, [220.0, 36.0, 28.0], pulse);
+                }
+            }
+            // Telegraph lunge line.
+            let len = (t * 1.8) as i64;
+            for s in 0..len {
+                let frac = s as f32 / len.max(1) as f32;
+                let lx = (sx + dx * frac * t * 1.8) as i64;
+                let ly = (sy + dy * frac * t * 1.8) as i64;
+                put(lx, ly, [228.0, 44.0, 32.0], 0.88);
+                put(lx + 1, ly, [228.0, 44.0, 32.0], 0.88);
+            }
+        }
+        let left = colony.arpg.delver.as_ref().map_or(false, |d| d.x < foe.x);
+        let strike = matches!(foe.state, FoeState::Lunge { .. } | FoeState::Windup { .. });
+        let flash = foe.hit_flash > 0.0;
+        let mut foe_put = |px: i64, py: i64, c: Rgb, al: f32| {
+            let c2 = if flash { mix(c, [252.0, 240.0, 220.0], 0.75) } else { c };
+            put(px, py, c2, al * a);
+        };
+        match foe.kind {
+            FoeKind::OutlawMiner | FoeKind::RisenGuard | FoeKind::BarrowWight => {
+                let f = super::folk::raider(None, &foe.name, foe.id, history);
+                super::folk::draw(&mut foe_put, &f, sx, sy, scale * foe.size, left, strike, 1.0);
+            }
+            FoeKind::CaveSpider | FoeKind::RockCrawler | FoeKind::BlindStalker | FoeKind::DeepAutomaton | FoeKind::LairBoss => {
+                let look_name = match foe.kind {
+                    FoeKind::CaveSpider => "spider",
+                    FoeKind::RockCrawler | FoeKind::BlindStalker => "crawler",
+                    FoeKind::DeepAutomaton => "bronze colossus",
+                    FoeKind::LairBoss => &foe.name,
+                    _ => &foe.name,
+                };
+                let mut look = super::beasts::of_name(look_name);
+                look.len = (1.1 + foe.size * 0.5).clamp(1.0, 3.2);
+                if look.glow.is_none() {
+                    look.glow = Some([230.0, 64.0, 36.0]);
+                }
+                let px = super::beasts::px_for(&look, scale);
+                let pose = if matches!(foe.state, FoeState::Chase | FoeState::Lunge { .. }) {
+                    super::beasts::Pose::Walk(true)
+                } else {
+                    super::beasts::Pose::Stand
+                };
+                super::beasts::draw(&mut foe_put, &look, sx, sy + 6.0 * scale, px, left, pose, 1.0);
+            }
+        }
+        // HP bar above the foe.
+        let bw = (26.0 * foe.size).clamp(22.0, 48.0);
+        let bh = 4.0f32;
+        let bx = sx - bw / 2.0;
+        let by = sy - (18.0 * scale * foe.size).max(14.0);
+        let fill_w = (bw * (foe.hp / foe.max_hp.max(1.0)).clamp(0.0, 1.0)) as i64;
+        for yy in by as i64..=(by + bh) as i64 {
+            for xx in bx as i64..=(bx + bw) as i64 {
+                let edge = yy == by as i64 || yy == (by + bh) as i64 || xx == bx as i64 || xx == (bx + bw) as i64;
+                let inside_hp = (xx - bx as i64) <= fill_w;
+                let col = if edge { INK } else if inside_hp { [196.0, 42.0, 32.0] } else { [60.0, 48.0, 42.0] };
+                put(xx, yy, col, 0.92 * a);
+            }
+        }
+        if foe.kind == FoeKind::LairBoss || t >= 12.0 {
+            text_labels.push((sx, by - 13.0, foe.name.clone(), super::fonts::Face::Italic, 11.0, 0x009A_2218));
+        }
+    }
+
+    // 6. Projectiles.
+    for p in &colony.arpg.projectiles {
+        if (p.z - view_z).abs() > 1 { continue; }
+        let (sx, sy) = to_screen(p.x, p.y);
+        let spd = (p.vx * p.vx + p.vy * p.vy).sqrt().max(0.1);
+        let (ux, uy) = (p.vx / spd, p.vy / spd);
+        for s in -6i64..=6 {
+            let px = (sx + ux * s as f32 * 1.4) as i64;
+            let py = (sy + uy * s as f32 * 1.4) as i64;
+            let col = if s >= 3 { [220.0, 220.0, 228.0] } else { [156.0, 112.0, 68.0] };
+            put(px, py, col, 0.95);
+            put(px + 1, py, INK, 0.7);
+        }
+    }
+
+    // 7. Slash arcs, hit sparks, and floating combat/loot numbers.
+    for fx in &colony.arpg.fx {
+        match fx {
+            DelveFx::SlashArc { x, y, z, angle, timer, max_timer, pick, .. } => {
+                if (*z - view_z).abs() > 1 { continue; }
+                let (sx, sy) = to_screen(*x, *y);
+                let prog = 1.0 - (*timer / max_timer.max(0.01)).clamp(0.0, 1.0);
+                let sweep = if *pick { 0.55 } else { 1.35 };
+                let r_base = if *pick { t * 0.95 } else { t * 1.45 };
+                let col: Rgb = if *pick { [238.0, 176.0, 68.0] } else { [244.0, 240.0, 228.0] };
+                let rim: Rgb = if *pick { [180.0, 90.0, 30.0] } else { [196.0, 64.0, 44.0] };
+                for step in -24..=24 {
+                    let frac = step as f32 / 24.0;
+                    let a = *angle + frac * sweep;
+                    for dr in -3i64..=3 {
+                        let rr = r_base + dr as f32 * 1.3;
+                        let px = (sx + a.cos() * rr) as i64;
+                        let py = (sy + a.sin() * rr) as i64;
+                        put(px, py, if dr.abs() == 3 { rim } else { col }, (1.0 - prog * 0.6) * 0.92);
+                    }
+                }
+            }
+            DelveFx::Spark { x, y, z, timer, color, .. } => {
+                if (*z - view_z).abs() > 1 { continue; }
+                let (sx, sy) = to_screen(*x, *y);
+                disc_a(&mut put, (*timer * 3.0).clamp(0.0, 1.0), sx, sy, 2.5, *color, INK);
+            }
+            DelveFx::FloatingText { x, y, z, text, color, timer } => {
+                if (*z - view_z).abs() > 1 { continue; }
+                let (sx, sy) = to_screen(*x, *y);
+                let rise = (1.0 - timer.clamp(0.0, 1.0)) * 18.0;
+                text_labels.push((sx, sy - rise - 10.0, text.clone(), super::fonts::Face::Roman, 13.0, *color));
+            }
+        }
+    }
+
+    for (tx, ty, text, face, sz, col) in text_labels {
+        let tw = super::fonts::width(&text, face, sz, 0.0);
+        super::fonts::draw(buf, w, h, tx - tw / 2.0, ty, &text, face, sz, 0.0, col, Some(0x00EE_E4CC));
+    }
+    for (lx, ly, text) in loot_labels {
+        let tw = super::fonts::width(&text, super::fonts::Face::Italic, 11.0, 0.0);
+        super::fonts::draw(buf, w, h, lx - tw / 2.0, ly, &text, super::fonts::Face::Italic, 11.0, 0.0, 0x0030_1E14, Some(0x00EE_E4CC));
+    }
+}
+
+/// Draw a live docked side-view Cross-Section strip at the bottom of the window (`y = h - strip_h - 32 .. h - 32`)
+/// when the player is delving underground, so vertical depth, shafts, ore seams, and foes along the
+/// delver's row are readable alongside the top-down view.
+pub fn draw_docked_section_ink(
+    colony: &crate::colony::Colony,
+    row: usize,
+    x0: usize,
+    x1: usize,
+    buf: &mut [u32],
+    w: usize,
+    h: usize,
+    strip_h: usize,
+) {
+    if h <= strip_h + 48 || w <= 160 {
+        return;
+    }
+    let y_top = h - strip_h - 32;
+    let mut sub = vec![0u32; w * strip_h];
+    render_section_ink(colony, row, x0, x1, &mut sub, w, strip_h);
+    for sy in 0..strip_h {
+        let dst_y = y_top + sy;
+        let border = sy == 0 || sy == 1 || sy + 1 == strip_h || sy + 2 == strip_h;
+        for sx in 0..w {
+            let k = dst_y * w + sx;
+            buf[k] = if border { 0x0038_2A20 } else { sub[sy * w + sx] };
+        }
+    }
+    let label = format!("LIVE CROSS-SECTION (Row {}) — '<'Climb Up  '>'Climb/Cut Down  [X] Full Section", row);
+    super::fonts::draw(buf, w, h, 68.0, y_top as f32 + 5.0, &label, super::fonts::Face::SmallCaps, 12.0, 0.6, 0x0030_1E14, Some(0x00EE_E4CC));
+}
+

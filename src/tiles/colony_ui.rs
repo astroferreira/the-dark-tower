@@ -78,6 +78,12 @@ pub(crate) enum Action {
     Look(u16, u16),
     /// Scroll the open leaf to its top.
     Top,
+    /// Step into (or out of) real-time ARPG Delver Mode.
+    ToggleDelve(Option<usize>),
+    /// Upgrade the company's transport technology tier.
+    UpgradeTransport,
+    /// Open or close the Strike Camp & Transport Manifest modal.
+    StrikeCamp,
 }
 
 /// The interface's own state, kept by the viewer between frames.
@@ -544,8 +550,12 @@ fn sheet_leaf(p: &mut Pane, colony: &Colony, i: usize, history: Option<&crate::h
     if s.alive {
         let spent = colony.patron.favour == 0;
         let dreaming = colony.patron.dreams.iter().any(|d| d.0 == i && d.2 > colony.clock.tick);
-        p.buttons(&[("G", "favour them", Action::Favour(i), !spent && colony.patron.favourite != Some(i), colony.patron.favourite == Some(i)),
-                    ("R", "send a dream", Action::DreamFor(i), !spent, dreaming)]);
+        let is_delver = colony.arpg.delver.as_ref().map_or(false, |d| d.who == i);
+        p.buttons(&[
+            ("E", if is_delver { "end delve" } else { "delve as them" }, Action::ToggleDelve(Some(i)), true, is_delver),
+            ("G", "favour them", Action::Favour(i), !spent && colony.patron.favourite != Some(i), colony.patron.favourite == Some(i)),
+            ("R", "send a dream", Action::DreamFor(i), !spent, dreaming),
+        ]);
     }
     if s.alive {
         p.heading("Needs");
@@ -905,6 +915,30 @@ fn camp_leaf(p: &mut Pane, colony: &Colony) {
         p.heading("How the camp stands");
         for s in standing { p.para(&s, Face::Roman, BODY, INK, 0.0, None); }
     }
+    p.heading("Delving & Nomadic Transport");
+    p.para(
+        &format!(
+            "Transport: {} ({}) — {} carry slots when striking camp.",
+            colony.arpg.transport.name(),
+            colony.arpg.transport.subtitle(),
+            colony.max_camp_carry_slots()
+        ),
+        Face::Roman,
+        BODY,
+        INK,
+        0.0,
+        None,
+    );
+    let (can_up, up_desc) = match colony.can_upgrade_transport() {
+        Some((next, ok)) => (ok, format!("{} ({})", next.name(), next.cost_words())),
+        None => (false, "Max tier reached".to_string()),
+    };
+    p.para(&format!("Next tier: {}", up_desc), Face::Italic, SMALL + 1.0, if can_up { MOSS } else { SOFT }, 0.0, None);
+    p.buttons(&[
+        ("E", if colony.is_delving() { "end delve" } else { "delve (ARPG)" }, Action::ToggleDelve(None), true, colony.is_delving()),
+        ("U", "upgrade transport", Action::UpgradeTransport, can_up, false),
+        ("Z", "strike camp", Action::StrikeCamp, true, colony.arpg.strike_camp_open),
+    ]);
     p.heading("Against a raid");
     let (ready, tally, _) = colony.readiness();
     p.measure("readiness", ready, &format!("{:.2}", ready), if ready >= 0.7 { MOSS } else if ready >= 0.5 { GOLD } else { RUBRIC });
@@ -1063,6 +1097,9 @@ fn draw_bar(colony: &Colony, ui: &UiState, speed: u32, mouse: (f32, f32), buf: &
     let sel = ui.selected.filter(|&i| colony.settlers.get(i).map_or(false, |s| s.alive));
     let tool = ui.tool;
     let entries: Vec<(&str, &str, Action, bool, bool)> = vec![
+        ("E", if colony.is_delving() { "end delve" } else { "delve" }, Action::ToggleDelve(sel), true, colony.is_delving()),
+        ("Z", "strike camp", Action::StrikeCamp, true, colony.arpg.strike_camp_open),
+        ("|", "", Action::Top, false, false),
         ("F", "bless", Action::Arm(Tool::Bless), !spent || colony.patron.marks.iter().any(|m| !m.forbidden), tool == Some(Tool::Bless)),
         ("X", "forbid", Action::Arm(Tool::Forbid), !spent || colony.patron.marks.iter().any(|m| m.forbidden), tool == Some(Tool::Forbid)),
         ("G", "favour", match sel { Some(i) => Action::Favour(i), None => Action::Arm(Tool::Favour) }, !spent, tool == Some(Tool::Favour)),

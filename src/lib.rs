@@ -37,6 +37,7 @@ pub mod exr_export;
 pub mod heightmap;
 pub mod history;
 pub mod islands;
+pub mod lab;
 pub mod local;
 pub mod lore;
 pub mod map_export;

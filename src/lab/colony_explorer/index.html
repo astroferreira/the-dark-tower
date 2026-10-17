@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<link rel="stylesheet" href="colony.css">
+</head>
+<body>
+<header class="bar">
+  <a class="home" href="#/" id="home">The Camp</a>
+  <nav id="tabs">
+    <a href="#/" data-tab="read">Days</a>
+    <a href="#/activity" data-tab="activity">Activity</a>
+    <a href="#/needs" data-tab="needs">Needs</a>
+    <a href="#/map" data-tab="map">Map</a>
+    <a href="#/bonds" data-tab="bonds">Bonds</a>
+    <a href="#/works" data-tab="works">Works</a>
+    <a href="#/checks" data-tab="checks">Checks</a>
+    <a href="#/compare" data-tab="compare" id="tab-compare" hidden>Compare</a>
+  </nav>
+  <div class="find"><input id="q" type="search" placeholder="Find a settler, a work, words in the log..." autocomplete="off"><ul id="hits"></ul></div>
+  <span class="outlinks" id="outlinks"></span>
+  <button id="theme" class="ghost" title="Light or dark">&#9680;</button>
+</header>
+<main id="view"></main>
+<aside id="drawer" hidden><button id="drawer-close" class="ghost" title="Close">&times;</button><div id="drawer-body"></div></aside>
+<div id="tip" hidden></div>
+<script src="data.js"></script>
+<script src="data2.js"></script>
+<script src="colony.js"></script>
+</body>
+</html>

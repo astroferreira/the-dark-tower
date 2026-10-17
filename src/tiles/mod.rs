@@ -12,6 +12,7 @@ pub mod sprite_sheet;
 mod colony_hud;
 mod colony_ui;
 pub mod coverage;
+pub mod dev_embark;
 pub mod classify;
 pub mod folk;
 pub mod fonts;

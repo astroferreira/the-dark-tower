@@ -39,6 +39,14 @@ scripts/gallery.sh out/gallery                                                  
 cargo run --release -- --seed 42 --star sol --headless --no-history --gazetteer       # named features and landmarks
 cargo run --release --bin terrain_lab -- 42 512 256 earthlike out  # per-stage metrics and images (src/erosion/CLAUDE.md)
 
+# The lab: worlds, regions, embarks and history as tools (MCP server `planet-lab` in .mcp.json;
+# src/lab/CLAUDE.md). From the shell, tools run in order in one session:
+./target/release/planet_lab call open_world '{"dev":true}' places '{"x":42,"y":32,"kind":"cave"}' history_why '{"id":190}'
+./target/release/planet_lab tools                                  # every tool and its arguments
+./target/release/planet_lab call open_world '{"dev":true}' history_explorer '{"open":true}'   # the history as an HTML app
+cargo run --release -- --load-world worlds/x.world --headless --history-explorer out/annals     # the same, from the game
+./target/release/planet_lab call open_world '{"dev":true}' colony_found '{"days":60}' colony_why '{"who":"Jofulot","at":"Day 33, 20:00"}' colony_explorer '{"open":true}'   # a colony recorded and explored
+
 # Start screen: tailor the world (size, seed, style, plates, fantasy, history, peoples,
 # the Shadow, watching), then generate it and open the tile viewer
 cargo run --release
@@ -246,6 +254,11 @@ Detailed notes, tuning numbers and gotchas live next to the code:
 - `src/colony/CLAUDE.md`: the first colony (settlers, needs, jobs, `--sim-snapshot`, `--dev-embark`) (paused)
 - `src/adventure/CLAUDE.md`: adventure mode (one hero across the world: places from the history,
   Tibia's levels, callings and dungeons; `--adventure`, `--adventure-bot`, the ink window) (paused)
+- `src/lab/CLAUDE.md`: the lab (`planet_lab`): the MCP/shell tools over worlds, regions, embarks
+  and the history (query, why, entity timelines, stats, export, branching), the history
+  explorer (legends reader, timeline, causal graph, family trees, web of peoples, map, checks),
+  and colonies (founded as the game does, recorded minute by minute: why, track, cell, path,
+  checks, branch, and the colony explorer: days, activity, needs, map replay, bonds, works)
 - `docs/README.md`: the reference notes (geomorphometry), the paused colony direction, the archive
 
 ---

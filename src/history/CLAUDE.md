@@ -30,7 +30,11 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   a neighbouring people of the faith (its missionaries) and name it.
 - `--causes` prints the share with a cause and the chain depth: dev 74-78% (median chain 6-7
   links), seed 42 74% (median 5). Was 25% / 15%.
-- `Chronicle::get` is indexed (`by_id`, not saved; a loaded history falls back to a scan).
+- `Chronicle::get` is indexed (`by_id`, not saved). `by_id`, `last_pair` and `last_entity` are
+  `serde(skip)` and are refilled on load (`Chronicle::reindex`, from `rebuild_id_generators`;
+  2026-10-17): before, a loaded history knew no one's latest deed, so the colony's roster found
+  no notables to be kin of (the dev world's kin came as wanderers: a colony on a saved world was
+  not the one `--dev` makes) and events recorded after a load lost their inferred causes.
 
 ## Consistency and the present day
 - `step_integrity` (end of every `simulate_step`) is the one place that reconciles what other

@@ -256,6 +256,12 @@ pub(crate) fn draw(colony: &Colony, lcam: &LocalCamera, st: &HudState, buf: &mut
             }
         }
     }
+    if colony.is_delving() {
+        draw_delver_hud(colony, buf, w, h);
+    }
+    if colony.arpg.strike_camp_open {
+        draw_strike_camp_modal(colony, buf, w, h);
+    }
     hits
 }
 
@@ -476,3 +482,165 @@ pub(crate) fn draw_hint(text: &str, buf: &mut [u32], w: usize, h: usize) {
 
 /// First letter up ("the camp at 45,12" -> "The camp at 45,12").
 pub(crate) fn capitalize_pub(s: &str) -> String { let mut c = s.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() }
+
+/// Draw the real-time ARPG Delver status card (top-center): HP & Stamina bars, Delve Pack slots,
+/// active Lair Boss health bar, and direct combat/mining controls.
+fn draw_delver_hud(colony: &Colony, buf: &mut [u32], w: usize, h: usize) {
+    let Some(d) = &colony.arpg.delver else { return };
+    if w < 640 || h < 320 { return; }
+    let cw = 480usize.min(w.saturating_sub(340));
+    let ch = 104usize;
+    let cx = ((w.saturating_sub(cw)) / 2).max(320);
+    let cy = 10usize;
+    let r = Rect { x: cx, y: cy, w: cw, h: ch };
+    ui::card(buf, w, r);
+
+    let s = &colony.settlers[d.who];
+    let wep = colony.arm_of(d.who).map(|a| format!("{} {}", a.material, a.kind)).unwrap_or_else(|| "iron pick & club".into());
+    let arm = colony.armour_of(d.who).map(|a| format!(", {} {}", a.material, a.kind)).unwrap_or_default();
+    let comp_txt = if d.companions.is_empty() { String::new() } else { format!(" (+{} companions)", d.companions.len()) };
+    let title = format!("DELVING: {}{}  —  {}{}", s.name, comp_txt, wep, arm);
+    fonts::draw(buf, w, h, (cx + 14) as f32, (cy + 8) as f32, &fit(&title, Face::SmallCaps, BODY, cw as f32 - 28.0), Face::SmallCaps, BODY, 0.4, RUBRIC, None);
+
+    // HP Bar & Stamina Bar.
+    let bar_y = cy + 32;
+    let hp_frac = (d.hp / d.max_hp.max(1.0)).clamp(0.0, 1.0);
+    let st_frac = (d.stamina / d.max_stamina.max(1.0)).clamp(0.0, 1.0);
+    draw_stat_bar(buf, w, cx + 14, bar_y, 130, 11, hp_frac, 0x00B8_2E22, &format!("HP {:.0}/{:.0}", d.hp, d.max_hp));
+    draw_stat_bar(buf, w, cx + 158, bar_y, 120, 11, st_frac, 0x0048_7A3E, &format!("STM {:.0}", d.stamina));
+
+    // Depth & Torch count.
+    let depth = (colony.camp_z() - d.z).max(0);
+    let depth_txt = if depth == 0 { "Surface".to_string() } else { format!("Depth -{}m", depth) };
+    fonts::draw(buf, w, h, (cx + 292) as f32, (bar_y - 2) as f32, &format!("{}  ·  {} torches", depth_txt, colony.arpg.torches.len()), Face::Italic, SMALL, 0.0, INK, None);
+
+    // Delve Pack Slots.
+    let max_slots = colony.max_delve_pack();
+    let used = d.pack.len();
+    let py = cy + 54;
+    let pack_lbl = format!("Pack ({}/{}):", used, max_slots);
+    fonts::draw(buf, w, h, (cx + 14) as f32, py as f32, &pack_lbl, Face::Italic, SMALL, 0.0, if used >= max_slots { RUBRIC } else { INK }, None);
+    let mut sx = cx + 96;
+    for slot_i in 0..max_slots.min(14) {
+        let sr = Rect { x: sx, y: py + 1, w: 14, h: 14 };
+        let fill = if let Some(item) = d.pack.get(slot_i) {
+            let c = item.color();
+            ((c[0] as u32) << 16) | ((c[1] as u32) << 8) | (c[2] as u32)
+        } else {
+            ui::mix(ui::PAPER, INK_FADED, 0.15)
+        };
+        for yy in sr.y..sr.y + sr.h {
+            for xx in sr.x..sr.x + sr.w {
+                if xx < w && yy < h {
+                    let edge = yy == sr.y || yy + 1 == sr.y + sr.h || xx == sr.x || xx + 1 == sr.x + sr.w;
+                    buf[yy * w + xx] = if edge { INK } else { fill };
+                }
+            }
+        }
+        sx += 17;
+    }
+    let summary = if d.pack.is_empty() {
+        "Empty — mine ore veins or fell foes; return to campfire to unload".to_string()
+    } else {
+        let last_few: Vec<String> = d.pack.iter().rev().take(2).map(|i| i.label()).collect();
+        format!("Carrying: {}{}", last_few.join(", "), if d.pack.len() > 2 { " ..." } else { " (walk to fire to unload)" })
+    };
+    fonts::draw(buf, w, h, (sx + 6) as f32, py as f32, &fit(&summary, Face::Roman, SMALL, (cx + cw - sx - 14) as f32), Face::Roman, SMALL, 0.0, INK_FADED, None);
+
+    // Controls strip at bottom of Delver card.
+    let ctrl = "WASD move · LClick slash/mine · RClick shield parry · Space dodge · G throw · F torch · </> stairs/dig shaft · E end";
+    fonts::draw(buf, w, h, (cx + 14) as f32, (cy + 80) as f32, &fit(ctrl, Face::Italic, 12.0, cw as f32 - 24.0), Face::Italic, 12.0, 0.0, RUBRIC, None);
+
+    // If a Lair Boss is on the current level within 15 cells, draw a dramatic Boss Health Bar below the Delver card!
+    if let Some(boss) = colony.arpg.foes.iter().find(|f| f.kind == crate::colony::delver::FoeKind::LairBoss && (f.z - d.z).abs() <= 1 && ((f.x - d.x).powi(2) + (f.y - d.y).powi(2)).sqrt() <= 15.0) {
+        let br = Rect { x: cx + 20, y: cy + ch + 6, w: cw - 40, h: 32 };
+        ui::card(buf, w, br);
+        let btitle = format!("LAIR BOSS: {} ({:.0} / {:.0})", boss.name.to_uppercase(), boss.hp.max(0.0), boss.max_hp);
+        fonts::draw(buf, w, h, (br.x + 12) as f32, (br.y + 4) as f32, &fit(&btitle, Face::SmallCaps, SMALL, br.w as f32 - 24.0), Face::SmallCaps, SMALL, 0.4, RUBRIC, None);
+        draw_stat_bar(buf, w, br.x + 12, br.y + 19, br.w - 24, 8, (boss.hp / boss.max_hp.max(1.0)).clamp(0.0, 1.0), 0x00A8_1E18, "");
+    }
+}
+
+fn draw_stat_bar(buf: &mut [u32], w: usize, x: usize, y: usize, bw: usize, bh: usize, frac: f32, color: u32, label: &str) {
+    let fill_w = ((bw as f32 * frac) as usize).min(bw);
+    for yy in y..y + bh {
+        for xx in x..x + bw {
+            let edge = yy == y || yy + 1 == y + bh || xx == x || xx + 1 == x + bw;
+            let k = yy * w + xx;
+            if k < buf.len() {
+                buf[k] = if edge { INK } else if xx - x < fill_w { color } else { ui::mix(ui::PAPER, INK_FADED, 0.25) };
+            }
+        }
+    }
+    if !label.is_empty() {
+        fonts::draw(buf, w, 2000, (x + 6) as f32, (y as f32) - 2.0, label, Face::Roman, 11.0, 0.0, 0x00FA_F4E8, None);
+    }
+}
+
+/// Draw the centered Strike Camp & Transport Manifest modal when `colony.arpg.strike_camp_open` is true.
+fn draw_strike_camp_modal(colony: &Colony, buf: &mut [u32], w: usize, h: usize) {
+    if w < 540 || h < 420 { return; }
+    let mw = 650usize.min(w - 40);
+    let mh = 430usize.min(h - 60);
+    let mx = (w - mw) / 2;
+    let my = (h - mh) / 2;
+    let r = Rect { x: mx, y: my, w: mw, h: mh };
+    ui::card(buf, w, r);
+
+    let manifest = colony.strike_manifest();
+    fonts::draw(buf, w, h, (mx + 22) as f32, (my + 16) as f32, "STRIKE CAMP & MARCH ACROSS THE REGION", Face::SmallCaps, 21.0, 0.8, RUBRIC, None);
+
+    let tier_line = format!(
+        "Transport Tech: {} ({})  —  Carry Capacity: {} / {} Slots",
+        manifest.transport.name(),
+        manifest.transport.subtitle(),
+        manifest.slots_used,
+        manifest.slots_max
+    );
+    fonts::draw(buf, w, h, (mx + 22) as f32, (my + 46) as f32, &tier_line, Face::Roman, BODY, 0.0, INK, None);
+
+    let (can_up, up_desc) = match colony.can_upgrade_transport() {
+        Some((next, ok)) => (ok, format!("{} — {}", next.name(), next.cost_words())),
+        None => (false, "Max tier reached".to_string()),
+    };
+    let up_line = format!("[U] Upgrade Transport: {}", up_desc);
+    fonts::draw(buf, w, h, (mx + 22) as f32, (my + 68) as f32, &fit(&up_line, Face::Italic, SMALL + 1.0, mw as f32 - 44.0), Face::Italic, SMALL + 1.0, 0.0, if can_up { super::ui::MOSS } else { INK_FADED }, None);
+
+    let rule_y = my + 92;
+    ui::hline(buf, w, mx + 18, mx + mw - 18, rule_y, INK_FADED);
+
+    let explain = "Refined metal bars, forged arms/armour, cut gems & relics pack 2 per slot. Heavy raw ore, logs & stone take 1 full slot each.";
+    fonts::draw(buf, w, h, (mx + 22) as f32, (rule_y + 8) as f32, &fit(explain, Face::Italic, SMALL, mw as f32 - 44.0), Face::Italic, SMALL, 0.0, INK_FADED, None);
+
+    // Table headers.
+    let mut y = (rule_y + 34) as f32;
+    fonts::draw(buf, w, h, (mx + 22) as f32, y, "Category", Face::SmallCaps, SMALL, 0.3, RUBRIC, None);
+    fonts::draw(buf, w, h, (mx + 230) as f32, y, "Manifest Status", Face::SmallCaps, SMALL, 0.3, RUBRIC, None);
+    fonts::draw(buf, w, h, (mx + 510) as f32, y, "Slots Used", Face::SmallCaps, SMALL, 0.3, RUBRIC, None);
+    y += 22.0;
+
+    for (cat, detail, slots, fits) in &manifest.rows {
+        fonts::draw(buf, w, h, (mx + 22) as f32, y, cat, Face::Roman, BODY, 0.0, INK, None);
+        fonts::draw(buf, w, h, (mx + 230) as f32, y, &fit(detail, Face::Roman, SMALL + 1.0, 270.0), Face::Roman, SMALL + 1.0, 0.0, if *fits { super::ui::MOSS } else { RUBRIC }, None);
+        fonts::draw(buf, w, h, (mx + 510) as f32, y, &format!("{} slots", slots), Face::Roman, SMALL + 1.0, 0.0, INK, None);
+        y += 21.0;
+    }
+    if !manifest.left_behind.is_empty() {
+        let lb = format!("Left behind if you march now: {}", manifest.left_behind.join(", "));
+        fonts::draw(buf, w, h, (mx + 22) as f32, y + 2.0, &fit(&lb, Face::Italic, SMALL, mw as f32 - 44.0), Face::Italic, SMALL, 0.0, RUBRIC, None);
+        y += 18.0;
+    }
+
+    if !colony.arpg.region_clues.is_empty() {
+        y += 6.0;
+        let (_, clue_text) = &colony.arpg.region_clues[colony.arpg.region_clues.len() - 1];
+        fonts::draw(buf, w, h, (mx + 22) as f32, y, &fit(&format!("Delve Lore Clue: {}", clue_text), Face::Italic, SMALL, mw as f32 - 44.0), Face::Italic, SMALL, 0.0, GOLD, None);
+    }
+
+    let foot_y = (my + mh - 36) as f32;
+    ui::hline(buf, w, mx + 18, mx + mw - 18, foot_y as usize - 8, INK_FADED);
+    let prompt = "Enter: Strike Camp & March on Region Map     |     U: Upgrade Transport     |     Esc / Z: Stay at Camp";
+    let pw = fonts::width(prompt, Face::SmallCaps, BODY, 0.3);
+    fonts::draw(buf, w, h, (mx as f32 + (mw as f32 - pw) / 2.0).max((mx + 18) as f32), foot_y, prompt, Face::SmallCaps, BODY, 0.3, RUBRIC, None);
+}
+

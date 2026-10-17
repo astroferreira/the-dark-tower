@@ -12,6 +12,12 @@ mood is "an inspired mood" ("X is seized by an inspiration and claims the worksh
 
 The vertical slice of `docs/colony/ROADMAP.md` Update 3: settlers living on a playable area with no orders.
 
+Debugging a colony: the lab's colony tools record a camp minute by minute as the game lives it
+(every choice and its why, walks, needs, stocks, works) and answer why someone did what they did
+at a moment, where their hours went, whether a cell can be reached; the colony explorer shows it
+(activity chart, needs, the map replayed, bonds, checks, a branch beside the original). See
+`src/lab/CLAUDE.md`, "Colonies".
+
 - The Shadow is kept out of the camp by default (2026-10-12, card 'Switch off the Shadow's
   impact for now'; `colony::shadow_in_camp`): no Shadow raiders in the arc, no darkness on the
   tile, so no rising dead, evil weather, vampires drawn by it, possessions or tombs dug against
