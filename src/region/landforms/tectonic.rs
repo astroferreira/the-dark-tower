@@ -60,12 +60,18 @@ pub(crate) struct FaultField<'a> {
     s: usize,
     cell_km: f32,
     seed: u64,
+    /// The world's width in region cells (x wraps there).
+    width_cells: f64,
 }
+
+/// Within this many region cells of the date line the faults on its two sides are blended,
+/// so the blocks and traces meet (half and half on the line).
+const SEAM_TILES: f64 = 2.0;
 
 impl<'a> FaultField<'a> {
     pub fn new(world: &'a crate::world::WorldData, s: usize, cell_m: f32, seed: u64) -> Option<FaultField<'a>> {
         world.upheaval()?;
-        Some(FaultField { faults: world.faults(), noise: Perlin::new((seed ^ 0xFA17) as u32), s, cell_km: cell_m / 1000.0, seed })
+        Some(FaultField { faults: world.faults(), noise: Perlin::new((seed ^ 0xFA17) as u32), s, cell_km: cell_m / 1000.0, seed, width_cells: (world.width * s) as f64 })
     }
 
     fn block(&self, kind: FaultKind, b: i64, along: f32, seg_km: f32, intensity: f32) -> (f32, f32) {
@@ -83,8 +89,25 @@ impl<'a> FaultField<'a> {
         (throw * intensity * size * taper, sign)
     }
 
-    /// The faults at absolute region cell (ax, ay) (cell centres at k + 0.5).
+    /// The faults at absolute region cell (ax, ay) (cell centres at k + 0.5): x read wrapped,
+    /// and within `SEAM_TILES` of the date line the two sides' fields mixed, so the same place
+    /// reads the same from any window and the faults meet across the line.
     pub fn at(&self, ax: f64, ay: f64) -> FaultHit {
+        let w = self.width_cells;
+        let x = ax.rem_euclid(w);
+        let band = SEAM_TILES * self.s as f64;
+        let (other, t) = if x < band { (x + w, 0.5 - 0.5 * x / band) } else if x > w - band { (x - w, 0.5 - 0.5 * (w - x) / band) } else { (x, 0.0) };
+        let a = self.raw(x, ay);
+        if t <= 0.0 { return a; }
+        let b = self.raw(other, ay);
+        let t = t as f32;
+        let mut hit = if t < 0.5 { a } else { b };
+        hit.delta_m = a.delta_m * (1.0 - t) + b.delta_m * t;
+        hit.face_m = a.face_m * (1.0 - t) + b.face_m * t;
+        hit
+    }
+
+    fn raw(&self, ax: f64, ay: f64) -> FaultHit {
         let s = self.s as f32;
         let (u, v) = ((ax as f32 + 0.5) / s - 0.5, (ay as f32 + 0.5) / s - 0.5);
         let smp = self.faults.at(u, v);
@@ -215,5 +238,23 @@ mod tests {
             }
         }
         assert!(moved > 0, "the fault zone moved no ground");
+    }
+
+    #[test]
+    fn faults_meet_across_the_date_line() {
+        let world = crate::world::generate_world_with_style(64, 32, 5, crate::plates::WorldStyle::Earthlike);
+        world.set_upheaval(Some(Upheaval::earth()));
+        let s = 32usize;
+        let field = FaultField::new(&world, s, 1200.0, 3).expect("upheaval is on");
+        let w = (64 * s) as f64;
+        for ay in (0..32 * s).step_by(7) {
+            let ay = ay as f64;
+            // The same place from either side of the line.
+            assert_eq!(field.at(5.0, ay).delta_m.to_bits(), field.at(5.0 + w, ay).delta_m.to_bits());
+            assert_eq!(field.at(-3.0, ay).delta_m.to_bits(), field.at(w - 3.0, ay).delta_m.to_bits());
+            // On the line the two sides agree.
+            let (l, r) = (field.at(w - 0.001, ay).delta_m, field.at(0.0, ay).delta_m);
+            assert!((l - r).abs() < 1.0, "a step of {} m on the date line at row {ay}", l - r);
+        }
     }
 }

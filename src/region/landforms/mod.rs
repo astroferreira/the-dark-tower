@@ -43,7 +43,7 @@ pub use crate::region::zoom::Drainage;
 use crate::world::WorldData;
 
 /// Keys the chunk cache: bump when any `shape_*` pass changes the heights it makes.
-pub const SHAPE_VERSION: u32 = 3;
+pub const SHAPE_VERSION: u32 = 4;
 
 /// A chunk's bordered grid, as the shape passes see it: `gw` x `gw` cells, cell (0, 0) at the
 /// top-left of world tile (`gx0`, `gy0`), `s` cells per tile.
@@ -105,10 +105,10 @@ pub fn shape_after_erosion(h: &mut [f32], g: &ChunkGrid, d: &Drainage, acc: &[f3
     if !skipped("glacial") && !skipped("glacial_after") { glacial::shape_after(h, g, d, acc); }
     if !skipped("fluvial") { fluvial::shape_after(h, g, d, acc); }
     if !skipped("coast") { coast::shape_after(h, g, d, acc); }
+    // The summit craters and calderas (the pass had been left out of the order until
+    // 2026-10-17: every volcano stood without its crater).
+    if !skipped("volcanic") { volcanic::shape_after(h, g, d, acc); }
     if g.world.upheaval().is_some() {
-        // The summit craters (`volcanic::shape_after`) are cut only on an upheaval world: under
-        // the Sun the pass was never in the order, and its regions stay as they were.
-        if !skipped("volcanic") { volcanic::shape_after(h, g, d, acc); }
         if !skipped("fire") { fire::shape_after(h, g, d, acc); }
         if !skipped("sinking") { sinking::shape_after(h, g, d, acc); }
     }

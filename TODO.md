@@ -77,12 +77,14 @@ window's places shown in their embarks; the dev world 88%) and its test, P in th
 - [x] Stratovolcanoes: the volcano pass's draws (`(rng >> 33) / u32::MAX`) never passed 0.5,
       so no world had one; an upheaval world draws over [0, 1) (`find_volcano_locations_with`).
       Seed 7: 23 of 62; 24,24 has lost its flank, 272,88 and 232,96 carry lahars and maars.
-- [ ] **Decide (the Sun's worlds):** the summit craters (`volcanic::shape_after`, never in the
-      shape order) and the volcano kinds' draws are fixed only on upheaval worlds, so the Sun's
-      worlds and every pinned test stay as they were. Turning them on everywhere is one line
-      each (`landforms::shape_after_erosion`, `terrain.rs`'s `apply_volcano_pass_with`) and moves
-      every world with volcanoes (the dev world's regions and pinned sites).
-- [ ] Fault noise at the date line does not wrap (like the other region passes' noise).
+- [x] The summit craters (`volcanic::shape_after`, missing from the shape order since Stage 2)
+      are cut on every world (`landforms::SHAPE_VERSION` 4).
+- [x] The faults meet across the date line (`tectonic::FaultField::at`: x read wrapped, the two
+      sides blended within 2 tiles of the line; `faults_meet_across_the_date_line`).
+- [ ] The volcano kinds' draws stay as they were under the Sun: fixing them there changes the
+      Sun's world map (every volcano's shape and the rivers after), which the project keeps bit
+      for bit (`CLAUDE.md`, star systems). One line in `terrain.rs` (`apply_volcano_pass_with`)
+      when that rule is lifted.
 - [ ] (colony, paused) 21 of `tests/colony.rs` fail since Stage 6 (aa32056: the embark's ground
       from the landforms and the carved places moved every dev embark, so the seed-pinned camps
       changed): `seven_settlers_live_thirty_days_unattended` and `a_camp_without_stone_digs_for_it`

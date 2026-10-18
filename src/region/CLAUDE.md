@@ -44,7 +44,7 @@
   the blended region with its margin (`RegionFields`: heights, filled heights, receivers,
   accumulation, climate, `slope`, `tile_of`, `abs_cell`) and labels every cell. Bump
   `landforms::SHAPE_VERSION` when a shape pass changes heights: it is in the chunk cache's file
-  names (`v1s<SHAPE>_...`).
+  names (`v1s<SHAPE>_...`; 4 since the summit craters, 2026-10-17).
 - Sites (`sites/mod.rs` fixes the order: `water` the world's springs and waterfalls, `natural`
   wonders, `prehistory` the ages before, `caves` the graphs, then `names`): `sites::plan(fields,
   land, rock, Core)` plans the places of the window's core tiles from the tile and its neighbours
@@ -339,7 +339,9 @@
   together), throw 750 m x intensity x size, tapered over 28 km segments, active one in
   `intensity x 1.15`; thrust 20 km, 520 m, a fold on the upper edge; strike-slip: a trough 14 m
   deep a cell wide on traces 45 km apart with ponds (12 m) and ridges (18 m) where it steps.
-  Before the rivers, which cut the scarps into facets. Labels FaultScarp (on the face, slope
+  Before the rivers, which cut the scarps into facets. x is read wrapped and the two sides of
+  the date line are blended within 2 tiles of it (half and half on the line), so the faults
+  meet there. Labels FaultScarp (on the face, slope
   over 0.05 at 610 m), SagPond (a pond with a lake), PressureRidge, FaultTrough.
 - Slides (`mass::disturb`, on the blended region in `generate_zoom` before the routing, so a
   debris dam makes its lake): a lattice 2.4 km apart; a slope fails with p = (factor - 1) x 0.6
@@ -356,8 +358,9 @@
   under 1,500 m (450-1,100 m across, 40-120 m deep, an ash ring 18 m); the provinces' traps
   (steps of the flow's thickness, 70% weight, basalt at the surface where the share passes
   0.35); fissure vents on normal-fault faces near young volcanism or lava; lahars on the valley
-  floors (HAND under 6 m) within 2.5 tiles of a stratovolcano colder than 4 C. With upheaval the
-  summit craters (`volcanic::shape_after`) are cut too.
+  floors (HAND under 6 m) within 2.5 tiles of a stratovolcano colder than 4 C. The summit
+  craters (`volcanic::shape_after`) had been left out of the shape order: they are cut on every
+  world since 2026-10-17 (`SHAPE_VERSION` 4).
 - `sinking`: salt sinks within 3 cells of a playa's edge in 3-cell clusters (35%); thaw lakes on
   a 4.8 km lattice (half the points) where the mean is -12 to -2 C, moist over 0.3, flat and
   under 600 m, drawn out across the wind, 3-9 m deep (they fill). `flood`: scablands on big
