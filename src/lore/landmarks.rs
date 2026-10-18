@@ -25,6 +25,11 @@ pub enum LandmarkKind {
     GiantTrees,
     LargestDesert,
     LargestForest,
+    // The violent land (`crate::upheaval`; only with upheaval).
+    GreatestCrater,
+    YoungestCrater,
+    GreatFault,
+    FloodBasalt,
 }
 
 #[derive(Clone, Debug)]
@@ -229,7 +234,9 @@ pub fn find_landmarks(world: &WorldData, gaz: &Gazetteer) -> Vec<Landmark> {
     };
     for comp in patches(ExtendedBiome::CraterLake).into_iter().take(6) {
         let (x, y) = comp[comp.len() / 2];
-        let across = 2.0 + 10.0 * unit(x, y, 0xC4A7);
+        // A real crater of the record where one holds the lake; else the planted lake's own size.
+        let real = world.impacts().and_then(|rec| rec.craters.iter().filter(|c| rec.tile_of(c) == (x, y)).map(|c| c.d_km).fold(None, |a: Option<f32>, d| Some(a.map_or(d, |a| a.max(d)))));
+        let across = real.unwrap_or(2.0 + 10.0 * unit(x, y, 0xC4A7));
         out.push(Landmark {
             kind: LandmarkKind::CraterLake, x, y, feature: None,
             name: own_name(x, y, 0xC4A7, &|n| format!("Lake {}", n)),
@@ -257,6 +264,55 @@ pub fn find_landmarks(world: &WorldData, gaz: &Gazetteer) -> Vec<Landmark> {
             out.push(Landmark {
                 kind, x: f.anchor.0, y: f.anchor.1, feature: Some(f.id),
                 name: f.name.clone(), epithet: epithet.into(), detail: format!("{} km\u{b2}", thousands(f.size as f32 * km * km)),
+            });
+        }
+    }
+    // The violent land: the greatest and the youngest great crater on land, the most restless
+    // fault, the flood basalts.
+    if let Some(rec) = world.impacts() {
+        let on_land: Vec<&crate::upheaval::Crater> = rec.craters.iter().filter(|c| crate::upheaval::sample_world(hm, c.u, c.v) > 0.0).collect();
+        let ago = |myr: f32| if myr >= 2.0 { format!("{:.0} million years old", myr) } else { format!("{} thousand years old", thousands((myr * 1000.0).round())) };
+        if let Some(c) = on_land.iter().max_by(|a, b| a.d_km.partial_cmp(&b.d_km).unwrap()) {
+            let (x, y) = rec.tile_of(c);
+            out.push(Landmark {
+                kind: LandmarkKind::GreatestCrater, x, y, feature: None,
+                name: own_name(x, y, 0x1A7C, &|n| format!("the {} Ring", n)),
+                epithet: format!("the greatest crater in the world, where a stone from the sky struck {}", with_article(&near(x, y))),
+                detail: format!("{} km across, {}", thousands(c.d_km.round()), ago(c.age_myr)),
+            });
+        }
+        if let Some(c) = on_land.iter().filter(|c| c.d_km >= 5.0).min_by(|a, b| a.age_myr.partial_cmp(&b.age_myr).unwrap()) {
+            let (x, y) = rec.tile_of(c);
+            if !out.iter().any(|l| (l.x, l.y) == (x, y)) {
+                out.push(Landmark {
+                    kind: LandmarkKind::YoungestCrater, x, y, feature: None,
+                    name: own_name(x, y, 0x1A7D, &|n| format!("the {} Crater", n)),
+                    epithet: format!("the youngest great crater, its rim still sharp, in {}", with_article(&near(x, y))),
+                    detail: format!("{:.0} km across, {}", c.d_km, ago(c.age_myr)),
+                });
+            }
+        }
+    }
+    if world.upheaval().is_some() {
+        let f = world.faults();
+        let best = (0..w * h).filter(|&k| f.kind[k] != crate::upheaval::FaultKind::None && *hm.get(k % w, k / w) > 0.0)
+            .max_by(|&a, &b| f.intensity[a].partial_cmp(&f.intensity[b]).unwrap());
+        if let Some(k) = best {
+            let (x, y) = (k % w, k / w);
+            out.push(Landmark {
+                kind: LandmarkKind::GreatFault, x, y, feature: None,
+                name: own_name(x, y, 0xFA17, &|n| format!("the {} Fault", n)),
+                epithet: format!("the most restless ground in the world: {}", f.kind[k].word()),
+                detail: format!("a great earthquake every {} years or so", thousands((1.0 / (0.07 * f.intensity[k] * f.intensity[k]).max(1e-3)).round())),
+            });
+        }
+        for p in world.provinces().iter().filter(|p| crate::upheaval::sample_world(hm, p.u, p.v) > 0.0) {
+            let (x, y) = ((p.u.round() as i64).rem_euclid(w as i64) as usize, (p.v.round() as i64).clamp(0, h as i64 - 1) as usize);
+            out.push(Landmark {
+                kind: LandmarkKind::FloodBasalt, x, y, feature: None,
+                name: own_name(x, y, 0xBA5A, &|n| format!("the {} Traps", n)),
+                epithet: format!("a plateau of basalt flood upon flood, poured out over a plume {} million years ago", p.age_myr.round()),
+                detail: format!("{} km across, steps of {:.0} m", thousands((2.0 * p.r_km).round()), p.flow_m),
             });
         }
     }

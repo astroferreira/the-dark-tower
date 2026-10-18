@@ -172,6 +172,13 @@ fn find_settlement_sites(
                     score += 20;
                 }
 
+                // Ground that shakes (`crate::upheaval`): the founders remember the quakes and
+                // build away from the worst of the faults; the rich ground round a volcano still
+                // draws them (its soil is in the fertility above).
+                if world.upheaval().is_some() {
+                    score -= (30.0 * world.faults().tile(x, y).intensity) as i32;
+                }
+
                 // Prefer low ground (flat, easy to build and supply)
                 if height < 300.0 {
                     score += 5;

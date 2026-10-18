@@ -144,6 +144,7 @@ fn epithet(kind: PlaceKind, key: u64) -> &'static str {
         CrevasseField => pick(&["the broken ice", "the ice's teeth"]),
         TarPit => pick(&["the black trap", "the pitch that holds"]),
         CrownHoles => pick(&["the fallen ground over the shafts", "the miners' pits"]),
+        Skyburn => pick(&["where the sky burst", "the felled wood"]),
         Ruin | Tomb | Lair | Battlefield | BoneField | OldMine => "",
     }
 }
@@ -208,6 +209,7 @@ fn contents(kind: PlaceKind, key: u64) -> Vec<String> {
         CrevasseField => vec![Some("cracks in the ice too deep to see the bottom".into()), maybe(1, "snow bridges over them")],
         TarPit => vec![Some("pitch".into()), Some("the bones of beasts the pitch caught".into())],
         CrownHoles => vec![Some("round pits where old shafts fell in".into()), maybe(1, "a gallery open at the bottom of one")],
+        Skyburn => vec![Some("dead trunks lying in rows, all pointing away from one place".into()), maybe(1, "young birch coming up through the charcoal")],
         Ruin | Tomb | Lair | Battlefield | BoneField | OldMine => vec![],
     };
     list.into_iter().flatten().collect()

@@ -39,13 +39,23 @@ pub struct GroundEvent {
     pub kind: EventType,
     pub title: String,
     pub id: EventId,
+    /// A stone that fell (`EventType::Skyfall` with a crater): its crater across (m); 0 else.
+    pub crater_m: f32,
+    /// An airburst: the forest flattened and burned round the point.
+    pub airburst: bool,
 }
 
-/// The chronicle's ground events (quakes, slides, tsunamis, eruptions) with a place.
-pub fn ground_events(h: &WorldHistory) -> Vec<GroundEvent> {
+/// The chronicle's ground events (quakes, slides, tsunamis, eruptions, what fell from the sky)
+/// with a place. `seed` is the world's (the size of a fallen stone's crater is hashed from it).
+pub fn ground_events(h: &WorldHistory, seed: u64) -> Vec<GroundEvent> {
     h.chronicle.events.iter()
-        .filter(|e| matches!(e.event_type, EventType::Earthquake | EventType::Landslide | EventType::Tsunami | EventType::VolcanoErupted))
-        .filter_map(|e| e.location.map(|tile| GroundEvent { tile, year: e.date.year, kind: e.event_type.clone(), title: e.title.clone(), id: e.id }))
+        .filter(|e| matches!(e.event_type, EventType::Earthquake | EventType::Landslide | EventType::Tsunami | EventType::VolcanoErupted | EventType::Skyfall))
+        .filter_map(|e| e.location.map(|tile| {
+            let fell = e.event_type == EventType::Skyfall && e.title.starts_with("A stone falls") && e.title != "A stone falls into the sea";
+            GroundEvent { tile, year: e.date.year, kind: e.event_type.clone(), title: e.title.clone(), id: e.id,
+                crater_m: if fell { crate::history::space::fall_size_m(seed, e.date.year) } else { 0.0 },
+                airburst: e.event_type == EventType::Skyfall && e.title.starts_with("The sky bursts") }
+        }))
         .collect()
 }
 

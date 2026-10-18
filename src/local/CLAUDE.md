@@ -439,3 +439,15 @@ the zoomed region around a point.
   a sinkhole's shaft (4-8 levels), three crown holes, a dry falls (three levels), quicksand
   (wet sand on the bed, dry or under the shallows), crevasse slots four levels deep. `shows`
   judges each; 69 of 71 on seed 42's fault region.
+- After three blind reviews (2026-10-18): the meteorite crater's rim is scalloped, its floor
+  quieter, a lens of crushed rock (gravel) under it; the fault lifts its block whole
+  (`uplift`: the beds move, so the section shows the offset), its throw dying out along the
+  trace, scree at the face's foot; the landslide's scar a ragged horseshoe and its tongue lobed
+  down the real slope (`downslope`), the fallen flank a noise field of hummocks (`vnoise`); the
+  crevasses wedges across the ice's flow on an icy surface. The violent ground's rough relief and
+  boulders were calmed (they had drowned the features), and the climate's snow stays over sand,
+  gravel and clay floors where it lies.
+- The river at 2 m (`generate_local`): the bed deepens and shallows along the channel (pools and
+  riffles every five or six widths, a slow noise), gravel bars stand 0.3 m above the water at
+  the edges of rivers over 8 m wide, a levee rises beside rivers over 25 m; rock pools hollow the
+  bare rock within four columns of the sea and two levels of it (`ground::rock_pools`).

@@ -15,11 +15,14 @@ pub enum Overlay {
     Plates,
     Stress,
     Biomes,
+    /// The violent land (`crate::upheaval`): fault zones by kind and strength, flood basalts,
+    /// and the craters as rings (`draw_marks`).
+    Upheaval,
 }
 
-const ORDER: [Overlay; 8] = [
+const ORDER: [Overlay; 9] = [
     Overlay::None, Overlay::Height, Overlay::Temperature, Overlay::Moisture,
-    Overlay::Drainage, Overlay::Plates, Overlay::Stress, Overlay::Biomes,
+    Overlay::Drainage, Overlay::Plates, Overlay::Stress, Overlay::Biomes, Overlay::Upheaval,
 ];
 
 /// How a legend reads: a colour ramp between labelled values, or a note for categories.
@@ -44,6 +47,7 @@ impl Overlay {
             Overlay::Plates => "Tectonic plates",
             Overlay::Stress => "Tectonic stress",
             Overlay::Biomes => "Biomes",
+            Overlay::Upheaval => "Faults and impacts",
         }
     }
 
@@ -63,6 +67,7 @@ impl Overlay {
             Overlay::Stress => Legend::Ramp { stops: STRESS.to_vec(), labels: lab(&[(-0.6, "rifting"), (0.0, "calm"), (0.8, "collision")]) },
             Overlay::Plates => Legend::Note("One colour per plate; continental crust is lighter, oceanic darker."),
             Overlay::Biomes => Legend::Note("Biome classes as flat colours (hover a tile for its name)."),
+            Overlay::Upheaval => Legend::Note("Faults: blue rift, red thrust, violet slip. Rings: craters. Grey: basalt."),
         }
     }
 }
@@ -153,6 +158,25 @@ pub fn colors(world: &WorldData, mode: Overlay) -> Vec<[f32; 3]> {
                     let continental = world.plates.iter().find(|p| p.id.0 as u64 == id).map_or(e >= 0.0, |p| p.plate_type == crate::plates::PlateType::Continental);
                     if continental { mix3(base, [234.0, 222.0, 196.0], 0.35) } else { mix3(mix3(base, [96.0, 128.0, 142.0], 0.35), [234.0, 222.0, 196.0], 0.12) }
                 }
+                Overlay::Upheaval => {
+                    let paper = [226.0, 216.0, 194.0];
+                    let base = if e < 0.0 { [150.0, 172.0, 176.0] } else { paper };
+                    let f = world.faults().tile(x, y);
+                    let tint = match f.kind {
+                        crate::upheaval::FaultKind::Normal => [70.0, 110.0, 170.0],
+                        crate::upheaval::FaultKind::Thrust => [170.0, 60.0, 44.0],
+                        crate::upheaval::FaultKind::StrikeSlip => [126.0, 78.0, 150.0],
+                        crate::upheaval::FaultKind::None => base,
+                    };
+                    let mut c = if world.upheaval().is_some() { mix3(base, tint, (f.intensity * 1.2).min(0.85)) } else { base };
+                    if e >= 0.0 {
+                        for p in world.provinces() {
+                            let sh = crate::upheaval::province_share(world.width, world.height, p, x as f32, y as f32);
+                            if sh > 0.0 { c = mix3(c, [96.0, 92.0, 96.0], 0.55 * sh); }
+                        }
+                    }
+                    c
+                }
                 Overlay::Biomes => {
                     // The biome's class colour, half its saturation and a little toward parchment,
                     // so the classes read apart in the map's palette.
@@ -189,6 +213,51 @@ pub fn describe(world: &WorldData, mode: Overlay, x: usize, y: usize) -> String 
         }
         Overlay::Stress => format!("stress {:+.2}", world.stress_map.get(x, y)),
         Overlay::Biomes => format!("{:?}", world.biomes.get(x, y)),
+        Overlay::Upheaval => {
+            if world.upheaval().is_none() { return "no upheaval on this world (--upheaval)".into(); }
+            let f = world.faults().tile(x, y);
+            let mut parts = Vec::new();
+            if f.kind != crate::upheaval::FaultKind::None && f.intensity > 0.05 {
+                parts.push(format!("{} (a great quake every ~{:.0} years)", f.kind.word(), 1.0 / (0.07 * f.intensity * f.intensity).max(1e-3)));
+            }
+            if let Some(rec) = world.impacts() {
+                let mut near: Vec<&crate::upheaval::Crater> = rec.near(x, y).filter(|c| rec.distance_km(c, x as f32, y as f32) <= c.r_km() * 1.1).collect();
+                near.sort_by(|a, b| b.d_km.partial_cmp(&a.d_km).unwrap());
+                if let Some(c) = near.first() { parts.push(format!("in a crater {:.0} km across, {:.0} Myr old", c.d_km, c.age_myr)); }
+            }
+            if parts.is_empty() { "quiet ground".into() } else { parts.join("; ") }
+        }
+    }
+}
+
+/// Over the map with the upheaval overlay: every crater of the record at least `MIN_RING_PX`
+/// across as an inked ring at its rim (worn ones dashed), sized by its diameter; the screen
+/// position of a tile is `to_screen(u, v)` (tile coordinates, centres at integers).
+pub fn draw_marks(buf: &mut [u32], w: usize, h: usize, world: &WorldData, mode: Overlay, tile_px: f32, to_screen: impl Fn(f32, f32) -> (f32, f32)) {
+    if mode != Overlay::Upheaval { return; }
+    let Some(rec) = world.impacts() else { return };
+    let km = crate::upheaval::tile_km(world.width);
+    const MIN_RING_PX: f32 = 5.0;
+    for c in &rec.craters {
+        let r_px = c.r_km() / km * tile_px;
+        if r_px * 2.0 < MIN_RING_PX { continue; }
+        let (cx, cy) = to_screen(c.u + 0.5, c.v + 0.5);
+        if cx + r_px < 0.0 || cy + r_px < 0.0 || cx - r_px > w as f32 || cy - r_px > h as f32 { continue; }
+        let lat = std::f32::consts::FRAC_PI_2 - (c.v + 0.5) / world.height as f32 * std::f32::consts::PI;
+        let rx = r_px / lat.cos().abs().max(0.05);
+        let steps = ((rx.max(r_px) * 6.3) as usize).clamp(24, 2000);
+        let ink = if c.wear > 0.6 { 0x0076_6656 } else { 0x0030_221A };
+        for i in 0..steps {
+            if c.wear > 0.6 && (i / 4) % 2 == 1 { continue; }
+            let a = i as f32 / steps as f32 * std::f32::consts::TAU;
+            let (px, py) = (cx + rx * a.cos(), cy + r_px * a.sin());
+            if px < 0.0 || py < 0.0 || px >= w as f32 || py >= h as f32 { continue; }
+            buf[py as usize * w + px as usize] = ink;
+        }
+        if r_px > 4.0 && c.kind != crate::upheaval::CraterKind::Simple && c.wear < 0.85 {
+            let (px, py) = (cx, cy);
+            if px >= 0.0 && py >= 0.0 && px < w as f32 && py < h as f32 { buf[py as usize * w + px as usize] = ink; }
+        }
     }
 }
 

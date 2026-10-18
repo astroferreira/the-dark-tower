@@ -73,6 +73,55 @@ fn lower(map: &mut LocalMap, x: usize, y: usize, levels: i32, material: Option<M
     map.surface_z[y * n + x] = sz - levels;
 }
 
+/// Smooth value noise in [-1, 1] over columns (`scale` columns a cell of the lattice).
+fn vnoise(x: f64, y: f64, scale: f64, salt: u64) -> f64 {
+    let (fx, fy) = (x / scale, y / scale);
+    let (x0, y0) = (fx.floor(), fy.floor());
+    let (tx, ty) = (fx - x0, fy - y0);
+    let (sx, sy) = (tx * tx * (3.0 - 2.0 * tx), ty * ty * (3.0 - 2.0 * ty));
+    let at = |i: f64, j: f64| unit(i as i64, j as i64, salt) * 2.0 - 1.0;
+    let a = at(x0, y0) + (at(x0 + 1.0, y0) - at(x0, y0)) * sx;
+    let b = at(x0, y0 + 1.0) + (at(x0 + 1.0, y0 + 1.0) - at(x0, y0 + 1.0)) * sx;
+    a + (b - a) * sy
+}
+
+/// Lift a column `levels` whole (the beds with it): the stack moves up and the bottom repeats,
+/// so a fault's step offsets the strata in the section.
+fn uplift(map: &mut LocalMap, x: usize, y: usize, levels: i32) {
+    if levels <= 0 { return; }
+    let n = map.width;
+    let sz = map.surface_z[y * n + x];
+    if (sz + levels + 3) as usize >= map.depth || map.cell(x, y, sz as usize + 1).water > 0 { return; }
+    let lv = levels as usize;
+    for z in (lv..map.depth).rev() {
+        let from = map.idx(x, y, z - lv);
+        let to = map.idx(x, y, z);
+        map.cells[to] = map.cells[from];
+    }
+    map.surface_z[y * n + x] = sz + levels;
+}
+
+/// Crushed rock under a crater's floor: the rock `levels` under the surface turned to gravel.
+fn breccia(map: &mut LocalMap, x: usize, y: usize, levels: i32) {
+    let sz = map.surface_z[y * map.width + x];
+    for z in (sz - levels).max(1)..sz {
+        let k = map.idx(x, y, z as usize);
+        if matches!(map.cells[k].material, Material::Rock(_)) && map.cells[k].shape == Shape::Wall { map.cells[k].material = Material::Gravel; }
+    }
+}
+
+/// The way the ground falls round (x, y) (a unit vector in columns), from the surface over a
+/// dozen columns; `fallback` (radians) on the flat.
+fn downslope(map: &LocalMap, x: f64, y: f64, fallback: f64) -> (f64, f64) {
+    let n = map.width as i64;
+    let at = |i: i64, j: i64| map.surface_z[(j.clamp(0, n - 1) * n + i.clamp(0, n - 1)) as usize] as f64;
+    let (i, j) = (x.round() as i64, y.round() as i64);
+    let r = 12;
+    let (gx, gy) = (at(i + r, j) - at(i - r, j), at(i, j + r) - at(i, j - r));
+    let len = (gx * gx + gy * gy).sqrt();
+    if len < 0.5 { (fallback.cos(), fallback.sin()) } else { (-gx / len, -gy / len) }
+}
+
 fn feature(map: &mut LocalMap, x: usize, y: usize, f: wildlife::Feature) {
     if !dry(map, x, y) { return; }
     let n = map.width;
@@ -456,42 +505,100 @@ pub(super) fn carve(map: &mut LocalMap, region: &ZoomRegion, cx: f64, cy: f64, s
             }
             // Upheaval (ROADMAP Stage 7).
             MeteorCrater if p.radius_m > 0.0 => {
-                // A bowl a fifth as deep as it is wide (less as it wears), a rim of broken rock
-                // round it and blocks thrown out to half its width beyond.
+                // A bowl a fifth as deep as it is wide (less as it wears), its rim uneven where
+                // the wall slumped, a lens of crushed rock under the floor (the breccia the
+                // section shows), the rim of broken rock raised, and lobes of thrown blocks.
                 let r = (p.radius_m as f64 / Z_STEP_M as f64).max(3.0);
                 let depth_lv = ((0.3 * r).round() as i32).clamp(1, 24);
                 let rim_lv = ((0.06 * r).round() as i32).clamp(1, 4);
-                for (x, y, d) in ellipse(map, px, py, 1.6 * r, 1.6 * r, 0.0) {
-                    let x2 = d * 1.6;
+                let ph = unit(key.0, key.1, 0x5E0) * std::f64::consts::TAU;
+                for (x, y, _) in ellipse(map, px, py, 1.7 * r, 1.7 * r, 0.0) {
+                    let (fx, fy) = (x as f64 - px, y as f64 - py);
+                    let th = fy.atan2(fx);
+                    let reach = 1.0 + 0.07 * (5.0 * th + ph).sin() + 0.035 * (11.0 * th + 2.0 * ph).sin();
+                    let x2 = (fx * fx + fy * fy).sqrt() / (r * reach);
+                    let lobe = 1.25 + 0.3 * (3.0 * th + 1.7 * ph).sin().max(0.0);
+                    let grain = unit(x as i64, y as i64, 0x5ED) - 0.5;
                     if x2 < 1.0 {
                         let sz = map.surface_z[y * n + x];
-                        let lv = ((depth_lv as f64 * (1.0 - x2 * x2)) as i32).min(sz - 3);
+                        let lv = (((depth_lv as f64) * (1.0 - x2 * x2) + 0.6 * grain).round() as i32).clamp(0, (sz - 4).max(0));
                         lower(map, x, y, lv, Some(Material::Gravel));
-                    } else if x2 < 1.2 {
-                        raise(map, x, y, rim_lv, Material::Gravel);
-                        if unit(x as i64, y as i64, 0x5EB) < 0.25 { boulder(map, x, y); }
-                    } else if unit(x as i64, y as i64, 0x5EC) < 0.1 * (1.6 - x2) / 0.4 {
-                        boulder(map, x, y);
+                        if x2 < 0.8 { breccia(map, x, y, (depth_lv / 3).max(1)); }
+                        if unit(x as i64, y as i64, 0x5EE) < 0.012 { boulder(map, x, y); }
+                    } else if x2 < 1.15 {
+                        let lv = ((rim_lv as f64) * (1.0 - (x2 - 1.06).abs() / 0.1).max(0.3) + grain).round() as i32;
+                        raise(map, x, y, lv.max(1), Material::Gravel);
+                        if unit(x as i64, y as i64, 0x5EB) < 0.3 { boulder(map, x, y); }
+                    } else if x2 < lobe {
+                        if unit(x as i64, y as i64, 0x5EC) < 0.14 * (lobe - x2) / (lobe - 1.15) { boulder(map, x, y); }
+                        if x2 < 1.15 + 0.5 * (lobe - 1.15) && unit(x as i64 / 3, y as i64 / 3, 0x5EF) < 0.3 { raise(map, x, y, 1, Material::Gravel); }
                     }
                 }
             }
-            Landslide | CollapsedFlank => {
-                // The debris: blocks and gravel in a tongue down the slope.
-                for (x, y, d) in ellipse(map, px, py, 22.0, 12.0, angle) {
-                    if unit(x as i64, y as i64, 0x51D) < 0.35 * (1.0 - d * 0.5) { boulder(map, x, y); }
-                    if d < 0.6 && unit(x as i64, y as i64, 0x51E) < 0.3 { raise(map, x, y, 1, Material::Gravel); }
+            Landslide => {
+                // The scar: a ragged horseshoe cut two or three levels into the upper slope,
+                // broken rock and gravel; the debris: a lobed, hummocky tongue run down the slope.
+                let (dx, dy) = downslope(map, px, py, angle);
+                for (x, y, _) in ellipse(map, px, py, 52.0, 52.0, 0.0) {
+                    let (fx, fy) = (x as f64 - px, y as f64 - py);
+                    let (along, across) = (fx * dx + fy * dy, -fx * dy + fy * dx);
+                    let (xf, yf) = (x as f64, y as f64);
+                    let rag = vnoise(xf, yf, 6.0, 0x51A) * 0.3 + vnoise(xf, yf, 2.5, 0x51B) * 0.12;
+                    let sz = map.surface_z[y * n + x];
+                    let rho = ((along + 10.0) / 9.0).powi(2) + (across / 12.0).powi(2) + rag;
+                    if along < -1.0 && rho < 1.0 {
+                        let lv = if rho < 0.45 { 3 } else { 2 };
+                        lower(map, x, y, lv.min(sz - 4), Some(Material::Gravel));
+                        if unit(x as i64, y as i64, 0x51C) < 0.05 { boulder(map, x, y); }
+                    } else if along >= -1.0 && along < 36.0 {
+                        let half = (9.0 + 0.4 * along.max(0.0)) * (0.85 + 0.3 * vnoise(xf, yf, 9.0, 0x521));
+                        if across.abs() < half {
+                            let hum = vnoise(xf, yf, 5.0, 0x51F) + 0.5 * vnoise(xf, yf, 2.0, 0x522);
+                            let lv = if hum > 0.45 { 2 } else if hum > -0.2 { 1 } else { 0 };
+                            if lv > 0 { raise(map, x, y, lv, Material::Gravel); }
+                            if unit(x as i64, y as i64, 0x51D) < 0.12 { boulder(map, x, y); }
+                            if dry(map, x, y) { let k = map.idx(x, y, map.surface_z[y * n + x] as usize); if matches!(map.cells[k].plant, Plant::Tree(_)) && unit(x as i64, y as i64, 0x520) < 0.7 { map.cells[k].plant = Plant::None; } }
+                        }
+                    }
+                }
+            }
+            CollapsedFlank => {
+                // A field of hummocks: the mountain's side came down in blocks that stand as
+                // mounds of every size, shaped by a smooth noise, over the ground below the scar.
+                for (x, y, d) in ellipse(map, px, py, 100.0, 100.0, 0.0) {
+                    let (xf, yf) = (x as f64, y as f64);
+                    let hum = vnoise(xf, yf, 9.0, 0xF1A6) + 0.6 * vnoise(xf, yf, 4.0, 0xF1A7) + 0.3 * vnoise(xf, yf, 1.8, 0xF1A8);
+                    let fade = 1.0 - d;
+                    let lv = ((hum - 0.35) * 3.5 * fade).floor() as i32;
+                    if lv > 0 { raise(map, x, y, lv.min(4), Material::Gravel); }
+                    if hum > 0.2 && unit(x as i64, y as i64, 0xF1AC) < 0.08 { boulder(map, x, y); }
                 }
             }
             FaultScarp => {
-                // A fresh step along the fault: one side stands two levels higher, its face bare.
+                // A fresh step along the fault: the block on one side lifted three levels whole
+                // (its beds with it, so the section shows them offset), its face bare.
                 let (dx, dy) = (angle.cos(), angle.sin());
-                for (x, y, _) in ellipse(map, px, py, 60.0, 60.0, 0.0) {
+                let sm = |e0: f64, e1: f64, v: f64| { let t = ((v - e0) / (e1 - e0)).clamp(0.0, 1.0); t * t * (3.0 - 2.0 * t) };
+                for (x, y, _) in ellipse(map, px, py, 130.0, 130.0, 0.0) {
                     let (fx, fy) = (x as f64 - px, y as f64 - py);
-                    let across = -fx * dy + fy * dx;
-                    if across > 0.0 && across < 40.0 {
-                        let face = across < 1.5;
-                        raise(map, x, y, 2, if face { Material::Gravel } else { map.cell(x, y, map.surface_z[y * n + x] as usize).material });
-                        if face { boulder(map, x, y); }
+                    let along = fx * dx + fy * dy;
+                    let across = -fx * dy + fy * dx + 2.0 * (unit(along as i64 / 6, 0, 0xFA5) - 0.5);
+                    // The throw dies out along the fault and fades back from the face.
+                    let throw = 5.0 * (1.0 - sm(70.0, 125.0, along.abs())) * (1.0 - sm(35.0, 90.0, across));
+                    if across > 0.0 && throw >= 0.5 {
+                        let lv = throw.round() as i32;
+                        uplift(map, x, y, lv);
+                        if across < 2.0 {
+                            let sz = map.surface_z[y * n + x];
+                            let k = map.idx(x, y, sz as usize);
+                            if let Material::Rock(_) = map.cells[k].material {} else { map.cells[k].material = Material::Gravel; }
+                            map.cells[k].plant = Plant::None;
+                            boulder(map, x, y);
+                        }
+                    } else if across <= 0.0 && across > -5.0 && along.abs() < 100.0 {
+                        // Scree fallen from the face, at its foot.
+                        raise(map, x, y, 1, Material::Gravel);
+                        if unit(x as i64, y as i64, 0xFA6) < 0.45 { boulder(map, x, y); }
                     }
                 }
             }
@@ -542,21 +649,27 @@ pub(super) fn carve(map: &mut LocalMap, region: &ZoomRegion, cx: f64, cy: f64, s
                 }
             }
             CrevasseField => {
-                // Slots across the ice, a column wide and four levels deep, broken along their length.
-                let (dx, dy) = (angle.cos(), angle.sin());
-                for (x, y, _) in ellipse(map, px, py, 30.0, 30.0, 0.0) {
-                    let (fx, fy) = (x as f64 - px, y as f64 - py);
-                    let along = fx * dx + fy * dy;
-                    if along.rem_euclid(7.0) >= 1.0 || unit(x as i64 / 5, y as i64 / 5, 0xC4F) < 0.3 { continue; }
+                // Ice at the surface, and slots across the flow (the ice cracks where it bends):
+                // wedges five levels deep at their middle, a column or two wide, broken along.
+                let (dx, dy) = downslope(map, px, py, angle);
+                for (x, y, _) in ellipse(map, px, py, 40.0, 40.0, 0.0) {
                     let sz = map.surface_z[y * n + x];
-                    if sz < 6 || map.cell(x, y, sz as usize + 1).water > 0 { continue; }
-                    for z in sz - 3..=sz {
+                    if sz < 8 || map.cell(x, y, sz as usize + 1).water > 0 { continue; }
+                    let k0 = map.idx(x, y, sz as usize);
+                    if matches!(map.cells[k0].material, Material::Snow | Material::Gravel | Material::Soil | Material::Sand) { map.cells[k0].material = Material::Ice; map.cells[k0].plant = Plant::None; }
+                    let (fx, fy) = (x as f64 - px, y as f64 - py);
+                    let (along, across) = (fx * dx + fy * dy, -fx * dy + fy * dx);
+                    let bend = 2.0 * ((across / 13.0) + unit(key.0, key.1, 0xC50) * 6.0).sin();
+                    let ph = (along + bend).rem_euclid(9.0);
+                    if ph >= 1.6 || unit((across / 7.0).floor() as i64, (along / 9.0).floor() as i64, 0xC4F) < 0.3 { continue; }
+                    let lv = if ph < 0.8 { 5 } else { 3 };
+                    for z in sz - lv + 1..=sz {
                         let k = map.idx(x, y, z as usize);
                         map.cells[k] = Cell::AIR;
                     }
-                    let f = map.idx(x, y, (sz - 4) as usize);
+                    let f = map.idx(x, y, (sz - lv) as usize);
                     map.cells[f] = Cell { shape: Shape::Floor, material: Material::Ice, water: 0, plant: Plant::None, boulder: false };
-                    map.surface_z[y * n + x] = sz - 4;
+                    map.surface_z[y * n + x] = sz - lv;
                 }
             }
             _ => {}

@@ -96,6 +96,24 @@ window's places shown in their embarks; the dev world 88%) and its test, P in th
       the depth trial 9, the woodpile 5, crafts 5, the relic, its seeker and the fell mood 1; the
       explore trial accepts a tomb robbed as its find.
 
+- [x] The world map's "Faults and impacts" overlay (`overlays::Overlay::Upheaval`, `draw_marks`:
+      fault zones by kind and strength, basalts, crater rings); landmarks GreatestCrater,
+      YoungestCrater, GreatFault, FloodBasalt; Y on the world map cycles the wonders and Z walks
+      in at the one shown.
+- [x] Geology feeds the world: ore in craters of 20 km+ (copper, gold or iron), andosol on flood
+      basalts, springs at the foot of fault scarps, towns found away from strong faults.
+- [x] Disasters from space in the chronicle (`history/space.rs`, `EventType::Skyfall`).
+- [x] The place inspector card in the walker (P; `region_ink::draw_place_card`).
+- [x] The river at 2 m: pools and riffles along the bed, gravel bars at the edges, levees by big
+      rivers; rock pools on hard shores (`ground::rock_pools`).
+- [x] Cost: an 8-tile cold region on an upheaval world 8.24 s against 8.09 (chunks), landform
+      labels 0.53 s against 0.38.
+- [ ] Blind review 5/10 (third round): the embark's ground drawing is busy everywhere (rough
+      relief and marks), which hides small features; the region frame at 4 px shows nothing of
+      embark-scale features (zoom it to the feature's scale); sections do not show breccia or
+      offset caverns strongly enough.
+- [ ] The coast at 2 m: wrack on the strand, the cliff's ledges.
+
 ## Tools (the lab, `src/lab/CLAUDE.md`; plan of 2026-10-17)
 - [x] The agent harness: `planet_lab` over MCP and the shell (worlds, tiles, regions, places,
       renders) and the history debugger (query, event, why, entity, stats, export, branch).

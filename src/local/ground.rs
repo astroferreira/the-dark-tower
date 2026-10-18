@@ -83,14 +83,14 @@ pub(super) fn rule(land: Landform, rock: RockType) -> Option<GroundRule> {
         Cirque | UValley => GroundRule { trees: 0.6, boulders: 0.03, ..NONE },
         TowerKarst => GroundRule { trees: 0.7, boulders: 0.04, ..NONE },
         // Upheaval (ROADMAP Stage 7).
-        ImpactRim | CentralPeak | FaultScarp | CollapseScar => GroundRule { boulders: 0.12, relief: Relief::Rough(1.6), ..bare_rock },
-        ImpactCrater => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.5, shrubs: 0.6, grass: true, boulders: 0.06, relief: Relief::Rough(0.6), pools_m: Option::None },
-        Ejecta => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.6, shrubs: 0.8, grass: true, boulders: 0.09, relief: Relief::Rough(0.9), pools_m: Option::None },
+        ImpactRim | CentralPeak | FaultScarp | CollapseScar => GroundRule { boulders: 0.06, relief: Relief::Rough(0.7), ..bare_rock },
+        ImpactCrater => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.5, shrubs: 0.6, grass: true, boulders: 0.02, relief: Relief::Rough(0.25), pools_m: Option::None },
+        Ejecta => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.6, shrubs: 0.8, grass: true, boulders: 0.04, relief: Relief::Rough(0.4), pools_m: Option::None },
         FaultTrough => GroundRule { floor: Some(Material::Clay), trees: 0.6, shrubs: 1.1, pools_m: Some(0.25), ..NONE },
         PressureRidge => GroundRule { soil_max: Some(1), boulders: 0.05, relief: Relief::Rough(1.0), ..NONE },
-        LandslideScar => GroundRule { dead: false, floor: Some(Material::Rock(rock)), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.15, relief: Relief::Rough(1.5), pools_m: Option::None },
-        LandslideDebris => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.15, shrubs: 0.3, grass: true, boulders: 0.3, relief: Relief::Rough(2.0), pools_m: Some(0.1) },
-        RockAvalanche => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.45, relief: Relief::Rough(2.5), pools_m: Option::None },
+        LandslideScar => GroundRule { dead: false, floor: Some(Material::Rock(rock)), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.06, relief: Relief::Rough(0.6), pools_m: Option::None },
+        LandslideDebris => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.15, shrubs: 0.3, grass: true, boulders: 0.1, relief: Relief::Rough(0.8), pools_m: Some(0.1) },
+        RockAvalanche => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.18, relief: Relief::Rough(1.0), pools_m: Option::None },
         BurnScar => GroundRule { trees: 0.5, shrubs: 0.5, grass: true, boulders: 0.0, dead: true, ..NONE },
         Maar => GroundRule { dead: false, floor: Some(Material::Sand), soil_max: Some(1), trees: 0.4, shrubs: 0.6, grass: true, boulders: 0.02, relief: Relief::None, pools_m: Option::None },
         FissureVents => GroundRule { dead: false, floor: Some(Material::Rock(RockType::Basalt)), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.1, relief: Relief::Slots(2.0, 14.0), pools_m: Option::None },
@@ -155,4 +155,42 @@ pub(super) fn landform_at(region: &ZoomRegion, zx: f64, zy: f64, mx: f64, my: f6
 pub(super) fn wind_at(lat_deg: f32) -> (f64, f64) {
     let d = crate::region::landforms::volcanic::wind_dir(lat_deg);
     (d.0 as f64, d.1 as f64)
+}
+
+
+/// Rock pools on a hard shore: bare rock within a few columns of the sea and no more than a level
+/// above it, hollowed one level and filled where the splash and the tide leave water standing
+/// (a hashed fifth of such cells, in clusters).
+pub(super) fn rock_pools(map: &mut LocalMap, seed: u64) {
+    let (n, h) = (map.width, map.height);
+    let sea_at = |map: &LocalMap, x: usize, y: usize| -> Option<i32> {
+        let sz = map.surface_z[y * n + x];
+        let z = sz as usize + 1;
+        (z < map.depth && map.cell(x, y, z).water > 0 && map.cell(x, y, z).material != Material::Ice).then_some(sz)
+    };
+    let mut pools: Vec<(usize, usize)> = Vec::new();
+    for y in 2..h - 2 {
+        for x in 2..n - 2 {
+            let sz = map.surface_z[y * n + x];
+            if sz < 3 || (sz + 2) as usize >= map.depth { continue; }
+            let c = map.cell(x, y, sz as usize);
+            if c.shape != Shape::Floor || !matches!(c.material, Material::Rock(_)) || map.cell(x, y, sz as usize + 1).water > 0 { continue; }
+            let shore = (-4i64..=4).any(|dy| (-4i64..=4).any(|dx| {
+                let (qx, qy) = (x as i64 + dx, y as i64 + dy);
+                qx >= 0 && qy >= 0 && (qx as usize) < n && (qy as usize) < h && sea_at(map, qx as usize, qy as usize).map_or(false, |bz| sz - bz <= 2)
+            }));
+            if !shore { continue; }
+            let k = ((x as u64 / 3) * 0x9E37_79B9 ^ (y as u64 / 3) * 0xC2B2_AE3D ^ seed).wrapping_mul(0xBF58_476D_1CE4_E5B9) >> 40;
+            if k % 5 == 0 { pools.push((x, y)); }
+        }
+    }
+    for (x, y) in pools {
+        let sz = map.surface_z[y * n + x] as usize;
+        let rock = map.cell(x, y, sz).material;
+        let top = map.idx(x, y, sz);
+        map.cells[top] = Cell { shape: Shape::Empty, material: Material::Air, water: WATER_FULL, plant: Plant::None, boulder: false };
+        let bed = map.idx(x, y, sz - 1);
+        map.cells[bed] = Cell { shape: Shape::Floor, material: rock, water: 0, plant: Plant::None, boulder: false };
+        map.surface_z[y * n + x] = sz as i32 - 1;
+    }
 }

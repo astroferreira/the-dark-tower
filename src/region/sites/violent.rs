@@ -66,13 +66,35 @@ pub fn plan(f: &RegionFields, land: &[Landform], rock: &[RockType], core: Core, 
                 let shape = match c.kind { CraterKind::Simple => "a bowl", CraterKind::Complex => "a flat floor round a central peak", CraterKind::PeakRing => "a ring of peaks inside the rim" };
                 let worn = if c.wear > 0.75 { ", worn nearly away" } else if c.wear > 0.4 { ", worn and half filled" } else { "" };
                 let cause = format!("a stone from the sky struck here {}: {} across, {}{}", ago(c.age_myr), size_word(c.d_km), shape, worn);
-                if let Some(ix) = sc.put(out, kind, i, j, cause) {
-                    out.places[ix].radius_m = c.r_km() * 1000.0;
+                // Where the bowl holds a lake, the crater is marked on its rim (the highest dry
+                // ground round it, where one stands and sees it) and the lake at the centre.
+                let (pi, pj) = if sc.lake(k) || !sc.dry(k) {
+                    let r_cells = (c.r_km() * 1000.0 / f.cell_m) as f32;
+                    let lat = std::f32::consts::FRAC_PI_2 - (c.v + 0.5) / f.world.height as f32 * std::f32::consts::PI;
+                    let mut best: Option<(usize, usize, f32)> = None;
+                    for a in 0..48 {
+                        let t = a as f32 / 48.0 * std::f32::consts::TAU;
+                        for rr in [0.95f32, 1.05, 1.15] {
+                            let x = i as f32 + rr * r_cells * t.cos() / lat.cos().abs().max(0.05);
+                            let y = j as f32 + rr * r_cells * t.sin();
+                            if x < 0.0 || y < 0.0 { continue; }
+                            let (x, y) = (x as usize, y as usize);
+                            if x >= f.gw || y >= f.gh { continue; }
+                            let kk = sc.idx(x, y);
+                            if sc.dry(kk) && in_core(((x as i64 + f.gx0 * s) as f64) + 0.5, ((y as i64 + f.gy0 * s) as f64) + 0.5).is_some() && best.map_or(true, |b| sc.h(kk) > b.2) {
+                                best = Some((x, y, sc.h(kk)));
+                            }
+                        }
+                    }
+                    best.map_or((i, j), |b| (b.0, b.1))
+                } else { (i, j) };
+                if let Some(ix) = sc.put(out, kind, pi, pj, cause) {
+                    out.places[ix].radius_m = if (pi, pj) == (i, j) { c.r_km() * 1000.0 } else { 0.0 };
                     out.places[ix].rank = if c.d_km > 50.0 { 0 } else if c.d_km > 15.0 { 5 } else { 15 };
                 }
                 // A lake in the bowl.
                 if sc.lake(k) {
-                    let _ = sc.put(out, PlaceKind::CraterLake, (i + 1).min(f.gw - 1), j, format!("rain filled the bowl a stone from the sky left {}", ago(c.age_myr)));
+                    let _ = sc.put(out, PlaceKind::CraterLake, i, j, format!("rain filled the bowl a stone from the sky left {}", ago(c.age_myr)));
                 }
             }
         }
@@ -101,10 +123,28 @@ pub fn plan(f: &RegionFields, land: &[Landform], rock: &[RockType], core: Core, 
                 let _ = sc.put(out, PlaceKind::FaultScarp, i, j, format!("{}: the ground stepped up or down here in earthquakes, a few metres at a time", ks.word()));
             }
         }
+        // Groundwater rises where a fault cuts the beds: a spring at the foot of the scarp.
+        if one_in(wt, 0xF5B, 2) {
+            if let Some((i, j, _)) = sc.best(tile, |sc, i, j, k| {
+                if !sc.dry(k) || sc.land[k] == Landform::FaultScarp || sc.slope(k) > 0.08 { return None; }
+                let r = 2i64;
+                let foot = (-r..=r).any(|dy| (-r..=r).any(|dx| {
+                    let (x, y) = (i as i64 + dx, j as i64 + dy);
+                    x >= 0 && y >= 0 && (x as usize) < sc.f.gw && (y as usize) < sc.f.gh && {
+                        let kk = sc.idx(x as usize, y as usize);
+                        sc.land[kk] == Landform::FaultScarp && sc.h(kk) > sc.h(k)
+                    }
+                }));
+                foot.then(|| -sc.h(k))
+            }) {
+                let _ = sc.put(out, PlaceKind::Spring, i, j, "groundwater rising where the fault breaks the beds, at the foot of its scarp".into());
+            }
+        }
         if let Some((i, j, _)) = sc.best(tile, |sc, _i, _j, k| (sc.land[k] == Landform::SagPond).then_some(1.0)) {
             let _ = sc.put(out, PlaceKind::SagPond, i, j, "the fault's trace steps aside here and the ground between sank; water stands in it".into());
         }
-        for (i, j, _) in sc.several(tile, 2, |sc, _i, _j, k| (sc.land[k] == Landform::Maar && sc.lake(k)).then(|| -sc.h(k))) {
+        // On the maar's ring of ash beside its water, where one stands and sees it.
+        for (i, j, _) in sc.several(tile, 2, |sc, i, j, k| (sc.land[k] == Landform::Maar && sc.dry(k) && sc.lake_beside(i, j)).then(|| sc.h(k))) {
             let _ = sc.put(out, PlaceKind::Maar, i, j, "rising magma met the groundwater and the steam blew a crater below the land; rain filled it".into());
         }
         if let Some((i, j, _)) = sc.best(tile, |sc, _i, _j, k| (sc.land[k] == Landform::Crevasses).then(|| sc.slope(k))) {
@@ -155,6 +195,26 @@ pub fn plan(f: &RegionFields, land: &[Landform], rock: &[RockType], core: Core, 
         let wt = sc.wrap_tile(tile);
         for ev in f.world.ground_events_at(wt.0, wt.1) {
             match ev.kind {
+                crate::history::events::types::EventType::Skyfall if ev.crater_m > 0.0 => {
+                    // The stone that fell in the chronicle: its crater, somewhere on the tile (by
+                    // the event), carved by the embark.
+                    let (i0, j0, i1, j1) = sc.tile_cells(tile);
+                    let (ci, cj) = (i0 + (hash(ev.id.0 as i64, 1, 0x5F1) % (i1 - i0) as u64) as usize, j0 + (hash(ev.id.0 as i64, 2, 0x5F2) % (j1 - j0) as u64) as usize);
+                    let spot = sc.best(tile, |sc, i, j, k| (sc.dry(k) && (i as i64 - ci as i64).abs() < 12 && (j as i64 - cj as i64).abs() < 12).then(|| -((i as f32 - ci as f32).hypot(j as f32 - cj as f32))));
+                    if let Some((i, j, _)) = spot {
+                        if let Some(ix) = sc.put(out, PlaceKind::MeteorCrater, i, j, format!("{} in the year {}: the stone's pit is still here, {:.0} m across", ev.title.replacen("A stone falls", "a stone fell", 1), ev.year, ev.crater_m)) {
+                            out.places[ix].radius_m = ev.crater_m * 0.5;
+                            out.places[ix].rank = 25;
+                        }
+                    }
+                }
+                crate::history::events::types::EventType::Skyfall if ev.airburst => {
+                    let (i0, j0, i1, j1) = sc.tile_cells(tile);
+                    let (ci, cj) = ((i0 + i1) / 2, (j0 + j1) / 2);
+                    let (t, m) = (*f.world.temperature.get(wt.0, wt.1), *f.world.moisture.get(wt.0, wt.1));
+                    let what = if t > -4.0 && m > 0.35 { "the forest lies flattened and burned, every trunk pointing away from here" } else { "the ground was scorched and stripped bare for a day's walk round, and the stones still lie blackened" };
+                    let _ = sc.put(out, PlaceKind::Skyburn, ci.min(f.gw - 1), cj.min(f.gh - 1), format!("{} in the year {}: {}", ev.title.replacen("The sky bursts", "the sky burst", 1), ev.year, what));
+                }
                 crate::history::events::types::EventType::Landslide => {
                     let words = format!("{} in the year {}, shaken loose by the earthquake", ev.title.replacen("The hillside falls on", "the hillside fell on", 1), ev.year);
                     let (i0, j0, i1, j1) = sc.tile_cells(tile);
@@ -176,7 +236,11 @@ pub fn plan(f: &RegionFields, land: &[Landform], rock: &[RockType], core: Core, 
     }
     // Slides.
     for sl in slides {
-        let Some((i, j)) = in_core(sl.scar.0, sl.scar.1) else { continue };
+        // A fallen flank is marked on its field of hummocks (the amphitheatre often holds a
+        // lake); a landslide at its scar.
+        let at = if sl.kind == SlideKind::FallenFlank { ((sl.scar.0 + sl.toe.0) * 0.5, (sl.scar.1 + sl.toe.1) * 0.5) } else { sl.scar };
+        let Some((i, j)) = in_core(at.0, at.1) else { continue };
+        let (i, j) = if sl.kind == SlideKind::FallenFlank && !sc.dry(sc.idx(i, j)) { in_core(sl.toe.0, sl.toe.1).unwrap_or((i, j)) } else { (i, j) };
         let (kind, cause) = match sl.kind {
             SlideKind::FallenFlank => (PlaceKind::CollapsedFlank, format!("the volcano's side gave way and ran out {:.0} km in a field of hummocks", (sl.toe.0 - sl.scar.0).hypot(sl.toe.1 - sl.scar.1) as f32 * f.cell_m / 1000.0)),
             SlideKind::RockAvalanche => (PlaceKind::Landslide, format!("a high face of hard rock fell and ran {:.1} km down the valley as a sheet of blocks", (sl.toe.0 - sl.scar.0).hypot(sl.toe.1 - sl.scar.1) as f32 * f.cell_m / 1000.0)),

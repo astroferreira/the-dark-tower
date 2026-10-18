@@ -123,6 +123,8 @@ pub fn simulate_step(
     timed("sky", || crate::history::sky::step_sky(history, world));
     // The ground: quakes on the faults, eruptions under the volcanoes (no RNG; only with upheaval).
     timed("geology", || crate::history::geology::step(history, world));
+    // What falls from the sky within the chronicle (no RNG; only with upheaval).
+    timed("space", || crate::history::space::step(history, world));
 
     // 12. Hero quests
     timed("quests", || step_quests(history, rng));

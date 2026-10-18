@@ -228,6 +228,8 @@ pub fn shape_after(h: &mut [f32], g: &ChunkGrid, _d: &Drainage, _acc: &[f32]) {
 
 pub fn classify(f: &RegionFields, rock: &[RockType], land: &mut [Landform]) {
     let (gw, gh, s) = (f.gw, f.gh, f.s);
+    let upheaval = f.world.upheaval().is_some();
+    let lava_warp = Perlin::new((f.seed as u32).wrapping_add(919));
     let (u0, v0) = f.to_world(0, 0);
     let (u1, v1) = f.to_world(gw - 1, gh - 1);
     let vents = vents_near(f.world, u0, u1, v0, v1);
@@ -261,7 +263,13 @@ pub fn classify(f: &RegionFields, rock: &[RockType], land: &mut [Landform]) {
                 continue;
             }
             let slope = f.slope(i, j);
-            if has_lava && lava_at(f.world, u, v) > 0.5 && slope < 0.3 {
+            // (On an upheaval world the lava runs down the valleys over many tiles (`upheaval::
+            // run_lava_downhill`): its edge is read through a warp so the flows are not squares.)
+            let (lu, lv) = if upheaval {
+                let wu = u.rem_euclid(f.world.width as f32) as f64;
+                (u + 0.45 * lava_warp.get([wu * 2.3, v as f64 * 2.3]) as f32, v + 0.45 * lava_warp.get([wu * 2.3 + 17.0, v as f64 * 2.3]) as f32)
+            } else { (u, v) };
+            if has_lava && lava_at(f.world, lu, lv) > 0.5 && slope < 0.3 {
                 land[k] = Landform::LavaField;
                 continue;
             }

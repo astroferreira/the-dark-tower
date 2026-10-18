@@ -333,6 +333,8 @@ pub enum PlaceKind {
     CrevasseField,
     TarPit,
     CrownHoles,
+    /// Where something burst in the sky in the chronicle's years (`history::space`).
+    Skyburn,
 }
 
 impl PlaceKind {
@@ -350,6 +352,7 @@ impl PlaceKind {
             Ruin | Battlefield | BoneField | Lair | Tomb | OldMine => Age::Chronicle,
             ImpactStructure | Landslide | LandslideLake | FaultScarp | SagPond | Maar | GasHollow | CollapsedFlank
             | Sinkhole | DryFalls | Quicksand | CrevasseField | TarPit | CrownHoles => Age::Natural,
+            Skyburn => Age::Chronicle,
         }
     }
 
@@ -380,7 +383,7 @@ impl PlaceKind {
             FaultScarp => "a fault scarp", SagPond => "a sag pond", Maar => "a maar", GasHollow => "a gas hollow",
             CollapsedFlank => "a volcano's fallen flank", Sinkhole => "a sinkhole", DryFalls => "a dry falls",
             Quicksand => "quicksand", CrevasseField => "a crevasse field", TarPit => "a tar pit",
-            CrownHoles => "crown holes over old workings",
+            CrownHoles => "crown holes over old workings", Skyburn => "a place burned from the sky",
         }
     }
 

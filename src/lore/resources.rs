@@ -331,6 +331,20 @@ pub fn compute_resources(world: &WorldData) -> ResourceMap {
             deposits.push(Deposit { x, y, kind: spec.kind, richness });
         }
     }
+    // Ore in the great craters (`crate::upheaval`): the impact melt sheet gathers nickel and
+    // copper (Sudbury), the basin keeps gold-bearing rock from erosion (Vredefort, the
+    // Witwatersrand), the shocked crust iron. Craters of 20 km and more on land.
+    if let Some(rec) = world.impacts() {
+        for c in rec.craters.iter().filter(|c| c.d_km >= 20.0) {
+            let (x, y) = rec.tile_of(c);
+            if !land(x, y) { continue; }
+            let pick = (c.id as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 61;
+            let kind = match pick % 3 { 0 => ResourceType::Copper, 1 => ResourceType::Gold, _ => ResourceType::Iron };
+            if deposits.iter().any(|d| (d.x, d.y, d.kind) == (x, y, kind)) { continue; }
+            let richness = if c.d_km >= 100.0 { 3 } else if c.d_km >= 40.0 { 2 } else { 1 };
+            deposits.push(Deposit { x, y, kind, richness });
+        }
+    }
     let mut by_tile: HashMap<(usize, usize), Vec<usize>> = HashMap::default();
     for (i, d) in deposits.iter().enumerate() {
         by_tile.entry((d.x, d.y)).or_default().push(i);

@@ -148,7 +148,9 @@ pub fn compute_soils(world: &WorldData) -> SoilMap {
             d *= 1.0 - 0.85 * steep;
             if e > 3000.0 { d *= 0.4; }
 
-            let volcanic = volcano_near(x, y) || matches!(biome, B::VolcanicWasteland | B::Ashlands | B::LavaField | B::ShieldVolcano);
+            // (A flood basalt weathers into deep rich soil too: the Deccan's black cotton soils.)
+            let traps = world.upheaval().is_some() && world.provinces().iter().any(|p| crate::upheaval::province_share(w, h, p, x as f32, y as f32) > 0.4);
+            let volcanic = volcano_near(x, y) || traps || matches!(biome, B::VolcanicWasteland | B::Ashlands | B::LavaField | B::ShieldVolcano);
             let k = if volcanic && e < 3000.0 {
                 // Ash weathers into rich soil even on a volcano's flanks.
                 SoilKind::Andosol

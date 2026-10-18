@@ -406,7 +406,7 @@ fn render_world(s: &mut Session, a: &Value) -> ToolResult {
     let overlay = match get_str(a, "overlay").map(str::to_lowercase).as_deref() {
         Some("height") => Overlay::Height, Some("temperature" | "temp") => Overlay::Temperature, Some("moisture") => Overlay::Moisture,
         Some("drainage" | "flow" | "rivers") => Overlay::Drainage, Some("plates") => Overlay::Plates, Some("stress") => Overlay::Stress,
-        Some("biomes" | "biome") => Overlay::Biomes, None | Some("none" | "") => Overlay::None,
+        Some("biomes" | "biome") => Overlay::Biomes, Some("upheaval" | "faults" | "impacts" | "craters") => Overlay::Upheaval, None | Some("none" | "") => Overlay::None,
         Some(o) => return Err(format!("unknown overlay '{o}'")),
     };
     let stem = format!("{}_world_{}", s.worlds[i].id, center.map_or("auto".to_string(), |(x, y)| format!("{x}_{y}")));

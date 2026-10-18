@@ -1004,7 +1004,7 @@ pub fn load_world(
     };
     if let Some(h) = history.as_mut() {
         crate::history::persistence::rebuild_id_generators(h);
-        world.set_ground_events(crate::history::geology::ground_events(h));
+        world.set_ground_events(crate::history::geology::ground_events(h, world.seeds.master));
     }
     Ok((world, history))
 }

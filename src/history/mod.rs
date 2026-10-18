@@ -30,6 +30,7 @@ pub mod religion;
 pub mod shadow;
 pub mod sky;
 pub mod geology;
+pub mod space;
 pub mod hard_times;
 pub mod simulation;
 pub mod time;

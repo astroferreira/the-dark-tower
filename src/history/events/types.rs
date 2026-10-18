@@ -125,6 +125,9 @@ pub enum EventType {
     Landslide,
     /// The sea over a coast after an earthquake under it (`history::geology`; appended).
     Tsunami,
+    /// Something fell from the sky: an airburst, a stone that left a crater, one in the sea
+    /// (`history::space`; appended).
+    Skyfall,
 }
 
 impl EventType {

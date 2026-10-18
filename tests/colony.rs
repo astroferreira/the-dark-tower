@@ -1563,7 +1563,8 @@ fn a_pet_stands_by_its_keeper() {
     // (Since hard times, and since wolves keep out of the firelight, the flag also brings the
     // pet from anywhere, lets the wolves past the fire and leaves their den: seed 8, day 48.)
     // (On the audited terrain: seed 1 on day 83, 12 on day 140.)
-    let found = [("1", "120"), ("12", "260"), ("13", "260")].iter()
+    // (Since the river and coast at 2 m, 2026-10-18: seed 9 on day 129.)
+    let found = [("9", "160"), ("1", "120"), ("12", "260")].iter()
         .any(|(seed, days)| run_log(seed, days, &[("PLANET_FORCE_PET_PREY", "1")]).lines().any(|l| l.contains(" comes running") && (l.contains("stands over") || l.contains("dragged down in"))));
     assert!(found, "no pet stood by its keeper");
 }
@@ -1615,7 +1616,8 @@ fn the_camp_clears_the_den_and_burns_the_restless() {
     // (Since hard times: seed 1 clears its den on day 23, seed 58 burns its dead on day 23. On the
     // audited terrain seed 12 clears its den and seed 7 burns its dead within 60 days. Since Stage
     // 6's ground (2026-10-18) seed 24 does both, on days 32 and 40.)
-    let logs: Vec<String> = ["24", "7"].iter().map(|s| run_log(s, "60", &[SHADOW])).collect();
+    // (Seeds 23 and 24 since the river and coast at 2 m, 2026-10-18.)
+    let logs: Vec<String> = ["23", "24"].iter().map(|s| run_log(s, "60", &[SHADOW])).collect();
     let any = |f: &dyn Fn(&str) -> bool| logs.iter().any(|t| t.lines().any(|l| f(l)));
     assert!(any(&|l| l.contains("go out to the wolves' den at ")), "the wolves were never answered");
     assert!(any(&|l| l.contains("burn what is left on a pyre") || l.contains("burn the bones in it")), "the restless dead were never burned");
@@ -2095,8 +2097,9 @@ fn gates_face_where_the_paths_go() {
 /// after; the unwed walk out with whom they are fond of, and some of them wed.
 #[test]
 fn settlers_mourn_and_court() {
-    // (Seed 1 on the audited terrain; seed 5 before it, and 10 before hard times.)
-    let (text, _) = run_decisions("1", "60");
+    // (Seed 1 on the audited terrain; seed 5 before it, and 10 before hard times; seed 12 since
+    // the river and coast at 2 m, 2026-10-18.)
+    let (text, _) = run_decisions("12", "60");
     assert!(text.lines().any(|l| l.contains("wandering        Standing at ") && l.contains("'s grave, remembering them")), "no one stood at a grave");
     assert!(text.lines().any(|l| l.contains("wandering        Walking out with ") && (l.contains(" is fond of ") || l.contains(" is sweet on "))), "no one walked out with anyone");
 }
@@ -2166,13 +2169,14 @@ fn threats_show_themselves_by_day() {
 /// to the fire with whoever saved them, and after the fight the band draws off or breaks.
 #[test]
 fn the_raid_is_fought_on_the_map() {
-    let (dec, _) = run_decisions("4", "40");
-    let log = run_log("4", "40", &[]);
+    // (Seed 5 since the river and coast at 2 m, 2026-10-18: both its raids fought on the map.)
+    let (dec, _) = run_decisions("5", "40");
+    let log = run_log("5", "40", &[]);
     let at = |l: &str| -> u32 { let d = l.trim_start_matches("Day ").split(',').next().unwrap_or("0").parse::<u32>().unwrap_or(0);
         let hm: Vec<u32> = l.split(", ").nth(1).unwrap_or("00:00").get(0..5).unwrap_or("00:00").split(':').map(|x| x.parse().unwrap_or(0)).collect();
         d * 1440 + hm.first().copied().unwrap_or(0) * 60 + hm.get(1).copied().unwrap_or(0) };
     let raids: Vec<&str> = log.lines().filter(|l| l.contains("  The raid: ") && !l.contains("cage trap") && !l.contains("talked the exiles")).collect();
-    assert!(!raids.is_empty(), "no raid in 40 days on seed 4");
+    assert!(!raids.is_empty(), "no raid in 40 days on seed 5");
     for r in &raids {
         let t = at(r);
         let off = log.lines().find(|l| at(l) >= t && (l.contains(" draws off toward ") || l.contains(" draw off toward ") || l.contains(" breaks and runs ") || l.contains(" break and run ") || l.contains(" lopes off toward ")))
@@ -2213,8 +2217,9 @@ fn the_river_floods_the_bottomland() {
 /// beside it; and the drying rack is walled and roofed into the smokehouse.
 #[test]
 fn the_hut_grows_into_a_hall() {
-    let logs: Vec<String> = ["76", "3"].iter().map(|s| run_log(s, "100", &[])).collect();
-    for (seed, t) in ["76", "3"].iter().zip(&logs) {
+    // (Seeds 2 and 4 since the river and coast at 2 m, 2026-10-18.)
+    let logs: Vec<String> = ["2", "4"].iter().map(|s| run_log(s, "100", &[])).collect();
+    for (seed, t) in ["2", "4"].iter().zip(&logs) {
         assert!(t.lines().any(|l| l.contains("they will lengthen the hut into a hall")) && t.lines().any(|l| l.contains("The hut is lengthened into a hall: 12 beds under one roof.")), "seed {seed}: no hall");
     }
     assert!(logs.iter().any(|t| t.lines().any(|l| l.contains("The drying rack is walled and roofed: it is a smokehouse now."))), "no rack became a smokehouse");

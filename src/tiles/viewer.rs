@@ -257,6 +257,16 @@ fn build_labels(world: &WorldData, history: Option<&WorldHistory>, gaz: &Gazette
     labels
 }
 
+/// Screen position of world tile coordinates (corner at integers) under the world camera,
+/// wrapped to the copy nearest the view.
+fn world_screen(cam: &Camera, world_w: usize, w: usize, h: usize, u: f32, v: f32) -> (f32, f32) {
+    let ww = world_w as f32;
+    let mut dx = u - cam.cx;
+    if dx > ww / 2.0 { dx -= ww; }
+    if dx < -ww / 2.0 { dx += ww; }
+    (w as f32 / 2.0 + dx * cam.tile_px, h as f32 / 2.0 + (v - cam.cy) * cam.tile_px)
+}
+
 /// Place labels for the current world camera (wrapping around the date line).
 fn draw_labels(labels: &[Label], cam: &Camera, world_w: usize, buf: &mut [u32], w: usize, h: usize) {
     draw_labels_avoiding(labels, cam, world_w, buf, w, h, &[]);
@@ -708,6 +718,10 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
         let mut px_per_cell = 4.0f32;
         // K in the walker: the key to the ground and the places in view (`region_ink::draw_legend`).
         let mut show_key = false;
+        // The landmark shown with Y on the world map (Z walks there).
+        let mut wonder: Option<usize> = None;
+        // The region's place the walker went to with P (its card is drawn until it walks on).
+        let mut inspected: Option<usize> = None;
         let mut pending: Option<std::thread::ScopedJoinHandle<'_, ZoomState>> = None;
         // A region being surveyed for Z (on a worker: the window stays live): the loader, the
         // tile, when it began, and where the walker will stand.
@@ -1519,7 +1533,11 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         .map(|p| (((p.x + 0.5 - player.0).powi(2) + (p.y + 0.5 - player.1).powi(2)).sqrt(), p)).collect();
                     near.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
                     match near.iter().find(|(d, _)| *d > 1.5) {
-                        Some((d, p)) => { player = (p.x + 0.5, p.y + 0.5); status = format!("{}, {:.0} cells on: {}", p.title(), d, p.cause); }
+                        Some((d, p)) => {
+                            player = (p.x + 0.5, p.y + 0.5);
+                            status = format!("{}, {:.0} cells on: {}", p.title(), d, p.cause);
+                            inspected = z.region.places.iter().position(|q| std::ptr::eq(q, *p));
+                        }
                         None => status = "No place in this region".into(),
                     }
                     dirty = true;
@@ -1544,6 +1562,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     dirty = true;
                 }
                 if pan_x != 0 || pan_y != 0 {
+                    inspected = None;
                     let px = if running { RUN_PX_PER_FRAME } else { WALK_PX_PER_FRAME };
                     let norm = if pan_x != 0 && pan_y != 0 { std::f64::consts::FRAC_1_SQRT_2 } else { 1.0 };
                     let speed = px * norm / px_per_cell as f64;
@@ -1826,8 +1845,21 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                 let (hx, hy) = screen_to_world(&cam, mouse.0, mouse.1, w, h);
                 let tile = (hx.rem_euclid(tw.width as f32) as usize, (hy.max(0.0) as usize).min(tw.height - 1));
 
+                // Y: the world's wonders (its landmarks) one after another, the map centred on each;
+                // Z then walks in at the wonder instead of under the mouse.
+                if pressed(Key::Y) && !landmarks.is_empty() {
+                    let i = wonder.map_or(0, |i| (i + 1) % landmarks.len());
+                    let l = &landmarks[i];
+                    cam.cx = l.x as f32 + 0.5;
+                    cam.cy = clamp_cy(l.y as f32 + 0.5, cam.tile_px, h, tw.height);
+                    status = format!("{} ({} of {}): {} ({}). Z walks there, Y the next wonder", l.name, i + 1, landmarks.len(), l.epithet, l.detail);
+                    wonder = Some(i);
+                    dirty = true;
+                }
                 if pressed(Key::Z) {
-                    // Walk from the tile under the mouse. Reuse the loaded region if it is there.
+                    // Walk from the tile under the mouse (or the wonder just shown, Y). Reuse the
+                    // loaded region if it is there.
+                    let tile = match wonder.take() { Some(i) => (landmarks[i].x, landmarks[i].y), None => tile };
                     let target = (tile.0 as f64 * s as f64 + s as f64 / 2.0, tile.1 as f64 * s as f64 + s as f64 / 2.0);
                     let inside = zoom.as_ref().map(|z| {
                         let (lx, ly) = (target.0 - z.origin.0 as f64, target.1 - z.origin.1 as f64);
@@ -2033,6 +2065,8 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         else { format!("Arrows walk, Shift runs.   [ ] the region smaller or larger ({} tiles).   K: the key.   Enter: settle.   Z: the map.", region_tiles()) };
                     super::colony_hud::draw_hint(&hint, &mut buf, w, h);
                     if show_key { super::region_ink::draw_legend(&z.ink, &cam_z, &mut buf, w, h); }
+                    // The place the walker went to (P), until it walks on.
+                    if let Some(p) = inspected.and_then(|i| z.region.places.get(i)) { super::region_ink::draw_place_card(p, &mut buf, w, h); }
                 } else {
                     // (Kept between frames, shifted when panned; on whole pixels.)
                     render_world_cached(&tw, &atlas, &cam, &mut buf, w, h);
@@ -2045,6 +2079,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                     }
                     draw_notes(&notes, note_input.as_ref(), &cam, tw.width, &mut buf, w, h);
                     if let Some(t) = &caption_input { super::colony_hud::draw_hint(&format!("The plate's caption: {}_   (Enter saves, Esc drops)", t), &mut buf, w, h); }
+                    overlays::draw_marks(&mut buf, w, h, world, overlay, cam.tile_px, |u, v| world_screen(&cam, tw.width, w, h, u, v));
                     overlays::draw_legend(&mut buf, w, h, overlay);
                     // Colonies left behind: a gold ring and their name.
                     for (c, _) in &left {
@@ -2077,7 +2112,7 @@ pub fn run_tile_viewer(world: &WorldData, history: Option<&WorldHistory>, atlas:
                         super::colony_hud::draw_hint(&format!("Making camp at {},{}: surveying the land and lighting the fire... {:.0} s", t.0, t.1, t0.elapsed().as_secs_f32()), &mut buf, w, h);
                     } else if let Some((_, t, t0, _)) = &surveying {
                         super::colony_hud::draw_hint(&format!("Surveying the land around {},{}... {:.0} s", t.0, t.1, t0.elapsed().as_secs_f32()), &mut buf, w, h);
-                    } else if inspect.is_empty() { super::colony_hud::draw_hint("Z: walk into the land under the mouse.   Enter there: settle.", &mut buf, w, h); }
+                    } else if inspect.is_empty() { super::colony_hud::draw_hint("Z: walk into the land under the mouse.   Y: the world's wonders.   Enter there: settle.", &mut buf, w, h); }
                     minimap_rect = if show_minimap {
                         let (hx, hy) = screen_to_world(&cam, mouse.0, mouse.1, w, h);
                         render_minimap(&tw, &cam, Some((hx, hy, zoom_tiles as f32 / 2.0)), &mut buf, w, h)
@@ -4039,6 +4074,7 @@ pub fn save_snapshots(world: &WorldData, history: Option<&WorldHistory>, atlas: 
         println!("labels {name}: {:.1} ms", t0.elapsed().as_secs_f32() * 1000.0);
         draw_notes(&crate::lore::notes::load(world.seed()), None, &cam, tw.width, &mut buf, w, h);
         render_minimap(&tw, &cam, Some((cx as f32, cy as f32, ZoomParams::default().tiles as f32 / 2.0)), &mut buf, w, h);
+        overlays::draw_marks(&mut buf, w, h, world, overlay, cam.tile_px, |u, v| world_screen(&cam, tw.width, w, h, u, v));
         overlays::draw_legend(&mut buf, w, h, overlay);
         let path = format!("{prefix}_{name}.png");
         let img = image::RgbImage::from_fn(w as u32, h as u32, |x, y| {
@@ -4086,43 +4122,6 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
         println!("Towns in the region, by their roofs: {}", towns.join(", "));
     }
     let mut written = Vec::new();
-    {
-        let path = format!("{prefix}_region.png");
-        let (rw, rh) = (zs.region.width, zs.region.height);
-        // Render the way the window does (so labels show); a 1:1 view of the region centre.
-        let (vw, vh) = (1280usize, 800usize);
-        let mut vbuf = vec![0u32; vw * vh];
-        let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: 1.0 };
-        super::region_ink::draw(&zs.ink, &cam, crate::seasons::Season::Summer, &mut vbuf, vw, vh);
-        let taken = super::region_ink::draw_places(&zs.ink, &cam, &mut vbuf, vw, vh);
-        if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh, &taken); }
-        image::RgbImage::from_fn(vw as u32, vh as u32, |x, y| {
-            let p = vbuf[y as usize * vw + x as usize];
-            image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
-        }).save(&path)?;
-        written.push(path);
-        // The walker's zooms: 4 px a cell (where it opens) and 12 px.
-        for (z, season, tag) in [(4.0f32, crate::seasons::Season::Summer, ""), (12.0, crate::seasons::Season::Summer, ""), (4.0, crate::seasons::Season::Autumn, "_autumn"), (4.0, crate::seasons::Season::Winter, "_winter")] {
-            let path = format!("{prefix}_region_{}px{}.png", z, tag);
-            let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: z };
-            let t0 = std::time::Instant::now();
-            super::region_ink::draw(&zs.ink, &cam, season, &mut vbuf, vw, vh);
-            let t1 = std::time::Instant::now();
-            let taken = super::region_ink::draw_places(&zs.ink, &cam, &mut vbuf, vw, vh);
-            println!("Region in ink at {} px a cell: {:.1} ms (places and their names {:.1} ms)", z, (t1 - t0).as_secs_f64() * 1000.0, t1.elapsed().as_secs_f64() * 1000.0);
-            if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh, &taken); }
-            save_rgb_png(&path, vw, vh, |x, y| { let p = vbuf[y * vw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
-            written.push(path);
-            // The 4 px frame again with the key open (K in the walker).
-            if z == 4.0 && tag.is_empty() {
-                super::region_ink::draw_legend(&zs.ink, &cam, &mut vbuf, vw, vh);
-                let path = format!("{prefix}_region_4px_key.png");
-                save_rgb_png(&path, vw, vh, |x, y| { let p = vbuf[y * vw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
-                written.push(path);
-            }
-        }
-        println!("Region in ink: {}", super::region_ink::summary(&zs.ink));
-    }
     // Embark on the settlement in this tile if there is one, else by a river.
     let s = cells_per_tile() as f64;
     let target = zs.lore.as_ref().and_then(|l| {
@@ -4175,6 +4174,55 @@ pub fn save_local_snapshots(world: &WorldData, history: Option<&WorldHistory>, a
         }
         None => (ex, ey),
     };
+    {
+        let path = format!("{prefix}_region.png");
+        let (rw, rh) = (zs.region.width, zs.region.height);
+        // Render the way the window does (so labels show); a 1:1 view of the region centre.
+        let (vw, vh) = (1280usize, 800usize);
+        let mut vbuf = vec![0u32; vw * vh];
+        let cam = ZoomCamera { cx: rw as f32 / 2.0, cy: rh as f32 / 2.0, px_per_cell: 1.0 };
+        super::region_ink::draw(&zs.ink, &cam, crate::seasons::Season::Summer, &mut vbuf, vw, vh);
+        let taken = super::region_ink::draw_places(&zs.ink, &cam, &mut vbuf, vw, vh);
+        if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh, &taken); }
+        image::RgbImage::from_fn(vw as u32, vh as u32, |x, y| {
+            let p = vbuf[y as usize * vw + x as usize];
+            image::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
+        }).save(&path)?;
+        written.push(path);
+        // The walker's zooms: 4 px a cell (where it opens) and 12 px.
+        for (z, season, tag) in [(4.0f32, crate::seasons::Season::Summer, ""), (12.0, crate::seasons::Season::Summer, ""), (4.0, crate::seasons::Season::Autumn, "_autumn"), (4.0, crate::seasons::Season::Winter, "_winter")] {
+            let path = format!("{prefix}_region_{}px{}.png", z, tag);
+            // The walker's frames open on the embark (its square outlined in rubric).
+            let cam = ZoomCamera { cx: ex as f32, cy: ey as f32, px_per_cell: z };
+            let t0 = std::time::Instant::now();
+            super::region_ink::draw(&zs.ink, &cam, season, &mut vbuf, vw, vh);
+            let t1 = std::time::Instant::now();
+            let taken = super::region_ink::draw_places(&zs.ink, &cam, &mut vbuf, vw, vh);
+            {
+                let half = (192.0 * 2.0 / zs.region.cell_m * z / 2.0).max(2.0);
+                let (cx, cy) = (vw as f32 / 2.0, vh as f32 / 2.0);
+                for i in 0..((4.0 * half) as i64) {
+                    if (i / 4) % 2 == 1 { continue; }
+                    let t = i as f32 - 2.0 * half;
+                    for (x, y) in [(cx + t / 2.0, cy - half), (cx + t / 2.0, cy + half), (cx - half, cy + t / 2.0), (cx + half, cy + t / 2.0)] {
+                        if x >= 0.0 && y >= 0.0 && (x as usize) < vw && (y as usize) < vh { vbuf[y as usize * vw + x as usize] = 0x009A_2A1E; }
+                    }
+                }
+            }
+            println!("Region in ink at {} px a cell: {:.1} ms (places and their names {:.1} ms)", z, (t1 - t0).as_secs_f64() * 1000.0, t1.elapsed().as_secs_f64() * 1000.0);
+            if let Some(l) = &zs.lore { draw_region_labels(l, &cam, &mut vbuf, vw, vh, &taken); }
+            save_rgb_png(&path, vw, vh, |x, y| { let p = vbuf[y * vw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+            written.push(path);
+            // The 4 px frame again with the key open (K in the walker).
+            if z == 4.0 && tag.is_empty() {
+                super::region_ink::draw_legend(&zs.ink, &cam, &mut vbuf, vw, vh);
+                let path = format!("{prefix}_region_4px_key.png");
+                save_rgb_png(&path, vw, vh, |x, y| { let p = vbuf[y * vw + x]; [(p >> 16) as u8, (p >> 8) as u8, p as u8] });
+                written.push(path);
+            }
+        }
+        println!("Region in ink: {}", super::region_ink::summary(&zs.ink));
+    }
     let region = &zs.region;
     let t0 = std::time::Instant::now();
     let map = crate::local::generate_local(world, region, zs.lore.as_ref(), ex, ey);

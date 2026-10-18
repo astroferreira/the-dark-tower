@@ -434,3 +434,16 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
 - `geology::ground_events(h)` lists the chronicle's quakes, slides, tsunamis and eruptions with
   their tiles; `world::load_world` and `main` hand them to the world
   (`WorldData::set_ground_events`) so the region's places can tell them (`sites::violent`).
+
+## Disasters from space (`history/space.rs`; ROADMAP Stage 7, 2026-10-18)
+- Only with upheaval, each summer, hashed from the seed, the year and the kind (no RNG draws):
+  an airburst over land (0.006 x the impact flux a year; a town within 35 km loses a fifth to a
+  half; "The sky bursts ..."), a stone that reaches the ground (0.002 x flux; a crater 50-600 m,
+  `space::fall_size_m`; a town under it destroyed), a stone in the sea (0.0004 x flux; tsunamis
+  on coastal towns within 6 tiles, caused by it), a great storm of the sun (0.015 / the world's
+  magnetic field, at most 0.03; seen at a town near the storm's reach in latitude), a new star
+  (0.008; an omen at a capital). `EventType::Skyfall` (appended). `geology::ground_events` gives
+  the region the craters (with their size) and the airbursts: a `MeteorCrater` place "of the year
+  N" the embark carves, and the woods within `AIRBURST_BURN_KM` (25 km) of an airburst burned
+  (`BurnScar`, dead trees) with a `Skyburn` place. Seed 42's own star at 256x128: three airbursts
+  and a tsunami in 250 years.

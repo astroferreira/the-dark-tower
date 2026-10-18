@@ -1230,6 +1230,11 @@ fn draw_glyph(buf: &mut [u32], w: usize, h: usize, kind: PlaceKind, cx: f32, cy:
                 CrownHoles => {
                     if ring(u, v, -0.4, 0.3, 0.28, e) || ring(u, v, 0.35, 0.35, 0.24, e) || ring(u, v, 0.0, -0.35, 0.26, e) { Some((ink, 0.85)) } else { None }
                 }
+                Skyburn => {
+                    // Felled trunks pointing out from a point.
+                    let rays = (0..10).any(|i| { let a = i as f32 / 10.0 * std::f32::consts::TAU; seg(u, v, (0.35 * a.cos(), 0.35 * a.sin()), (0.9 * a.cos(), 0.9 * a.sin()), e * 0.9) });
+                    if disc(u, v, 0.0, 0.0, 0.16) { Some((RUBRIC, 0.9)) } else if rays { Some((INK, 0.75)) } else { None }
+                }
             };
             if let Some((c, a)) = px { put(x, y, c, a); }
         }
@@ -1541,9 +1546,10 @@ pub mod demo {
                 Quicksand => (sea_near[k] || river_near[k] > 20.0) && s < 0.01 && e > 0.0,
                 CrevasseField => l == Landform::Glacier,
                 TarPit => m < 0.4 && s < 0.03 && e > 0.0,
+                Skyburn => m > 0.45 && s < 0.2 && !lake,
             }
         };
-        const KINDS: [PlaceKind; 74] = {
+        const KINDS: [PlaceKind; 75] = {
             use PlaceKind::*;
             [CaveMouth, Spring, Waterfall, HotSpring, Geyser, MudPot, Gorge, NaturalArch, SeaStack, Erratic, BoulderField, SaltSpring, TarSeep,
              PetrifiedForest, FossilBed, AmberShore, MeteorCrater, Oxbow, Tarn, Tor, Pavement, Blowhole, GiantTree, CraterLake, RockShelter,
@@ -1551,7 +1557,7 @@ pub mod demo {
              Enclosure, Henge, HillFort, Crannog, BogHoard, BogBody, CopperWorking, DesertKite, Ridgeway, Causeway, Ford, Lynchets,
              ClearanceCairns, Watchtower, Quarry, MillRuin, DrownedVillage, Ruin, Battlefield, BoneField, Lair, Tomb, OldMine, CaveMouth,
              ImpactStructure, Landslide, LandslideLake, FaultScarp, SagPond, Maar, GasHollow, CollapsedFlank, Sinkhole, DryFalls,
-             Quicksand, CrevasseField, TarPit, CrownHoles]
+             Quicksand, CrevasseField, TarPit, CrownHoles, Skyburn]
         };
         let names = ["the Hollow Hill", "Grey Mare's Tail", "the Old Mother", "Wolf's Leap", "the Seven Sisters", "Hangman's Rock", "the Black Pool",
             "Giant's Grave", "the Sleeping Hound", "Thunder Stone", "the Nine Maidens", "Raven's Crag", "the Dancing Stones", "Bride's Well",
@@ -1582,5 +1588,35 @@ pub mod demo {
             places.push(p);
         }
         (land, places)
+    }
+}
+
+/// The place inspector: a parchment card top-right for the place the walker went to (P): its
+/// name and kind, its epithet, why it is there, what it holds, a warning where it is dangerous,
+/// and that Enter embarks with it at the middle.
+pub fn draw_place_card(p: &Place, buf: &mut [u32], w: usize, h: usize) {
+    use super::ui::*;
+    if w < 420 || h < 220 { return; }
+    let cw = 360usize.min(w - 24);
+    let chars = (cw - 28) / 7;
+    let mut lines: Vec<(String, u32, bool)> = Vec::new();
+    let title = if p.name.is_empty() { super::colony_hud::capitalize_pub(p.kind.word()) } else { p.name.clone() };
+    lines.push((title, RUBRIC, true));
+    let mut sub = p.kind.word().to_string();
+    if !p.epithet.is_empty() { sub = format!("{}, {}", sub, p.epithet); }
+    for l in wrap(&sub, chars) { lines.push((l, INK_FADED, false)); }
+    lines.push((String::new(), INK, false));
+    if !p.cause.is_empty() { for l in wrap(&format!("Why here: {}.", p.cause), chars) { lines.push((l, INK, false)); } }
+    if !p.description.is_empty() && p.description != p.cause { for l in wrap(&p.description, chars).into_iter().take(4) { lines.push((l, INK, false)); } }
+    if !p.contents.is_empty() { for l in wrap(&format!("Holds: {}.", p.contents.join(", ")), chars) { lines.push((l, INK, false)); } }
+    if p.kind.is_dangerous() { lines.push(("Dangerous ground: go carefully.".into(), RUBRIC, false)); }
+    lines.push((String::new(), INK, false));
+    lines.push(("Enter embarks here; P the next place.".into(), INK_FADED, false));
+    let r = Rect { x: w - cw - 12, y: 12, w: cw, h: 20 + lines.len() * 13 };
+    card(buf, w, r);
+    let mut y = r.y as i64 + 10;
+    for (text, col, bold) in lines {
+        if !text.is_empty() { super::text::draw_fell(buf, w, h, (r.x + 14) as i64, y, &text, col, 1, bold); }
+        y += 13;
     }
 }

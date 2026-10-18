@@ -2170,3 +2170,6 @@ at a moment, where their hours went, whether a cell can be reached; the colony e
   `PLANET_DEBUG_PATH_MAP=1` prints the cells round a failed walk). The rest are re-pinned from a
   365-day record of dev seeds 1-40 and site sweeps (seeds and sites in `TODO.md`); tests that
   ran on the default dev embark now name a seed.
+- The river at 2 m (pools, riffles, gravel bars, levees) and rock pools (2026-10-18) moved five
+  more camps: mourning and courting seed 12, the den and pyre 23/24, the pet (forced) 9/1/12,
+  the hall 2/4, the raid fought on the map seed 5.

@@ -169,7 +169,13 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   zones, landslides and fallen flanks, flood basalts, maars, fissures, lahars, sinkholes, thaw
   lakes, scablands, crevasses, avalanche paths, burns; dangerous places with causes (gas
   hollows, quicksand, tar pits, crown holes); the chronicle's quakes, landslides, tsunamis and
-  eruptions where the ground has them (`history/geology.rs`).
+  eruptions where the ground has them (`history/geology.rs`), and what falls from the sky within
+  the chronicle: airbursts, stones that leave craters, stones in the sea, great storms of the
+  sun, new stars (`history/space.rs`).
+- Seen: the world map's overlay "Faults and impacts" (O, or `--overlay upheaval`), crater
+  rings; landmarks (the greatest and the youngest great crater, the most restless fault, the
+  flood basalts); Y on the world map cycles the wonders and Z walks in at the one shown; P in the
+  walker opens a place's card (why it is there, what it holds, whether it is dangerous).
 - On for every world under another star, off under the Sun unless `--upheaval` (or
   `PLANET_UPHEAVAL=1`); `--no-upheaval` everywhere. `--star sol` and the dev world are unchanged
   bit for bit. `--upheaval-report` prints the record and the tiles to look at. A world's choice

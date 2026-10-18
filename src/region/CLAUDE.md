@@ -382,3 +382,11 @@
   shown in their embarks. Seed 7 (512x256, its own star; `worlds/s7.world`): 23 stratovolcanoes,
   24,24 has lost its flank (`--upheaval-report` marks them), lahars at 272,88 and 232,96, maars
   and fissure vents at 232,96, the traps of a flood basalt at 78,183 (15% of the window).
+- Shown on the world map (`tiles/overlays.rs`: "Faults and impacts", O; crater rings by
+  `draw_marks`) and named (`lore/landmarks.rs`: the greatest crater, the youngest great crater,
+  the most restless fault, the flood basalts; Y on the world map). A crater whose bowl holds a
+  lake is marked on its highest dry rim (the lake at the centre); a maar on its ash ring; a
+  fallen flank on its hummocks. Springs rise at the foot of fault scarps (one tile in two). On
+  an upheaval world the lava fields' edges are read through a warp (lava runs many tiles there).
+- Cost (8 tiles cold, seed 42's own star): chunks 8.24 s (8.09 without upheaval), landform labels
+  0.53 s (0.38), slides and sites unchanged.

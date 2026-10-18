@@ -2220,7 +2220,7 @@ fn main() {
     tiles::making::close();
 
     // The chronicle's quakes and slides, for the region's places (`history::geology`).
-    world_data.set_ground_events(history.as_ref().map(history::geology::ground_events).unwrap_or_default());
+    world_data.set_ground_events(history.as_ref().map(|h| history::geology::ground_events(h, world_data.seed())).unwrap_or_default());
     // Scars history left on the land become part of the biome map.
     if let Some(eco) = history.as_mut().and_then(|h| h.ecology.as_mut()) {
         eco.apply_scars(&mut world_data);
@@ -2743,6 +2743,7 @@ fn main() {
                 Some("plates") => tiles::overlays::Overlay::Plates,
                 Some("stress") => tiles::overlays::Overlay::Stress,
                 Some("biomes" | "biome") => tiles::overlays::Overlay::Biomes,
+                Some("upheaval" | "faults" | "impacts" | "craters") => tiles::overlays::Overlay::Upheaval,
                 _ => tiles::overlays::Overlay::None,
             }) {
                 Ok(files) => println!("Saved tile snapshots: {}", files.join(", ")),

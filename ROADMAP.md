@@ -333,10 +333,22 @@ leaving a mark the region draws, the embark carves and the chronicle remembers
   tsunamis on thrust coasts), eruptions under the volcanoes, by hash (no RNG draws), replacing
   the quakes and eruptions drawn by lot.
 
+- **Disasters from space in the chronicle** (`history/space.rs`): airbursts that flatten and
+  burn the woods (Tunguska), stones that leave a crater the region names "of the year N" and the
+  embark carves, stones in the sea that raise tsunamis, great storms of the sun (auroras far
+  from the poles, more under a weak field), new stars read as omens.
+- **Seen and used:** the world map's "Faults and impacts" overlay (O) with crater rings, the
+  greatest crater, the youngest great crater, the most restless fault and the flood basalts as
+  landmarks (Y walks to them); ore in the great craters, rich soil on the basalts, springs at the
+  faults' feet, towns that weigh the faults.
+
 *Exit:* `--upheaval-report` lists the record and where to look; on seed 42's own star the
 crater region (381,79) shows a breached crater lake, the fault region (402,140) fault scarps,
 27 slides and four landslide lakes, and its embarks carve them (`--views-agree`); the unit
 tests hold every pass's agreement between chunks and windows; the Sun's worlds are unchanged.
+Three blind reviews of the upheaval gallery (2026-10-18): 3, 4 and 5 of 10 (the crater and the
+fault 7 by the last; the region frames now centre on the place; the noise of the violent ground
+calmed; the slides, hummocks and crevasses shaped by noise and the slope).
 
 ## Order and dependencies
 

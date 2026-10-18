@@ -720,7 +720,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     let warp_noise = Perlin::new(seed.wrapping_add(709));
 
     // Per-column surface, water level and climate.
-    struct Col { e: f32, base: f32, water_level: Option<f32>, temp: f32, moist: f32, slope: f32, river_d: f32, river_hw: f32, river_w: f32, sea: bool, gr: Option<ground::GroundRule> }
+    struct Col { e: f32, base: f32, water_level: Option<f32>, temp: f32, moist: f32, slope: f32, river_d: f32, river_hw: f32, river_w: f32, sea: bool, gr: Option<ground::GroundRule>, bar: bool }
     let mut cols: Vec<Col> = Vec::with_capacity(n * n);
     let mut mountains = 0.0f32;
     for j in 0..n {
@@ -773,18 +773,34 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             }
 
             let mut water_level = None;
+            let mut bar = false;
             let bank = (hw * 0.8).max(2.0);
             if river_w > 0.0 && river_d < hw + bank {
-                // Water sits a metre below the smooth valley floor; the bed is a parabola.
+                // Water sits a metre below the smooth valley floor; the bed is a parabola, deeper
+                // in the pools and shallower over the riffles between them (a pool every five or
+                // six widths: a slow noise along the channel), with gravel bars exposed at its
+                // edges here and there.
                 let wl = base - 1.0;
                 let depth = (0.3 * river_w.powf(0.6)).clamp(0.8, 16.0);
+                let scale = (5.5 * river_w as f64).max(18.0);
+                let pool = across_date_line(mx, span_m, |x| fbm(&relief_noise, x / scale + 31.0, my / scale, 2)) * 2.0;
+                let depth = depth * (1.0 + 0.4 * pool).clamp(0.45, 1.5);
                 if river_d < hw {
                     e = wl - depth * (1.0 - (river_d / hw).powi(2));
                     water_level = Some(wl);
+                    let bars = across_date_line(mx, span_m, |x| fbm(&meander, x / (scale * 0.6) + 7.0, my / (scale * 0.6) + 3.0, 2)) * 2.0;
+                    if river_w > 8.0 && river_d > 0.6 * hw && bars > 0.35 && pool < 0.2 {
+                        e = wl + 0.3;
+                        bar = true;
+                    }
                 } else {
                     let t = smoothstep(hw, hw + bank, river_d);
                     e = (wl + 0.5) * (1.0 - t) + e.max(wl + 0.5) * t;
                 }
+            } else if river_w > 25.0 && river_d < hw + bank + 8.0 * (river_w / 40.0).sqrt() && slope < 0.05 {
+                // The levee: a low bank of silt beside a big river, highest by the water.
+                let x = (river_d - hw - bank) / (8.0 * (river_w / 40.0).sqrt());
+                e += 0.9 * (1.0 - x).max(0.0).powi(2) * (river_w / 60.0).min(1.5);
             }
             // Lakes: the nearest region cell decides (warped), keeping its water level.
             let (lx, ly) = ((wx as i64).clamp(0, rw as i64 - 1) as usize, (wy as i64).clamp(0, rh as i64 - 1) as usize);
@@ -806,7 +822,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             if sea {
                 water_level = Some(0.0);
             }
-            cols.push(Col { e, base, water_level, temp, moist, slope, river_d, river_hw: if river_w > 0.0 { hw } else { 0.0 }, river_w, sea, gr });
+            cols.push(Col { e, base, water_level, temp, moist, slope, river_d, river_hw: if river_w > 0.0 { hw } else { 0.0 }, river_w, sea, gr, bar });
         }
     }
 
@@ -986,9 +1002,14 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             // The landform's own floor (bare rock on a cliff, sand on a dune, gravel on scree,
             // clay on a playa) where the class sets one.
             let floor_material = match c.gr.and_then(|g| g.floor) {
+                // (Snow the climate lays stays over a class's loose floor where it is cold: the
+                // region draws snow there too.)
+                Some(m) if floor_material == Material::Snow && matches!(m, Material::Sand | Material::Gravel | Material::Clay) => floor_material,
                 Some(m) if !underwater && !glacier && c.temp >= -2.0 => m,
                 _ => floor_material,
             };
+            // A gravel bar at the channel's edge.
+            let floor_material = if c.bar { Material::Gravel } else { floor_material };
             let (tree_mul, shrub_mul, grass_ok, boulder_add) = c.gr.map_or((1.0, 1.0, true, 0.0), |g| (g.trees, g.shrubs, g.grass, g.boulders));
             // What grows follows the world's biome for the tile this column lies on (looked up
             // through a jitter so tile borders blend), so a desert embark is a desert and the
@@ -1159,6 +1180,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     // The region's places made at their columns (`sites.rs`): mounds, stones, banks and
     // ditches, ruined walls, shafts, bones, springs.
     planned_caves.extend(sites::carve(&mut map, region, cx, cy, region.params.seed));
+    ground::rock_pools(&mut map, region.params.seed);
     site::furnish(&mut map, &battles);
     // Something down there: lairs, tombs, old mines and caves, each with its cause.
     {
