@@ -23,6 +23,19 @@ pub mod aeolian;
 pub mod fluvial;
 pub mod coast;
 pub mod wet;
+// Upheaval (ROADMAP Stage 7, `crate::upheaval`): nothing without it.
+pub mod impact;
+pub mod tectonic;
+pub mod mass;
+pub mod fire;
+pub mod sinking;
+pub mod flood;
+pub mod hazard;
+
+pub use mass::{disturb, DisturbGrid, Slide, SlideKind};
+
+/// A number in [0, 1) fixed by two integers and a salt (`rock::unit`, for `crate::upheaval`).
+pub fn rock_unit(a: i64, b: i64, salt: u64) -> f32 { rock::unit(a, b, salt) }
 
 use crate::erosion::materials::RockType;
 use crate::region::plan::Landform;
@@ -75,6 +88,8 @@ fn skipped(process: &str) -> bool {
 /// Heights before the landscape evolution: build what the rivers then wear.
 pub fn shape_before_erosion(h: &mut [f32], g: &ChunkGrid) {
     if !skipped("volcanic") { volcanic::shape_before(h, g); }
+    if !skipped("impact") { impact::shape_before(h, g); }
+    if !skipped("tectonic") { tectonic::shape_before(h, g); }
     if !skipped("glacial") && !skipped("glacial_before") { glacial::shape_before(h, g); }
     if !skipped("aeolian") { aeolian::shape_before(h, g); }
     if !skipped("rock") { rock::shape_before(h, g); }
@@ -90,6 +105,13 @@ pub fn shape_after_erosion(h: &mut [f32], g: &ChunkGrid, d: &Drainage, acc: &[f3
     if !skipped("glacial") && !skipped("glacial_after") { glacial::shape_after(h, g, d, acc); }
     if !skipped("fluvial") { fluvial::shape_after(h, g, d, acc); }
     if !skipped("coast") { coast::shape_after(h, g, d, acc); }
+    if g.world.upheaval().is_some() {
+        // The summit craters (`volcanic::shape_after`) are cut only on an upheaval world: under
+        // the Sun the pass was never in the order, and its regions stay as they were.
+        if !skipped("volcanic") { volcanic::shape_after(h, g, d, acc); }
+        if !skipped("fire") { fire::shape_after(h, g, d, acc); }
+        if !skipped("sinking") { sinking::shape_after(h, g, d, acc); }
+    }
 }
 
 /// The blended region's fields with their margin, for `classify` and the site planner
@@ -153,7 +175,8 @@ impl<'a> RegionFields<'a> {
 /// Label every cell of the blended region with its landform and its surface rock.
 pub fn classify(f: &RegionFields) -> (Vec<Landform>, Vec<RockType>) {
     let n = f.gw * f.gh;
-    let rock = rock::surface_rock(f);
+    let mut rock = rock::surface_rock(f);
+    fire::rock_over(f, &mut rock);
     let mut land = vec![Landform::None; n];
     rock::classify(f, &rock, &mut land);
     karst::classify(f, &rock, &mut land);
@@ -163,5 +186,12 @@ pub fn classify(f: &RegionFields) -> (Vec<Landform>, Vec<RockType>) {
     fluvial::classify(f, &rock, &mut land);
     coast::classify(f, &rock, &mut land);
     wet::classify(f, &rock, &mut land);
+    // Upheaval: each pass returns at once without it.
+    impact::classify(f, &rock, &mut land);
+    tectonic::classify(f, &rock, &mut land);
+    fire::classify(f, &rock, &mut land);
+    sinking::classify(f, &rock, &mut land);
+    flood::classify(f, &rock, &mut land);
+    hazard::classify(f, &rock, &mut land);
     (land, rock)
 }

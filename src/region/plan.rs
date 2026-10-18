@@ -96,11 +96,40 @@ pub enum Landform {
     Fen,
     Marsh,
     ReedBed,
+    // Upheaval (`crate::upheaval`, ROADMAP Stage 7): the sky, the faults and the slopes in a
+    // hurry. Appended so the classes before keep their numbers.
+    ImpactCrater,
+    ImpactRim,
+    Ejecta,
+    CentralPeak,
+    FaultScarp,
+    FaultTrough,
+    SagPond,
+    PressureRidge,
+    LandslideScar,
+    LandslideDebris,
+    RockAvalanche,
+    BurnScar,
+    // Fire, more of it.
+    Maar,
+    FissureVents,
+    CollapseScar,
+    Lahar,
+    Traps,
+    // Ground that gives way.
+    SaltSink,
+    ThawLake,
+    // Ice and snow that kill.
+    Crevasses,
+    AvalanchePath,
+    // Floods.
+    Scabland,
+    AbandonedChannel,
 }
 
 /// The process a landform belongs to (one colour family, one legend group).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum Family { Plain, Rock, Karst, Ice, Fire, Wind, River, Coast, Wet }
+pub enum Family { Plain, Rock, Karst, Ice, Fire, Wind, River, Coast, Wet, Upheaval }
 
 impl Landform {
     pub const ALL: &'static [Landform] = &[
@@ -118,6 +147,11 @@ impl Landform {
         Landform::Beach, Landform::Spit, Landform::Bar, Landform::BarrierIsland, Landform::Lagoon,
         Landform::CoastalDune, Landform::TidalFlat, Landform::SaltMarsh, Landform::Mangrove,
         Landform::RaisedBeach, Landform::Bog, Landform::Fen, Landform::Marsh, Landform::ReedBed,
+        Landform::ImpactCrater, Landform::ImpactRim, Landform::Ejecta, Landform::CentralPeak, Landform::FaultScarp,
+        Landform::FaultTrough, Landform::SagPond, Landform::PressureRidge, Landform::LandslideScar,
+        Landform::LandslideDebris, Landform::RockAvalanche, Landform::BurnScar, Landform::Maar, Landform::FissureVents,
+        Landform::CollapseScar, Landform::Lahar, Landform::Traps, Landform::SaltSink, Landform::ThawLake,
+        Landform::Crevasses, Landform::AvalanchePath, Landform::Scabland, Landform::AbandonedChannel,
     ];
 
     pub fn family(self) -> Family {
@@ -125,11 +159,16 @@ impl Landform {
         match self {
             None => Family::Plain,
             Cliff | Scree | Outcrop | Tor | Mesa | SlotCanyon | Badland | Hoodoo => Family::Rock,
-            Pavement | Doline | DryValley | Sink | Resurgence | TowerKarst | Cenote | KarstGorge => Family::Karst,
-            UValley | Cirque | Tarn | Arete | Moraine | Drumlin | Erratic | Outwash | Kettle | Glacier | Snowfield | PatternedGround => Family::Ice,
-            Crater | Caldera | CinderCone | LavaField | ColumnarBasalt | AshPlain | Fumarole | ThermalGround => Family::Fire,
+            Pavement | Doline | DryValley | Sink | Resurgence | TowerKarst | Cenote | KarstGorge | SaltSink => Family::Karst,
+            UValley | Cirque | Tarn | Arete | Moraine | Drumlin | Erratic | Outwash | Kettle | Glacier | Snowfield | PatternedGround
+            | ThawLake | Crevasses | AvalanchePath => Family::Ice,
+            Crater | Caldera | CinderCone | LavaField | ColumnarBasalt | AshPlain | Fumarole | ThermalGround
+            | Maar | FissureVents | CollapseScar | Lahar | Traps => Family::Fire,
             Dune | SandSea | Yardang | DesertPavement | Playa => Family::Wind,
-            Floodplain | Levee | Backswamp | Oxbow | Terrace | Braided | Fan | Delta | Estuary | Waterfall | Rapids | Gorge => Family::River,
+            Floodplain | Levee | Backswamp | Oxbow | Terrace | Braided | Fan | Delta | Estuary | Waterfall | Rapids | Gorge
+            | Scabland | AbandonedChannel => Family::River,
+            ImpactCrater | ImpactRim | Ejecta | CentralPeak | FaultScarp | FaultTrough | SagPond | PressureRidge
+            | LandslideScar | LandslideDebris | RockAvalanche | BurnScar => Family::Upheaval,
             SeaCliff | Stack | Beach | Spit | Bar | BarrierIsland | Lagoon | CoastalDune | TidalFlat | SaltMarsh | Mangrove | RaisedBeach => Family::Coast,
             Bog | Fen | Marsh | ReedBed => Family::Wet,
         }
@@ -157,6 +196,13 @@ impl Landform {
             BarrierIsland => "barrier island", Lagoon => "lagoon", CoastalDune => "coastal dunes", TidalFlat => "tidal flat",
             SaltMarsh => "salt marsh", Mangrove => "mangrove", RaisedBeach => "raised beach",
             Bog => "bog", Fen => "fen", Marsh => "marsh", ReedBed => "reed bed",
+            ImpactCrater => "impact crater", ImpactRim => "crater rim", Ejecta => "ejecta blanket", CentralPeak => "central peak",
+            FaultScarp => "fault scarp", FaultTrough => "fault trough", SagPond => "sag pond", PressureRidge => "pressure ridge",
+            LandslideScar => "landslide scar", LandslideDebris => "landslide debris", RockAvalanche => "rock avalanche debris",
+            BurnScar => "burned woods", Maar => "maar", FissureVents => "fissure vents", CollapseScar => "collapse scar",
+            Lahar => "lahar deposits", Traps => "basalt traps", SaltSink => "salt sinkholes", ThawLake => "thaw lakes",
+            Crevasses => "crevasse field", AvalanchePath => "avalanche path", Scabland => "scabland",
+            AbandonedChannel => "abandoned channel",
         }
     }
 
@@ -164,14 +210,22 @@ impl Landform {
     pub fn is_bare_rock(self) -> bool {
         use Landform::*;
         matches!(self, Cliff | Scree | Outcrop | Tor | SlotCanyon | Badland | Hoodoo | Pavement | TowerKarst | KarstGorge
-            | Arete | Erratic | Crater | CinderCone | LavaField | ColumnarBasalt | SeaCliff | Stack | Gorge)
+            | Arete | Erratic | Crater | CinderCone | LavaField | ColumnarBasalt | SeaCliff | Stack | Gorge
+            | ImpactRim | CentralPeak | FaultScarp | LandslideScar | RockAvalanche | CollapseScar | FissureVents | Scabland)
     }
 
     /// Standing or saturated water is usual here.
     pub fn is_wet(self) -> bool {
         use Landform::*;
         matches!(self, Tarn | Kettle | Cenote | Oxbow | Backswamp | Estuary | Lagoon | TidalFlat | SaltMarsh | Mangrove
-            | Bog | Fen | Marsh | ReedBed | Playa)
+            | Bog | Fen | Marsh | ReedBed | Playa | SagPond | ThawLake | Maar)
+    }
+
+    /// Ground that can kill the unwary: it gives way, slides, swallows or breaks.
+    pub fn is_dangerous(self) -> bool {
+        use Landform::*;
+        matches!(self, LandslideScar | RockAvalanche | Crevasses | AvalanchePath | SaltSink | Fumarole | Scree
+            | Cliff | SeaCliff | FaultScarp | CollapseScar | Lahar)
     }
 
     pub fn from_u8(v: u8) -> Landform { Landform::ALL.get(v as usize).copied().unwrap_or(Landform::None) }
@@ -264,6 +318,21 @@ pub enum PlaceKind {
     Lair,
     Tomb,
     OldMine,
+    // Upheaval (ROADMAP Stage 7), appended: the natural places of a violent land.
+    ImpactStructure,
+    Landslide,
+    LandslideLake,
+    FaultScarp,
+    SagPond,
+    Maar,
+    GasHollow,
+    CollapsedFlank,
+    Sinkhole,
+    DryFalls,
+    Quicksand,
+    CrevasseField,
+    TarPit,
+    CrownHoles,
 }
 
 impl PlaceKind {
@@ -279,6 +348,8 @@ impl PlaceKind {
             RoundBarrows | HillFort | Crannog | BogHoard | BogBody | CopperWorking | DesertKite => Age::Metal,
             Watchtower | Quarry | MillRuin | DrownedVillage => Age::LastAge,
             Ruin | Battlefield | BoneField | Lair | Tomb | OldMine => Age::Chronicle,
+            ImpactStructure | Landslide | LandslideLake | FaultScarp | SagPond | Maar | GasHollow | CollapsedFlank
+            | Sinkhole | DryFalls | Quicksand | CrevasseField | TarPit | CrownHoles => Age::Natural,
         }
     }
 
@@ -305,7 +376,18 @@ impl PlaceKind {
             DrownedVillage => "a drowned village",
             Ruin => "a ruin", Battlefield => "a battlefield", BoneField => "a bone field", Lair => "a lair",
             Tomb => "a tomb", OldMine => "an old mine",
+            ImpactStructure => "an impact crater", Landslide => "a landslide", LandslideLake => "a landslide lake",
+            FaultScarp => "a fault scarp", SagPond => "a sag pond", Maar => "a maar", GasHollow => "a gas hollow",
+            CollapsedFlank => "a volcano's fallen flank", Sinkhole => "a sinkhole", DryFalls => "a dry falls",
+            Quicksand => "quicksand", CrevasseField => "a crevasse field", TarPit => "a tar pit",
+            CrownHoles => "crown holes over old workings",
         }
+    }
+
+    /// A place that can kill the unwary (the hover and the place's words say how).
+    pub fn is_dangerous(self) -> bool {
+        use PlaceKind::*;
+        matches!(self, GasHollow | Sinkhole | Quicksand | CrevasseField | TarPit | CrownHoles | Landslide | MudPot | Geyser | Blowhole)
     }
 
     /// Opens into the rock: the embark carves a cave or a working for it (`Place::cave`).

@@ -729,8 +729,9 @@ fn natural_tile(sc: &mut Scan, t: &TileFacts, tile: (i64, i64), wt: (usize, usiz
         }
     }
 
-    // A meteorite crater: very rare, on flattish ground.
-    if one_in(wt, 23, METEOR_ONE_IN) {
+    // A meteorite crater: very rare, on flattish ground (a world with upheaval has its own
+    // record of craters, `sites::violent`).
+    if sc.f.world.upheaval().is_none() && one_in(wt, 23, METEOR_ONE_IN) {
         if let Some((i, j, _)) = sc.best(tile, |sc, _i, _j, k| {
             if !sc.dry(k) || sc.slope(k) > 0.06 { return None; }
             Some(1.0 - sc.slope(k))

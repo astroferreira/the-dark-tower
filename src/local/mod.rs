@@ -1006,7 +1006,9 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
             let plant = if underwater || near_river || matches!(floor_material, Material::Ice | Material::Rock(_)) {
                 Plant::None
             } else if r < tree_density * grove * tree_mul {
-                Plant::Tree(species[(hash(gtx, gty, 9) * species.len() as f32) as usize % species.len()])
+                if c.gr.map_or(false, |g| g.dead) { Plant::Tree(TreeKind::Dead) } else {
+                    Plant::Tree(species[(hash(gtx, gty, 9) * species.len() as f32) as usize % species.len()])
+                }
             } else if r < tree_density * grove * tree_mul + shrub_density * shrub_mul {
                 Plant::Shrub
             } else if grass_ok && matches!(floor_material, Material::Soil | Material::Clay) && c.moist > 0.12 && c.temp > -3.0 {

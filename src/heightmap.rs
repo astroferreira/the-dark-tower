@@ -3525,6 +3525,18 @@ pub fn find_volcano_locations(
     stress_map: &Tilemap<f32>,
     seed: u64,
 ) -> Vec<VolcanoLocation> {
+    find_volcano_locations_with(heightmap, stress_map, seed, false)
+}
+
+/// `full_draws`: the kind and activity draws spread over [0, 1) (`(rng >> 33) / u32::MAX`
+/// never passes 0.5, so the old draws make no stratovolcano and too few active ones; kept as it
+/// was for the worlds made before, used by an upheaval world, `crate::upheaval`).
+pub fn find_volcano_locations_with(
+    heightmap: &Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    seed: u64,
+    full_draws: bool,
+) -> Vec<VolcanoLocation> {
     use noise::{NoiseFn, Perlin, Seedable};
 
     let width = heightmap.width;
@@ -3608,9 +3620,9 @@ pub fn find_volcano_locations(
     selected.into_iter().map(|(x, y, score)| {
         // Pseudo-random variation per volcano
         rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let rand1 = (rng_seed >> 33) as f32 / u32::MAX as f32;
+        let rand1 = if full_draws { (rng_seed >> 40) as f32 / (1u64 << 24) as f32 } else { (rng_seed >> 33) as f32 / u32::MAX as f32 };
         rng_seed = rng_seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let rand2 = (rng_seed >> 33) as f32 / u32::MAX as f32;
+        let rand2 = if full_draws { (rng_seed >> 40) as f32 / (1u64 << 24) as f32 } else { (rng_seed >> 33) as f32 / u32::MAX as f32 };
 
         // Peak height based on score (1000-4000m above surrounding terrain)
         let peak_height = 1000.0 + score * 3000.0 * (0.8 + rand1 * 0.4);
@@ -3702,8 +3714,18 @@ pub fn apply_volcano_pass(
     stress_map: &Tilemap<f32>,
     seed: u64,
 ) -> Vec<VolcanoLocation> {
+    apply_volcano_pass_with(heightmap, stress_map, seed, false)
+}
+
+/// The volcano pass with the kind draws spread over [0, 1) (`find_volcano_locations_with`).
+pub fn apply_volcano_pass_with(
+    heightmap: &mut Tilemap<f32>,
+    stress_map: &Tilemap<f32>,
+    seed: u64,
+    full_draws: bool,
+) -> Vec<VolcanoLocation> {
     // Find volcano locations
-    let volcanoes = find_volcano_locations(heightmap, stress_map, seed);
+    let volcanoes = find_volcano_locations_with(heightmap, stress_map, seed, full_draws);
 
     if volcanoes.is_empty() {
         println!("  No suitable volcano locations found");

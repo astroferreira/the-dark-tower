@@ -121,6 +121,10 @@ pub enum EventType {
     Celestial,
     /// Hunger in a town that outgrew its land (`history::hard_times`; appended).
     Famine,
+    /// A hillside brought down on a town by an earthquake (`history::geology`; appended).
+    Landslide,
+    /// The sea over a coast after an earthquake under it (`history::geology`; appended).
+    Tsunami,
 }
 
 impl EventType {

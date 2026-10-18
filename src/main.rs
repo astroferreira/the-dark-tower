@@ -350,6 +350,16 @@ struct Args {
     #[arg(long)]
     terrain_v1: bool,
 
+    /// The violent land under the Sun too (`crate::upheaval`: impact craters, faults and
+    /// earthquakes, landslides, flood basalts, the history's quakes and eruptions where the
+    /// ground has them); every world under another star has it already. Also PLANET_UPHEAVAL=1
+    #[arg(long)]
+    upheaval: bool,
+
+    /// No upheaval under any star (the land as it was before 2026-10-17). Also PLANET_UPHEAVAL=0
+    #[arg(long)]
+    no_upheaval: bool,
+
     /// Let the Shadow reach into the camp (its raiders, the dead rising on its land, evil weather,
     /// vampires); off by default while the camp's basic play is worked on
     #[arg(long)]
@@ -793,6 +803,11 @@ struct Args {
     #[arg(long)]
     survey_find: bool,
 
+    /// Print the world's upheaval (craters on record, fault zones by kind, flood basalts) and
+    /// where to look at them, and exit
+    #[arg(long)]
+    upheaval_report: bool,
+
     /// List the places of the region round world tile "X,Y" (natural wonders and the ages
     /// before: `region::sites`), grouped by age with their causes and words, then exit. Takes
     /// --zoom-tiles, --zoom-scale and --zoom-erosion like --zoom
@@ -840,6 +855,7 @@ fn parse_args() -> Args {
     let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     // The terrain's revision first: the dev presets and world codes depend on it.
     if args.terrain_v1 { planet_generator::terrain_rev::set_v1(true); }
+    if args.no_upheaval { planet_generator::upheaval::set_forced(Some(false)); } else if args.upheaval { planet_generator::upheaval::set_forced(Some(true)); }
     if args.adventure_load.is_some() { args.adventure = true; }
     if let Some(path) = &args.adventure_inspect {
         match planet_generator::adventure::Game::peek(std::path::Path::new(path)) {
@@ -1377,6 +1393,7 @@ fn main() {
         climate: climate_config.clone(),
         no_hires: args.no_hires,
         legacy_erosion: args.legacy_erosion || args.legacy_tectonics,
+        upheaval: planet_generator::upheaval::params(Some(&star_system)),
         ..terrain::TerrainConfig::new(width, height, world_style)
     };
     tiles::making::begin(width, height, master_seed, &args.world_style, from_start && !args.headless);
@@ -1399,7 +1416,11 @@ fn main() {
 
     // Generate lava for active volcanoes
     println!("Generating lava flows...");
-    let lava_map = heightmap::generate_lava_map(&heightmap, &volcanoes, seeds.heightmap);
+    let mut lava_map = heightmap::generate_lava_map(&heightmap, &volcanoes, seeds.heightmap);
+    if terrain_config.upheaval.is_some() {
+        let n = planet_generator::upheaval::run_lava_downhill(&mut lava_map, &heightmap, &volcanoes);
+        println!("Lava runs down the valleys: {} more tiles", n);
+    }
 
     // Use mean surface temperature from climate simulation (including Rossby waves, continentality, and maritime moderation)
     let temperature = climate_sim.mean_temperature.clone();
@@ -1761,6 +1782,10 @@ fn main() {
         let tiles = args.zoom_tiles.max(1);
         let census = region::survey::census(&world_data, n, tiles, master_seed);
         print!("{}", region::survey::census_report(&census, master_seed, tiles));
+    }
+    if args.upheaval_report {
+        print!("{}", planet_generator::upheaval::report(&world_data));
+        std::process::exit(0);
     }
     if args.survey_find {
         let sites = region::survey::find_sites(&world_data);
@@ -2194,6 +2219,8 @@ fn main() {
     tiles::making::note("history");
     tiles::making::close();
 
+    // The chronicle's quakes and slides, for the region's places (`history::geology`).
+    world_data.set_ground_events(history.as_ref().map(history::geology::ground_events).unwrap_or_default());
     // Scars history left on the land become part of the biome map.
     if let Some(eco) = history.as_mut().and_then(|h| h.ecology.as_mut()) {
         eco.apply_scars(&mut world_data);

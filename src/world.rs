@@ -89,6 +89,20 @@ pub struct WorldData {
     /// files load with none, which reads as the Sun's).
     #[serde(skip)]
     pub star_system: Option<crate::astro::StarSystem>,
+    /// The impact record, fault map and flood basalts (`crate::upheaval`; computed on first use
+    /// from the seed, the star system and the plates, never serialized).
+    #[serde(skip)]
+    upheaval_set: std::sync::OnceLock<Option<crate::upheaval::Upheaval>>,
+    #[serde(skip)]
+    impacts: std::sync::OnceLock<Option<crate::upheaval::Impacts>>,
+    #[serde(skip)]
+    faults: std::sync::OnceLock<crate::upheaval::Faults>,
+    #[serde(skip)]
+    provinces: std::sync::OnceLock<Vec<crate::upheaval::Province>>,
+    /// The chronicle's quakes, slides, tsunamis and eruptions by tile, for the region's places
+    /// (`history::geology::ground_events`; set where a world meets its history, never saved).
+    #[serde(skip)]
+    ground_events: std::sync::Mutex<Vec<crate::history::geology::GroundEvent>>,
 }
 
 impl WorldData {
@@ -100,6 +114,44 @@ impl WorldData {
     /// Soil kind and depth per tile, from terrain and climate (cached).
     pub fn soils(&self) -> &crate::soils::SoilMap {
         self.soils.get_or_init(|| crate::soils::compute_soils(self))
+    }
+
+    /// The upheaval this world gets (`crate::upheaval::params`): none under the Sun unless asked.
+    pub fn upheaval(&self) -> Option<crate::upheaval::Upheaval> {
+        *self.upheaval_set.get_or_init(|| crate::upheaval::params(self.star_system.as_ref()))
+    }
+
+    /// Fix this world's upheaval before anything reads it (tests, the lab); false if it was
+    /// already read.
+    pub fn set_upheaval(&self, up: Option<crate::upheaval::Upheaval>) -> bool { self.upheaval_set.set(up).is_ok() }
+
+    /// The craters the world shows (none without upheaval).
+    pub fn impacts(&self) -> Option<&crate::upheaval::Impacts> {
+        self.impacts.get_or_init(|| self.upheaval().map(|up| crate::upheaval::Impacts::generate(self.width, self.height, self.seeds.master, &up))).as_ref()
+    }
+
+    /// The faults of the plates' boundaries and rifts, with their kind, strike and intensity
+    /// (computed for every world; read only where there is upheaval).
+    pub fn faults(&self) -> &crate::upheaval::Faults {
+        self.faults.get_or_init(|| {
+            let heat = self.upheaval().map_or(1.0, |u| u.internal_heat);
+            crate::upheaval::Faults::compute(&self.plate_map, &self.plates, &self.stress_map, heat)
+        })
+    }
+
+    /// The flood-basalt provinces (none without upheaval).
+    pub fn provinces(&self) -> &[crate::upheaval::Province] {
+        self.provinces.get_or_init(|| self.upheaval().map(|up| crate::upheaval::provinces(self.width, self.height, self.seeds.master, &up)).unwrap_or_default())
+    }
+
+    /// Keep the chronicle's ground events (replacing any kept before).
+    pub fn set_ground_events(&self, events: Vec<crate::history::geology::GroundEvent>) {
+        if let Ok(mut g) = self.ground_events.lock() { *g = events; }
+    }
+
+    /// The chronicle's ground events on world tile (x, y).
+    pub fn ground_events_at(&self, x: usize, y: usize) -> Vec<crate::history::geology::GroundEvent> {
+        self.ground_events.lock().map(|g| g.iter().filter(|e| e.tile == (x, y)).cloned().collect()).unwrap_or_default()
     }
 
     /// Convenience accessor for master seed
@@ -160,6 +212,11 @@ impl WorldData {
             resources: std::sync::OnceLock::new(),
         soils: std::sync::OnceLock::new(),
         star_system: None,
+        upheaval_set: std::sync::OnceLock::new(),
+        impacts: std::sync::OnceLock::new(),
+        faults: std::sync::OnceLock::new(),
+        provinces: std::sync::OnceLock::new(),
+        ground_events: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -220,6 +277,11 @@ impl WorldData {
             resources: std::sync::OnceLock::new(),
         soils: std::sync::OnceLock::new(),
         star_system: None,
+        upheaval_set: std::sync::OnceLock::new(),
+        impacts: std::sync::OnceLock::new(),
+        faults: std::sync::OnceLock::new(),
+        provinces: std::sync::OnceLock::new(),
+        ground_events: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -726,6 +788,11 @@ pub fn generate_test_world() -> WorldData {
         resources: std::sync::OnceLock::new(),
         soils: std::sync::OnceLock::new(),
         star_system: None,
+        upheaval_set: std::sync::OnceLock::new(),
+        impacts: std::sync::OnceLock::new(),
+        faults: std::sync::OnceLock::new(),
+        provinces: std::sync::OnceLock::new(),
+        ground_events: std::sync::Mutex::new(Vec::new()),
     }
 }
 
@@ -937,6 +1004,7 @@ pub fn load_world(
     };
     if let Some(h) = history.as_mut() {
         crate::history::persistence::rebuild_id_generators(h);
+        world.set_ground_events(crate::history::geology::ground_events(h));
     }
     Ok((world, history))
 }

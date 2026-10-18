@@ -418,3 +418,19 @@ Use `crate::history::det::{HashMap, HashSet}` for any map iterated while drawing
   colony notes list the new seeds). The dev world now holds no lost artifact (every one lost was
   found again), so the relic tests force one (`PLANET_FORCE_RELIC`, colony notes); a relic whose
   last owners' people fell is claimed by the people now holding the town where it was made.
+
+## The ground in the chronicle (`history/geology.rs`; ROADMAP Stage 7, 2026-10-17)
+- Only with upheaval (`WorldData::upheaval`; never under the Sun unless asked), hashed from the
+  seed, the year and the town (no draws from the history's RNG), each spring: an earthquake at
+  a town in a fault zone with 7% x intensity^2 a year, killing 2-15%; in high country (relief
+  over 800 m) the hillside comes down one time in two (`EventType::Landslide`, caused by the
+  quake; "dammed the river" on a river tile); a thrust fault on a coast sends a tsunami one
+  time in two (`EventType::Tsunami`) to every coastal town within 4 tiles; an active volcano
+  within 3 tiles erupts at 1.2% a year (stratovolcano: ash and burning cloud), 2% (shield: lava;
+  a town on the vent's own tile is left 40 souls), 0.15% (caldera: a great eruption). Towns
+  emptied may be given up (`hard_times::abandon_after`). `step_natural_events` leaves its quakes
+  and eruptions drawn by lot to this on such a world. Seed 42's own star at 256x128: earthquakes
+  at Ialey and Ploockwey, a landslide on Ploockwey caused by one, eruptions over Greatview.
+- `geology::ground_events(h)` lists the chronicle's quakes, slides, tsunamis and eruptions with
+  their tiles; `world::load_world` and `main` hand them to the world
+  (`WorldData::set_ground_events`) so the region's places can tell them (`sites::violent`).

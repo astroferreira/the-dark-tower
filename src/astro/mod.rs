@@ -456,6 +456,32 @@ impl StarSystem {
         if self.is_sol() { 8 } else { (8.0 * self.world.internal_heat.powf(0.8)).round().clamp(2.0, 20.0) as usize }
     }
 
+    /// How violent the sky and the interior are (`crate::upheaval`): the impact flux from the
+    /// system's age (a young system is still sweeping up its debris: the flux falls with an
+    /// e-folding of 0.25 Gyr to the Earth's after ~1.5 Gyr), its belts (rocky ones near the
+    /// world deliver asteroids, icy ones comets), a giant to stir them (none: comets fall in
+    /// freely, as they would without Jupiter's shepherding) and a companion star (it shakes the
+    /// comet cloud), its metals (dustier discs); the gravity and the interior's heat. The Sun's
+    /// is the Earth's.
+    pub fn upheaval(&self) -> crate::upheaval::Upheaval {
+        if self.is_sol() { return crate::upheaval::Upheaval::earth(); }
+        let age = self.star.age_gyr.max(0.05);
+        let young = 1.0 + 30.0 * (-age / 0.25).exp();
+        let rocky = self.belts.iter().filter(|b| !b.icy).count() as f32;
+        let icy = self.belts.iter().filter(|b| b.icy).count() as f32;
+        let giants = self.planets.iter().filter(|p| p.kind.is_giant()).count();
+        let mut flux = young * (0.6 + 0.35 * rocky + 0.2 * icy);
+        if giants == 0 { flux *= 1.6; }
+        if self.companion.is_some() { flux *= 1.4; }
+        flux *= (1.0 + 0.6 * self.star.metallicity).clamp(0.5, 1.6);
+        crate::upheaval::Upheaval {
+            impact_flux: flux.clamp(0.3, 25.0),
+            gravity: self.world.gravity,
+            age_gyr: age,
+            internal_heat: self.world.internal_heat,
+        }
+    }
+
     /// Record what the climate made of this sky.
     pub fn note_climate(&mut self, sim: &crate::climate::ClimateSimulation, heightmap: &crate::tilemap::Tilemap<f32>) {
         self.climate = Some(sky::climate_notes(sim, heightmap));

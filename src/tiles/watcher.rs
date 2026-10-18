@@ -234,7 +234,7 @@ fn style(kind: &EventType) -> (char, u32, Option<MarkKind>, bool) {
         MasterworkCreated | ArtifactCreated | ArtifactLost | ArtifactFound | ArtifactDestroyed => ('$', GOLD, None, false),
         MonumentBuilt => ('$', GOLD, Some(MarkKind::Wonder), true),
         MonumentDestroyed => ('$', RUBRIC, Some(MarkKind::Razed), false),
-        VolcanoErupted | Earthquake | Flood | Drought | Plague | MagicalCatastrophe => ('!', VIOLET, Some(MarkKind::Disaster), true),
+        VolcanoErupted | Earthquake | Landslide | Tsunami | Flood | Drought | Plague | MagicalCatastrophe => ('!', VIOLET, Some(MarkKind::Disaster), true),
         SpellInvented | MagicalExperiment | CurseApplied | CurseLifted => ('%', VIOLET, None, false),
         ForestCleared | GameScarce | WildlifeReturned => ('"', MOSS, None, false),
         LandScarred => ('@', RUBRIC, Some(MarkKind::Disaster), true),

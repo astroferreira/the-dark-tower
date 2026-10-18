@@ -297,6 +297,47 @@ embark on it and go in; a blind review scores the gallery 7+/10.
 
 ---
 
+### Stage 7: The violent land *(the sky, the faults and the slopes in a hurry; 2026-10-17)*
+
+The first six stages made a land worn slowly by water, ice and wind. Real land is also made in
+an afternoon: a stone from the sky, a fault that slips, a hillside that lets go, a volcano that
+loses its side. Stage 7 adds those, each caused by something the world already knows, and each
+leaving a mark the region draws, the embark carves and the chronicle remembers
+(`src/upheaval.rs`; notes in `src/region/CLAUDE.md`, `src/history/CLAUDE.md`, `src/local/CLAUDE.md`).
+
+- **Who gets it.** Every world under another star; none under the Sun unless asked
+  (`--upheaval`, `PLANET_UPHEAVAL=1`; `--no-upheaval` turns it off everywhere), so `--star sol`,
+  the dev world and the tests pinned on them stay as they were, as the sky's events do.
+- **Impacts.** A record of every crater the world still shows, from the star system's impact
+  flux (its age, belts, giants, a companion, its metals) by the Earth's size-frequency law and
+  preservation (about 600 craters of 1 km+ on an Earth at the Earth's flux), with ages and wear.
+  Shapes by size and gravity: bowls, complex craters with terraced walls and central peaks,
+  peak-ring basins; scalloped rims, breaches where rivers got out, sediment infill by age,
+  ejecta in lobes. The largest (1.5 tiles+) on the world map before its climate and rivers, the
+  rest in the region before its rivers, the small fresh ones (50 m - 1.2 km) carved by the
+  embark. The planted "crater lakes" of empty plains give way to the record's real ones.
+- **Faults.** The plate boundaries kept with their kind (normal, thrust, strike-slip), strike
+  and a seismic zone; the region breaks the ground into tilted blocks, horsts and grabens,
+  scarps, strike-slip troughs with sag ponds and pressure ridges.
+- **Slopes that fail.** Landslides, rock avalanches and fallen volcano flanks on the blended
+  region, before the water: debris that crosses a valley dams a lake.
+- **More fire.** Maars, flood-basalt traps (provinces over plumes, by the interior's heat),
+  fissure vents along young rifts, lahar deposits below snowy cones, the summit craters, lava
+  that runs down the valleys on the world map.
+- **Ground that gives way, floods, killing snow.** Salt sinkholes, thaw lakes, scablands
+  below the old ice's dammed lakes, abandoned river channels, crevasse fields, avalanche paths,
+  burned woods.
+- **Dangerous places** with their causes: gas hollows, sinkholes, quicksand, crevasse fields,
+  tar pits, crown holes over old workings, landslides and their lakes.
+- **The chronicle.** Earthquakes on the faults (landslides on the towns in high country,
+  tsunamis on thrust coasts), eruptions under the volcanoes, by hash (no RNG draws), replacing
+  the quakes and eruptions drawn by lot.
+
+*Exit:* `--upheaval-report` lists the record and where to look; on seed 42's own star the
+crater region (381,79) shows a breached crater lake, the fault region (402,140) fault scarps,
+27 slides and four landslide lakes, and its embarks carve them (`--views-agree`); the unit
+tests hold every pass's agreement between chunks and windows; the Sun's worlds are unchanged.
+
 ## Order and dependencies
 
 Stage 1 first (it measures everything after). Stage 2 before 3 (nothing to draw otherwise),

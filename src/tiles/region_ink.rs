@@ -165,6 +165,27 @@ fn ground_wash(l: Landform, rock: RockType, under: [f32; 3]) -> [f32; 3] {
         TidalFlat => [200.0, 204.0, 190.0],
         SaltMarsh => [188.0, 196.0, 172.0],
         Mangrove => [128.0, 146.0, 112.0],
+        // Upheaval (ROADMAP Stage 7).
+        ImpactCrater => mix(under, [170.0, 160.0, 150.0], 0.45),
+        ImpactRim | CentralPeak | FaultScarp => rock_w(),
+        Ejecta => mix(under, [196.0, 186.0, 166.0], 0.35),
+        FaultTrough | SagPond => mix(under, [176.0, 186.0, 160.0], 0.35),
+        PressureRidge => mix(under, [190.0, 180.0, 160.0], 0.3),
+        LandslideScar => mix(rock_w(), [200.0, 170.0, 140.0], 0.3),
+        LandslideDebris => mix(under, [190.0, 176.0, 156.0], 0.5),
+        RockAvalanche => mix(under, [184.0, 172.0, 158.0], 0.7),
+        BurnScar => mix(under, [150.0, 136.0, 120.0], 0.6),
+        Maar => mix(under, [176.0, 166.0, 156.0], 0.4),
+        FissureVents => [84.0, 70.0, 62.0],
+        CollapseScar => mix(rock_w(), [150.0, 130.0, 120.0], 0.35),
+        Lahar => [186.0, 178.0, 166.0],
+        Traps => mix(super::local_ink::rock_wash(RockType::Basalt), under, 0.55),
+        SaltSink => [230.0, 224.0, 208.0],
+        ThawLake => mix(under, [180.0, 190.0, 184.0], 0.4),
+        Crevasses => SNOW,
+        AvalanchePath => mix(under, [214.0, 212.0, 200.0], 0.45),
+        Scabland => mix(rock_w(), [200.0, 196.0, 180.0], 0.3),
+        AbandonedChannel => mix(under, [170.0, 186.0, 150.0], 0.4),
     }
 }
 
@@ -172,7 +193,8 @@ fn ground_wash(l: Landform, rock: RockType, under: [f32; 3]) -> [f32; 3] {
 fn leafy_ground(l: Landform) -> bool {
     use Landform::*;
     matches!(l, None | UValley | Floodplain | Delta | Levee | Backswamp | Marsh | Fen | ReedBed | Bog | SaltMarsh | Mangrove
-        | Moraine | Drumlin | Doline | DryValley | Terrace | Oxbow | PatternedGround | Cirque | Mesa)
+        | Moraine | Drumlin | Doline | DryValley | Terrace | Oxbow | PatternedGround | Cirque | Mesa
+        | ImpactCrater | Ejecta | FaultTrough | PressureRidge | AbandonedChannel | ThawLake | Traps | Maar)
 }
 
 impl Ink {
@@ -245,13 +267,14 @@ impl Ink {
                 gy[k] = (at(x, y + 1) - at(x, y.saturating_sub(1))) / (2.0 * region.cell_m);
                 let (t, m) = (region.temperature_c[k], region.moisture[k]);
                 // Woods by the climate; the landform says which trees, and where none grow.
-                if !lore[k] && m > 0.42 && t > -4.0 && e < 3200.0 && !l.is_bare_rock() && !matches!(l, Landform::Glacier | Landform::Snowfield | Landform::Bog | Landform::Playa | Landform::Dune | Landform::SandSea | Landform::TidalFlat | Landform::SaltMarsh | Landform::Beach) {
-                    wood[k] = if matches!(l, Landform::AshPlain | Landform::LavaField) { 5 } else if t < 7.0 { 2 } else if t > 22.0 && m > 0.5 { 3 } else { 1 };
+                if !lore[k] && m > 0.42 && t > -4.0 && e < 3200.0 && !l.is_bare_rock() && !matches!(l, Landform::Glacier | Landform::Snowfield | Landform::Bog | Landform::Playa | Landform::Dune | Landform::SandSea | Landform::TidalFlat | Landform::SaltMarsh | Landform::Beach
+                    | Landform::Crevasses | Landform::AvalanchePath | Landform::LandslideDebris | Landform::SaltSink | Landform::Lahar) {
+                    wood[k] = if matches!(l, Landform::AshPlain | Landform::LavaField | Landform::BurnScar) { 5 } else if t < 7.0 { 2 } else if t > 22.0 && m > 0.5 { 3 } else { 1 };
                 }
                 if l == Landform::Mangrove && !lore[k] { wood[k] = 4; }
                 if wood[k] > 0 { woodf[k] = 1.0; }
-                if matches!(l, Landform::Cliff | Landform::SeaCliff) { cliff[k] = 1.0; }
-                if matches!(l, Landform::Glacier | Landform::Snowfield) { ice[k] = 1.0; }
+                if matches!(l, Landform::Cliff | Landform::SeaCliff | Landform::FaultScarp | Landform::CollapseScar) { cliff[k] = 1.0; }
+                if matches!(l, Landform::Glacier | Landform::Snowfield | Landform::Crevasses) { ice[k] = 1.0; }
                 // Green ground (grass, woods' floor) takes the star's leaves, by how green it is.
                 if e > 0.0 && t > -4.0 && m > 0.25 && leafy_ground(l) {
                     let g = super::ink::leafy(wash[k]);
@@ -375,7 +398,10 @@ impl Ink {
         let slope = (self.gx[k].powi(2) + self.gy[k].powi(2)).sqrt().atan().to_degrees();
         let rock = format!("{:?}", self.rock[k]).to_lowercase();
         if self.land[k] == Landform::None { format!("{rock}, slope {slope:.0}°") }
-        else { format!("{}, on {rock}, slope {slope:.0}°", self.land[k].name()) }
+        else {
+            let warn = if self.land[k].is_dangerous() { " - dangerous ground" } else { "" };
+            format!("{}, on {rock}, slope {slope:.0}°{warn}", self.land[k].name())
+        }
     }
 
     /// The nearest place within `within` cells of region cell (x, y).
@@ -490,7 +516,7 @@ fn ground_marks(ink: &Ink, l: Landform, rx: f32, ry: f32, lx: f32, ly: f32, ppc:
             if a.rem_euclid(5.0) < 1.2 { c = mix(c, INK, 0.75); }
         }
         Scree => { if hp(0x5C) % 7 == 0 { c = mix(c, INK, 0.45); } }
-        Outcrop | Tor | Stack | Hoodoo | TowerKarst | Arete => {
+        Outcrop | Tor | Stack | Hoodoo | TowerKarst | Arete | ImpactRim | CentralPeak => {
             // Crags: small inverted strokes on a jittered grid.
             let sp = 7.0;
             let (gx, gy) = ((lx / sp).floor() as i64, (ly / sp).floor() as i64);
@@ -513,7 +539,7 @@ fn ground_marks(ink: &Ink, l: Landform, rx: f32, ry: f32, lx: f32, ly: f32, ppc:
             let gap = hash(gx, gy, seed ^ 0x9A) % 3 == 0;
             if !gap && (lx.rem_euclid(6.0) < 0.9 || ly.rem_euclid(6.0) < 0.9) { c = mix(c, INK, 0.4); }
         }
-        Doline | Kettle | Crater | Caldera | Cenote | Sink => {
+        Doline | Kettle | Crater | Caldera | Cenote | Sink | ImpactCrater | Maar | SaltSink | ThawLake | SagPond => {
             // A dotted ring where the hollow's edge is (a 4-neighbour cell that isn't one).
             let k = ink.cell(rx, ry);
             let (xi, yi) = (k % ink.w, k / ink.w);
@@ -594,6 +620,29 @@ fn ground_marks(ink: &Ink, l: Landform, rx: f32, ry: f32, lx: f32, ly: f32, ppc:
         Marsh | Backswamp | Fen | SaltMarsh => { if tuft(lx, ly, 7.0, seed ^ 0x3A5, 3) { c = mix(c, if l == SaltMarsh { SEA_INK } else { INK }, 0.5); } }
         ReedBed => { if tuft(lx, ly, 5.0, seed ^ 0x2EE, 5) { c = mix(c, [70.0, 92.0, 56.0], 0.6); } }
         Levee => { if slope < 0.02 && hp(0x1E) % 19 == 0 { c = mix(c, PAPER, 0.4); } }
+        FaultScarp | CollapseScar => {
+            // Heavy ticks down the face, close set: a fresh step.
+            if a.rem_euclid(4.0) < 1.4 { c = mix(c, INK, 0.85); }
+        }
+        LandslideScar => { if b.rem_euclid(4.0) < 1.0 && a.rem_euclid(7.0) < 4.5 { c = mix(c, INK, 0.6); } }
+        LandslideDebris | RockAvalanche | Ejecta | Scabland => {
+            let sp = if l == RockAvalanche { 5.0 } else if l == Ejecta { 9.0 } else { 6.5 };
+            if boulder(lx, ly, sp, seed ^ 0x51D) { c = mix(c, INK, 0.7); }
+            if l == Scabland && b.rem_euclid(6.0) < 0.9 { c = mix(c, SEA_INK, 0.3); }
+        }
+        FaultTrough | AbandonedChannel => {
+            if a.rem_euclid(ppc.max(4.0)) < 1.2 && b.rem_euclid(8.0) < 4.5 { c = mix(c, SEA_INK, 0.45); }
+        }
+        PressureRidge => { if (ly + 2.0 * (lx / 5.0).sin()).rem_euclid(7.0) < 1.0 { c = mix(c, INK, 0.45); } }
+        BurnScar => { if hp(0xB5) % 7 == 0 { c = mix(c, [60.0, 50.0, 44.0], 0.6); } }
+        FissureVents => { if (lx * 0.3 + ly).rem_euclid(7.0) < 1.1 { c = mix(c, [30.0, 22.0, 20.0], 0.7); } }
+        Lahar => { if b.rem_euclid(5.0) < 0.8 { c = mix(c, INK, 0.25); } }
+        Traps => { if slope > 0.05 && a.rem_euclid(3.0) < 0.8 { c = mix(c, INK, 0.45); } }
+        Crevasses => {
+            let (gx, gy) = ((a / 5.0).floor() as i64, (b / 5.0).floor() as i64);
+            if b.rem_euclid(5.0) < 1.0 && hash(gx, gy, seed ^ 0x1CF) % 4 != 0 { c = mix(c, ICE_INK, 0.75); }
+        }
+        AvalanchePath => { if a.rem_euclid(6.0) < 1.0 { c = mix(c, ICE_INK, 0.35); } }
         Floodplain | Delta | UValley | Cirque | Terrace | Oxbow | Tarn | Waterfall | Rapids | Lagoon | Mangrove | None => {}
     }
     c
@@ -863,7 +912,8 @@ fn glyph_ink(kind: PlaceKind) -> [f32; 3] {
     use PlaceKind::*;
     match kind {
         Spring | Waterfall | Oxbow | Tarn | Blowhole | CraterLake | Crannog | Ford | DrownedVillage | SaltSpring => SEA_INK,
-        Battlefield | Lair | PaintedCave => RUBRIC,
+        LandslideLake | SagPond | Maar => SEA_INK,
+        Battlefield | Lair | PaintedCave | GasHollow | Quicksand | Sinkhole | CrevasseField | TarPit | CrownHoles => RUBRIC,
         _ => INK,
     }
 }
@@ -1122,7 +1172,64 @@ fn draw_glyph(buf: &mut [u32], w: usize, h: usize, kind: PlaceKind, cx: f32, cy:
                     else { None }
                 }
                 #[allow(unreachable_patterns)]
-                _ => if ring(u, v, 0.0, 0.0, 0.5, e) { Some((INK, 0.8)) } else { None },
+                ImpactStructure => {
+                    let ticks = (0..12).any(|i| { let a = i as f32 / 12.0 * std::f32::consts::TAU; seg(u, v, (0.62 * a.cos(), 0.62 * a.sin()), (0.9 * a.cos(), 0.9 * a.sin()), e * 0.8) });
+                    if ring(u, v, 0.0, 0.0, 0.6, e * 1.4) { Some((INK, 0.95)) }
+                    else if ticks { Some((INK, 0.6)) }
+                    else if disc(u, v, 0.0, 0.0, 0.14) { Some((INK, 0.8)) }
+                    else { None }
+                }
+                Landslide | CollapsedFlank => {
+                    let scar = ring(u, v, 0.0, if kind == Landslide { -0.2 } else { 0.0 }, 0.6, e * 1.3) && v < if kind == Landslide { -0.1 } else { 0.35 };
+                    let dots = [(-0.3f32, 0.35f32), (0.1, 0.55), (0.4, 0.3), (-0.05, 0.8), (0.35, 0.75)].iter().any(|&(dx, dy)| disc(u, v, dx, dy, 0.09));
+                    if scar { Some((INK, 0.9)) } else if dots { Some((INK, 0.75)) } else { None }
+                }
+                LandslideLake | SagPond | Maar => {
+                    let lake = disc(u, v, 0.0, 0.0, 0.5);
+                    let edge = match kind {
+                        LandslideLake => [(0.55f32, -0.4f32), (0.62, -0.1), (0.62, 0.2), (0.55, 0.5)].iter().any(|&(dx, dy)| disc(u, v, dx, dy, 0.1)),
+                        SagPond => seg(u, v, (-0.95, -0.95), (0.95, 0.95), e * 0.9),
+                        _ => (0..10).any(|i| { let a = i as f32 / 10.0 * std::f32::consts::TAU; disc(u, v, 0.72 * a.cos(), 0.72 * a.sin(), 0.08) }),
+                    };
+                    if lake { Some((if ring(u, v, 0.0, 0.0, 0.5, e * 1.2) { SEA_INK } else { LAKE }, 0.95)) }
+                    else if edge { Some((INK, 0.8)) } else { None }
+                }
+                FaultScarp => {
+                    if seg(u, v, (-0.95, -0.1), (0.95, 0.1), e * 1.4) { Some((INK, 0.95)) }
+                    else if [-0.6f32, 0.0, 0.6].iter().any(|&x| seg(u, v, (x, 0.1 * x / 0.95), (x, 0.1 * x / 0.95 + 0.35), e * 1.0)) { Some((INK, 0.8)) }
+                    else { None }
+                }
+                GasHollow => {
+                    if ring(u, v, 0.0, 0.0, 0.65, e * 1.1) { Some((ink, 0.85)) }
+                    else if seg(u, v, (-0.35, -0.35), (0.35, 0.35), e * 1.2) || seg(u, v, (0.35, -0.35), (-0.35, 0.35), e * 1.2) { Some((ink, 0.9)) }
+                    else { None }
+                }
+                Sinkhole => {
+                    let ticks = (0..10).any(|i| { let a = i as f32 / 10.0 * std::f32::consts::TAU; seg(u, v, (0.65 * a.cos(), 0.65 * a.sin()), (0.4 * a.cos(), 0.4 * a.sin()), e * 0.8) });
+                    if ring(u, v, 0.0, 0.0, 0.65, e * 1.2) { Some((ink, 0.9)) } else if ticks { Some((ink, 0.65)) } else if disc(u, v, 0.0, 0.0, 0.18) { Some((INK, 0.9)) } else { None }
+                }
+                DryFalls => {
+                    if seg(u, v, (-0.8, -0.3), (0.8, -0.3), e * 1.3) { Some((INK, 0.95)) }
+                    else if [-0.5f32, 0.0, 0.5].iter().any(|&ux| seg(u, v, (ux, -0.2), (ux, 0.7), e * 0.7)) && ((v * 6.0).floor() as i64).rem_euclid(2) == 0 { Some((INK, 0.6)) }
+                    else { None }
+                }
+                Quicksand => {
+                    let dashed = ring(u, v, 0.0, 0.0, 0.7, e * 1.1) && ((v.atan2(u) * 4.0).floor() as i64).rem_euclid(2) == 0;
+                    let wav = [-0.25f32, 0.15].iter().any(|&oy| ((v - oy) - 0.12 * (u * 9.0).sin()).abs() < e * 0.9 && u.abs() < 0.5);
+                    if dashed { Some((ink, 0.85)) } else if wav { Some((SEA_INK, 0.8)) } else { None }
+                }
+                CrevasseField => {
+                    let zig = [-0.45f32, 0.0, 0.45].iter().any(|&oy| (((u * 3.0).rem_euclid(1.0) - 0.5).abs() * 0.5 - (v - oy) - 0.1).abs() < e * 0.9 && u.abs() < 0.8);
+                    if zig { Some((ICE_INK, 0.9)) } else if ring(u, v, 0.0, 0.0, 0.9, e * 0.8) { Some((ink, 0.5)) } else { None }
+                }
+                TarPit => {
+                    if disc(u, v, 0.0, 0.1, 0.6) { Some(([30.0, 26.0, 24.0], 0.9)) }
+                    else if seg(u, v, (-0.7, -0.6), (-0.2, -0.75), e * 1.2) || seg(u, v, (0.3, -0.75), (0.75, -0.55), e * 1.2) { Some((PAPER, 0.95)) }
+                    else { None }
+                }
+                CrownHoles => {
+                    if ring(u, v, -0.4, 0.3, 0.28, e) || ring(u, v, 0.35, 0.35, 0.24, e) || ring(u, v, 0.0, -0.35, 0.26, e) { Some((ink, 0.85)) } else { None }
+                }
             };
             if let Some((c, a)) = px { put(x, y, c, a); }
         }
@@ -1425,15 +1532,26 @@ pub mod demo {
                 MillRuin => river && s > 0.01,
                 DrownedVillage => lake,
                 Ruin | Battlefield | BoneField | Lair | Tomb => s < 0.1 && e > 0.0 && !river && !lake,
+                ImpactStructure | Sinkhole | CrownHoles => s < 0.05 && e > 0.0 && !river && !lake,
+                Landslide | CollapsedFlank => s > 0.2 && !river,
+                LandslideLake | SagPond | Maar => lake,
+                FaultScarp => s > 0.1 && s < 0.4,
+                GasHollow => r == RockType::Basalt && s < 0.05 && !lake,
+                DryFalls => s > 0.15 && !river && e > 100.0,
+                Quicksand => (sea_near[k] || river_near[k] > 20.0) && s < 0.01 && e > 0.0,
+                CrevasseField => l == Landform::Glacier,
+                TarPit => m < 0.4 && s < 0.03 && e > 0.0,
             }
         };
-        const KINDS: [PlaceKind; 60] = {
+        const KINDS: [PlaceKind; 74] = {
             use PlaceKind::*;
             [CaveMouth, Spring, Waterfall, HotSpring, Geyser, MudPot, Gorge, NaturalArch, SeaStack, Erratic, BoulderField, SaltSpring, TarSeep,
              PetrifiedForest, FossilBed, AmberShore, MeteorCrater, Oxbow, Tarn, Tor, Pavement, Blowhole, GiantTree, CraterLake, RockShelter,
              PaintedCave, KillSite, BoneBed, ShellMidden, FlintMine, LongBarrow, RoundBarrows, StoneCircle, StandingStone, Dolmen, RockArt,
              Enclosure, Henge, HillFort, Crannog, BogHoard, BogBody, CopperWorking, DesertKite, Ridgeway, Causeway, Ford, Lynchets,
-             ClearanceCairns, Watchtower, Quarry, MillRuin, DrownedVillage, Ruin, Battlefield, BoneField, Lair, Tomb, OldMine, CaveMouth]
+             ClearanceCairns, Watchtower, Quarry, MillRuin, DrownedVillage, Ruin, Battlefield, BoneField, Lair, Tomb, OldMine, CaveMouth,
+             ImpactStructure, Landslide, LandslideLake, FaultScarp, SagPond, Maar, GasHollow, CollapsedFlank, Sinkhole, DryFalls,
+             Quicksand, CrevasseField, TarPit, CrownHoles]
         };
         let names = ["the Hollow Hill", "Grey Mare's Tail", "the Old Mother", "Wolf's Leap", "the Seven Sisters", "Hangman's Rock", "the Black Pool",
             "Giant's Grave", "the Sleeping Hound", "Thunder Stone", "the Nine Maidens", "Raven's Crag", "the Dancing Stones", "Bride's Well",

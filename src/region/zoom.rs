@@ -383,6 +383,10 @@ impl<'a> Ctx<'a> {
         for (_, _, &e) in world.heightmap.iter() {
             fingerprint = fingerprint.rotate_left(5) ^ e.to_bits() as u64;
         }
+        // The violent land shapes the chunks too (`crate::upheaval`): its numbers join the key.
+        if let Some(up) = world.upheaval() {
+            for b in up.tag().bytes() { fingerprint = fingerprint.rotate_left(7) ^ b as u64 ^ 0x5EED_0F0F; }
+        }
         let seed = params.seed as u32;
         let world_cell_km = EARTH_CIRCUMFERENCE_KM / ww as f32;
         Self {
@@ -719,6 +723,10 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         }
     }
 
+    // 2b. Slopes that fail (`landforms::mass`, only with upheaval): on the blended heights,
+    // before the water is routed, so a slide across a valley dams its lake.
+    let (slide_tags, slides) = landforms::disturb(&mut h, &landforms::DisturbGrid { world, gw, gh: gw, s, gx0, gy0, cell_m: ctx.cell_m, seed: ctx.seed });
+
     lap("blend");
 
     // 3. Climate (a pure function of position and local height).
@@ -753,9 +761,12 @@ pub fn generate_zoom(world: &WorldData, params: &ZoomParams) -> ZoomRegion {
         world, gw, gh: gw, s, gx0, gy0, margin: mf, cell_m: ctx.cell_m, seed: ctx.seed,
         h: &h, filled: &d.filled, recv: &d.recv, acc: &acc, temp: &temp, moist: &moist,
     };
-    let (land, rock) = landforms::classify(&fields);
+    let (mut land, rock) = landforms::classify(&fields);
+    for k in 0..n {
+        if slide_tags[k] != Landform::None && h[k] > 0.0 { land[k] = slide_tags[k]; }
+    }
     lap("landforms");
-    let site_plan = sites::plan(&fields, &land, &rock, Core { x0: core_x0, y0: core_y0, w: tiles, h: tiles });
+    let site_plan = sites::plan(&fields, &land, &rock, Core { x0: core_x0, y0: core_y0, w: tiles, h: tiles }, &slides);
     lap("sites");
     // chunks, blend, climate and hydrology, landforms and sites.
     let at = |i: usize| laps.get(i).copied().unwrap_or(0.0);

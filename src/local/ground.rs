@@ -27,6 +27,8 @@ pub(super) struct GroundRule {
     pub relief: Relief,
     /// Standing water in the hollows: the water line this far over the smooth ground (m).
     pub pools_m: Option<f32>,
+    /// The trees that stand are dead (a burn).
+    pub dead: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -38,47 +40,69 @@ pub(super) enum Relief {
     Rough(f32),
     /// Rills down the slope: depth (m).
     Rills(f32),
+    /// Slots across the slope (crevasses in ice, fissures in fresh lava): depth (m), spacing (m).
+    Slots(f32, f32),
 }
 
-const NONE: GroundRule = GroundRule { floor: Option::None, soil_max: Option::None, trees: 1.0, shrubs: 1.0, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Option::None };
+const NONE: GroundRule = GroundRule { dead: false, floor: Option::None, soil_max: Option::None, trees: 1.0, shrubs: 1.0, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Option::None };
 
 /// The rule of a class, or none where the heights alone carry it.
 pub(super) fn rule(land: Landform, rock: RockType) -> Option<GroundRule> {
     use Landform::*;
-    let bare_rock = GroundRule { floor: Some(Material::Rock(rock)), soil_max: Some(0), trees: 0.0, shrubs: 0.3, grass: false, boulders: 0.05, relief: Relief::Rough(1.2), pools_m: Option::None };
+    let bare_rock = GroundRule { dead: false, floor: Some(Material::Rock(rock)), soil_max: Some(0), trees: 0.0, shrubs: 0.3, grass: false, boulders: 0.05, relief: Relief::Rough(1.2), pools_m: Option::None };
     Some(match land {
         Cliff | SeaCliff | Arete | Outcrop | ColumnarBasalt | Hoodoo | Tor | Stack | KarstGorge => bare_rock,
         Mesa => GroundRule { trees: 0.3, shrubs: 0.6, boulders: 0.03, relief: Relief::Rough(0.4), ..bare_rock },
-        Scree => GroundRule { floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.1, shrubs: 0.4, grass: false, boulders: 0.25, relief: Relief::Rough(1.0), pools_m: Option::None },
-        Fan | Outwash | RaisedBeach => GroundRule { floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.5, shrubs: 0.7, grass: true, boulders: 0.04, relief: Relief::None, pools_m: Option::None },
-        Moraine | Drumlin => GroundRule { floor: Some(Material::Gravel), soil_max: Some(2), trees: 0.6, shrubs: 0.8, grass: true, boulders: 0.12, relief: Relief::Rough(0.8), pools_m: Option::None },
+        Scree => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.1, shrubs: 0.4, grass: false, boulders: 0.25, relief: Relief::Rough(1.0), pools_m: Option::None },
+        Fan | Outwash | RaisedBeach => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.5, shrubs: 0.7, grass: true, boulders: 0.04, relief: Relief::None, pools_m: Option::None },
+        Moraine | Drumlin => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(2), trees: 0.6, shrubs: 0.8, grass: true, boulders: 0.12, relief: Relief::Rough(0.8), pools_m: Option::None },
         Erratic => GroundRule { boulders: 0.3, ..NONE },
-        Pavement | DesertPavement => GroundRule { floor: Some(if land == Pavement { Material::Rock(RockType::Limestone) } else { Material::Gravel }), soil_max: Some(0), trees: 0.05, shrubs: 0.2, grass: false, boulders: 0.02, relief: Relief::Rough(0.6), pools_m: Option::None },
-        PatternedGround => GroundRule { floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.0, shrubs: 0.2, grass: true, boulders: 0.06, relief: Relief::Rough(0.5), pools_m: Option::None },
-        Dune | SandSea => GroundRule { floor: Some(Material::Sand), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.0, relief: Relief::Dunes(if land == SandSea { 3.5 } else { 2.5 }, 60.0), pools_m: Option::None },
-        CoastalDune => GroundRule { floor: Some(Material::Sand), soil_max: Some(0), trees: 0.05, shrubs: 0.4, grass: true, boulders: 0.0, relief: Relief::Dunes(2.0, 40.0), pools_m: Option::None },
-        Yardang => GroundRule { floor: Some(Material::Sand), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.01, relief: Relief::Rills(2.0), pools_m: Option::None },
-        Badland => GroundRule { floor: Some(Material::Clay), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.0, relief: Relief::Rills(2.5), pools_m: Option::None },
-        Playa => GroundRule { floor: Some(Material::Clay), soil_max: Some(0), trees: 0.0, shrubs: 0.0, grass: false, boulders: 0.0, relief: Relief::None, pools_m: Option::None },
-        LavaField => GroundRule { floor: Some(Material::Rock(RockType::Basalt)), soil_max: Some(0), trees: 0.1, shrubs: 0.3, grass: false, boulders: 0.08, relief: Relief::Rough(1.0), pools_m: Option::None },
-        AshPlain => GroundRule { floor: Some(Material::Sand), soil_max: Some(1), trees: 0.3, shrubs: 0.5, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Option::None },
-        Fumarole | ThermalGround => GroundRule { floor: Some(Material::Gravel), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.03, relief: Relief::Rough(0.4), pools_m: Option::None },
-        Crater | Caldera | CinderCone => GroundRule { floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.2, shrubs: 0.4, grass: true, boulders: 0.04, relief: Relief::Rough(0.6), pools_m: Option::None },
-        Beach | Spit | Bar | BarrierIsland => GroundRule { floor: Some(Material::Sand), soil_max: Some(0), trees: 0.0, shrubs: 0.05, grass: false, boulders: 0.0, relief: Relief::None, pools_m: Option::None },
-        TidalFlat => GroundRule { floor: Some(Material::Clay), soil_max: Some(0), trees: 0.0, shrubs: 0.0, grass: false, boulders: 0.0, relief: Relief::None, pools_m: Some(0.2) },
-        SaltMarsh => GroundRule { floor: Some(Material::Clay), soil_max: Some(1), trees: 0.0, shrubs: 0.3, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Some(0.25) },
-        Mangrove => GroundRule { floor: Some(Material::Clay), soil_max: Some(1), trees: 1.2, shrubs: 0.5, grass: false, boulders: 0.0, relief: Relief::None, pools_m: Some(0.3) },
+        Pavement | DesertPavement => GroundRule { dead: false, floor: Some(if land == Pavement { Material::Rock(RockType::Limestone) } else { Material::Gravel }), soil_max: Some(0), trees: 0.05, shrubs: 0.2, grass: false, boulders: 0.02, relief: Relief::Rough(0.6), pools_m: Option::None },
+        PatternedGround => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.0, shrubs: 0.2, grass: true, boulders: 0.06, relief: Relief::Rough(0.5), pools_m: Option::None },
+        Dune | SandSea => GroundRule { dead: false, floor: Some(Material::Sand), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.0, relief: Relief::Dunes(if land == SandSea { 3.5 } else { 2.5 }, 60.0), pools_m: Option::None },
+        CoastalDune => GroundRule { dead: false, floor: Some(Material::Sand), soil_max: Some(0), trees: 0.05, shrubs: 0.4, grass: true, boulders: 0.0, relief: Relief::Dunes(2.0, 40.0), pools_m: Option::None },
+        Yardang => GroundRule { dead: false, floor: Some(Material::Sand), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.01, relief: Relief::Rills(2.0), pools_m: Option::None },
+        Badland => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.0, relief: Relief::Rills(2.5), pools_m: Option::None },
+        Playa => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(0), trees: 0.0, shrubs: 0.0, grass: false, boulders: 0.0, relief: Relief::None, pools_m: Option::None },
+        LavaField => GroundRule { dead: false, floor: Some(Material::Rock(RockType::Basalt)), soil_max: Some(0), trees: 0.1, shrubs: 0.3, grass: false, boulders: 0.08, relief: Relief::Rough(1.0), pools_m: Option::None },
+        AshPlain => GroundRule { dead: false, floor: Some(Material::Sand), soil_max: Some(1), trees: 0.3, shrubs: 0.5, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Option::None },
+        Fumarole | ThermalGround => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.03, relief: Relief::Rough(0.4), pools_m: Option::None },
+        Crater | Caldera | CinderCone => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.2, shrubs: 0.4, grass: true, boulders: 0.04, relief: Relief::Rough(0.6), pools_m: Option::None },
+        Beach | Spit | Bar | BarrierIsland => GroundRule { dead: false, floor: Some(Material::Sand), soil_max: Some(0), trees: 0.0, shrubs: 0.05, grass: false, boulders: 0.0, relief: Relief::None, pools_m: Option::None },
+        TidalFlat => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(0), trees: 0.0, shrubs: 0.0, grass: false, boulders: 0.0, relief: Relief::None, pools_m: Some(0.2) },
+        SaltMarsh => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(1), trees: 0.0, shrubs: 0.3, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Some(0.25) },
+        Mangrove => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(1), trees: 1.2, shrubs: 0.5, grass: false, boulders: 0.0, relief: Relief::None, pools_m: Some(0.3) },
         Lagoon | Oxbow | Tarn | Kettle | Cenote | Delta | Estuary | ReedBed => NONE,
         Floodplain | Terrace => GroundRule { floor: Some(Material::Soil), trees: 0.8, ..NONE },
         Levee => GroundRule { floor: Some(Material::Soil), trees: 1.3, ..NONE },
         Backswamp => GroundRule { floor: Some(Material::Clay), trees: 0.5, shrubs: 0.8, pools_m: Some(0.3), ..NONE },
-        Braided => GroundRule { floor: Some(Material::Gravel), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.02, relief: Relief::Rough(0.5), pools_m: Some(0.15) },
-        Bog => GroundRule { floor: Some(Material::Clay), soil_max: Some(2), trees: 0.1, shrubs: 0.6, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Some(0.3) },
-        Fen | Marsh => GroundRule { floor: Some(Material::Clay), soil_max: Some(2), trees: 0.1, shrubs: 0.3, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Some(0.35) },
-        Glacier | Snowfield => GroundRule { floor: Some(Material::Snow), soil_max: Some(0), trees: 0.0, shrubs: 0.0, grass: false, boulders: 0.02, relief: Relief::Rough(0.8), pools_m: Option::None },
+        Braided => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.02, relief: Relief::Rough(0.5), pools_m: Some(0.15) },
+        Bog => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(2), trees: 0.1, shrubs: 0.6, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Some(0.3) },
+        Fen | Marsh => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(2), trees: 0.1, shrubs: 0.3, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Some(0.35) },
+        Glacier | Snowfield => GroundRule { dead: false, floor: Some(Material::Snow), soil_max: Some(0), trees: 0.0, shrubs: 0.0, grass: false, boulders: 0.02, relief: Relief::Rough(0.8), pools_m: Option::None },
         Cirque | UValley => GroundRule { trees: 0.6, boulders: 0.03, ..NONE },
         TowerKarst => GroundRule { trees: 0.7, boulders: 0.04, ..NONE },
-        SlotCanyon | Gorge | Waterfall | Rapids | DryValley | Doline | Sink | Resurgence | None => return Option::None,
+        // Upheaval (ROADMAP Stage 7).
+        ImpactRim | CentralPeak | FaultScarp | CollapseScar => GroundRule { boulders: 0.12, relief: Relief::Rough(1.6), ..bare_rock },
+        ImpactCrater => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.5, shrubs: 0.6, grass: true, boulders: 0.06, relief: Relief::Rough(0.6), pools_m: Option::None },
+        Ejecta => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.6, shrubs: 0.8, grass: true, boulders: 0.09, relief: Relief::Rough(0.9), pools_m: Option::None },
+        FaultTrough => GroundRule { floor: Some(Material::Clay), trees: 0.6, shrubs: 1.1, pools_m: Some(0.25), ..NONE },
+        PressureRidge => GroundRule { soil_max: Some(1), boulders: 0.05, relief: Relief::Rough(1.0), ..NONE },
+        LandslideScar => GroundRule { dead: false, floor: Some(Material::Rock(rock)), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.15, relief: Relief::Rough(1.5), pools_m: Option::None },
+        LandslideDebris => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(1), trees: 0.15, shrubs: 0.3, grass: true, boulders: 0.3, relief: Relief::Rough(2.0), pools_m: Some(0.1) },
+        RockAvalanche => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.45, relief: Relief::Rough(2.5), pools_m: Option::None },
+        BurnScar => GroundRule { trees: 0.5, shrubs: 0.5, grass: true, boulders: 0.0, dead: true, ..NONE },
+        Maar => GroundRule { dead: false, floor: Some(Material::Sand), soil_max: Some(1), trees: 0.4, shrubs: 0.6, grass: true, boulders: 0.02, relief: Relief::None, pools_m: Option::None },
+        FissureVents => GroundRule { dead: false, floor: Some(Material::Rock(RockType::Basalt)), soil_max: Some(0), trees: 0.0, shrubs: 0.1, grass: false, boulders: 0.1, relief: Relief::Slots(2.0, 14.0), pools_m: Option::None },
+        Lahar => GroundRule { dead: false, floor: Some(Material::Sand), soil_max: Some(0), trees: 0.1, shrubs: 0.2, grass: false, boulders: 0.08, relief: Relief::None, pools_m: Option::None },
+        Traps => GroundRule { soil_max: Some(1), boulders: 0.04, relief: Relief::Rough(0.6), ..NONE },
+        SaltSink => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(0), trees: 0.0, shrubs: 0.0, grass: false, boulders: 0.0, relief: Relief::Rough(0.4), pools_m: Some(0.15) },
+        ThawLake => GroundRule { dead: false, floor: Some(Material::Clay), soil_max: Some(1), trees: 0.2, shrubs: 0.5, grass: true, boulders: 0.0, relief: Relief::None, pools_m: Some(0.3) },
+        Crevasses => GroundRule { dead: false, floor: Some(Material::Ice), soil_max: Some(0), trees: 0.0, shrubs: 0.0, grass: false, boulders: 0.01, relief: Relief::Slots(5.0, 18.0), pools_m: Option::None },
+        AvalanchePath => GroundRule { trees: 0.0, shrubs: 0.35, grass: true, boulders: 0.06, relief: Relief::Rough(0.5), ..NONE },
+        Scabland => GroundRule { dead: false, floor: Some(Material::Gravel), soil_max: Some(0), trees: 0.05, shrubs: 0.3, grass: true, boulders: 0.15, relief: Relief::Dunes(2.5, 110.0), pools_m: Some(0.1) },
+        AbandonedChannel => GroundRule { floor: Some(Material::Clay), trees: 0.6, shrubs: 1.2, pools_m: Some(0.2), ..NONE },
+        SlotCanyon | Gorge | Waterfall | Rapids | DryValley | Doline | Sink | Resurgence | SagPond | None => return Option::None,
     })
 }
 
@@ -102,6 +126,15 @@ pub(super) fn relief_at(r: Relief, mx: f64, my: f64, wind: (f64, f64), slope_dir
             let bend = across_date_line(mx, span_m, |x| fbm(noise, x / 60.0, my / 60.0, 2)) as f64 * 6.0;
             let ph = ((across + bend) / 9.0).rem_euclid(1.0) as f32;
             -depth * (1.0 - (2.0 * ph - 1.0).abs()).powi(2)
+        }
+        Relief::Slots(depth, spacing) => {
+            // Narrow cracks across the slope, broken along their length.
+            let across = mx * -slope_dir.1 + my * slope_dir.0;
+            let along = mx * slope_dir.0 + my * slope_dir.1;
+            let bend = across_date_line(mx, span_m, |x| fbm(noise, x / 40.0, my / 40.0, 2)) as f64 * 5.0;
+            let ph = ((along + bend) / spacing as f64).rem_euclid(1.0) as f32;
+            let broken = across_date_line(mx, span_m, |x| fbm(noise, x / 23.0 + across / 31.0, my / 23.0, 2)) > -0.1;
+            if ph < 0.12 && broken { -depth } else { 0.0 }
         }
     }
 }

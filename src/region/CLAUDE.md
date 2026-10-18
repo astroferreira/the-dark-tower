@@ -321,3 +321,61 @@
   `cave_cause` / `cave_description` / `cave_contents` word them.
 - Region cost: ~0.1 s a window. The embark carves the graphs (`local/caves.rs`, notes in
   `src/local/CLAUDE.md`); the region draws the mouths as places.
+
+## The violent land (`landforms/impact.rs`, `tectonic.rs`, `mass.rs`, `fire.rs`, `sinking.rs`, `flood.rs`, `hazard.rs`, `sites/violent.rs`; ROADMAP Stage 7, 2026-10-17)
+- Every pass returns at once without upheaval (`WorldData::upheaval`, `crate::upheaval`), so
+  the Sun's regions are as they were; with it the record's numbers join the chunk cache's key.
+- Craters (`impact`): the record's craters from 2 cells to `upheaval::WORLD_SCALE_TILES` (1.5
+  tiles; larger ones the world map shapes itself) are cut before the rivers by
+  `Crater::profile_at` (bowl under the transition diameter 3.2 km / g, else flat floor, three
+  terraces and a central peak, a peak ring over 30 times it; rim scalloped by angle, its
+  height varying, one breach once worn 12%, two past 50%, where the rim falls to the ground;
+  infill 18 m a Myr; ejecta lobed): inside the walls the crater replaces the ground at the
+  world's height at its centre with half the land's own detail kept. Labels: CentralPeak,
+  ImpactCrater (x < 0.85 rims), ImpactRim (to 1.12), Ejecta (to the lobe's reach, worn under 60%).
+- Faults (`tectonic::FaultField`): from `WorldData::faults` (per tile kind, strike as a doubled
+  angle, intensity spread `ZONE_KM` 260 km from the boundaries and the stress map's rifts).
+  Normal: blocks 18 km apart tilted by hash (horsts where they tilt apart, grabens where
+  together), throw 750 m x intensity x size, tapered over 28 km segments, active one in
+  `intensity x 1.15`; thrust 20 km, 520 m, a fold on the upper edge; strike-slip: a trough 14 m
+  deep a cell wide on traces 45 km apart with ponds (12 m) and ridges (18 m) where it steps.
+  Before the rivers, which cut the scarps into facets. Labels FaultScarp (on the face, slope
+  over 0.05 at 610 m), SagPond (a pond with a lake), PressureRidge, FaultTrough.
+- Slides (`mass::disturb`, on the blended region in `generate_zoom` before the routing, so a
+  debris dam makes its lake): a lattice 2.4 km apart; a slope fails with p = (factor - 1) x 0.6
+  (at most 0.75), factor = slope / ((0.08 + 0.14 hardness) x scale) x (0.7 + 0.6 moisture) x (1 +
+  1.2 seismic); never under -8 C. The scar a bowl cut into the upper slope (depth a quarter of
+  the relief within 4 cells, at most 15-75 m), its volume laid along the steepest descent for
+  relief / 0.5 (a rock avalanche off hard faces with relief over 350 m: / 0.2), widening, with
+  hummocks. One stratovolcano in three has lost a flank: an amphitheatre 2.2 km at the summit
+  opening downhill, its debris run 18 km. Every decision is read from the heights before any
+  slide is cut, so two windows agree (`steep_slopes_fail_the_same_way_in_two_windows`).
+  `PLANET_DEBUG_SLIDES=1` prints the slides planned. Labels LandslideScar / CollapseScar,
+  LandslideDebris / RockAvalanche; `Slide`s go to the site planner.
+- Fire (`fire`): maars on a 5.2 km lattice (one in four) near young volcanism on wet ground
+  under 1,500 m (450-1,100 m across, 40-120 m deep, an ash ring 18 m); the provinces' traps
+  (steps of the flow's thickness, 70% weight, basalt at the surface where the share passes
+  0.35); fissure vents on normal-fault faces near young volcanism or lava; lahars on the valley
+  floors (HAND under 6 m) within 2.5 tiles of a stratovolcano colder than 4 C. With upheaval the
+  summit craters (`volcanic::shape_after`) are cut too.
+- `sinking`: salt sinks within 3 cells of a playa's edge in 3-cell clusters (35%); thaw lakes on
+  a 4.8 km lattice (half the points) where the mean is -12 to -2 C, moist over 0.3, flat and
+  under 600 m, drawn out across the wind, 3-9 m deep (they fill). `flood`: scablands on big
+  valley floors (catchment a tenth of a tile, HAND under 25 m) in the zone beyond the old ice
+  (`IceMap::once` 0.15-0.55), one tile in three; abandoned channels on floodplains, fans and
+  deltas along a slow noise's zero line off the live channel. `hazard`: crevasses on glaciers
+  steeper than 0.12 (0.06 at the edge, 30%), avalanche paths on 24-50 degree slopes with a snowy
+  winter (-6 to 4 C, moist over 0.35) along a noise's zero line, burns in boreal, savanna and
+  subalpine woods and the warm half-dry ones (moisture 0.42-0.7) in noise patches on 60% of
+  tiles.
+- Places (`sites/violent`, before the natural wonders; `after` once the prehistory is planned):
+  see its header. The old one-tile-in-4,000 meteorite crater is not rolled on an upheaval world.
+- The chronicle in the places (`WorldData::ground_events_at`, set where a world meets its
+  history): a region slide on a tile the history's landslide struck takes its words, else a
+  Landslide place is put on the steepest dry slope within 4 km of the tile's middle; a fault
+  scarp on a tile an earthquake struck names its last great rupture.
+- Seed 42 under its own star: the 95 km crater at 381,79 holds a breached lake spilling into a
+  second; the fault region 402,140: scarps, 27 slides, four landslide lakes, 65 of 65 places
+  shown in their embarks. Seed 7 (512x256, its own star; `worlds/s7.world`): 23 stratovolcanoes,
+  24,24 has lost its flank (`--upheaval-report` marks them), lahars at 272,88 and 232,96, maars
+  and fissure vents at 232,96, the traps of a flood basalt at 78,183 (15% of the window).

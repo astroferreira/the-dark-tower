@@ -37,6 +37,7 @@ cargo run --release -- --load-world worlds/s42_sol.world --headless --no-history
 cargo run --release -- --load-world worlds/s42_sol.world --headless --no-history --views-agree 177,133   # every place shown in its embark?
 scripts/gallery.sh out/gallery                                                       # twelve embarks on seed 42, one sheet
 cargo run --release -- --seed 42 --star sol --headless --no-history --gazetteer       # named features and landmarks
+cargo run --release -- --load-world worlds/s42_k6.world --headless --no-history --upheaval-report   # craters, faults, basalts and where
 cargo run --release --bin terrain_lab -- 42 512 256 earthlike out  # per-stage metrics and images (src/erosion/CLAUDE.md)
 
 # The lab: worlds, regions, embarks and history as tools (MCP server `planet-lab` in .mcp.json;
@@ -161,6 +162,22 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   loaded on revision 1, so codes shared before the audit still make their worlds.
 - Seed 42 at 512x256 (audited vs revision 1): big-river water trapped short of the sea 4.4% vs
   6.4%, closed basins 0.8% vs 0.9% of land, 33 lakes vs 24, 394 river tiles vs 280.
+
+### Upheaval: the violent land (`upheaval.rs`; ROADMAP Stage 7, 2026-10-17)
+- Impact craters from the star system's flux (a record of every crater still shown: size,
+  age, wear; shapes by gravity), faults kept with their kind (normal, thrust, strike-slip) and
+  zones, landslides and fallen flanks, flood basalts, maars, fissures, lahars, sinkholes, thaw
+  lakes, scablands, crevasses, avalanche paths, burns; dangerous places with causes (gas
+  hollows, quicksand, tar pits, crown holes); the chronicle's quakes, landslides, tsunamis and
+  eruptions where the ground has them (`history/geology.rs`).
+- On for every world under another star, off under the Sun unless `--upheaval` (or
+  `PLANET_UPHEAVAL=1`); `--no-upheaval` everywhere. `--star sol` and the dev world are unchanged
+  bit for bit. `--upheaval-report` prints the record and the tiles to look at. A world's choice
+  is fixed on first read (`WorldData::set_upheaval` for tests); its numbers join the region
+  chunks' cache key (`upheaval::SHAPE_VERSION`: bump it when a violent pass changes heights).
+- Seed 42 under its own K6 star (`worlds/s42_k6.world`, 512x256): flux 1.78x, 420 craters on
+  land (8 over 100 km), the freshest large one at 381,79 (95 km, 35 Myr: a breached crater lake);
+  the strongest normal fault zone at 402,140 (scarps, 27 slides, four landslide lakes).
 
 ### Soils (`soils.rs`)
 - `world.soils()` (lazy, never serialized) gives each land tile a soil kind and depth from its

@@ -56,6 +56,38 @@ window's places shown in their embarks; the dev world 88%) and its test, P in th
       cause or stop appearing (karst, volcanic and thermal kinds move to the region's site
       layer in Stage 2/4).
 
+## Stage 7: the violent land (`ROADMAP.md`, `src/upheaval.rs`; 2026-10-17)
+- [x] The record (`upheaval::Impacts`, `Faults`, `provinces`), from the star system
+      (`StarSystem::upheaval`); `--upheaval`, `--no-upheaval`, `PLANET_UPHEAVAL`,
+      `--upheaval-report`.
+- [x] World map: the largest craters and the flood basalts before the climate; lava down the
+      valleys (`run_lava_downhill`); real crater lakes instead of planted ones (`lore/focal.rs`).
+- [x] Region: craters (`landforms/impact.rs`), faults (`tectonic.rs`), slides
+      (`mass.rs`, on the blended region), maars, traps, fissures, lahars (`fire.rs`), salt sinks
+      and thaw lakes (`sinking.rs`), scablands and abandoned channels (`flood.rs`), crevasses,
+      avalanche paths, burns (`hazard.rs`); places (`sites/violent.rs`); ink and glyphs.
+- [x] Embark: ground rules for every class, dead trees in burns, carved meteorite craters,
+      debris, fault steps, sinkholes, crown holes, crevasses, quicksand, gas hollows, tar pits.
+- [x] History: quakes, landslides, tsunamis, eruptions where the ground has them
+      (`history/geology.rs`; `EventType::Landslide`, `Tsunami` appended).
+- [x] The chronicle's quakes and slides in the region: `WorldData::set_ground_events` (set
+      by `load_world` and `main` after the history), a slide on a struck town's tile carries the
+      chronicle's words ("the hillside fell on Ploockwey in the year 410"), a fault scarp names
+      its last great rupture.
+- [x] Stratovolcanoes: the volcano pass's draws (`(rng >> 33) / u32::MAX`) never passed 0.5,
+      so no world had one; an upheaval world draws over [0, 1) (`find_volcano_locations_with`).
+      Seed 7: 23 of 62; 24,24 has lost its flank, 272,88 and 232,96 carry lahars and maars.
+- [ ] **Decide (the Sun's worlds):** the summit craters (`volcanic::shape_after`, never in the
+      shape order) and the volcano kinds' draws are fixed only on upheaval worlds, so the Sun's
+      worlds and every pinned test stay as they were. Turning them on everywhere is one line
+      each (`landforms::shape_after_erosion`, `terrain.rs`'s `apply_volcano_pass_with`) and moves
+      every world with volcanoes (the dev world's regions and pinned sites).
+- [ ] Fault noise at the date line does not wrap (like the other region passes' noise).
+- [ ] (colony, paused) 21 of `tests/colony.rs` fail since Stage 6 (aa32056: the embark's ground
+      from the landforms and the carved places moved every dev embark, so the seed-pinned camps
+      changed): `seven_settlers_live_thirty_days_unattended` and `a_camp_without_stone_digs_for_it`
+      pass at 2f1bc54 and fail at aa32056 (checked 2026-10-17). Re-pin when the colony resumes.
+
 ## Tools (the lab, `src/lab/CLAUDE.md`; plan of 2026-10-17)
 - [x] The agent harness: `planet_lab` over MCP and the shell (worlds, tiles, regions, places,
       renders) and the history debugger (query, event, why, entity, stats, export, branch).

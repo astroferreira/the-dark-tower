@@ -23,6 +23,7 @@ pub fn landform_color(l: Landform) -> [u8; 3] {
         Family::River => [90, 150, 200],
         Family::Coast => [240, 220, 160],
         Family::Wet => [110, 150, 110],
+        Family::Upheaval => [200, 80, 160],
     };
     let i = Landform::ALL.iter().position(|&x| x == l).unwrap_or(0) as i32;
     let shade = (i % 5) * 14 - 28;

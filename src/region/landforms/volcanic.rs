@@ -84,16 +84,16 @@ fn ridged(noise: &Perlin, x: f64, y: f64, octaves: u32) -> f32 {
 
 /// A vent as the passes see it: its tile centre in unwrapped world coordinates near the grid.
 #[derive(Clone, Copy)]
-struct Vent {
-    u: f32,
-    v: f32,
-    kind: VolcanoType,
-    active: bool,
+pub(super) struct Vent {
+    pub u: f32,
+    pub v: f32,
+    pub kind: VolcanoType,
+    pub active: bool,
 }
 
 /// The vents whose edifice can reach world tile coordinates u in [u0, u1], v in [v0, v1]
 /// (x wrapped: a vent appears at every unwrapped copy that is near).
-fn vents_near(world: &WorldData, u0: f32, u1: f32, v0: f32, v1: f32) -> Vec<Vent> {
+pub(super) fn vents_near(world: &WorldData, u0: f32, u1: f32, v0: f32, v1: f32) -> Vec<Vent> {
     let ww = world.width as f32;
     let mut out = Vec::new();
     for vol in &world.volcanoes {
@@ -109,7 +109,7 @@ fn vents_near(world: &WorldData, u0: f32, u1: f32, v0: f32, v1: f32) -> Vec<Vent
 }
 
 /// The share of lava among the four tiles round (u, v) (bilinear), 0..1.
-fn lava_at(world: &WorldData, u: f32, v: f32) -> f32 {
+pub(super) fn lava_at(world: &WorldData, u: f32, v: f32) -> f32 {
     let Some(lava) = world.lava_map.as_ref() else { return 0.0 };
     let (ww, wh) = (world.width as i64, world.height as i64);
     let (fu, fv) = (u.floor(), v.floor());
@@ -122,7 +122,7 @@ fn lava_at(world: &WorldData, u: f32, v: f32) -> f32 {
 }
 
 /// Whether volcanism is young at (u, v): an active vent within reach, or lava on the tile.
-fn young_at(world: &WorldData, vents: &[Vent], u: f32, v: f32) -> bool {
+pub(super) fn young_at(world: &WorldData, vents: &[Vent], u: f32, v: f32) -> bool {
     if vents.iter().any(|x| x.active && (x.u - u).hypot(x.v - v) <= YOUNG_TILES) { return true; }
     lava_at(world, u, v) > 0.0
 }

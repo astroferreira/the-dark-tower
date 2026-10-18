@@ -43,6 +43,9 @@ pub struct TerrainConfig {
     /// hotspots (1.0 and 8: the Earth's).
     pub land_scale: f32,
     pub hotspots: usize,
+    /// The violent land (`crate::upheaval`): the largest craters and the flood basalts shaped
+    /// before the climate; none (the default) leaves the terrain as it was.
+    pub upheaval: Option<crate::upheaval::Upheaval>,
 }
 
 impl TerrainConfig {
@@ -62,6 +65,7 @@ impl TerrainConfig {
             island_coasts: true,
             land_scale: 1.0,
             hotspots: 8,
+            upheaval: None,
         }
     }
 }
@@ -124,7 +128,8 @@ pub fn generate_terrain(
 
     // What builds the land, before the rivers wear it.
     println!("Placing volcanoes...");
-    let volcanoes = heightmap::apply_volcano_pass(&mut heightmap, &stress_map, seeds.heightmap);
+    // An upheaval world draws the volcanoes' kinds over the whole range (stratovolcanoes too).
+    let volcanoes = heightmap::apply_volcano_pass_with(&mut heightmap, &stress_map, seeds.heightmap, cfg.upheaval.is_some());
     if !on_stage(&stage("volcanoes", &heightmap, &stress_map, None, None, ocean_gel)) { return None; }
     println!("Applying terrain noise layers...");
     heightmap::apply_regional_noise_stacks(&mut heightmap, &stress_map, seeds.heightmap);
@@ -139,6 +144,17 @@ pub fn generate_terrain(
     let network = coastline::generate_coastline_network(&heightmap, &coastline_params, seeds.coastline);
     coastline::apply_coastline_to_heightmap(&network, &mut heightmap, coastline_params.blend_width);
     if !on_stage(&stage("coastline", &heightmap, &stress_map, None, None, ocean_gel)) { return None; }
+    // The violent land: flood basalts over plumes and the largest craters, before the rivers
+    // wear them (`crate::upheaval`; nothing without upheaval).
+    if let Some(up) = &cfg.upheaval {
+        let lips = crate::upheaval::provinces(width, height, seeds.master, up);
+        let raised = crate::upheaval::apply_world_provinces(&mut heightmap, &lips);
+        let impacts = crate::upheaval::Impacts::generate(width, height, seeds.master, up);
+        let shaped = crate::upheaval::apply_world_impacts(&mut heightmap, &impacts);
+        println!("Upheaval (impact flux {:.2}x the Earth's): {} craters on record, {} shaped on the map; {} flood basalts over {} tiles",
+            up.impact_flux, impacts.craters.len(), shaped, lips.len(), raised);
+        if !on_stage(&stage("upheaval", &heightmap, &stress_map, None, None, ocean_gel)) { return None; }
+    }
 
     // Physical climate on the built land.
     println!("Simulating physical climate (mode: {}, rainfall: {})...", cfg.climate.mode, cfg.climate.rainfall);

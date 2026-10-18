@@ -118,9 +118,11 @@ pub fn simulate_step(
     timed("religion", || step_religion(history, rng));
 
     // 11. Natural events
-    timed("natural_events", || step_natural_events(history, rng));
+    timed("natural_events", || step_natural_events(history, world.upheaval().is_some(), rng));
     // The sky under another star (no RNG: the Sun's histories are unchanged).
     timed("sky", || crate::history::sky::step_sky(history, world));
+    // The ground: quakes on the faults, eruptions under the volcanoes (no RNG; only with upheaval).
+    timed("geology", || crate::history::geology::step(history, world));
 
     // 12. Hero quests
     timed("quests", || step_quests(history, rng));
@@ -2302,7 +2304,7 @@ fn step_religion(history: &mut WorldHistory, rng: &mut impl Rng) {
     }
 }
 
-fn step_natural_events(history: &mut WorldHistory, rng: &mut impl Rng) {
+fn step_natural_events(history: &mut WorldHistory, upheaval: bool, rng: &mut impl Rng) {
     let date = history.current_date;
 
     // Rare natural disasters
@@ -2314,6 +2316,9 @@ fn step_natural_events(history: &mut WorldHistory, rng: &mut impl Rng) {
             3 => EventType::Plague,
             _ => EventType::VolcanoErupted,
         };
+        // On an upheaval world the ground's own quakes and eruptions strike where it has them
+        // (`history::geology`), not at a town drawn by lot.
+        if upheaval && matches!(event_type, EventType::Earthquake | EventType::VolcanoErupted) { return; }
 
         // Pick a random settlement to affect
         let settlement_ids: Vec<SettlementId> = history.settlements.keys()

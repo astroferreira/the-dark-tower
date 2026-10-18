@@ -66,6 +66,24 @@ pub fn place_focal_points(world: &mut WorldData, gaz: &Gazetteer, seed: u64) -> 
     regions.sort_by_key(|f| std::cmp::Reverse(f.size));
 
     let mut placed = Vec::new();
+    // A world with upheaval keeps the craters that really hold lakes (`crate::upheaval`): the
+    // record's craters of half a tile or more whose bowl is a lake on the world map. None is
+    // planted on an empty plain for want of something to see.
+    let upheaval = world.upheaval().is_some();
+    if upheaval {
+        let km = crate::upheaval::tile_km(w);
+        let lakes: Vec<(usize, usize)> = world.impacts().map(|rec| rec.craters.iter()
+            .filter(|c| c.d_km >= 0.5 * km)
+            .map(|c| rec.tile_of(c))
+            .filter(|&(x, y)| world.water_body_map.get(x, y).is_lake())
+            .collect()).unwrap_or_default();
+        for (x, y) in lakes {
+            if world.biomes.get(x, y) == &ExtendedBiome::CraterLake { continue; }
+            world.biomes.set(x, y, ExtendedBiome::CraterLake);
+            anchors.push((x, y));
+            placed.push(Placed { x, y, biome: ExtendedBiome::CraterLake, region: String::from("an impact crater"), tiles: 1 });
+        }
+    }
     for f in regions {
         let tiles: Vec<(usize, usize)> = gaz.region.iter().filter(|(_, _, &id)| id == f.id).map(|(x, y, _)| (x, y)).collect();
         if tiles.is_empty() { continue; }
@@ -97,6 +115,7 @@ pub fn place_focal_points(world: &mut WorldData, gaz: &Gazetteer, seed: u64) -> 
         let biome = match f.kind {
             FeatureKind::Forest | FeatureKind::Jungle => ExtendedBiome::AncientGrove,
             FeatureKind::Desert => ExtendedBiome::Oasis,
+            _ if upheaval => continue,
             _ => ExtendedBiome::CraterLake,
         };
         // A small patch around the centre, inside the region: 1 ring for lakes and oases, 2 for

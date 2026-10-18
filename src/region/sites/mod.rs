@@ -8,6 +8,7 @@
 
 pub mod water;
 pub mod natural;
+pub mod violent;
 pub mod prehistory;
 pub mod names;
 pub mod caves;
@@ -40,11 +41,13 @@ impl Core {
 }
 
 /// Plan the places of the window's core tiles from the blended fields and their labels.
-pub fn plan(f: &RegionFields, land: &[Landform], rock: &[RockType], core: Core) -> SitePlan {
+pub fn plan(f: &RegionFields, land: &[Landform], rock: &[RockType], core: Core, slides: &[crate::region::landforms::Slide]) -> SitePlan {
     let mut out = SitePlan::default();
     water::plan(f, land, rock, core, &mut out);
+    violent::plan(f, land, rock, core, slides, &mut out);
     natural::plan(f, land, rock, core, &mut out);
     prehistory::plan(f, land, rock, core, &mut out);
+    violent::after(f, &mut out);
     caves::plan(f, land, rock, core, &mut out);
     names::name_all(f, &mut out);
     out

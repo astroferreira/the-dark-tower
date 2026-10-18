@@ -424,3 +424,18 @@ the zoomed region around a point.
   matches; `scripts/gallery.sh` renders Stage 6's twelve embarks (`SITES` entries
   "X,Y:place_or_ground"). In the walker, P hops to the nearest place (its title and cause in
   the status; Enter then embarks with it at the middle).
+
+## The violent land in the embark (`local/ground.rs`, `sites.rs`; ROADMAP Stage 7, 2026-10-17)
+- Ground rules for every upheaval class (`ground::rule`): bare rock on rims, peaks, fault and
+  collapse scarps; gravel and boulders on ejecta and debris (rock avalanches 45% boulders);
+  basalt with cracks on fissure vents (`Relief::Slots`); ice with slots on crevasse fields;
+  sand on lahars and maars' rings; clay and pools in troughs, salt sinks, thaw lakes and
+  abandoned channels; gravel ripples on scablands; no trees on avalanche paths; dead trees in
+  burns (`GroundRule::dead`).
+- Carved places (`sites::carve`): a meteorite crater from its radius (a bowl 0.3 x radius
+  levels deep at most 24, a rim of gravel, blocks out to 1.6 radii; any world's, the Sun's
+  rare old roll included), debris for landslides and fallen flanks, a fresh fault step (two
+  levels over 40 columns, its face gravel), bones where a gas hollow or a tar pit took beasts,
+  a sinkhole's shaft (4-8 levels), three crown holes, a dry falls (three levels), quicksand
+  (wet sand on the bed, dry or under the shallows), crevasse slots four levels deep. `shows`
+  judges each; 69 of 71 on seed 42's fault region.

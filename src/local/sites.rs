@@ -454,6 +454,111 @@ pub(super) fn carve(map: &mut LocalMap, region: &ZoomRegion, cx: f64, cy: f64, s
                 // A mouth the planner gave no graph: a short cave of its own.
                 if let Some(u) = laid_out(map, p, places::PlaceKind::Cave, px, py, salt) { out.push(u); }
             }
+            // Upheaval (ROADMAP Stage 7).
+            MeteorCrater if p.radius_m > 0.0 => {
+                // A bowl a fifth as deep as it is wide (less as it wears), a rim of broken rock
+                // round it and blocks thrown out to half its width beyond.
+                let r = (p.radius_m as f64 / Z_STEP_M as f64).max(3.0);
+                let depth_lv = ((0.3 * r).round() as i32).clamp(1, 24);
+                let rim_lv = ((0.06 * r).round() as i32).clamp(1, 4);
+                for (x, y, d) in ellipse(map, px, py, 1.6 * r, 1.6 * r, 0.0) {
+                    let x2 = d * 1.6;
+                    if x2 < 1.0 {
+                        let sz = map.surface_z[y * n + x];
+                        let lv = ((depth_lv as f64 * (1.0 - x2 * x2)) as i32).min(sz - 3);
+                        lower(map, x, y, lv, Some(Material::Gravel));
+                    } else if x2 < 1.2 {
+                        raise(map, x, y, rim_lv, Material::Gravel);
+                        if unit(x as i64, y as i64, 0x5EB) < 0.25 { boulder(map, x, y); }
+                    } else if unit(x as i64, y as i64, 0x5EC) < 0.1 * (1.6 - x2) / 0.4 {
+                        boulder(map, x, y);
+                    }
+                }
+            }
+            Landslide | CollapsedFlank => {
+                // The debris: blocks and gravel in a tongue down the slope.
+                for (x, y, d) in ellipse(map, px, py, 22.0, 12.0, angle) {
+                    if unit(x as i64, y as i64, 0x51D) < 0.35 * (1.0 - d * 0.5) { boulder(map, x, y); }
+                    if d < 0.6 && unit(x as i64, y as i64, 0x51E) < 0.3 { raise(map, x, y, 1, Material::Gravel); }
+                }
+            }
+            FaultScarp => {
+                // A fresh step along the fault: one side stands two levels higher, its face bare.
+                let (dx, dy) = (angle.cos(), angle.sin());
+                for (x, y, _) in ellipse(map, px, py, 60.0, 60.0, 0.0) {
+                    let (fx, fy) = (x as f64 - px, y as f64 - py);
+                    let across = -fx * dy + fy * dx;
+                    if across > 0.0 && across < 40.0 {
+                        let face = across < 1.5;
+                        raise(map, x, y, 2, if face { Material::Gravel } else { map.cell(x, y, map.surface_z[y * n + x] as usize).material });
+                        if face { boulder(map, x, y); }
+                    }
+                }
+            }
+            GasHollow | TarPit => {
+                if p.kind == TarPit { if let Some((x, y)) = dry_near(map, px, py, 3) { feature(map, x, y, wildlife::Feature::Spring); } }
+                // The dead where the air (or the pitch) took them.
+                for k in 0..7 {
+                    let (bx, by) = (px + (unit(key.0 + k, key.1, 0x6A1) - 0.5) * 16.0, py + (unit(key.0, key.1 + k, 0x6A2) - 0.5) * 16.0);
+                    if let Some((x, y)) = inside(map, bx, by) { feature(map, x, y, wildlife::Feature::Bones); }
+                }
+                for (x, y, _) in ellipse(map, px, py, 9.0, 7.0, angle) {
+                    if dry(map, x, y) { let k = map.idx(x, y, map.surface_z[y * n + x] as usize); map.cells[k].plant = Plant::None; }
+                }
+            }
+            Sinkhole | CrownHoles => {
+                let pits: Vec<(f64, f64, f64, i32)> = if p.kind == Sinkhole {
+                    vec![(px, py, 3.0 + 3.0 * unit(key.0, key.1, 0x5C1), 4 + (hash64(key.0, key.1, 0x5C2) % 5) as i32)]
+                } else {
+                    (0..3).map(|k| (px + (unit(key.0 + k, key.1, 0x5C3) - 0.5) * 24.0, py + (unit(key.0, key.1 + k, 0x5C4) - 0.5) * 24.0, 2.0, 2)).collect()
+                };
+                for (cx2, cy2, r, lv) in pits {
+                    for (x, y, d) in ellipse(map, cx2, cy2, r, r, 0.0) {
+                        let sz = map.surface_z[y * n + x];
+                        lower(map, x, y, if d < 0.75 { lv.min(sz - 3) } else { 1 }, None);
+                    }
+                }
+            }
+            DryFalls => {
+                // A cataract without its river: the ground falls three levels across the valley.
+                let (dx, dy) = (angle.cos(), angle.sin());
+                for (x, y, _) in ellipse(map, px, py, 40.0, 40.0, 0.0) {
+                    let (fx, fy) = (x as f64 - px, y as f64 - py);
+                    let along = fx * dx + fy * dy;
+                    if along > 0.0 { lower(map, x, y, 3, Some(Material::Rock(RockType::Basalt))); if along < 3.0 { boulder(map, x, y); } }
+                }
+            }
+            Quicksand => {
+                // Wet sand on the bed, dry or under the shallows, a skin of water over it.
+                for (x, y, _) in ellipse(map, px, py, 7.0, 4.0, angle) {
+                    let sz = map.surface_z[y * n + x] as usize;
+                    if sz < 1 || sz + 2 >= map.depth { continue; }
+                    let c = *map.cell(x, y, sz);
+                    if c.shape != Shape::Floor || matches!(c.material, Material::Block(_) | Material::Wood | Material::Ice) { continue; }
+                    let k = map.idx(x, y, sz);
+                    map.cells[k] = Cell { shape: Shape::Floor, material: Material::Sand, water: 0, plant: Plant::None, boulder: false };
+                    let a = map.idx(x, y, sz + 1);
+                    if map.cells[a].water == 0 { map.cells[a].water = 1; }
+                }
+            }
+            CrevasseField => {
+                // Slots across the ice, a column wide and four levels deep, broken along their length.
+                let (dx, dy) = (angle.cos(), angle.sin());
+                for (x, y, _) in ellipse(map, px, py, 30.0, 30.0, 0.0) {
+                    let (fx, fy) = (x as f64 - px, y as f64 - py);
+                    let along = fx * dx + fy * dy;
+                    if along.rem_euclid(7.0) >= 1.0 || unit(x as i64 / 5, y as i64 / 5, 0xC4F) < 0.3 { continue; }
+                    let sz = map.surface_z[y * n + x];
+                    if sz < 6 || map.cell(x, y, sz as usize + 1).water > 0 { continue; }
+                    for z in sz - 3..=sz {
+                        let k = map.idx(x, y, z as usize);
+                        map.cells[k] = Cell::AIR;
+                    }
+                    let f = map.idx(x, y, (sz - 4) as usize);
+                    map.cells[f] = Cell { shape: Shape::Floor, material: Material::Ice, water: 0, plant: Plant::None, boulder: false };
+                    map.surface_z[y * n + x] = sz - 4;
+                }
+            }
             _ => {}
         }
     }
@@ -529,6 +634,14 @@ pub fn shows(map: &LocalMap, kind: PlaceKind) -> Option<bool> {
         Ford => within(16).into_iter().any(|(x, y)| { let z = sz(x, y) + 1; (z as usize) < map.depth && map.cell(x, y, z as usize).water == 2 && floor(x, y).material == Material::Gravel }),
         Ridgeway => features(12, wildlife::Feature::Trail) >= 4,
         Spring | HotSpring | Geyser | MudPot | SaltSpring | TarSeep => features(6, wildlife::Feature::Spring) >= 1,
+        MeteorCrater => cut(10, 2),
+        Landslide | CollapsedFlank => boulders(20) >= 20,
+        FaultScarp => raised(30, 1),
+        GasHollow => features(10, wildlife::Feature::Bones) >= 3,
+        TarPit => features(10, wildlife::Feature::Bones) >= 3 && features(6, wildlife::Feature::Spring) >= 1,
+        Sinkhole | CrownHoles => cut(14, 2),
+        CrevasseField => cut(32, 2),
+        Quicksand => material(8, &|m| m == Material::Sand),
         GiantTree => within(3).into_iter().any(|(x, y)| matches!(floor(x, y).plant, Plant::Tree(_))),
         Waterfall => {
             // A step of two levels or more among the water-covered columns near the middle.
