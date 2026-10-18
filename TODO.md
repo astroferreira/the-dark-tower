@@ -81,23 +81,20 @@ window's places shown in their embarks; the dev world 88%) and its test, P in th
       are cut on every world (`landforms::SHAPE_VERSION` 4).
 - [x] The faults meet across the date line (`tectonic::FaultField::at`: x read wrapped, the two
       sides blended within 2 tiles of the line; `faults_meet_across_the_date_line`).
-- [ ] The volcano kinds' draws stay as they were under the Sun: fixing them there changes the
-      Sun's world map (every volcano's shape and the rivers after), which the project keeps bit
-      for bit (`CLAUDE.md`, star systems). One line in `terrain.rs` (`apply_volcano_pass_with`)
-      when that rule is lifted.
+- [x] Decided (2026-10-18): the Sun's worlds keep their volcano kinds' old draws (no
+      stratovolcano). They are the Earth reference and the dev world every pinned test stands on;
+      the corrected draws (`find_volcano_locations_with`) are the upheaval worlds'.
 - [x] (colony) Settlers walked for fishing spots and loads a building had gone up over (stuck 6
       times on the dev camp since Stage 6's ground moved the layout): `nearest_fishing` and the
       haul choice skip what `nav::passable` refuses; `PLANET_DEBUG_PATH_MAP=1` prints the cells
       round a failed walk. `seven_settlers_live_thirty_days_unattended` passes again (its
       spoilage check accepts a smokehouse in place of the rack).
-- [ ] (colony, paused) 19 of `tests/colony.rs` still fail since Stage 6 (aa32056; they pass at
-      2f1bc54): the dev embark is now a lakeshore peninsula short of timber (works stall half
-      built, no woodpile in 120 days, 3 works made), so pins of seeds and sites have moved: the
-      woodpile trial, crafts, the dwarves' hall, the plan's blessing, the river wall, the still,
-      the militia's spears, armour, the relic and its seeker, a fell mood, children, ore at
-      depth, the mine's beast, the den and the pyre, the tombs, the unknown, earlier camps'
-      regards, a camp without stone. Re-pin over dev seeds and tiles (as on 2026-10-14) when the
-      colony resumes.
+- [x] (colony) The tests pinned to the dev world before Stage 6 re-pinned (2026-10-18; from a
+      365-day record of dev seeds 1-40 and sweeps of sites): the still 11/8, the militia 11, the
+      den and pyre 24/7, tombs 31, armour 19/11/8, children 18, an inherited grudge 3, the mine
+      seed 9, the river camp 70,7, a camp without stone 6,36, the dwarves' hall 24, the plan 6,
+      the depth trial 9, the woodpile 5, crafts 5, the relic, its seeker and the fell mood 1; the
+      explore trial accepts a tomb robbed as its find.
 
 ## Tools (the lab, `src/lab/CLAUDE.md`; plan of 2026-10-17)
 - [x] The agent harness: `planet_lab` over MCP and the shell (worlds, tiles, regions, places,

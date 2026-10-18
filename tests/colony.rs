@@ -177,7 +177,7 @@ fn the_first_arc_reaches_the_colony() {
 #[test]
 fn after_the_hut_the_colony_sets_its_own_work() {
     let out = myth_cmd()
-        .args(["--sim-projects", "60"])
+        .args(["--dev", "--headless", "--seed", "5", "--sim-projects", "60"]) // (the dev embark until Stage 6's ground left it short of timber; seed 5 since 2026-10-18)
         .output()
         .expect("run planet_generator");
     assert!(out.status.success(), "planet_generator failed: {}", String::from_utf8_lossy(&out.stderr));
@@ -460,7 +460,7 @@ fn skill_makes_roles() {
 #[test]
 fn the_plan_follows_blessing_and_taboo() {
     let out = myth_cmd()
-        .args(["--dev", "--sim-plan"])
+        .args(["--dev", "--seed", "6", "--sim-plan"]) // (the dev embark until Stage 6's ground left it no room; seed 6 since 2026-10-18)
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
@@ -490,7 +490,8 @@ fn each_people_builds_its_own_way() {
     assert!(least >= 8, "two peoples' villages look alike ({least}%):\n{text}");
     // Dwarves dig their hall into the hill first where there is one (dev seed 14's hillside on the
     // audited terrain, also 24 and 29; 19, 5 and 11 had been on the old).
-    let out = myth_cmd().args(["--dev", "--seed", "14", "--sim-ways"]).output().expect("run planet_generator");
+    // (Seed 24 since Stage 6's ground, 2026-10-18.)
+    let out = myth_cmd().args(["--dev", "--seed", "24", "--sim-ways"]).output().expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
     let dwarves = text.lines().find(|l| l.starts_with("Way of the dwarves")).expect("dwarves line");
     assert!(dwarves.contains("works: hall in the hill"), "the dwarves did not dig their hall first: {dwarves}");
@@ -606,7 +607,9 @@ fn the_mine_wakes_the_deep() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--sim-projects", "45", "--tiles-center", "72,8"])
+        // (72,8 until Stage 6's ground, whose mine now strikes water first; since 2026-10-18 dev
+        // seed 9: the mine day 16, the breach, the sound day 23, the beast out on day 29.)
+        .args(["--dev", "--headless", "--seed", "9", "--sim-projects", "45"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -658,7 +661,7 @@ fn raids_are_fought_blow_by_blow() {
 #[test]
 fn crafts_show_history() {
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--sim-projects", "120"])
+        .args(["--dev", "--headless", "--seed", "5", "--sim-projects", "120"]) // (seed 5 since Stage 6's ground left the dev embark short of timber, 2026-10-18)
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
@@ -916,7 +919,7 @@ fn a_lost_relic_is_found_and_claimed() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--sim-projects", "110"])
+        .args(["--dev", "--headless", "--seed", "1", "--sim-projects", "110"]) // (seed 1 since Stage 6's ground, 2026-10-18: the Helm of Loranor)
         .env("PLANET_DUMP_LOG", &log)
         // (Since hard times dev 76 has no lost thing within six tiles: the nearest anywhere whose
         // owners stand. It had been the Staff of Greenburg.)
@@ -967,9 +970,10 @@ fn the_militia_drills_and_arms() {
     let dir = std::env::temp_dir().join(format!("militia_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
-    // (Seed 1: the dev camp's elves drill but make no spear in 65 days on the audited terrain.)
+    // (Seed 1: the dev camp's elves drill but make no spear in 65 days on the audited terrain.
+    // Since Stage 6's ground (2026-10-18) seed 11 drills on day 3 and arms on day 9.)
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--seed", "1", "--sim-projects", "65"])
+        .args(["--dev", "--headless", "--seed", "11", "--sim-projects", "65"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -1007,7 +1011,7 @@ fn a_seeker_comes_for_the_relic() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--sim-projects", "110"])
+        .args(["--dev", "--headless", "--seed", "1", "--sim-projects", "110"]) // (seed 1 since Stage 6's ground, 2026-10-18)
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_FORCE_SEEKER", "Orvel")
         // (Since hard times dev 76 has no lost thing within six tiles: the nearest anywhere.)
@@ -1078,7 +1082,7 @@ fn moods_come_in_kinds() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--sim-projects", "200"])
+        .args(["--dev", "--headless", "--seed", "1", "--sim-projects", "200"]) // (seed 1 since Stage 6's ground, 2026-10-18)
         .env("PLANET_DUMP_LOG", &log)
         .env("PLANET_FORCE_MOOD", "fell")
         .output()
@@ -1275,8 +1279,9 @@ fn war_bands_are_led_by_real_warriors() {
 #[test]
 fn the_still_makes_wine() {
     // (Seed 1 draws its first wine on day 18, 23 on day 31; seed 3, which had by day 40, since
-    // the deep rock gives ore and the camps dig for it, on day 41.)
-    let text = ["1", "23"].iter().map(|s| run_log(s, "40", &[])).find(|t| t.contains("draws the first berry wine")).unwrap_or_else(|| run_log("1", "40", &[]));
+    // the deep rock gives ore and the camps dig for it, on day 41. Since Stage 6's ground
+    // (2026-10-18): seed 11 on day 10, 8 on day 16.)
+    let text = ["11", "8"].iter().map(|s| run_log(s, "40", &[])).find(|t| t.contains("draws the first berry wine")).unwrap_or_else(|| run_log("11", "40", &[]));
     assert!(text.lines().any(|l| l.contains("work on a still")), "no still:\n{text}");
     assert!(text.lines().any(|l| l.contains("draws the first berry wine")), "no wine");
 }
@@ -1443,8 +1448,9 @@ fn armour_turns_blows() {
     // (The first of a few seeds that turns a blow: it takes armour made and a blow at its wearer.)
     let turned = |t: &str| ["does not get through", "took the worst of it", "turns it.", "is turned by"].iter().any(|n| t.contains(n));
     let mut made = false;
-    // (Since hard times seed 1 turns one on day 51, 10 on day 73, 9 on day 92.)
-    let found = ["1", "10", "9"].iter().any(|s| {
+    // (Since hard times seed 1 turns one on day 51, 10 on day 73, 9 on day 92. Since Stage 6's
+    // ground (2026-10-18) 19 on day 67, 11 on day 125, 8 on day 155.)
+    let found = ["19", "11", "8"].iter().any(|s| {
         let t = run_log(s, "200", &[("PLANET_FORCE_ORE", "1")]);
         made |= t.contains("the first armour in the camp");
         t.contains("the first armour in the camp") && turned(&t)
@@ -1510,9 +1516,10 @@ fn peoples_remember_earlier_camps() {
     // (Seed 23: the Greenburg League holds -20 against the first camp and half of it against a
     // camp founded two tiles away. Seed 76's grudge over the staff is now cancelled by the
     // prisoner it sent home unharmed.)
-    // (Seed 4 on the audited terrain: the Republic of Eastwick's grudge.)
+    // (Seed 4 on the audited terrain: the Republic of Eastwick's grudge. Since Stage 6's ground
+    // (2026-10-18) seed 3: the Republic of Venomcoil -17, the second camp -8.)
     let out = myth_cmd()
-        .args(["--dev", "--seed", "4", "--sim-legend"])
+        .args(["--dev", "--seed", "3", "--sim-legend"])
         .output()
         .expect("run planet_generator");
     let text = String::from_utf8_lossy(&out.stdout);
@@ -1606,8 +1613,9 @@ fn the_camp_clears_the_den_and_burns_the_restless() {
     // day 23, seed 11 clears its den the same day.)
     // (The restless dead are the Shadow's: with it in the camp.)
     // (Since hard times: seed 1 clears its den on day 23, seed 58 burns its dead on day 23. On the
-    // audited terrain seed 12 clears its den and seed 7 burns its dead within 60 days.)
-    let logs: Vec<String> = ["12", "7"].iter().map(|s| run_log(s, "60", &[SHADOW])).collect();
+    // audited terrain seed 12 clears its den and seed 7 burns its dead within 60 days. Since Stage
+    // 6's ground (2026-10-18) seed 24 does both, on days 32 and 40.)
+    let logs: Vec<String> = ["24", "7"].iter().map(|s| run_log(s, "60", &[SHADOW])).collect();
     let any = |f: &dyn Fn(&str) -> bool| logs.iter().any(|t| t.lines().any(|l| f(l)));
     assert!(any(&|l| l.contains("go out to the wolves' den at ")), "the wolves were never answered");
     assert!(any(&|l| l.contains("burn what is left on a pyre") || l.contains("burn the bones in it")), "the restless dead were never burned");
@@ -1744,7 +1752,8 @@ fn children_play_and_tag_along() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("decisions.txt");
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--seed", "3", "--sim-projects", "620"])
+        // (Seed 3 until Stage 6's ground; since 2026-10-18 seed 18, its first child born on day 92.)
+        .args(["--dev", "--headless", "--seed", "18", "--sim-projects", "620"])
         .env("PLANET_DUMP_DECISIONS", &path)
         .output()
         .expect("run planet_generator");
@@ -1898,8 +1907,9 @@ fn the_dead_are_laid_in_the_tombs() {
     // (Without the Shadow fewer die: seed 58 cuts its tombs on day 44 and lays someone there on
     // day 84; seed 15 on days 91 and 241. Seed 14, which had, now outlives its tombs.)
     // (Since hard times: seed 14 cuts its tombs on day 91 and lays someone there on day 239.)
-    // (On the audited terrain seed 8.)
-    let text = run_log("8", "250", &[]);
+    // (On the audited terrain seed 8. Since Stage 6's ground (2026-10-18) seed 31: tombs on day
+    // 72, someone laid there on day 91.)
+    let text = run_log("31", "120", &[]);
     assert!(text.lines().any(|l| l.contains("set to work on tombs under the rock")), "no tombs dug");
     assert!(text.lines().any(|l| l.contains("lay them in a niche of the tombs")), "no one entombed");
 }
@@ -2091,7 +2101,7 @@ fn settlers_mourn_and_court() {
     assert!(text.lines().any(|l| l.contains("wandering        Walking out with ") && (l.contains(" is fond of ") || l.contains(" is sweet on "))), "no one walked out with anyone");
 }
 
-/// Stone from the rock (DF: dwarves mine for their stone): dev 6,44 (70,6 before the audit) breaks
+/// Stone from the rock (DF: dwarves mine for their stone): dev 6,36 (6,44 before Stage 6, 70,6 before the audit) breaks
 /// every boulder in reach and has no timber; it cuts a gallery off the stair for stone and builds
 /// on, instead of setting its works aside for good.
 #[test]
@@ -2100,7 +2110,8 @@ fn a_camp_without_stone_digs_for_it() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--sim-projects", "100", "--tiles-center", "6,44"])
+        // (6,44 until Stage 6's ground, which left it nothing to eat; 6,36 since 2026-10-18.)
+        .args(["--dev", "--headless", "--sim-projects", "100", "--tiles-center", "6,36"])
         .env("PLANET_DUMP_LOG", &log)
         .output()
         .expect("run planet_generator");
@@ -2174,7 +2185,7 @@ fn the_raid_is_fought_on_the_map() {
 }
 
 /// The floodplain (cards 'Rivers freeze and flood in game time', 'Fields on the floodplain, and
-/// spring floods'): on the river's bank (dev 69,8; 48,8 before the audit) the camp lays its field on the bottomland, which
+/// spring floods'): on the river's bank (dev 70,7; 69,8 before Stage 6, 48,8 before the audit) the camp lays its field on the bottomland, which
 /// yields half again; after a hard winter the thaw floods it, the water goes down and leaves silt,
 /// and the harvest that year is the richer for it.
 #[test]
@@ -2218,7 +2229,8 @@ fn the_village_follows_its_ground() {
     std::fs::create_dir_all(&dir).unwrap();
     let log = dir.join("log.txt");
     let out = myth_cmd()
-        .args(["--dev", "--headless", "--tiles-center", "69,8", "--sim-projects", "40"])
+        // (69,8 until Stage 6's ground, whose camp now stands back from the bank; 70,7 since.)
+        .args(["--dev", "--headless", "--tiles-center", "70,7", "--sim-projects", "40"])
         .env("PLANET_DUMP_LOG", &log).output().expect("run planet_generator");
     assert!(out.status.success());
     let river = std::fs::read_to_string(&log).unwrap_or_default();
@@ -2251,7 +2263,8 @@ fn the_unknown_is_blank_until_someone_goes_in() {
     };
     let plain = day("unattended").unwrap_or_else(|| panic!("nobody went in, unattended:\n{text}"));
     assert!(plain <= 6, "the first went in only on day {plain}:\n{text}");
-    assert!(text.lines().any(|l| l.starts_with("Explore trial, unattended:") && l.contains(" finds ")), "nothing found at the far end:\n{text}");
+    // (A find, or a tomb broken into and robbed: since Stage 6's ground the first in robs it.)
+    assert!(text.lines().any(|l| l.starts_with("Explore trial, unattended:") && (l.contains(" finds ") || l.contains(" breaks into "))), "nothing found at the far end:\n{text}");
     assert!(text.lines().any(|l| l.contains("why: Going in by ") && l.contains(": ")), "the explorer's why has no nerve in it:\n{text}");
     let forbidden = text.lines().find(|l| l.starts_with("Explore trial, forbidden:")).expect("forbidden line");
     assert!(forbidden.contains("first went in never") && !forbidden.contains("; 0 turned away"), "the forbidden way in was entered or nobody said why: {forbidden}");
@@ -2275,7 +2288,8 @@ fn the_unknown_is_blank_until_someone_goes_in() {
 #[test]
 fn digging_deeper_is_richer_and_foretold() {
     let run = |args: &[&str]| String::from_utf8_lossy(&myth_cmd().args(args).output().expect("run planet_generator").stdout).to_string();
-    let text = run(&["--dev", "--sim-depth"]);
+    // (The dev embark until Stage 6's ground; seed 9 since 2026-10-18.)
+    let text = run(&["--dev", "--seed", "9", "--sim-depth"]);
     let line = |cap: &str| text.lines().find(|l| l.starts_with(&format!("Depth trial, to {cap} levels:"))).unwrap_or_else(|| panic!("no {cap}-level line:\n{text}")).to_string();
     let ore = |l: &str| -> u32 { l.split(" cells of ore").next().and_then(|x| x.rsplit(", ").next()).and_then(|x| x.trim().parse().ok()).unwrap_or(0) };
     let breaches = |l: &str| -> u32 { l.rsplit("; ").next().and_then(|x| x.split(' ').next()).and_then(|x| x.parse().ok()).unwrap_or(0) };

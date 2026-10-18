@@ -175,6 +175,9 @@ is still needed (`main` calls the image exporters `export_base_map_image` and
   bit for bit. `--upheaval-report` prints the record and the tiles to look at. A world's choice
   is fixed on first read (`WorldData::set_upheaval` for tests); its numbers join the region
   chunks' cache key (`upheaval::SHAPE_VERSION`: bump it when a violent pass changes heights).
+- The volcano pass's kind draws (`(rng >> 33) / u32::MAX` never passes 0.5) made no
+  stratovolcano on any world; upheaval worlds draw over [0, 1) (`find_volcano_locations_with`),
+  the Sun's keep the old draws by decision, so the dev world and the pinned tests stand.
 - Seed 42 under its own K6 star (`worlds/s42_k6.world`, 512x256): flux 1.78x, 420 craters on
   land (8 over 100 km), the freshest large one at 381,79 (95 km, 35 Myr: a breached crater lake);
   the strongest normal fault zone at 402,140 (scarps, 27 slides, four landslide lakes).

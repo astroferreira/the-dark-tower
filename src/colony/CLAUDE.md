@@ -2161,3 +2161,12 @@ at a moment, where their hours went, whether a cell can be reached; the colony e
   embark on the audited terrain asks of its tile (`main.rs::pick_dev_embark`, the first of the top
   twelve that passes; revision 1 keeps its first pick). `PLANET_DEBUG_EMBARK=1` prints each
   candidate's verdict.
+
+## Re-pinned after Stage 6's ground (2026-10-18)
+- Stage 6 (`aa32056`, the embark's ground from the region's landforms) made the dev embark a
+  lakeshore peninsula short of timber, and moved every dev camp's days: 21 tests failed. One was
+  a bug (settlers walked to fishing spots and loads a building had gone up over:
+  `nearest_fishing` and the haul choice now skip cells `nav::passable` refuses;
+  `PLANET_DEBUG_PATH_MAP=1` prints the cells round a failed walk). The rest are re-pinned from a
+  365-day record of dev seeds 1-40 and site sweeps (seeds and sites in `TODO.md`); tests that
+  ran on the default dev embark now name a seed.
