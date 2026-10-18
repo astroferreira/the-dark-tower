@@ -85,10 +85,19 @@ window's places shown in their embarks; the dev world 88%) and its test, P in th
       Sun's world map (every volcano's shape and the rivers after), which the project keeps bit
       for bit (`CLAUDE.md`, star systems). One line in `terrain.rs` (`apply_volcano_pass_with`)
       when that rule is lifted.
-- [ ] (colony, paused) 21 of `tests/colony.rs` fail since Stage 6 (aa32056: the embark's ground
-      from the landforms and the carved places moved every dev embark, so the seed-pinned camps
-      changed): `seven_settlers_live_thirty_days_unattended` and `a_camp_without_stone_digs_for_it`
-      pass at 2f1bc54 and fail at aa32056 (checked 2026-10-17). Re-pin when the colony resumes.
+- [x] (colony) Settlers walked for fishing spots and loads a building had gone up over (stuck 6
+      times on the dev camp since Stage 6's ground moved the layout): `nearest_fishing` and the
+      haul choice skip what `nav::passable` refuses; `PLANET_DEBUG_PATH_MAP=1` prints the cells
+      round a failed walk. `seven_settlers_live_thirty_days_unattended` passes again (its
+      spoilage check accepts a smokehouse in place of the rack).
+- [ ] (colony, paused) 19 of `tests/colony.rs` still fail since Stage 6 (aa32056; they pass at
+      2f1bc54): the dev embark is now a lakeshore peninsula short of timber (works stall half
+      built, no woodpile in 120 days, 3 works made), so pins of seeds and sites have moved: the
+      woodpile trial, crafts, the dwarves' hall, the plan's blessing, the river wall, the still,
+      the militia's spears, armour, the relic and its seeker, a fell mood, children, ore at
+      depth, the mine's beast, the den and the pyre, the tombs, the unknown, earlier camps'
+      regards, a camp without stone. Re-pin over dev seeds and tiles (as on 2026-10-14) when the
+      colony resumes.
 
 ## Tools (the lab, `src/lab/CLAUDE.md`; plan of 2026-10-17)
 - [x] The agent harness: `planet_lab` over MCP and the shell (worlds, tiles, regions, places,

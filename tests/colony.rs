@@ -36,7 +36,11 @@ fn seven_settlers_live_thirty_days_unattended() {
     // Spoilage is real: food spoils before the drying rack is built (the cold is pinned by the
     // woodpile trial in after_the_hut_the_colony_sets_its_own_work).
     let at = |needle: &str| log.lines().position(|l| l.contains(needle));
-    assert!(matches!((at("spoil in the store"), at("finishes a drying rack")), (Some(a), Some(b)) if a < b), "no food spoiled before the rack:\n{log}");
+    // (A smokehouse keeps the food as the rack does; since Stage 6's ground the dev camp builds
+    // one in place of the rack.)
+    let keeps = at("finishes a drying rack").into_iter().chain(at("A smokehouse finished")).chain(at("finishes a smokehouse")).min();
+    let spoiled = at("spoil in the store");
+    assert!(spoiled.is_some() && keeps.map_or(true, |b| spoiled.unwrap() < b), "no food spoiled before the rack or the smokehouse:\n{log}");
     // The settlers come out of the history: each cites two events or more, and some share one.
     let pasts = out.lines().find(|l| l.starts_with("Settlers: ")).expect("settlers line");
     let nums: Vec<usize> = pasts.split(|c: char| !c.is_ascii_digit()).filter_map(|n| n.parse().ok()).collect();

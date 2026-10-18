@@ -1850,7 +1850,8 @@ impl Colony {
             (None, Some(k)) => self.projects[k].kind.word().to_string(),
             _ => String::new(),
         };
-        let loose = self.items.iter().position(|it| !it.stored && !it.reserved && self.reachable_from(s.pos, it.at));
+        // (Never a thing a building now stands on: the walls went up over it.)
+        let loose = self.items.iter().position(|it| !it.stored && !it.reserved && self.reachable_from(s.pos, it.at) && nav::passable(&self.map, it.at));
 
         // Utilities, 0..~3. Each option says why.
         let mut options: Vec<(f32, Job, String)> = Vec::new();
@@ -2358,6 +2359,8 @@ impl Colony {
             .filter(|p| !frozen || jetty.map_or(false, |j| (j.0 as i32 - p.0 as i32).abs().max((j.1 as i32 - p.1 as i32).abs()) <= 2))
             .filter(|p| { let d = (p.0 as i32 - from.0 as i32).abs().max((p.1 as i32 - from.1 as i32).abs()); d >= 1 && d <= radius })
             .filter(|p| !self.claimed.contains(p) && !self.unreachable.contains(p) && !self.marked(*p, true) && self.shrub_ready.get(p).map_or(true, |&d| d <= day))
+            // A spot a building has since gone up over is no fishing place.
+            .filter(|p| nav::passable(&self.map, *p))
             .min_by_key(|p| ((p.0 as i32 - from.0 as i32).abs().max((p.1 as i32 - from.1 as i32).abs()), p.1, p.0))
     }
 
@@ -2462,6 +2465,19 @@ impl Colony {
                 // unreachable spot had searched the map every minute).
                 self.settlers[i].retry_at = self.clock.tick + 15;
                 if std::env::var("PLANET_DEBUG_PATH").is_ok() && self.settlers[i].stuck % 500 == 1 { eprintln!("PATHFAIL day {} {} at {:?} {:?} -> {:?} stuck {} from3 {:?} to3 {:?}", self.clock.day(), self.settlers[i].name, from, job, target, self.settlers[i].stuck, from3, to3); }
+                if std::env::var("PLANET_DEBUG_PATH_MAP").is_ok() && self.settlers[i].stuck % 500 == 1 {
+                    // The cells round the walker at its level: S standable, W wall, ~ deep water, . open, # other.
+                    let (fx, fy, fz) = (from3.0 as i64, from3.1 as i64, from3.2);
+                    for dy in -6i64..=6 { let mut row = String::new(); for dx in -8i64..=8 {
+                        let (x, y) = (fx + dx, fy + dy);
+                        if x < 0 || y < 0 || x >= self.map.width as i64 || y >= self.map.height as i64 { row.push(' '); continue; }
+                        let (ux, uy) = (x as usize, y as usize);
+                        let ch = if dx == 0 && dy == 0 { '@' } else if nav::standable(&self.map, ux, uy, fz) { 'S' }
+                            else if nav::standable(&self.map, ux, uy, fz + 1) { '+' } else if nav::standable(&self.map, ux, uy, fz - 1) { '-' }
+                            else { let c = self.map.cell(ux, uy, (fz + 1) as usize); if c.water > 0 { '~' } else if c.shape == crate::local::Shape::Wall { 'W' } else { '.' } };
+                        row.push(ch);
+                    } eprintln!("  {row}"); }
+                }
                 self.settlers[i].job = Job::Idle;
             }
         }
