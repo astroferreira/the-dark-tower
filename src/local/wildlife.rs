@@ -30,6 +30,8 @@ pub enum Feature {
     Spring,
     /// What a felled tree leaves.
     Stump,
+    /// The strand line: weed and driftwood the sea left (ROADMAP Stage 6, the coast at 2 m).
+    Wrack,
 }
 
 impl Feature {
@@ -45,6 +47,7 @@ impl Feature {
             Feature::Stone => "standing stone",
             Feature::Spring => "spring",
             Feature::Stump => "stump",
+            Feature::Wrack => "wrack: weed and driftwood the sea left",
         }
     }
 }

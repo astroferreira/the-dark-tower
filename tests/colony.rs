@@ -1534,8 +1534,9 @@ fn peoples_remember_earlier_camps() {
 /// Seed 23's lord Baangh falls on day 208, and her people swear vengeance.
 #[test]
 fn the_camp_rises_against_its_lord() {
-    let text = run_log("23", "230", &[]);
-    let rising = text.lines().find(|l| l.contains("go to the lord's hall")).unwrap_or_else(|| panic!("no rising on seed 23"));
+    // (Since the river and coast at 2 m, 2026-10-18: seed 22 on day 168; seed 23 rose on day 236.)
+    let text = run_log("22", "200", &[]);
+    let rising = text.lines().find(|l| l.contains("go to the lord's hall")).unwrap_or_else(|| panic!("no rising on seed 22"));
     assert!(rising.contains("stand by the lord") || rising.contains("stands by the lord"), "{rising}");
     assert!(text.lines().any(|l| l.contains("kin of their ruler")) || rising.contains("seize"), "the rising had no consequence");
 }

@@ -194,3 +194,49 @@ pub(super) fn rock_pools(map: &mut LocalMap, seed: u64) {
         map.surface_z[y * n + x] = sz as i32 - 1;
     }
 }
+
+
+/// The strand and the cliff at 2 m: wrack along the tide line (sand within two columns of the sea
+/// and no higher than a level over it: weed and driftwood, a hashed third of such cells, in
+/// runs), and ledges notched into hard sea faces (bare rock over the sea, three levels or more
+/// above the water beside it: one face cell in four cut back a level).
+pub(super) fn strand(map: &mut LocalMap, seed: u64) {
+    let (n, h) = (map.width, map.height);
+    let water_at = |map: &LocalMap, x: usize, y: usize| -> Option<i32> {
+        let sz = map.surface_z[y * n + x];
+        let z = sz as usize + 1;
+        (z < map.depth && map.cell(x, y, z).water > 0 && map.cell(x, y, z).material != Material::Ice).then_some(sz)
+    };
+    let mut wrack: Vec<(usize, usize)> = Vec::new();
+    let mut ledges: Vec<(usize, usize)> = Vec::new();
+    for y in 2..h - 2 {
+        for x in 2..n - 2 {
+            let sz = map.surface_z[y * n + x];
+            if sz < 3 || (sz + 2) as usize >= map.depth { continue; }
+            let c = map.cell(x, y, sz as usize);
+            if c.shape != Shape::Floor || map.cell(x, y, sz as usize + 1).water > 0 || map.features[y * n + x] != super::wildlife::Feature::None { continue; }
+            let mut near_low = false;
+            let mut near_far_below = false;
+            for dy in -2i64..=2 { for dx in -2i64..=2 {
+                let (qx, qy) = ((x as i64 + dx) as usize, (y as i64 + dy) as usize);
+                if let Some(bz) = water_at(map, qx, qy) {
+                    if sz - bz <= 1 { near_low = true; }
+                    if sz - bz >= 3 { near_far_below = true; }
+                }
+            } }
+            let k = ((x as u64 / 2) * 0x9E37_79B9 ^ (y as u64 / 2) * 0xC2B2_AE3D ^ seed ^ 0x7AC).wrapping_mul(0xBF58_476D_1CE4_E5B9) >> 40;
+            if c.material == Material::Sand && near_low && k % 3 == 0 { wrack.push((x, y)); }
+            if matches!(c.material, Material::Rock(_)) && near_far_below && k % 4 == 1 { ledges.push((x, y)); }
+        }
+    }
+    for (x, y) in wrack { map.features[y * n + x] = super::wildlife::Feature::Wrack; }
+    for (x, y) in ledges {
+        let sz = map.surface_z[y * n + x] as usize;
+        let rock = map.cell(x, y, sz).material;
+        let top = map.idx(x, y, sz);
+        map.cells[top] = Cell::AIR;
+        let bed = map.idx(x, y, sz - 1);
+        map.cells[bed] = Cell { shape: Shape::Floor, material: rock, water: 0, plant: Plant::None, boulder: false };
+        map.surface_z[y * n + x] = sz as i32 - 1;
+    }
+}

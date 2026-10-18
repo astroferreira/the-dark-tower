@@ -451,3 +451,7 @@ the zoomed region around a point.
   riffles every five or six widths, a slow noise), gravel bars stand 0.3 m above the water at
   the edges of rivers over 8 m wide, a levee rises beside rivers over 25 m; rock pools hollow the
   bare rock within four columns of the sea and two levels of it (`ground::rock_pools`).
+- The strand and the cliff (`ground::strand`): wrack (`Feature::Wrack`, weed and driftwood
+  drawn as a wavy dark line with pale sticks) on a third of the sand within two columns of the
+  sea and a level of it, in runs; one hard sea-face cell in four (bare rock three levels or more
+  over the water beside it) notched back a level, so the cliff has ledges.

@@ -112,7 +112,8 @@ window's places shown in their embarks; the dev world 88%) and its test, P in th
       relief and marks), which hides small features; the region frame at 4 px shows nothing of
       embark-scale features (zoom it to the feature's scale); sections do not show breccia or
       offset caverns strongly enough.
-- [ ] The coast at 2 m: wrack on the strand, the cliff's ledges.
+- [x] The coast at 2 m: wrack on the strand (`wildlife::Feature::Wrack`), ledges notched into
+      hard sea faces, rock pools (`ground::strand`, `ground::rock_pools`).
 
 ## Tools (the lab, `src/lab/CLAUDE.md`; plan of 2026-10-17)
 - [x] The agent harness: `planet_lab` over MCP and the shell (worlds, tiles, regions, places,

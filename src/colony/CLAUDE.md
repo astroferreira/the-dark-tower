@@ -2172,4 +2172,5 @@ at a moment, where their hours went, whether a cell can be reached; the colony e
   ran on the default dev embark now name a seed.
 - The river at 2 m (pools, riffles, gravel bars, levees) and rock pools (2026-10-18) moved five
   more camps: mourning and courting seed 12, the den and pyre 23/24, the pet (forced) 9/1/12,
-  the hall 2/4, the raid fought on the map seed 5.
+  the hall 2/4, the raid fought on the map seed 5. The coast's wrack and ledges then moved the
+  rising against the lord: seed 22 (day 168; seed 23's came on day 236).

@@ -1181,6 +1181,7 @@ pub fn generate_local(world: &WorldData, region: &ZoomRegion, lore: Option<&crat
     // ditches, ruined walls, shafts, bones, springs.
     planned_caves.extend(sites::carve(&mut map, region, cx, cy, region.params.seed));
     ground::rock_pools(&mut map, region.params.seed);
+    ground::strand(&mut map, region.params.seed);
     site::furnish(&mut map, &battles);
     // Something down there: lairs, tombs, old mines and caves, each with its cause.
     {

@@ -948,6 +948,12 @@ fn pixel(v: &View, fx: f32, fy: f32, sx: i64, sy: i64, line: f32, t: f32) -> Rgb
                 if (r - rs).abs() < line * 0.8 { c = mix(c, INK, 0.35); }
             }
         }
+        Feature::Wrack => {
+            // A wavy line of dark weed along the strand, a pale stick of driftwood here and there.
+            let wave = (w - 0.5 - 0.12 * (u * 9.0 + cx as f32).sin()).abs();
+            if wave < line * 1.2 { c = mix(c, [72.0, 74.0, 48.0], 0.7); }
+            if unit(cx, cy, 0x7AC) < 0.3 && (w - 0.3 - 0.3 * u).abs() < line && u > 0.2 && u < 0.8 { c = mix(c, [214.0, 200.0, 170.0], 0.85); }
+        }
         Feature::Spring => {
             let r = ((u - 0.5).powi(2) + (w - 0.5).powi(2)).sqrt();
             if (r - 0.18).abs() < line || (r - 0.32).abs() < line * 0.7 { c = mix(c, [60.0, 92.0, 120.0], 0.7); }
